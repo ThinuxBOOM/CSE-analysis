@@ -93,10 +93,18 @@ def _process_one_security(symbol: str, trade_summary_response, tolerances) -> Se
 
     if ts_row is None:
         # The company responded fine, but simply isn't present in today's
-        # tradeSummary batch — plausibly suspended/untraded/newly-listed.
-        # This is a data-completeness fact, not necessarily an error.
+        # tradeSummary batch. This is a data-completeness fact only — we do
+        # NOT classify or assert why (suspension, no trading activity, a
+        # very recent listing, etc. are all possibilities, none confirmed
+        # without independently checking CSE status/calendar data, which
+        # this script does not do).
         result.category = "missing_from_tradesummary"
-        result.reason = "companyInfoSummery succeeded but no row found for this symbol in tradeSummary"
+        result.reason = (
+            "companyInfoSummery succeeded but no row was found for this symbol in tradeSummary. "
+            "This absence is consistent with several possibilities (e.g. suspension, no trading "
+            "activity that day, or a recent listing) but has not been independently verified "
+            "against CSE status/calendar data — no such classification is asserted here."
+        )
         return result
 
     try:
