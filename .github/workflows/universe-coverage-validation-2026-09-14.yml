@@ -1,0 +1,68 @@
+name: Universe Coverage Validation (one-off — 2026-09-14 only)
+
+# Same double safety pattern as the earlier burst-investigation workflow:
+#   1. Cron's day-of-week field restricts it to Mondays.
+#   2. The "Check target date" step hardcodes 2026-09-14 and skips every
+#      other step if today doesn't match — so this can't silently become a
+#      recurring job if the file is still here next Monday.
+# Recommended: delete this workflow file after Monday's run anyway.
+on:
+  schedule:
+    # 05:30 UTC = 11:00 IST — comfortably mid-session (market opens 09:30
+    # IST, closes 14:30 IST), well clear of open-specific noise and with
+    # margin for GitHub Actions' documented scheduling jitter.
+    - cron: '30 5 * * 1'
+  workflow_dispatch: {}   # lets you manually trigger a test run any time —
+                            # outside trading hours it'll just show more
+                            # missing_from_tradesummary/null-price results,
+                            # which still confirms the pipeline runs cleanly
+
+jobs:
+  universe-coverage-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # ~289 securities x 0.2s delay + real request latency
+                            # is expected to take a few minutes; this is a
+                            # generous safety cap, not the expected runtime
+    steps:
+      - name: Check target date
+        id: date_check
+        run: |
+          TODAY=$(date -u +%F)
+          TARGET="2026-09-14"
+          if [ "$TODAY" = "$TARGET" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Today ($TODAY) matches the target date — proceeding."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Today ($TODAY) is NOT the target date ($TARGET) — skipping. "
+            echo "This workflow is meant to run exactly once. If you're seeing "
+            echo "this on a later Monday, please delete this workflow file."
+          fi
+
+      - name: Checkout repo
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.date_check.outputs.run == 'true'
+        run: pip install requests
+
+      - name: Run universe coverage validation
+        if: steps.date_check.outputs.run == 'true'
+        run: python -m worker.validate_universe_coverage
+        # No DATABASE_URL or secrets needed — this script makes zero
+        # database connections, discovery + validation only.
+
+      - name: Upload coverage report as artifact
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: universe-coverage-report-2026-09-14
+          path: universe_coverage_report_*.json
+          retention-days: 30
