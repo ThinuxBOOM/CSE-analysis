@@ -1,8 +1,8 @@
-name: Universe Coverage Validation (one-off — 2026-09-14 only)
+name: Universe Coverage Validation (one-off — 2026-09-21 only)
 
 # Same double safety pattern as the earlier burst-investigation workflow:
 #   1. Cron's day-of-week field restricts it to Mondays.
-#   2. The "Check target date" step hardcodes 2026-09-14 and skips every
+#   2. The "Check target date" step hardcodes 2026-09-21 and skips every
 #      other step if today doesn't match — so this can't silently become a
 #      recurring job if the file is still here next Monday.
 # Recommended: delete this workflow file after Monday's run anyway.
@@ -28,7 +28,7 @@ jobs:
         id: date_check
         run: |
           TODAY=$(date -u +%F)
-          TARGET="2026-09-14"
+          TARGET="2026-09-21"
           if [ "$TODAY" = "$TARGET" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Today ($TODAY) matches the target date — proceeding."
@@ -63,6 +63,6 @@ jobs:
         if: steps.date_check.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: universe-coverage-report-2026-09-14
+          name: universe-coverage-report-2026-09-21
           path: universe_coverage_report_*.json
           retention-days: 30

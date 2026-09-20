@@ -52,55 +52,94 @@ def resolve_request_attempt_id(args) -> str:
     return new_id
 
 
-def fetch_and_map(symbol: str, window: str):
-    """Shared by both dry-run and live paths — the actual CSE calls + mapping,
-    with zero DB involvement either way."""
-    print(f"\nCalling companyInfoSummery for {symbol}...")
+class CSEFetchError(Exception):
+    """Raised when neither CSE endpoint returned usable data for a symbol.
+    A proper exception rather than sys.exit(1), so a batch caller (see
+    capture_multiple_companies.py) can catch it per-symbol without killing
+    the whole process — sys.exit would have aborted every other company's
+    capture too."""
+    pass
+
+
+def fetch_and_map(symbol: str, window: str, trade_summary_response=None, verbose: bool = True):
+    """Shared by both dry-run and live single-company paths, AND by the
+    multi-company batch path — the actual CSE calls + mapping, with zero DB
+    involvement either way.
+
+    trade_summary_response: if provided, reuses an already-fetched
+    tradeSummary response instead of making a new call — this is what lets
+    capture_multiple_companies.py fetch tradeSummary ONCE for the whole
+    batch rather than once per company, without duplicating this function's
+    mapping/logging logic.
+
+    verbose: when False, suppresses the per-call print statements — used by
+    the batch path so a 15-20 company run doesn't dump each company's full
+    raw response to the console.
+    """
+    if verbose:
+        print(f"\nCalling companyInfoSummery for {symbol}...")
     ci_response = cse_client.get_company_info_summary(symbol)
-    print(f"  status={ci_response.status_code} ok={ci_response.ok} error={ci_response.error}")
-    print(f"  RAW BODY:\n{json.dumps(ci_response.body, indent=2)[:3000]}")
+    if verbose:
+        print(f"  status={ci_response.status_code} ok={ci_response.ok} error={ci_response.error}")
+        print(f"  RAW BODY:\n{json.dumps(ci_response.body, indent=2)[:3000]}")
 
-    print(f"\nCalling tradeSummary (all securities)...")
-    ts_response = cse_client.get_trade_summary_all()
-    print(f"  status={ts_response.status_code} ok={ts_response.ok} error={ts_response.error}")
+    if trade_summary_response is None:
+        if verbose:
+            print(f"\nCalling tradeSummary (all securities)...")
+        trade_summary_response = cse_client.get_trade_summary_all()
+    ts_response = trade_summary_response
+    if verbose:
+        print(f"  status={ts_response.status_code} ok={ts_response.ok} error={ts_response.error}")
     ts_row = cse_client.extract_symbol_row_from_trade_summary(ts_response, symbol)
-    print(f"  Extracted row for {symbol}: {json.dumps(ts_row, indent=2) if ts_row else 'NOT FOUND'}")
+    if verbose:
+        print(f"  Extracted row for {symbol}: {json.dumps(ts_row, indent=2) if ts_row else 'NOT FOUND'}")
 
-    if not ci_response.ok and not ts_response.ok:
-        print("\nBoth CSE calls failed — stopping. Not fabricating an observation.", file=sys.stderr)
-        sys.exit(1)
+    if not ci_response.ok and ts_row is None:
+        # Checking ts_row (this specific symbol's extracted data), not just
+        # ts_response.ok — a shared tradeSummary call can succeed overall
+        # while still not containing this particular symbol's row (e.g. an
+        # invalid/delisted symbol). That's a real per-symbol failure even
+        # though the batched call as a whole "succeeded". Found via Stage E's
+        # multi-company testing, not assumed.
+        raise CSEFetchError(
+            f"Both CSE calls failed to yield usable data for {symbol} — companyInfoSummery "
+            f"error={ci_response.error}, and tradeSummary (call ok={ts_response.ok}, "
+            f"error={ts_response.error}) did not contain a row for this symbol. "
+            f"Not fabricating an observation."
+        )
 
     ci_mapped = mapping.map_company_info_summary(ci_response.body)
     ts_mapped = mapping.map_trade_summary_row(ts_row)
 
-    print(f"\ncompanyInfoSummery mapping notes:\n{json.dumps(ci_mapped.notes, indent=2, default=str)}")
-    print(f"\ntradeSummary mapping notes:\n{json.dumps(ts_mapped.notes, indent=2, default=str)}")
+    if verbose:
+        print(f"\ncompanyInfoSummery mapping notes:\n{json.dumps(ci_mapped.notes, indent=2, default=str)}")
+        print(f"\ntradeSummary mapping notes:\n{json.dumps(ts_mapped.notes, indent=2, default=str)}")
 
-    if ci_mapped.notes.get("unexpected_fields"):
-        print(f"\n*** UNEXPECTED FIELDS in companyInfoSummery (present in raw_payload, "
-              f"not mapped to any column): {json.dumps(ci_mapped.notes['unexpected_fields'], default=str)}")
-    if ts_mapped.notes.get("unexpected_fields"):
-        print(f"\n*** UNEXPECTED FIELDS in tradeSummary row (present in raw_payload, "
-              f"not mapped to any column): {json.dumps(ts_mapped.notes['unexpected_fields'], default=str)}")
-    if ci_mapped.notes.get("multiple_candidates_present"):
-        print(f"\n*** MULTIPLE CANDIDATE FIELD NAMES present simultaneously in companyInfoSummery "
-              f"— not silently resolved: {json.dumps(ci_mapped.notes['multiple_candidates_present'], default=str)}")
-    if ts_mapped.notes.get("multiple_candidates_present"):
-        print(f"\n*** MULTIPLE CANDIDATE FIELD NAMES present simultaneously in tradeSummary "
-              f"— not silently resolved: {json.dumps(ts_mapped.notes['multiple_candidates_present'], default=str)}")
-    if ci_mapped.notes.get("unwrapped_into_key"):
-        print(f"\nNote: companyInfoSummery response was unwrapped into key "
-              f"'{ci_mapped.notes['unwrapped_into_key']}'.")
-    if ci_mapped.notes.get("unwrap_ambiguous_candidates"):
-        print(f"\n*** UNWRAP WAS AMBIGUOUS — multiple nested dict keys existed: "
-              f"{ci_mapped.notes['unwrap_ambiguous_candidates']}. Picked the first one "
-              f"('{ci_mapped.notes['unwrapped_into_key']}'). Verify this is correct.")
+        if ci_mapped.notes.get("unexpected_fields"):
+            print(f"\n*** UNEXPECTED FIELDS in companyInfoSummery (present in raw_payload, "
+                  f"not mapped to any column): {json.dumps(ci_mapped.notes['unexpected_fields'], default=str)}")
+        if ts_mapped.notes.get("unexpected_fields"):
+            print(f"\n*** UNEXPECTED FIELDS in tradeSummary row (present in raw_payload, "
+                  f"not mapped to any column): {json.dumps(ts_mapped.notes['unexpected_fields'], default=str)}")
+        if ci_mapped.notes.get("multiple_candidates_present"):
+            print(f"\n*** MULTIPLE CANDIDATE FIELD NAMES present simultaneously in companyInfoSummery "
+                  f"— not silently resolved: {json.dumps(ci_mapped.notes['multiple_candidates_present'], default=str)}")
+        if ts_mapped.notes.get("multiple_candidates_present"):
+            print(f"\n*** MULTIPLE CANDIDATE FIELD NAMES present simultaneously in tradeSummary "
+                  f"— not silently resolved: {json.dumps(ts_mapped.notes['multiple_candidates_present'], default=str)}")
+        if ci_mapped.notes.get("unwrapped_into_key"):
+            print(f"\nNote: companyInfoSummery response was unwrapped into key "
+                  f"'{ci_mapped.notes['unwrapped_into_key']}'.")
+        if ci_mapped.notes.get("unwrap_ambiguous_candidates"):
+            print(f"\n*** UNWRAP WAS AMBIGUOUS — multiple nested dict keys existed: "
+                  f"{ci_mapped.notes['unwrap_ambiguous_candidates']}. Picked the first one "
+                  f"('{ci_mapped.notes['unwrapped_into_key']}'). Verify this is correct.")
 
     raw_fields = mapping.build_raw_observation(
         company_info_result=ci_mapped, trade_summary_result=ts_mapped, capture_window=window,
     )
     cross_source_comparison = raw_fields.get("cross_source_comparison")
-    if cross_source_comparison:
+    if cross_source_comparison and verbose:
         disagreements = {k: v for k, v in cross_source_comparison.items() if not v["agree_exactly"]}
         print(f"\nCross-source comparison (fields present in BOTH endpoints):\n"
               f"{json.dumps(cross_source_comparison, indent=2, default=str)}")
@@ -133,7 +172,11 @@ def run_dry_run(args):
     observation_date = args.observation_date or datetime.now(timezone.utc).date().isoformat()
     observed_at = datetime.now(timezone.utc)
 
-    raw_fields, raw_payload = fetch_and_map(args.symbol, args.window)
+    try:
+        raw_fields, raw_payload = fetch_and_map(args.symbol, args.window)
+    except CSEFetchError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        sys.exit(1)
 
     proposed_raw_row = {
         "request_attempt_id": request_attempt_id,
@@ -179,17 +222,18 @@ def run_live(args):
     observed_at = datetime.now(timezone.utc)
 
     conn = db.get_connection()
-    with conn.cursor() as cur:
-        cur.execute("select id from companies where ticker = %s", (args.symbol,))
-        row = cur.fetchone()
-        if not row:
-            raise SystemExit(
-                f"No company row found for ticker '{args.symbol}'. This script does not invent "
-                f"security-master data — insert a companies row for this ticker first."
-            )
-        company_id = str(row[0])
+    company_id = db.get_company_id_by_ticker(conn, args.symbol)
+    if not company_id:
+        raise SystemExit(
+            f"No company row found for ticker '{args.symbol}'. This script does not invent "
+            f"security-master data — insert a companies row for this ticker first."
+        )
 
-    raw_fields, raw_payload = fetch_and_map(args.symbol, args.window)
+    try:
+        raw_fields, raw_payload = fetch_and_map(args.symbol, args.window)
+    except CSEFetchError as exc:
+        print(f"\n{exc}", file=sys.stderr)
+        sys.exit(1)
 
     print(f"\nInserting raw_market_observations row "
           f"(attempt={request_attempt_id}, window={args.window})...")

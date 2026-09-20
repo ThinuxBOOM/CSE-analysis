@@ -18,6 +18,19 @@ def get_connection():
     return psycopg2.connect(config.get_database_url())
 
 
+def get_company_id_by_ticker(conn, ticker: str):
+    """
+    Looks up a company's id by ticker. Returns None if not found — never
+    invents a company row. Factored out here (rather than left inline in
+    capture_single_company.py) so capture_multiple_companies.py reuses the
+    exact same lookup logic instead of duplicating it.
+    """
+    with conn.cursor() as cur:
+        cur.execute("select id from companies where ticker = %s", (ticker,))
+        row = cur.fetchone()
+        return str(row[0]) if row else None
+
+
 def insert_raw_observation(conn, *, request_attempt_id, ingestion_job_id, company_id,
                             observation_date, capture_window, source, observed_at,
                             fields: dict, raw_payload: dict) -> Optional[str]:
