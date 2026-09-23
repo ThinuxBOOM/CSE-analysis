@@ -1,0 +1,66 @@
+name: Missing .N Securities Investigation (one-off — 2026-09-24 only)
+
+# Same double safety pattern as the earlier one-off workflows:
+#   1. Cron's day-of-week field restricts it to Thursdays.
+#   2. The "Check target date" step hardcodes 2026-09-24 and skips every
+#      other step if today doesn't match — so this can't silently become a
+#      recurring job if the file is left in the repo.
+# Recommended: delete this workflow file after Thursday's run anyway.
+on:
+  schedule:
+    # 05:30 UTC = 11:00 IST — mid-session (market 09:30–14:30 IST), so
+    # tradeSummary reflects a live trading session, with margin for GitHub
+    # Actions' documented scheduling jitter.
+    - cron: '30 5 * * 4'
+  workflow_dispatch: {}   # manual trigger for a plumbing test or a re-run.
+                            # NOTE: the date guard below also applies to
+                            # manual runs — on any other date it will skip.
+
+jobs:
+  missing-n-securities-investigation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10   # ~21 CSE calls at 0.2s spacing — expected well
+                            # under a minute; this is a safety cap only
+    steps:
+      - name: Check target date
+        id: date_check
+        run: |
+          TODAY=$(date -u +%F)
+          TARGET="2026-09-24"
+          if [ "$TODAY" = "$TARGET" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Today ($TODAY) matches the target date — proceeding."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Today ($TODAY) is NOT the target date ($TARGET) — skipping. "
+            echo "This workflow is meant to run exactly once. If you're seeing "
+            echo "this on a later Thursday, please delete this workflow file."
+          fi
+
+      - name: Checkout repo
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        if: steps.date_check.outputs.run == 'true'
+        run: pip install requests
+
+      - name: Run missing .N securities investigation
+        if: steps.date_check.outputs.run == 'true'
+        run: python -m worker.investigate_missing_n_securities
+        # Zero-DB, read-only — no DATABASE_URL or secrets needed.
+
+      - name: Upload investigation report as artifact
+        if: steps.date_check.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: missing-n-securities-investigation-2026-09-24
+          path: missing_n_securities_investigation_2026-09-21.json
+          retention-days: 30
+          if-no-files-found: error
