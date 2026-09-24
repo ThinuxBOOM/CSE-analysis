@@ -171,8 +171,11 @@ def test_real_multi_security_field_values():
     real_data = load_real_fixtures()
     install_mock_cse_client(real_data)
 
+    # These fixtures are post-close responses (closingPrice populated and equal
+    # to price, as in every real post-close row; mid-session closingPrice is
+    # 0.0), so the end-of-day value check runs as a post_close capture.
     report = cmc.capture_multiple_companies(
-        conn=None, symbols=REAL_SYMBOLS, window="post_open",
+        conn=None, symbols=REAL_SYMBOLS, window="post_close",
         request_attempt_id="test-attempt-4", observation_date="2026-09-08",
         dry_run=True, verbose=False,
     )
@@ -189,10 +192,26 @@ def test_real_multi_security_field_values():
                 f"{symbol}.{field_name}: expected {expected_value} (from fixture), "
                 f"got {actual[field_name]}"
             )
-        # post_open_price: sourced from last_traded_price only when window='post_open'
-        assert actual["post_open_price"] == expected["last_traded_price"], (
-            f"{symbol}.post_open_price should equal last_traded_price on a post_open capture"
+        assert actual["post_open_price"] is None
+
+    # post_open capture of the same data: post_open_price is sourced from
+    # last_traded_price, and a post_open-only day never presents
+    # session-to-date values as end-of-day figures (window-aware reconciliation).
+    post_open_report = cmc.capture_multiple_companies(
+        conn=None, symbols=REAL_SYMBOLS, window="post_open",
+        request_attempt_id="test-attempt-4b", observation_date="2026-09-08",
+        dry_run=True, verbose=False,
+    )
+    for r in post_open_report["per_symbol"]:
+        ci_body, ts_row = real_data[r["symbol"]]
+        expected = _expected_values_from_fixture(ci_body, ts_row)
+        assert r["post_open_price"] == expected["last_traded_price"], (
+            f"{r['symbol']}.post_open_price should equal last_traded_price on a post_open capture"
         )
+        assert r["open_price"] == expected["open_price"]
+        for eod_field in ("closing_price", "share_volume", "turnover", "trade_count"):
+            assert r[eod_field] is None, f"{r['symbol']}.{eod_field} must be withheld on a post_open-only day"
+        assert r["reconciliation_status"] == "pending"
 
     print("PASS: every one of the 5 real securities' open_price/closing_price/last_traded_price/"
           "post_open_price/share_volume/turnover/trade_count matches its own known fixture values "

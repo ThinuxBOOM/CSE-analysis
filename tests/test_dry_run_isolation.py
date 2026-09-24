@@ -34,11 +34,40 @@ class _Args:
     dry_run = True
 
 
+def _hide_already_imported_db_module():
+    """Under pytest, other test files (e.g. Stage E's non-dry-run tests) may
+    have legitimately imported worker.db earlier in the same process. Hide
+    it for the duration of this test, from BOTH sys.modules and the worker
+    package attribute (`from . import db` is satisfied by the attribute alone,
+    which would otherwise let an import slip past the check below)."""
+    import worker
+    return sys.modules.pop("worker.db", None), worker.__dict__.pop("db", None)
+
+
+def _restore_db_module(hidden):
+    import worker
+    module, attr = hidden
+    if module is not None:
+        sys.modules["worker.db"] = module
+    if attr is not None:
+        worker.db = attr
+
+
 def test_dry_run_never_imports_db_module():
-    # If worker.db were imported by the dry-run path, it would already be in
-    # sys.modules by the time we get here (Python caches imports) — confirm
-    # it is NOT, both before and after running dry-run.
+    hidden = _hide_already_imported_db_module()
+    try:
+        _check_dry_run_never_imports_db_module()
+    finally:
+        _restore_db_module(hidden)
+
+
+def _check_dry_run_never_imports_db_module():
+    import worker
+    # If worker.db were imported by the dry-run path, it would be in
+    # sys.modules (and on the worker package) afterwards — confirm it is NOT,
+    # both before and after running dry-run.
     assert "worker.db" not in sys.modules, "worker.db must not be imported before dry-run even starts"
+    assert not hasattr(worker, "db")
 
     mock_ci_body = load_fixture("sample_companyInfoSummery.json")
     mock_ts_row = load_fixture("sample_tradeSummary_row.json")
@@ -66,7 +95,7 @@ def test_dry_run_never_imports_db_module():
         cse_client.get_company_info_summary = original_ci
         cse_client.get_trade_summary_all = original_ts
 
-    assert "worker.db" not in sys.modules, (
+    assert "worker.db" not in sys.modules and not hasattr(worker, "db"), (
         "worker.db was imported during dry-run — this means the dry-run path "
         "touched the database layer, which violates the 'strictly observational "
         "and safe' requirement."

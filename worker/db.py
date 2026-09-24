@@ -124,14 +124,14 @@ def upsert_daily_market_data(conn, *, company_id, trade_date, canonical: dict):
                  closing_price, last_traded_price, last_traded_date, turnover, share_volume,
                  trade_count, foreign_holding, field_provenance, contributing_observation_ids,
                  primary_source, reconciliation_status, discrepancy_notes, validation_status,
-                 validation_notes)
+                 validation_notes, has_eod_observation)
             values
                 (%(company_id)s, %(trade_date)s, %(post_open_price)s, %(post_open_captured_at)s, %(open_price)s,
                  %(high)s, %(low)s, %(closing_price)s, %(last_traded_price)s, %(last_traded_date)s,
                  %(turnover)s, %(share_volume)s, %(trade_count)s, %(foreign_holding)s,
                  %(field_provenance)s, %(contributing_observation_ids)s::uuid[], %(primary_source)s,
                  %(reconciliation_status)s, %(discrepancy_notes)s, %(validation_status)s,
-                 %(validation_notes)s)
+                 %(validation_notes)s, %(has_eod_observation)s)
             on conflict (company_id, trade_date) do update set
                 post_open_price = excluded.post_open_price,
                 post_open_captured_at = excluded.post_open_captured_at,
@@ -149,6 +149,7 @@ def upsert_daily_market_data(conn, *, company_id, trade_date, canonical: dict):
                 discrepancy_notes = excluded.discrepancy_notes,
                 validation_status = excluded.validation_status,
                 validation_notes = excluded.validation_notes,
+                has_eod_observation = excluded.has_eod_observation,
                 derived_at = now();
             """,
             {
@@ -173,6 +174,7 @@ def upsert_daily_market_data(conn, *, company_id, trade_date, canonical: dict):
                 "discrepancy_notes": json.dumps(canonical.get("discrepancy_notes")) if canonical.get("discrepancy_notes") else None,
                 "validation_status": canonical.get("validation_status", "ok"),
                 "validation_notes": json.dumps(canonical.get("validation_notes")) if canonical.get("validation_notes") else None,
+                "has_eod_observation": bool(canonical.get("has_eod_observation", False)),
             },
         )
         conn.commit()

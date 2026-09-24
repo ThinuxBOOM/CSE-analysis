@@ -1,3 +1,60 @@
+# ⚠️ Operational requirements — read before any live capture
+
+Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).
+Before running ANY live (non-`--dry-run`) capture with the current code:
+
+1. **Apply `supabase/migrations/0003_eod_observation_completeness.sql`** (after
+   0001 and 0002). `worker/db.py` now writes
+   `daily_market_data.has_eod_observation`; against a database without this
+   migration, every canonical upsert fails.
+2. **Re-run reconciliation for historical days that have both `post_open` and
+   later (e.g. `post_close`) raw observations.** Those canonical rows were
+   derived by the old tie-break, which let the earlier `post_open` values win
+   (e.g. a 0.0 mid-session `closing_price`, partial-day volume/turnover).
+   Migration 0003 only backfills the `has_eod_observation` flag; it does not
+   re-derive values. Raw observations are unaffected and remain the source of
+   truth, so re-running `reconciliation.reconcile()` + the canonical upsert for
+   each affected (company, date) is sufficient.
+
+## Reconciliation layer: FROZEN (2026-09-24)
+
+`worker/reconciliation.py` is frozen at the window-aware policy (intraday
+`post_open` never supplies end-of-day fields; latest observation wins within a
+source; cross-source precedence unchanged; zeros never converted to NULL;
+`has_eod_observation` separates "captured something" from "EOD capture
+reconciled"). Tests: `tests/test_reconciliation_windows.py`,
+`tests/test_eod_completeness.py`. Do not change it without an explicit
+decision.
+
+## Open investigations carried into Stage F (not yet implemented)
+
+These are known, evidence-backed gaps. They belong to the mapper/validation or
+configuration, not reconciliation, and must be decided explicitly rather than
+patched ad hoc:
+
+- **Post-close `closingPrice = 0.0` for non-traded securities.** Observed in
+  `companyInfoSummery` after close (9 of 10 non-traded tickers on 2026-09-23);
+  it currently flows into canonical `closing_price` and is flagged
+  `review_required` by validation.
+- **Securities missing from `tradeSummary`: NULL vs zero volume/trade count.**
+  `tradeSummary` has so far only listed securities with ≥1 trade; for absent
+  securities `share_volume`/`trade_count`/`turnover` are currently NULL,
+  although `companyInfoSummery` reports `tdyShareVolume = 0`.
+- **CSE's actual closing-price rule and the meaning of post-close `price` /
+  `lastTradedPrice`.** After close these equalled `closingPrice` in every row
+  seen (284/284); 16/284 closes lay outside the day's high/low, all with
+  `closingPrice == previousClose`. A post-close `last_traded_price` must not be
+  read as the final executed trade. Validation's
+  `closing_price_outside_high_low` flags these genuine CSE values.
+- **Undefined `manual` capture-window semantics.** Currently treated as an
+  end-of-day window.
+- **Market-close / finalization configuration.** None exists (no close time in
+  `system_config`, `trading_calendar` is open/closed/unknown only), so a
+  `post_close` capture's finality cannot be verified; `has_eod_observation`
+  means "EOD capture reconciled", not "CSE finalised every field".
+
+---
+
 # Stage B — Single-Company Vertical Slice
 
 ## Setup
