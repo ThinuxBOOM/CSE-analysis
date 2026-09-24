@@ -1,0 +1,97 @@
+{
+ "infoAnnualData": [
+  {
+   "id": 50738,
+   "path": "cmt/upload_report_file/369_1773048532050.pdf",
+   "manualDate": 1767119400000,
+   "uploadedDate": 1773048532050,
+   "fileText": "Annual Report as at 31st December 2025",
+   "path2": null,
+   "authorizedDate": 1773051442930
+  },
+  {
+   "id": 47609,
+   "path": "cmt/upload_report_file/369_1741169817422.pdf",
+   "manualDate": 1735583400000,
+   "uploadedDate": 1741169817422,
+   "fileText": "Commercial Bank of Ceylon PLC - Annual Report 2024",
+   "path2": "cmt/upload_report_file/369_1741169817422.",
+   "authorizedDate": null
+  }
+ ],
+ "infoQuarterlyData": [
+  {
+   "id": 49384,
+   "path": "cmt/upload_report_file/369_1762944976777.pdf",
+   "manualDate": 1759170600000,
+   "uploadedDate": 1762944976777,
+   "fileText": "Interim Financial Statements for the Quarter ended 30th September 2025",
+   "path2": "cmt/upload_report_file/369_1762944976777.xlsx",
+   "authorizedDate": 1762945164124
+  },
+  {
+   "id": 47586,
+   "path": "cmt/upload_report_file/369_1740757897300.pdf",
+   "manualDate": 1735583400000,
+   "uploadedDate": 1740757897300,
+   "fileText": "Interim Financial Statements for the year ended December 31, 2024",
+   "path2": "cmt/upload_report_file/369_1740757897300.",
+   "authorizedDate": null
+  },
+  {
+   "id": 52504,
+   "path": "cmt/upload_report_file/369_1786618965674.pdf",
+   "manualDate": 1782757800000,
+   "uploadedDate": 1786618965674,
+   "fileText": "Interim Financial Statements for the Quarter ended 30th June 2026",
+   "path2": null,
+   "authorizedDate": 1786620862357
+  },
+  {
+   "id": 34521,
+   "path": "cmt/upload_report_file/369_1573785715189.pdf",
+   "manualDate": 1569781800000,
+   "uploadedDate": 1573785715189,
+   "fileText": "Interim Financial Statements as at 30.09.2019",
+   "path2": null,
+   "authorizedDate": null
+  }
+ ],
+ "infoOtherData": [
+  {
+   "id": 52296,
+   "path": "cmt/upload_report_file/369_1786111976774.pdf",
+   "manualDate": 1786041000000,
+   "uploadedDate": 1786111976774,
+   "fileText": "Accountants' Report & Five Year Summary",
+   "path2": null,
+   "authorizedDate": 1786112417698
+  },
+  {
+   "id": 52293,
+   "path": "cmt/upload_report_file/369_1786108401241.pdf",
+   "manualDate": 1786041000000,
+   "uploadedDate": 1786108401241,
+   "fileText": "Trust Deed",
+   "path2": null,
+   "authorizedDate": 1786111324609
+  }
+ ],
+ "infoWebLink": [],
+ "reqFinancial": [
+  {
+   "secId": 369,
+   "elmId": "1",
+   "data": "Financial Statements Summary"
+  },
+  {
+   "secId": 369,
+   "elmId": "1",
+   "data": "Financial Statements Summary"
+  }
+ ],
+ "infoCompanyBannerAd": {
+  "id": 260,
+  "path": "upload_add/390.jpeg"
+ }
+}

@@ -53,6 +53,22 @@ patched ad hoc:
   `post_close` capture's finality cannot be verified; `has_eod_observation`
   means "EOD capture reconciled", not "CSE finalised every field".
 
+## Stage F1 — financial filing discovery (metadata only)
+
+Discovers which financial filings CSE lists and records them verbatim in
+`report_filings` / `report_filing_observations` / `report_discovery_runs`
+(migration `0004_report_filings.sql` — apply it before `--store postgres`).
+
+    python -m worker.discover_financial_filings --store memory --from-date 2026-09-01 --to-date 2026-09-24
+    python -m worker.discover_financial_filings --store postgres --from-date 2026-09-01 --to-date 2026-09-24
+    python -m worker.discover_financial_filings --store memory --symbols COMB.N0000,NEST.N0000
+
+It never downloads a document (F2), never derives a reporting period —
+`manualDate` is stored raw and untrusted (F3) — and never extracts facts (F4+).
+CSE PDFs are temporary extraction inputs in later stages, not stored data.
+Tests: `tests/test_report_discovery.py` (the Postgres-store test runs only with
+`F1_TEST_DATABASE_URL` pointing at a scratch database).
+
 ---
 
 # Stage B — Single-Company Vertical Slice

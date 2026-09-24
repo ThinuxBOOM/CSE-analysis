@@ -1,0 +1,81 @@
+{
+ "reqFinancialAnnouncemnets": [
+  {
+   "id": 34294,
+   "path": "cmt/upload_report_file/508_1572601749086. 2019.pdf",
+   "manualDate": 1572546600000,
+   "uploadedDate": "01 Nov 2019 03:19:09 PM",
+   "fileText": "Quarterly Statements as @ 30th September 2019",
+   "name": "JOHN KEELLS HOLDINGS PLC",
+   "symbol": "JKH",
+   "logoUrl": "upload_logo/dzfJJcujeDHnGn8j_27Dec2025052535GMT_1766813135197.jpeg",
+   "authorizedDate": null
+  },
+  {
+   "id": 41608,
+   "path": null,
+   "manualDate": 1648665000000,
+   "uploadedDate": "01 Sep 2022 11:48:37 AM",
+   "fileText": "Annual Report 2021/22",
+   "name": "DILMAH CEYLON TEA COMPANY PLC",
+   "symbol": "CTEA",
+   "logoUrl": "upload_logo/1orFSbyKm4RqnVTl_12Aug2026031241GMT_1786504361458.png",
+   "authorizedDate": null
+  },
+  {
+   "id": 32216,
+   "path": "upload_report_file/677_1549538685.pdf",
+   "manualDate": -19800000,
+   "uploadedDate": "07 Feb 2019 12:00:00 AM",
+   "fileText": "Interim Financial Statements for the Quarter Ended 31st December 2018",
+   "name": "LANKA TILES PLC",
+   "symbol": "TILE",
+   "logoUrl": "upload_logo/FADtPapIV26yow9G_22Jul2024093715GMT_1721641035603.jpeg",
+   "authorizedDate": null
+  },
+  {
+   "id": 33283,
+   "path": "upload_report_file/501_1559819110.pdf",
+   "manualDate": null,
+   "uploadedDate": "06 Jun 2019 12:00:00 AM",
+   "fileText": "Annual Report 2018/2019",
+   "name": "AITKEN SPENCE PLC",
+   "symbol": "SPEN",
+   "logoUrl": "upload_logo/501_1601609954.jpeg",
+   "authorizedDate": null
+  },
+  {
+   "id": 34337,
+   "path": "cmt/upload_report_file/487_1573117796870.pdf",
+   "manualDate": 1569781800000,
+   "uploadedDate": "07 Nov 2019 02:39:56 PM",
+   "fileText": "Quarterly Financial Statement as of 30 September 2019",
+   "name": "NESTLE LANKA PLC",
+   "symbol": "NEST",
+   "logoUrl": "upload_logo/487_1603173497.jpeg",
+   "authorizedDate": null
+  },
+  {
+   "id": 49827,
+   "path": "cmt/upload_report_file/401_1766975381582.12.25 v9.pdf",
+   "manualDate": 1759170600000,
+   "uploadedDate": "29 Dec 2025 07:59:41 AM",
+   "fileText": "Interim Financial Statements for the Quarter ended 30th September 2025",
+   "name": "LANKA REALTY INVESTMENTS PLC",
+   "symbol": "ASCO",
+   "logoUrl": "upload_logo/401_1667891703.jpeg",
+   "authorizedDate": "29 Dec 2025 08:10:14 AM"
+  },
+  {
+   "id": 34521,
+   "path": "cmt/upload_report_file/369_1573785715189.pdf",
+   "manualDate": 1569781800000,
+   "uploadedDate": "15 Nov 2019 08:11:55 AM",
+   "fileText": "Interim Financial Statements as at 30.09.2019",
+   "name": "COMMERCIAL BANK OF CEYLON PLC",
+   "symbol": "COMB",
+   "logoUrl": "upload_logo/328m7MwB2CexSgiJ_3Jan2024051241GMT_1704258761020.jpeg",
+   "authorizedDate": null
+  }
+ ]
+}

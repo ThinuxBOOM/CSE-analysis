@@ -128,6 +128,28 @@ def get_all_security_codes() -> CSEResponse:
     return _get("allSecurityCode")
 
 
+def get_financial_announcements(from_date: str, to_date: str) -> CSEResponse:
+    """
+    POST /api/getFinancialAnnouncement — form fields fromDate/toDate
+    (YYYY-MM-DD). Market-wide financial filings whose UPLOAD date falls in the
+    window (Stage F0: verified per year 2019-2026; a 12-month split returned
+    exactly the same ids as the yearly query, so no cap observed). Without
+    dates CSE returns only the latest 3 filings, so dates are always sent.
+    """
+    return _post("getFinancialAnnouncement", data={"fromDate": from_date, "toDate": to_date})
+
+
+def get_company_financials(symbol: str) -> CSEResponse:
+    """
+    POST /api/financials — form field symbol with the full class suffix
+    (e.g. "COMB.N0000"; a JSON body is rejected with "symbol parameter is
+    missing"). Returns that security's whole filing history in buckets
+    (infoAnnualData / infoQuarterlyData / infoOtherData / infoWebLink), and
+    also works for delisted securities (Stage F0).
+    """
+    return _post("financials", data={"symbol": symbol})
+
+
 def extract_symbol_list_from_all_security_codes(response: CSEResponse) -> list:
     """
     Defensively extracts a list of symbol strings from the allSecurityCode
