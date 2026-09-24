@@ -69,6 +69,22 @@ CSE PDFs are temporary extraction inputs in later stages, not stored data.
 Tests: `tests/test_report_discovery.py` (the Postgres-store test runs only with
 `F1_TEST_DATABASE_URL` pointing at a scratch database).
 
+## Stage F2 — temporary document retrieval (no archive)
+
+`worker/document_retrieval.py` turns a `report_filings` row into a document that
+exists only for the duration of one consumer call: resolve the CDN URL
+(`https://cdn.cse.lk/` + percent-encoded `path`; legacy `upload_report_file/`
+paths fall back to `cmt/` only after a 403/404), stream it with
+`Accept-Encoding: identity` into a unique directory under the system temp dir,
+validate it (status, `%PDF-` header, `%%EOF`, Content-Length, strong ETag = MD5),
+SHA-256 it, hand it to the consumer, then delete it and verify deletion. The only
+output is a metadata record — never bytes, never a file path, never a DB write.
+
+    python -m worker.retrieve_filing_documents --filings-json filings.json --report-file report.json
+
+Governance gate: at most 20 filings per run. Production-scale automated retrieval
+stays disabled until the open CSE terms-of-use question (F0) is decided.
+
 ---
 
 # Stage B — Single-Company Vertical Slice
