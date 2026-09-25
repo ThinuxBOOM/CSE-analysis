@@ -214,7 +214,12 @@ def test_constraints_reject_invalid_semantics(env):
     for mutate in (lambda r: r.update(document_type="quarterly_guess"),
                    lambda r: r.update(fiscal_period="Q5"),
                    lambda r: r.update(classification_status="unreadable"),       # unreadable must have no period
-                   lambda r: r["statement_periods"][0].update(period_kind="instant", duration_months=3)):
+                   lambda r: r["statement_periods"][0].update(period_kind="instant", duration_months=3),
+                   # a quarter may never rest on an inferred fiscal year-end
+                   lambda r: r.update(fiscal_year_end=None, fiscal_year_end_basis="inferred_only",
+                                      fiscal_year_end_inferred="03-31"),
+                   lambda r: r.update(fiscal_year_end_basis="none"),                  # FYE set but not documented
+                   lambda r: r.update(fiscal_year_end_inferred="03-31")):             # inferred alongside documented
         r = _classification(204)
         mutate(r)
         with pytest.raises(psycopg2.errors.CheckViolation):

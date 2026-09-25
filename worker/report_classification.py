@@ -19,9 +19,10 @@ Principles (from F3 discovery, 19 real filings):
 - Point-in-time (as at) and duration (N months ended) periods are separate kinds.
 - The DOCUMENT period (what the filing reports, e.g. 9M ended 2025-09-30) is
   separate from STATEMENT/column periods (every current/comparative column).
-- Quarter labels are DERIVED from fiscal year-end + duration + end date, and are
-  `undetermined` whenever those are missing, conflicting or non-standard (e.g.
-  52/53-week periods ending on the 25th).
+- Quarter labels are DERIVED from a DOCUMENTED fiscal year-end + duration + end
+  date, and are `undetermined` whenever those are missing, conflicting or
+  non-standard (e.g. 52/53-week periods ending on the 25th). Duration arithmetic
+  is supporting evidence only (see _fiscal).
 - Headers and period labels only: no financial values are read or kept.
   Evidence snippets are short and have numeric amounts redacted.
 """
@@ -321,6 +322,8 @@ class Classification:
     period_status: str = "undetermined"
     fiscal_year_end: Optional[str] = None           # 'MM-DD'
     fiscal_year_end_status: str = "undetermined"
+    fiscal_year_end_basis: str = "none"             # documented | inferred_only | conflicting | none
+    fiscal_year_end_inferred: Optional[str] = None  # 'MM-DD' from arithmetic only; never authoritative
     fiscal_period: Optional[str] = None             # Q1..Q4 | FY | None
     fiscal_period_status: str = "undetermined"
     fiscal_period_reason: Optional[str] = None
@@ -695,9 +698,12 @@ def parse_statement_header(block, kind):
             if md:
                 month, day = md[0]
         months, label = _duration_of(stack_text)
+        year_word = label == "12M" and bool(YEAR_ENDED_RE.search(stack_text))   # the column itself says 'year ended'
         if label is None and kind in DURATION_STATEMENTS and len(ctx_durations) == 1:
             months = next(iter(ctx_durations))
             label = "quarter" if months == 3 and QUARTER_RE.search(context) and not DURATION_RE.search(context) else f"{months}M"
+            # the statement header's only duration wording is 'Year ended ...': the header names the year
+            year_word = months == 12 and bool(YEAR_ENDED_RE.search(context)) and not DURATION_RE.search(context)
         filled = False
         if month is None and len(phrase_mds) == 1:
             plabels = {lab for lab, _, _ in phrases}
@@ -723,7 +729,7 @@ def parse_statement_header(block, kind):
         columns.append({"end": end, "kind": pkind, "months": months, "label": label,
                         "scopes": _leaf_scope(row, center, scope_rows, distinct), "audit": audit,
                         "restated": bool(RESTATED_RE.search(tight_text)), "role_word": role_word,
-                        "text": stack_text, "filled": filled})
+                        "text": stack_text, "filled": filled, "year_word": year_word and pkind == "duration"})
     # Context-completed dates that collide (same period and scope, different audit labels) mean
     # the shared phrase cannot apply to every column: leave those columns unresolved.
     groups = {}
@@ -758,7 +764,8 @@ def _front_period(doc, ev, pages):
             else:
                 months, label = None, "unspecified"
             o = ev.add("document_period", "document", "dp.front_matter_phrase", "period_phrase", p, _around(text, m, 30))
-            return {"end": tok.date, "months": months, "label": label, "page": p, "evidence": o}
+            return {"end": tok.date, "months": months, "label": label, "page": p, "evidence": o,
+                    "year_word": bool(m.group("y"))}
     return None
 
 
@@ -850,7 +857,8 @@ def _doc_period_from_statements(cols):
     at_end = [c for c in dur if c["end"] == end]
     known = [c for c in at_end if c["months"]]
     best = max(known, key=lambda c: c["months"]) if known else at_end[0]
-    return {"end": end, "months": best["months"], "label": best["label"], "page": best["page"], "text": best["text"]}
+    return {"end": end, "months": best["months"], "label": best["label"], "page": best["page"], "text": best["text"],
+            "year_word": bool(best.get("year_word"))}
 
 
 def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256=None) -> Classification:
@@ -901,7 +909,7 @@ def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256
         longer = from_stmt["months"] and (not front["months"] or from_stmt["months"] > front["months"])
         period = dict(front)
         if longer:
-            period.update(months=from_stmt["months"], label=from_stmt["label"])
+            period.update(months=from_stmt["months"], label=from_stmt["label"], year_word=from_stmt["year_word"])
             ev.add("document_period", "document", "dp.statements_cumulative_period", "column_header", from_stmt["page"], from_stmt["text"])
         else:
             ev.add("document_period", "document", "dp.statements_agree", "column_header", from_stmt["page"], from_stmt["text"])
@@ -1161,22 +1169,47 @@ def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256
 
 
 def _fiscal(doc, res, period, cols, ev):
+    """Fiscal year-end and fiscal period. POLICY (F3 acceptance, 2026-09-26):
+
+    DOCUMENTED fiscal year-end = the document names a period as a YEAR:
+      - fye.document_period_year_ended   the document period itself is worded 'year ended <date>'
+      - fye.statement_column_year_ended  a statement column headed 'Year ended' with a resolved date
+      - fye.explicit_year_ended_phrase   '(financial) year ended <full date>' in the text
+    INFERRED (supporting only; never persisted as fiscal_year_end, never used for Q1-Q4):
+      - fye.inferred_cumulative_period_start  6/9-month cumulative period ending on a month-end
+                                              (assumes the period is fiscal year-to-date on a
+                                              calendar-month basis: false for 52/53-week or changed years)
+      - fye.inferred_twelve_month_period      a '12 months ended' period without 'year' wording
+    Outcome: one documented date and no disagreeing candidate -> fiscal_year_end (basis
+    'documented'); several documented dates, or an inferred date disagreeing with the
+    documented one -> NULL, 'conflicting'; inferred only -> NULL, basis 'inferred_only'
+    (the inferred date kept in fiscal_year_end_inferred); nothing -> NULL, 'none'.
+    Q1-Q4 are derived ONLY from a documented fiscal year-end. 'FY' needs a 12-month
+    annual/audited document, not a fiscal year-end."""
     if not period or period.get("instant") or res.period_status == "metadata_only":
         res.fiscal_period_reason = "no_document_period"
         return
     end, months = period["end"], period["months"]
-    cands = {}      # (month, day) -> [evidence ordinals]
+    documented, inferred = {}, {}      # (month, day) -> [(rule, page, snippet)]
 
-    def cand(md, rule, page, snippet):
-        cands.setdefault(md, []).append(ev.add("fiscal_year_end", "document", rule, "period_phrase", page, snippet))
+    def add(bucket, md, rule, page, snippet):
+        bucket.setdefault(md, []).append((rule, page, snippet))
 
-    current_months = sorted({c["months"] for c in cols if c.get("role") == "current" and c["months"] and c["kind"] == "duration"})
-    if months == 12:
-        cand((end.month, end.day), "fye.twelve_month_document_period", period.get("page"), f"12 months ended {end.isoformat()}")
+    if months == 12 and period.get("year_word"):
+        add(documented, (end.month, end.day), "fye.document_period_year_ended", period.get("page"),
+            f"year ended {end.isoformat()}")
+    elif months == 12:
+        add(inferred, (end.month, end.day), "fye.inferred_twelve_month_period", period.get("page"),
+            f"12 months ended {end.isoformat()} (no 'year' wording)")
     elif months in (6, 9) and _is_month_end(end):
         fye = _add_months_month_end(end, -months)
-        cand((fye.month, fye.day), "fye.cumulative_period_start", period.get("page"),
-             f"{months} months ended {end.isoformat()} starts after {fye.strftime('%d %B')}")
+        add(inferred, (fye.month, fye.day), "fye.inferred_cumulative_period_start", period.get("page"),
+            f"{months} months ended {end.isoformat()} would start after {fye.strftime('%d %B')}")
+    seen = set()
+    for c in cols:
+        if c.get("year_word") and c.get("end") and (c["end"].month, c["end"].day) not in seen:
+            seen.add((c["end"].month, c["end"].day))
+            add(documented, (c["end"].month, c["end"].day), "fye.statement_column_year_ended", c["page"], c["text"])
     if res.underlying_type == "interim_financial_statements" and doc.page_count <= FYE_SCAN_MAX_PAGES:
         seen = set()
         for p in doc.text_pages:
@@ -1188,25 +1221,41 @@ def _fiscal(doc, res, period, cols, ev):
                 md = (tok.month, tok.day)
                 if md not in seen:
                     seen.add(md)
-                    cand(md, "fye.explicit_year_ended_phrase", p, _around(text, m, 20))
-    if not cands:
-        res.fiscal_year_end_status = "undetermined"
-        res.fiscal_period_reason = "fiscal_year_end_not_evidenced"
-    elif len(cands) > 1:
-        res.fiscal_year_end_status = "conflicting"
+                    add(documented, md, "fye.explicit_year_ended_phrase", p, _around(text, m, 20))
+
+    doc_mds = set(documented)
+    for md, items in sorted(documented.items()):
+        for rule, page, snip in items:
+            ev.add("fiscal_year_end", "document", rule, "period_phrase", page, snip,
+                   outcome="conflicts" if len(doc_mds) > 1 else "supports")
+    for md, items in sorted(inferred.items()):
+        for rule, page, snip in items:
+            ev.add("fiscal_year_end", "document", rule, "derivation", page, snip,
+                   outcome="note" if not doc_mds else ("supports" if doc_mds == {md} else "conflicts"))
+    fmt = lambda md: f"{md[0]:02d}-{md[1]:02d}"
+    if len(doc_mds) > 1 or (doc_mds and set(inferred) - doc_mds) or (not doc_mds and len(inferred) > 1):
+        res.fiscal_year_end_status, res.fiscal_year_end_basis = "conflicting", "conflicting"
         res.fiscal_period_reason = "fiscal_year_end_conflicting"
+    elif doc_mds:
+        res.fiscal_year_end = fmt(next(iter(doc_mds)))
+        res.fiscal_year_end_status, res.fiscal_year_end_basis = "document_only", "documented"
+    elif inferred:
+        res.fiscal_year_end_inferred = fmt(next(iter(inferred)))
+        res.fiscal_year_end_status, res.fiscal_year_end_basis = "undetermined", "inferred_only"
+        res.fiscal_period_reason = "fiscal_year_end_inferred_only"
     else:
-        (m_, d_), = cands.keys()
-        res.fiscal_year_end = f"{m_:02d}-{d_:02d}"
-        res.fiscal_year_end_status = "document_only"
+        res.fiscal_year_end_status, res.fiscal_year_end_basis = "undetermined", "none"
+        res.fiscal_period_reason = "fiscal_year_end_not_evidenced"
+
+    current_months = sorted({c["months"] for c in cols if c.get("role") == "current" and c["months"] and c["kind"] == "duration"})
     if res.underlying_type in ("annual_report", "audited_financial_statements") and months == 12:
         res.fiscal_period, res.fiscal_period_status, res.fiscal_period_reason = "FY", "document_only", None
         ev.add("fiscal_period", "document", "fp.annual_twelve_month_period", "derivation", period.get("page"),
                f"{res.underlying_type}, 12 months ended {end.isoformat()}")
         return
-    if res.fiscal_year_end_status != "document_only":
+    if res.fiscal_year_end_basis != "documented":
         return
-    fm, fd = next(iter(cands))
+    fm, fd = next(iter(doc_mds))
     fye_date = _mk_date(end.year, fm, fd) or _mk_date(end.year, fm, 28)
     if not _is_month_end(end) or not (fye_date and _is_month_end(fye_date)):
         res.fiscal_period_reason = "non_standard_period_end"

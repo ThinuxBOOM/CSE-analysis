@@ -48,8 +48,10 @@ create table report_document_classifications (
   duration_months smallint,
   duration_label text,                                               -- 3M | 6M | 9M | 12M | quarter | unspecified
   period_status text not null,
-  fiscal_year_end text,                                                -- 'MM-DD' as evidenced by the document
+  fiscal_year_end text,                                                -- 'MM-DD', ONLY when the document names a year ('year ended <date>')
   fiscal_year_end_status text not null,
+  fiscal_year_end_basis text not null default 'none',                  -- documented | inferred_only | conflicting | none
+  fiscal_year_end_inferred text,                                         -- 'MM-DD' from duration arithmetic; supporting only, never authoritative
   fiscal_period text,                                                    -- Q1..Q4 | FY | NULL (undetermined)
   fiscal_period_status text not null,
   fiscal_period_reason text,                                               -- why fiscal_period is NULL
@@ -71,6 +73,12 @@ create table report_document_classifications (
   constraint chk_rdc_instant_has_no_duration check (period_kind is distinct from 'instant' or (duration_months is null and period_start is null)),
   constraint chk_rdc_fiscal_period check (fiscal_period is null or fiscal_period in ('Q1', 'Q2', 'Q3', 'Q4', 'FY')),
   constraint chk_rdc_fye check (fiscal_year_end is null or fiscal_year_end ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'),
+  constraint chk_rdc_fye_basis check (fiscal_year_end_basis in ('documented', 'inferred_only', 'conflicting', 'none')
+    and (fiscal_year_end_basis = 'documented') = (fiscal_year_end is not null)),
+  constraint chk_rdc_fye_inferred check (fiscal_year_end_inferred is null or (fiscal_year_end_basis = 'inferred_only'
+    and fiscal_year_end_inferred ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')),
+  constraint chk_rdc_quarter_needs_documented_fye check (fiscal_period is null or fiscal_period = 'FY'
+    or fiscal_year_end_basis = 'documented'),
   constraint chk_rdc_unreadable check (classification_status <> 'unreadable' or (document_type = 'unreadable' and period_end is null))
 );
 

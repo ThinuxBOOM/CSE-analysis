@@ -110,6 +110,11 @@ memory, never stored) and decides, from the DOCUMENT:
   company / bank scope labels);
 - fiscal year-end and a DERIVED fiscal period (Q1–Q4 / FY), `undetermined` whenever
   the fiscal year-end is missing or conflicting or the period is non-standard.
+  FYE policy: `fiscal_year_end` is persisted only when the DOCUMENT names a year
+  ('year ended <date>' wording, a 'Year ended' statement column, or a document period
+  worded as the year). Duration arithmetic (6/9-month cumulative periods, '12 months
+  ended') is supporting evidence only: kept in `fiscal_year_end_inferred`, never used for
+  Q1–Q4, and a disagreement with the documented year makes the FYE `conflicting`.
 
 CSE metadata is evidence only: "Quarter ended X" titles give an end date, never a
 quarter; `manualDate` is ignored when it is the 1970 placeholder or the upload date;

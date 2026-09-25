@@ -13,7 +13,7 @@ CLASSIFICATION_COLUMNS = (
     "classification_status", "status_reasons", "page_count", "text_page_count", "document_type",
     "document_type_status", "underlying_type", "underlying_type_status", "period_kind", "period_start",
     "period_start_basis", "period_end", "duration_months", "duration_label", "period_status", "fiscal_year_end",
-    "fiscal_year_end_status", "fiscal_period", "fiscal_period_status", "fiscal_period_reason", "metadata_conflicts",
+    "fiscal_year_end_status", "fiscal_year_end_basis", "fiscal_year_end_inferred", "fiscal_period", "fiscal_period_status", "fiscal_period_reason", "metadata_conflicts",
 )
 PERIOD_COLUMNS = ("statement_kind", "first_page", "scopes", "period_kind", "start_date", "end_date",
                   "duration_months", "duration_label", "role", "audit_status", "restated", "evidence_ordinals")

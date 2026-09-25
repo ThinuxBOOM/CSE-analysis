@@ -28,7 +28,10 @@ META = {f["cse_filing_id"]: f for f in json.load(open(FIX, encoding="utf-8"))["f
 EXPECT = {
     52157: dict(why="SEYB: December-FYE bank, cover 'For the 06 Months Ended 30th June 2026'; Six Months + Quarter columns",
                 document_type="interim_financial_statements", period_kind="duration", period_end="2026-06-30",
-                duration_months=6, period_start="2026-01-01", fiscal_year_end="12-31", fiscal_period="Q2",
+                duration_months=6, period_start="2026-01-01",
+                # no 'year ended' wording anywhere: 6M arithmetic -> inferred only, no quarter (FYE policy)
+                fiscal_year_end=None, fiscal_year_end_basis="inferred_only", fiscal_year_end_inferred="12-31",
+                fiscal_period=None,
                 include=[("profit_or_loss", "duration", "2026-06-30", "6M", "current"),
                          ("profit_or_loss", "duration", "2025-06-30", "6M", "comparative"),
                          ("profit_or_loss", "duration", "2026-06-30", "quarter", "current"),
@@ -71,7 +74,10 @@ EXPECT = {
                          ("financial_position", "instant", "2024-03-31", None, "comparative")]),
     49086: dict(why="PABC: December-FYE bank, 'NINE MONTHS ENDED 30TH SEPTEMBER 2025'; Nine Months + Quarter + Change columns",
                 document_type="interim_financial_statements", period_end="2025-09-30", duration_months=9,
-                period_start="2025-01-01", fiscal_year_end="12-31", fiscal_period="Q3",
+                period_start="2025-01-01",
+                # no 'year ended' wording anywhere: 9M arithmetic -> inferred only, no quarter (FYE policy)
+                fiscal_year_end=None, fiscal_year_end_basis="inferred_only", fiscal_year_end_inferred="12-31",
+                fiscal_period=None,
                 include=[("profit_or_loss", "duration", "2025-09-30", "9M", "current"),
                          ("profit_or_loss", "duration", "2024-09-30", "9M", "comparative"),
                          ("profit_or_loss", "duration", "2025-09-30", "quarter", "current"),
@@ -169,7 +175,8 @@ def test_real_case_semantics(run, fid):
         assert c["statement_periods"] == [] and c["text_page_count"] == 0
         return
     for key in ("document_type", "document_type_status", "underlying_type", "period_kind", "period_end",
-                "duration_months", "period_start", "period_status", "fiscal_year_end", "fiscal_period"):
+                "duration_months", "period_start", "period_status", "fiscal_year_end", "fiscal_year_end_basis",
+                "fiscal_year_end_inferred", "fiscal_period"):
         if key in exp:
             assert c[key] == exp[key], f"{fid} {key}: expected {exp[key]!r}, got {c[key]!r} — {exp['why']}"
     got = {(p["statement_kind"], p["period_kind"], p["end_date"], p["duration_label"], p["role"], p["audit_status"])
@@ -186,6 +193,16 @@ def test_real_case_semantics(run, fid):
         assert exp["reasons"] <= set(c["status_reasons"])
     if exp.get("no_statement_periods"):
         assert c["statement_periods"] == []
+
+
+def test_quarters_only_from_documented_fye(run):
+    for r in run[0]["records"]:
+        c = r["classification"]
+        if c["fiscal_period"] in ("Q1", "Q2", "Q3", "Q4"):
+            assert c["fiscal_year_end_basis"] == "documented" and c["fiscal_year_end"]
+        if c["fiscal_year_end"]:
+            assert any(e["decision"] == "fiscal_year_end" and e["outcome"] == "supports" and e["source"] == "document"
+                       and not e["rule_id"].startswith("fye.inferred_") for e in c["evidence"])
 
 
 def test_ucar_nonstandard_period_gets_no_fabricated_quarter(run):
