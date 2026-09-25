@@ -92,6 +92,39 @@ separate directory under the temp directory.
 Governance gate: at most 20 filings per run. Production-scale automated retrieval
 stays disabled until the open CSE terms-of-use question (F0) is decided.
 
+## Stage F3 — report type & period classification (no values)
+
+    report_filings metadata -> F2 temporary document -> F3 classification + provenance -> document deleted
+
+`worker/report_classification.py` is a pure, deterministic, rule-based classifier
+(no LLM; stable rule IDs; `CLASSIFIER_VERSION`). It runs as the F2 consumer on the
+document's text layer (`worker/document_text.py`: `pdftotext -layout` to stdout, in
+memory, never stored) and decides, from the DOCUMENT:
+
+- report type (`interim_financial_statements`, `audited_financial_statements`,
+  `annual_report`, `errata_or_reissue`, `amendment`, `press_release`, `other`,
+  `undetermined`, `unreadable`) plus the underlying type beneath an errata/amendment;
+- the document period (duration or instant; end; duration; start only when derivable)
+  separately from every statement/column period (instant vs duration, current /
+  comparative / unknown, audited / unaudited / provisional / unknown, group /
+  company / bank scope labels);
+- fiscal year-end and a DERIVED fiscal period (Q1–Q4 / FY), `undetermined` whenever
+  the fiscal year-end is missing or conflicting or the period is non-standard.
+
+CSE metadata is evidence only: "Quarter ended X" titles give an end date, never a
+quarter; `manualDate` is ignored when it is the 1970 placeholder or the upload date;
+conflicts are kept (`metadata_conflicts`), and the document wins. Documents with no
+text layer are `unreadable` (no OCR; never classified from the title). Headers and
+labels only: no financial values are read, and evidence snippets are <= 160 chars
+with amounts redacted. Persistence: migration `0005_report_classification.sql`
+(classification, statement periods, evidence). It adds no RLS; the security-boundary
+migration (now 0006) is still required before anything is deployed to `public`.
+
+    python -m worker.classify_filing_documents --filings-json filings.json --report-file f3.json [--write-db]
+
+The F2 governance gate applies (at most 20 filings per run). Needs `pdftotext`
+(poppler-utils on Linux; the extractor version is recorded with every result).
+
 ---
 
 # Stage B — Single-Company Vertical Slice
