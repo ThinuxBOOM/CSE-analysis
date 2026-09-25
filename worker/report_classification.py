@@ -698,10 +698,12 @@ def parse_statement_header(block, kind):
         if label is None and kind in DURATION_STATEMENTS and len(ctx_durations) == 1:
             months = next(iter(ctx_durations))
             label = "quarter" if months == 3 and QUARTER_RE.search(context) and not DURATION_RE.search(context) else f"{months}M"
+        filled = False
         if month is None and len(phrase_mds) == 1:
             plabels = {lab for lab, _, _ in phrases}
             if label != "12M" or "12M" in plabels:          # a 'Year ended' column in an interim is usually the prior FY
                 month, day = next(iter(phrase_mds))
+                filled = True
         if kind == "financial_position" or (label is None and AS_AT_RE.search(stack_text)):
             pkind, months, label = "instant", None, None
         else:
@@ -721,7 +723,17 @@ def parse_statement_header(block, kind):
         columns.append({"end": end, "kind": pkind, "months": months, "label": label,
                         "scopes": _leaf_scope(row, center, scope_rows, distinct), "audit": audit,
                         "restated": bool(RESTATED_RE.search(tight_text)), "role_word": role_word,
-                        "text": stack_text})
+                        "text": stack_text, "filled": filled})
+    # Context-completed dates that collide (same period and scope, different audit labels) mean
+    # the shared phrase cannot apply to every column: leave those columns unresolved.
+    groups = {}
+    for c in columns:
+        if c["filled"] and c["end"]:
+            groups.setdefault((c["end"], c["kind"], c["label"], tuple(c["scopes"])), []).append(c)
+    for cs in groups.values():
+        if len({c["audit"] for c in cs}) > 1:
+            for c in cs:
+                c["end"] = None
     return columns, ctx
 
 
@@ -920,11 +932,23 @@ def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256
 
     months = period["months"] if period else None
     narrative = "narrative_0" in sig and "narrative_1" in sig
+    interim_phrase = "interim" in sig or "provisional" in sig
+    # A plain "annual report" mention next to an interim title ("read with the Annual Report")
+    # is a reference, not a title; only an 'Annual Report <year>' phrase competes with it.
+    annual_phrase = "annual_report_year" in sig or ("annual_report" in sig and not interim_phrase)
     if not has_statements and "press" in sig:
         put_type("press_release", "dt.press_release_without_statements", "press")
-    elif "annual_report" in sig and (has_statements or narrative or "annual_report_year" in sig):
+    elif interim_phrase and "annual_report_year" in sig and has_statements and not (months and months < 12):
+        # both titles in the front matter and nothing structural to separate them: keep the ambiguity
+        for key in ("interim" if "interim" in sig else "provisional", "annual_report_year"):
+            ev.add("document_type", "document", "dt.conflicting_type_phrases", "type_phrase", sig[key][0], sig[key][1],
+                   outcome="conflicts")
+        res.status_reasons.append("conflicting_type_phrases")
+    elif interim_phrase and "annual_report_year" in sig and has_statements:
+        put_type("interim_financial_statements", "dt.interim_phrase_with_sub_annual_period", "interim" if "interim" in sig else "provisional")
+    elif annual_phrase and (has_statements or narrative or "annual_report_year" in sig):
         put_type("annual_report", "dt.annual_report_phrase", "annual_report_year" if "annual_report_year" in sig else "annual_report")
-    elif has_statements and narrative and months == 12:
+    elif has_statements and narrative and months == 12 and not interim_phrase:
         put_type("annual_report", "dt.annual_report_narrative_sections", "narrative_1")
     elif "interim" in sig:
         put_type("interim_financial_statements", "dt.interim_phrase", "interim")
@@ -965,19 +989,27 @@ def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256
 
     # 5. revision (errata / amendment) --------------------------------------------------------
     rev_doc = None
-    if "amendment" in sig:
+    if "amendment" in sig and "errata" in sig:
+        # the document calls itself both: preserve the ambiguity instead of picking by rule order
+        for k in ("amendment", "errata"):
+            ev.add("revision", "document", "rv.conflicting_revision_phrases", "type_phrase", sig[k][0], sig[k][1], outcome="conflicts")
+        rev_doc, key = "ambiguous", None
+    elif "amendment" in sig:
         rev_doc, key = "amendment", "amendment"
     elif "errata" in sig:
         rev_doc, key = "errata_or_reissue", "errata"
     elif "revised" in sig:
         rev_doc, key = "errata_or_reissue", "revised"
-    if rev_doc:
+    if rev_doc and key:
         ev.add("revision", "document", f"rv.{key}_phrase", "type_phrase", sig[key][0], sig[key][1])
     rev_meta = hints["title_revision"]
     if rev_meta:
         ev.add("revision", "metadata", "meta.title.revision_word", "title_type", snippet=metadata.get("file_text"),
                source_field="file_text", outcome="supports" if rev_meta == rev_doc or not rev_doc else "conflicts")
-    if rev_doc:
+    if rev_doc == "ambiguous":
+        res.document_type, res.document_type_status = "undetermined", "conflicting"
+        res.status_reasons.append("conflicting_revision_phrases")
+    elif rev_doc:
         res.document_type = rev_doc
         res.document_type_status = "confirmed" if rev_meta == rev_doc else ("conflicting" if rev_meta else "document_only")
         if rev_meta and rev_meta != rev_doc:
@@ -1056,6 +1088,18 @@ def classify(doc, metadata: Optional[dict] = None, *, cse_filing_id=None, sha256
         if len(kept) < len(cs) and (kind, page) in heading_of:
             heading_of[(kind, page)].unresolved_columns += len(cs) - len(kept)
         cs = kept
+        # One period of one statement cannot be both audited and unaudited: when its columns
+        # (e.g. Group vs Company) carry contradictory explicit labels, the layout association
+        # is not trustworthy — keep 'unknown' rather than picking one.
+        labels = {}
+        for c in cs:
+            if c["audit"] != "unknown":
+                labels.setdefault((c["kind"], c["end"], c["months"], c["label"]), set()).add(c["audit"])
+        for c in cs:
+            if len(labels.get((c["kind"], c["end"], c["months"], c["label"]), ())) > 1:
+                ev.add("audit_status", "document", "audit.conflicting_column_labels", "audit_label", c["page"], c["text"],
+                       outcome="conflicts")
+                c["audit"] = "unknown"
         currents = []
         for c in cs:
             if c["role_word"]:

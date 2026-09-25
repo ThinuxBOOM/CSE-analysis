@@ -1,0 +1,252 @@
+{
+ "note": "F1-normalised CSE listing metadata for the 19 F3-discovery filings (captured 2026-09-25). Metadata only: no document content.",
+ "filings": [
+  {
+   "cse_filing_id": 52157,
+   "source_symbol": "SEYB",
+   "file_text": "Interim Financial Statements for the Quarter ended 30th June 2026",
+   "path": "cmt/upload_report_file/443_1785411925853.pdf",
+   "path2": null,
+   "manual_date_raw": 1782757800000,
+   "uploaded_at": "2026-07-30T11:45:25.853000+00:00",
+   "authorized_at": "2026-07-30T11:58:45.702000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 52620,
+   "source_symbol": "ACL",
+   "file_text": "Interim Financial Statements for the Quarter ended 30th June 2026",
+   "path": "cmt/upload_report_file/644_1786700245863.06.2026 1.pdf",
+   "path2": null,
+   "manual_date_raw": 1782757800000,
+   "uploaded_at": "2026-08-14T09:37:25.863000+00:00",
+   "authorized_at": "2026-08-14T10:11:10.458000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 51060,
+   "source_symbol": "CTC",
+   "file_text": "Interim Financial Statements for the Quarter ended 31st March 2026",
+   "path": "cmt/upload_report_file/460_1778579951697.pdf",
+   "path2": null,
+   "manual_date_raw": 1774895400000,
+   "uploaded_at": "2026-05-12T09:59:11.697000+00:00",
+   "authorized_at": "2026-05-12T12:01:32.683000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 50553,
+   "source_symbol": "CTC",
+   "file_text": "Interim Financial Statements for the Quarter ended 31st December 2025",
+   "path": "cmt/upload_report_file/460_1771414435824.pdf",
+   "path2": null,
+   "manual_date_raw": 1767119400000,
+   "uploaded_at": "2026-02-18T11:33:55.824000+00:00",
+   "authorized_at": "2026-02-18T11:42:11.945000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 51712,
+   "source_symbol": "RWSL",
+   "file_text": "Interim Financial Statements for the Quarter ended 31st March 2026",
+   "path": "cmt/upload_report_file/948_1780365892208.pdf",
+   "path2": null,
+   "manual_date_raw": 1774895400000,
+   "uploaded_at": "2026-06-02T02:04:52.208000+00:00",
+   "authorized_at": "2026-06-02T02:35:30.651000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 48292,
+   "source_symbol": "BLUE",
+   "file_text": "Interim Financial Statements for the six months ended 30th September 2024",
+   "path": "cmt/upload_report_file/663_1750068649347.09.2024xlsx (1).pdf",
+   "path2": "cmt/upload_report_file/663_1750068649347.",
+   "manual_date_raw": 1727634600000,
+   "uploaded_at": "2025-06-16T10:10:49.347000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 49086,
+   "source_symbol": "PABC",
+   "file_text": "Interim Financial Statements for the nine months ended 30th September 2025 ",
+   "path": "cmt/upload_report_file/388_1761557951144.pdf",
+   "path2": "cmt/upload_report_file/388_1761557951144.",
+   "manual_date_raw": 1759170600000,
+   "uploaded_at": "2025-10-27T09:39:11.144000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 47478,
+   "source_symbol": "DIMO",
+   "file_text": "INTERIM FINANCIAL STATEMENTS FOR THE 09 MONTHS PERIOD ENDED 31ST DECEMBER 2024",
+   "path": "cmt/upload_report_file/694_1739534477764.pdf",
+   "path2": "cmt/upload_report_file/694_1739534477764.",
+   "manual_date_raw": 1735583400000,
+   "uploaded_at": "2025-02-14T12:01:17.764000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 49117,
+   "source_symbol": "LLUB",
+   "file_text": "Financial Statements as of 30.09.2025",
+   "path": "cmt/upload_report_file/668_1761818693784.09.2025.pdf",
+   "path2": "cmt/upload_report_file/668_1761818693784.",
+   "manual_date_raw": 1759170600000,
+   "uploaded_at": "2025-10-30T10:04:53.784000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 48576,
+   "source_symbol": "CRL",
+   "file_text": "Audited Financial Statements for the year ended 31st March 2025",
+   "path": "cmt/upload_report_file/863_1754880772388.pdf",
+   "path2": "cmt/upload_report_file/863_1754880772388.",
+   "manual_date_raw": 1743359400000,
+   "uploaded_at": "2025-08-11T02:52:52.388000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "annual"
+   ]
+  },
+  {
+   "cse_filing_id": 53096,
+   "source_symbol": "TESS",
+   "file_text": "Annual Report as at 31st March 2026",
+   "path": "cmt/upload_report_file/781_1789358753557.pdf",
+   "path2": null,
+   "manual_date_raw": 1774895400000,
+   "uploaded_at": "2026-09-14T04:05:53.557000+00:00",
+   "authorized_at": "2026-09-14T04:19:06.449000+00:00",
+   "source_buckets": [
+    "annual"
+   ]
+  },
+  {
+   "cse_filing_id": 53067,
+   "source_symbol": "KHC",
+   "file_text": "Amended Annual Report as at 31st March 2026",
+   "path": "cmt/upload_report_file/547_1788780505519.pdf",
+   "path2": null,
+   "manual_date_raw": 1774895400000,
+   "uploaded_at": "2026-09-07T11:28:25.519000+00:00",
+   "authorized_at": "2026-09-07T11:29:18.607000+00:00",
+   "source_buckets": [
+    "annual"
+   ]
+  },
+  {
+   "cse_filing_id": 53129,
+   "source_symbol": "UCAR",
+   "file_text": "Errata to the Interim Financial Statements for the Quarter ended 25th June 2026",
+   "path": "cmt/upload_report_file/500_1789981326374.06.2026.pdf",
+   "path2": null,
+   "manual_date_raw": 1782325800000,
+   "uploaded_at": "2026-09-21T09:02:06.374000+00:00",
+   "authorized_at": "2026-09-21T10:42:14.428000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 52860,
+   "source_symbol": "ASPH",
+   "file_text": "Errata to the Interim Financial Statements for the Quarter ended 31st March 2026",
+   "path": "cmt/upload_report_file/495_1787913468899.pdf",
+   "path2": null,
+   "manual_date_raw": 1774895400000,
+   "uploaded_at": "2026-08-28T10:37:48.899000+00:00",
+   "authorized_at": "2026-08-28T11:24:46.411000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 45857,
+   "source_symbol": "HPL",
+   "file_text": "Interim Financial Statements as of 3st March 2024",
+   "path": "cmt/upload_report_file/1045_1717153955365.pdf",
+   "path2": "cmt/upload_report_file/1045_1717153955365.",
+   "manual_date_raw": 1717093800000,
+   "uploaded_at": "2024-05-31T11:12:35.365000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 32216,
+   "source_symbol": "TILE",
+   "file_text": "Interim Financial Statements for the Quarter Ended 31st December 2018",
+   "path": "upload_report_file/677_1549538685.pdf",
+   "path2": null,
+   "manual_date_raw": -19800000,
+   "uploaded_at": "2019-02-06T18:30:00+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "quarterly"
+   ]
+  },
+  {
+   "cse_filing_id": 49729,
+   "source_symbol": "JFP",
+   "file_text": "Consolidated Financial Statements for the year ended 31st March 2025",
+   "path": "cmt/upload_report_file/3399_1763521119557.pdf",
+   "path2": "cmt/upload_report_file/3399_1763521119557.",
+   "manual_date_raw": 1763490600000,
+   "uploaded_at": "2025-11-19T02:58:39.557000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "other"
+   ]
+  },
+  {
+   "cse_filing_id": 39390,
+   "source_symbol": "DIAL",
+   "file_text": "Q3 Press Release",
+   "path": "cmt/upload_report_file/389_1636711904267.pdf",
+   "path2": "cmt/upload_report_file/389_1636711904267.",
+   "manual_date_raw": 1636655400000,
+   "uploaded_at": "2021-11-12T10:11:44.267000+00:00",
+   "authorized_at": null,
+   "source_buckets": [
+    "other"
+   ]
+  },
+  {
+   "cse_filing_id": 49384,
+   "source_symbol": "COMB",
+   "file_text": "Interim Financial Statements for the Quarter ended 30th September 2025",
+   "path": "cmt/upload_report_file/369_1762944976777.pdf",
+   "path2": "cmt/upload_report_file/369_1762944976777.xlsx",
+   "manual_date_raw": 1759170600000,
+   "uploaded_at": "2025-11-12T10:56:16.777000+00:00",
+   "authorized_at": "2025-11-12T10:59:24.124000+00:00",
+   "source_buckets": [
+    "quarterly"
+   ]
+  }
+ ]
+}

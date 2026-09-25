@@ -557,6 +557,35 @@ def test_audit_labels_never_bleed_into_the_neighbouring_column():
     assert [(c["end"].isoformat(), c["audit"]) for c in cols] == [("2026-03-31", "unaudited"), ("2025-03-31", "audited")]
 
 
+def test_contradictory_audit_labels_for_one_period_become_unknown():
+    """RWSL (51712) under xpdf: the same prior-year 12M column read as 'Unaudited' for Group
+    and 'Audited' for Company. One period cannot be both; the ambiguity is preserved."""
+    d = doc(page("ABC PLC", "INTERIM CONDENSED FINANCIAL STATEMENTS", "TWELVE MONTHS ENDED 31 MARCH 2026"),
+            page("STATEMENT OF COMPREHENSIVE INCOME",
+                 L((42, "Group"), (72, "Company")),
+                 L((34, "Year ended 31st March")),
+                 L((38, "2026"), (50, "2025"), (68, "2026"), (82, "2025")),
+                 L((36, "Unaudited"), (49, "Unaudited"), (66, "Unaudited"), (81, "Audited")),
+                 DATA))
+    r = classify(d, None)
+    prior = periods(r, "comprehensive_income", end_date="2025-03-31")
+    assert prior and all(p["audit_status"] == "unknown" for p in prior)
+    assert evidence(r, "audit.conflicting_column_labels")
+    assert periods(r, "comprehensive_income", end_date="2026-03-31")[0]["audit_status"] == "unaudited"
+
+
+def test_colliding_context_filled_dates_are_left_unresolved():
+    """UCAR (53129): a left-margin 'As at 25th June,' row label would give two 2025-06-25
+    balance-sheet columns, one 'Audited' and one not. Those columns are not resolved."""
+    block = list(enumerate([
+        "STATEMENT OF FINANCIAL POSITION",
+        L((40, "As at"), (55, "As at"), (70, "As at")),
+        L((40, "2026"), (55, "2025"), (70, "2025")),
+        L((0, "As at 25th June,"), (70, "Audited"))]))
+    cols, _ = rc.parse_statement_header(block, "financial_position")
+    assert [c["end"] and c["end"].isoformat() for c in cols] == ["2026-06-25", None, None]
+
+
 def test_income_and_cash_flow_periods_are_durations():
     r = classify(seyb_december_fye_q2(), SEYB_META)
     for kind in ("profit_or_loss", "cash_flows"):
@@ -831,3 +860,150 @@ def test_migration_is_additive_and_stores_no_documents():
     assert not re.search(r"\b(alter|drop|delete|update|truncate)\b", code)
     assert not re.search(r"\bbytea\b|storage\.|financial_facts|\bamount\b|\bvalue\b", code)
     assert "text_content" not in code and "page_text" not in code
+
+
+# --- fiscal-period derivation matrix (no false precision) ------------------------------------
+
+def _interim(cover, notes=""):
+    return doc(page("XYZ PLC", "INTERIM FINANCIAL STATEMENTS", cover), page(NOTES, notes))
+
+
+@pytest.mark.parametrize("cover,notes,fye,fp", [
+    # March FYE
+    ("FOR THE THREE MONTHS ENDED 30TH JUNE 2026", "for the year ended 31 March 2026", "03-31", "Q1"),
+    ("FOR THE SIX MONTHS ENDED 30TH SEPTEMBER 2026", "", "03-31", "Q2"),
+    ("FOR THE NINE MONTHS ENDED 31ST DECEMBER 2026", "", "03-31", "Q3"),
+    ("FOR THE TWELVE MONTHS ENDED 31ST MARCH 2027", "", "03-31", "Q4"),
+    # June FYE
+    ("FOR THE THREE MONTHS ENDED 30TH SEPTEMBER 2026", "for the year ended 30 June 2026", "06-30", "Q1"),
+    ("FOR THE SIX MONTHS ENDED 31ST DECEMBER 2026", "", "06-30", "Q2"),
+    ("FOR THE NINE MONTHS ENDED 31ST MARCH 2027", "", "06-30", "Q3"),
+    ("FOR THE TWELVE MONTHS ENDED 30TH JUNE 2027", "", "06-30", "Q4"),
+    # September FYE
+    ("FOR THE SIX MONTHS ENDED 31ST MARCH 2026", "", "09-30", "Q2"),
+    ("FOR THE NINE MONTHS ENDED 30TH JUNE 2026", "for the year ended 30 September 2025", "09-30", "Q3"),
+    # December FYE
+    ("FOR THE THREE MONTHS ENDED 31ST MARCH 2026", "for the year ended 31 December 2025", "12-31", "Q1"),
+    ("FOR THE SIX MONTHS ENDED 30TH JUNE 2026", "", "12-31", "Q2"),
+    ("FOR THE NINE MONTHS ENDED 30TH SEPTEMBER 2026", "", "12-31", "Q3"),
+    ("FOR THE TWELVE MONTHS ENDED 31ST DECEMBER 2026", "", "12-31", "Q4"),
+])
+def test_quarter_derivation_matrix(cover, notes, fye, fp):
+    r = classify(_interim(cover, notes), meta("Interim Financial Statements for the Quarter ended X"))
+    assert (r.fiscal_year_end, r.fiscal_period, r.fiscal_period_status) == (fye, fp, "document_only")
+
+
+@pytest.mark.parametrize("cover,notes,reason", [
+    ("FOR THE THREE MONTHS ENDED 30TH JUNE 2026", "", "fiscal_year_end_not_evidenced"),            # 3M, no FYE at all
+    ("FOR THE SIX MONTHS ENDED 30TH SEPTEMBER 2026", "for the year ended 31 December 2025",       # cumulative says March
+     "fiscal_year_end_conflicting"),
+    ("FOR THE NINE MONTHS ENDED 28TH SEPTEMBER 2025", "for the year ended 29 December 2024",       # 52/53-week calendar
+     "non_standard_period_end"),
+    ("FOR THE THREE MONTHS ENDED 31ST MAY 2026", "for the year ended 31 March 2026",              # not a quarter boundary
+     "period_end_not_on_quarter_boundary"),
+    ("FOR THE SIX MONTHS ENDED 30TH JUNE 2026", "for the year ended 31 March 2026",               # 6M cumulative -> Dec, phrase -> Mar
+     "fiscal_year_end_conflicting"),
+])
+def test_quarter_is_undetermined_without_sufficient_evidence(cover, notes, reason):
+    r = classify(_interim(cover, notes), meta("Interim Financial Statements for the Quarter ended 30th June 2026"))
+    assert r.fiscal_period is None and r.fiscal_period_status == "undetermined"
+    assert r.fiscal_period_reason == reason
+
+
+def test_52_53_week_period_keeps_its_real_dates_and_no_start():
+    r = classify(_interim("FOR THE NINE MONTHS ENDED 28TH SEPTEMBER 2025", "for the year ended 29 December 2024"), None)
+    assert (r.period_end, r.duration_months, r.period_start, r.fiscal_year_end) == ("2025-09-28", 9, None, "12-29")
+
+
+@pytest.mark.parametrize("builder,m,end", [(crl_audited_fs, CRL_META, "2025-03-31"),
+                                           (tess_annual_report_with_quarters, TESS_META, "2026-03-31")])
+def test_twelve_month_annual_documents_are_fy_not_q4(builder, m, end):
+    r = classify(builder(), m)
+    assert (r.fiscal_period, r.period_end, r.duration_months) == ("FY", end, 12)
+
+
+def test_annual_report_on_a_52_week_year_is_fy_with_real_end_date():
+    d = doc(page("XYZ HOLDINGS PLC", "2024 ANNUAL REPORT", "Building resilience across our businesses"),
+            page("NOTICE", "To receive the accounts for the year ended 29 December 2024."),
+            page("STATEMENT OF PROFIT OR LOSS", L((48, "For the year ended 29 December")), L((50, "2024"), (64, "2023")), DATA),
+            page("STATEMENT OF FINANCIAL POSITION", L((0, "As at 29 December"), (50, "2024"), (64, "2023")), DATA))
+    r = classify(d, None)
+    assert (r.document_type, r.fiscal_period, r.period_end, r.period_start) == ("annual_report", "FY", "2024-12-29", None)
+
+
+# --- document-type priority -------------------------------------------------------------------
+
+def test_annual_report_reference_inside_an_interim_does_not_make_it_an_annual_report():
+    d = acl_march_fye_q1()
+    d.pages[0] = page("INTERIM FINANCIAL STATEMENTS", "FOR THE THREE MONTHS ENDED 30TH JUNE 2026",
+                      "To be read with the Annual Report 2025/26 of the Company.")
+    r = classify(d, ACL_META)
+    assert r.document_type == "interim_financial_statements"
+    assert evidence(r, "dt.interim_phrase_with_sub_annual_period")
+    d.pages[0] = page("INTERIM FINANCIAL STATEMENTS", "FOR THE THREE MONTHS ENDED 30TH JUNE 2026",
+                      "Accounting policies are as in the annual report.")
+    assert classify(d, ACL_META).document_type == "interim_financial_statements"
+
+
+def test_interim_and_annual_report_titles_on_a_twelve_month_document_stay_ambiguous():
+    d = ctc_q4_twelve_months()
+    d.pages[0] = page("Ceylon Tobacco Company PLC", "Interim Financial Statements - 12 months ended 31 December 2025",
+                      "Annual Report 2025 to follow.")
+    r = classify(d, ALL_FIXTURES["ctc"][1])
+    assert r.underlying_type == "undetermined" and "conflicting_type_phrases" in r.status_reasons
+    assert r.classification_status == "partial"
+    assert {e["outcome"] for e in evidence(r, "dt.conflicting_type_phrases")} == {"conflicts"}
+
+
+def test_press_release_wording_does_not_override_full_statements():
+    d = pabc_q3_bank()
+    d.pages[0] = page("INTERIM FINANCIAL STATEMENTS", "FOR THE NINE MONTHS ENDED 30TH SEPTEMBER 2025",
+                      "Press release: the Bank announced its results for the nine months.")
+    assert classify(d, None).document_type == "interim_financial_statements"
+
+
+def test_document_calling_itself_both_errata_and_amendment_stays_ambiguous():
+    d = tess_annual_report_with_quarters()
+    d.pages[0] = page("Dear Madam,", "ERRATA: please find the amended Annual Report 2025/26 attached.")
+    d.text_pages = [i + 1 for i, p in enumerate(d.pages) if dt.page_has_text(p)]
+    r = classify(d, meta("Amended Annual Report as at 31st March 2026", buckets=("annual",)))
+    assert (r.document_type, r.document_type_status) == ("undetermined", "conflicting")
+    assert r.underlying_type == "annual_report" and "conflicting_revision_phrases" in r.status_reasons
+    assert len(evidence(r, "rv.conflicting_revision_phrases")) == 2
+
+
+# --- metadata / document authority ----------------------------------------------------------------
+
+def test_contradictory_title_type_never_replaces_the_document_type():
+    m = meta("Annual Report as at 31st March 2025", ms(2025, 9, 30), buckets=("annual",))
+    r = classify(pabc_q3_bank(), m)
+    assert (r.document_type, r.document_type_status) == ("interim_financial_statements", "conflicting")
+    assert {"title_type", "bucket_type"} <= set(r.metadata_conflicts)
+    assert r.duration_months == 9 and r.fiscal_period == "Q3"
+
+
+def test_unreadable_document_with_errata_or_annual_title_stays_unreadable():
+    for title in ("Errata to the Interim Financial Statements for the Quarter ended 30th June 2026",
+                  "Amended Annual Report as at 31st March 2026", "Q3 Press Release"):
+        r = classify(scanned(), meta(title, ms(2026, 6, 30), buckets=("annual",)))
+        assert (r.document_type, r.underlying_type, r.document_type_status) == ("unreadable", "unreadable", "undetermined")
+        assert r.period_end is None and r.fiscal_period is None and r.metadata_conflicts == []
+
+
+def test_quarter_title_gives_an_end_date_hint_only():
+    r = classify(seyb_december_fye_q2(), SEYB_META)
+    assert [e["outcome"] for e in evidence(r, "meta.title_end.compare")] == ["supports"]
+    assert evidence(r, "meta.title.quarter_is_not_duration")[0]["outcome"] == "ignored"
+    assert not any(e["source"] == "metadata" for e in r.evidence if e["decision"] in ("fiscal_period", "fiscal_year_end"))
+
+
+# --- statement-period structure -------------------------------------------------------------------
+
+def test_prior_quarter_with_different_month_day_is_not_comparative():
+    d = doc(page("XYZ PLC", "INTERIM FINANCIAL STATEMENTS", "FOR THE THREE MONTHS ENDED 30TH JUNE 2026"),
+            page("STATEMENT OF PROFIT OR LOSS",
+                 L((40, "3 months ended"), (60, "3 months ended")),
+                 L((40, "30.06.2026"), (60, "31.03.2025")),
+                 DATA))
+    r = classify(d, None)
+    assert {(p["end_date"], p["role"]) for p in periods(r, "profit_or_loss")} == {("2026-06-30", "current"), ("2025-03-31", "unknown")}

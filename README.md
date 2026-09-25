@@ -125,6 +125,15 @@ migration (now 0006) is still required before anything is deployed to `public`.
 The F2 governance gate applies (at most 20 filings per run). Needs `pdftotext`
 (poppler-utils on Linux; the extractor version is recorded with every result).
 
+F3 tests: `tests/test_report_classification.py` (offline). Two gated suites report
+SKIPPED unless enabled:
+- `F3_TEST_DATABASE_URL=<scratch Postgres admin URL>` — `test_report_classification_postgres.py`
+  creates a throwaway database, applies 0001→0005 with each migration's documented worker
+  grants in order, and exercises the store as the restricted worker role.
+- `F3_REAL_DOCUMENTS=1` — `test_report_classification_real.py` classifies the 19 real
+  discovery filings through F2 (one batch, temporary, deleted) against expected semantics
+  (`tests/fixtures/filings/f3_real_cases_metadata.json` holds listing metadata only).
+
 ---
 
 # Stage B — Single-Company Vertical Slice
