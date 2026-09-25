@@ -78,7 +78,14 @@ paths fall back to `cmt/` only after a 403/404), stream it with
 `Accept-Encoding: identity` into a unique directory under the system temp dir,
 validate it (status, `%PDF-` header, `%%EOF`, Content-Length, strong ETag = MD5),
 SHA-256 it, hand it to the consumer, then delete it and verify deletion. The only
-output is a metadata record — never bytes, never a file path, never a DB write.
+output is a metadata record: it carries CSE source metadata (the source `path` and
+the resolved CDN `final_url`) but never document bytes, never a temporary/local
+filesystem path, and it is never written to a database. The temp path exists only
+in `TempDocument.path`, for the duration of the consumer call.
+
+If the repository itself lives under the system temp directory (e.g. a checkout
+in `/tmp`), the default temp root is refused — pass `--temp-root` pointing at a
+separate directory under the temp directory.
 
     python -m worker.retrieve_filing_documents --filings-json filings.json --report-file report.json
 

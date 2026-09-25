@@ -6,7 +6,10 @@ report_filings row, this module resolves the CDN URL, streams the document
 into a unique temporary directory, validates it, hashes it, hands it to a
 consumer (F3/F4 later), and always deletes it — verifying the deletion.
 Nothing here writes to a database, object storage, or the repository; the
-only durable output is a compact metadata record (no bytes, no file path).
+only durable output is a compact metadata record: CSE source metadata (source
+path, resolved URL, HTTP metadata, hashes) but no document bytes and no
+temporary/local filesystem path — that path exists only in TempDocument.path,
+during the consumer call.
 
 Behaviour below is grounded in live Stage F0/F2.0 observations of cdn.cse.lk
 (Amazon S3 behind a CDN), not assumptions:
@@ -255,7 +258,8 @@ class Attempt:
 
 @dataclass
 class RetrievalRecord:
-    """Compact, storable metadata. Deliberately has NO bytes and NO file path."""
+    """Compact, storable metadata. Contains CSE source metadata (source_path,
+    final_url) but deliberately NO document bytes and NO temporary/local path."""
     cse_filing_id: int
     role: str                              # 'primary' (path) | 'companion' (path2)
     source_path: Optional[str]

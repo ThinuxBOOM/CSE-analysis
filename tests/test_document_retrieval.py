@@ -392,18 +392,72 @@ def test_batch_leaves_no_temporary_files():
     print("PASS: mixed batch -> no temporary files remain; outcomes counted")
 
 
+def _inside(child, parent):
+    try:
+        return os.path.commonpath([os.path.realpath(child), os.path.realpath(parent)]) == os.path.realpath(parent)
+    except ValueError:
+        return False
+
+
+def _rejected(root):
+    try:
+        dr.validate_temp_root(root)
+    except ValueError:
+        return True
+    return False
+
+
 def test_temp_root_must_be_temporary_and_outside_repo():
     for bad in (REPO, os.path.join(REPO, "tests"), os.path.join(tempfile.gettempdir(), "definitely_missing_f2_dir"),
                 os.path.expanduser("~")):
-        try:
-            dr.validate_temp_root(bad)
-        except ValueError:
-            continue
-        raise AssertionError(f"accepted non-temporary root {bad}")
-    assert dr.validate_temp_root(None) == os.path.realpath(tempfile.gettempdir())
+        assert _rejected(bad), f"accepted non-temporary root {bad}"
+
+    # The invariant, checked against THIS machine's actual layout: the default is
+    # the system temp dir UNLESS that dir contains the repository (e.g. a checkout
+    # under /tmp), in which case the default must be refused, not silently used.
+    system_tmp = os.path.realpath(tempfile.gettempdir())
+    if _inside(REPO, system_tmp):
+        assert _rejected(None), "default temp root contains the repository but was accepted"
+        with TempRoot() as sibling:                   # a separate dir under the temp dir is still fine
+            assert dr.validate_temp_root(sibling) == os.path.realpath(sibling)
+    else:
+        assert dr.validate_temp_root(None) == system_tmp
+
     rec = dr.process_filing(filing(RECENT), None, fetcher=FakeFetcher({}), temp_root=REPO)
     assert rec.outcome == "download_failed" and rec.failure_category.startswith("temp_root")
-    print("PASS: repo / missing / home-dir roots rejected; default is the system temp dir")
+    print("PASS: repo / missing / home-dir roots rejected; default follows the system temp dir only when it "
+          "does not contain the repository")
+
+
+def test_temp_root_invariant_under_both_layouts():
+    """Layout-independent: simulate a repository INSIDE and OUTSIDE the system
+    temp dir, so both branches are exercised on every machine."""
+    saved_tempdir, saved_repo_root = tempfile.tempdir, dr._repo_root
+    with TempRoot() as fake_tmp, TempRoot() as elsewhere:
+        try:
+            tempfile.tempdir = fake_tmp
+
+            # Layout A: repository checked out under the temp dir (e.g. /tmp/repo)
+            repo_a = os.path.join(fake_tmp, "repo")
+            os.makedirs(os.path.join(repo_a, "tests"))
+            sibling = os.path.join(fake_tmp, "work")
+            os.makedirs(sibling)
+            dr._repo_root = lambda: repo_a
+            assert _rejected(None)                                     # default contains the repo
+            assert _rejected(fake_tmp) and _rejected(repo_a) and _rejected(os.path.join(repo_a, "tests"))
+            assert dr.validate_temp_root(sibling) == os.path.realpath(sibling)
+            f = FakeFetcher({URL(RECENT): FakeResp(200, PDF)})
+            rec = dr.process_filing(filing(RECENT), None, fetcher=f)   # no explicit root
+            assert rec.outcome == "download_failed" and rec.failure_category.startswith("temp_root") and not f.calls
+            rec = dr.process_filing(filing(RECENT), None, fetcher=f, temp_root=sibling)
+            assert rec.outcome == "succeeded" and not _leftovers(sibling)
+
+            # Layout B: repository outside the temp dir -> the temp dir itself is the default
+            dr._repo_root = lambda: os.path.join(elsewhere, "repo")
+            assert dr.validate_temp_root(None) == os.path.realpath(fake_tmp)
+        finally:
+            tempfile.tempdir, dr._repo_root = saved_tempdir, saved_repo_root
+    print("PASS: temp-root safety invariant holds for a repo inside AND outside the system temp dir")
 
 
 # --- zero-archive invariant ------------------------------------------------------------------
@@ -429,7 +483,9 @@ def test_zero_archive_invariant():
     for mig in glob.glob(os.path.join(REPO, "supabase", "migrations", "*.sql")):
         sql = open(mig, encoding="utf-8").read().lower()
         assert "bytea" not in sql and not re.search(r"\b\w*(blob|file_path|document_path|storage_path|local_path)\w*\s+(text|varchar)", sql), mig
-    print("PASS: records carry no bytes/paths; F2 code has no DB/storage writes; no migration stores documents")
+    assert rec["source_path"] == RECENT and rec["final_url"] == URL(RECENT)   # CSE metadata is kept on purpose
+    print("PASS: records keep CSE source_path/final_url but no bytes and no temp/local path; "
+          "F2 code has no DB/storage writes; no migration stores documents")
 
 
 def test_cli_cap_and_end_to_end_with_fake_network():

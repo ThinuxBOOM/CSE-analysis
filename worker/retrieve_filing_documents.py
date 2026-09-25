@@ -1,7 +1,8 @@
 """
 Stage F2 CLI: retrieve a SMALL number of filing documents temporarily, validate
-and hash them, then delete them. Writes only a metadata report (no bytes, no
-file paths). Nothing is parsed or extracted (that is F3/F4).
+and hash them, then delete them. Writes only a metadata report (CSE source path
+and resolved URL included; no document bytes, no temporary/local file path).
+Nothing is parsed or extracted (that is F3/F4).
 
 Governance gate: at most MAX_FILINGS_PER_RUN filings per invocation. Production-
 scale automated retrieval stays disabled until the open CSE terms-of-use
