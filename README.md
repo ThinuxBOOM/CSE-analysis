@@ -139,6 +139,70 @@ SKIPPED unless enabled:
   discovery filings through F2 (one batch, temporary, deleted) against expected semantics
   (`tests/fixtures/filings/f3_real_cases_metadata.json` holds listing metadata only).
 
+## Stage F4 — transient statement / column / cell extraction (nothing stored)
+
+    report_filings -> F2 temporary document -> F3 classification -> F4 cells (in memory) -> F5 selected facts
+
+F4 turns a temporary document into statements, column periods, rows and cells
+with compact provenance, entirely in memory inside the F2 consumer call. It has no
+migration and writes nothing: no PDF, text, coordinate XHTML or "all cells" table
+is persisted anywhere (the benchmark averages ~640 cells per filing; F5 keeps only
+selected facts).
+
+- `worker/pdf_words.py` — Poppler `pdftotext -bbox-layout` words with coordinates
+  (stdout, in memory) and `pdfimages -list` (image placement, for text trust).
+  Pinned: Poppler **24.02.0** (Ubuntu 24.04 / GitHub `ubuntu-24.04`, package
+  `poppler-utils 24.02.0-1ubuntu9.x`) or **25.03.0** (Debian 13), which gave
+  cell-for-cell identical results on the benchmark. xpdf (the Windows `pdftotext`)
+  and any other version raise `ExtractorUnavailable`; there is no fallback. xpdf's
+  `-layout` attached values to the wrong row in 17 of 18 readable discovery documents.
+- `worker/financial_values.py` — strict value parser (`numeric`,
+  `parenthesised_negative`, `minus_negative`, `negative_zero`, `dash_nil`,
+  `percentage`, `comparison_bound`, `spreadsheet_error`, `text`, `unresolved`),
+  exact `Decimal`s, printed sign preserved; merging of letter-spaced digits
+  (`1 2 ,37 7` -> `12,377`, kerned `2 025`) by geometry only.
+- `worker/statement_extraction.py` — rows rebuilt from coordinates; statement
+  regions from F3's heading rules (read-only; `(Contd...)` and heading-less
+  continuation pages linked); value columns by right-edge clustering, mapped to
+  F3's header anchors by RIGHT edge; F3 periods/roles/audit labels, plus two
+  F4-local header rules that yield literal dates only (month ranges such as
+  `Apr-Jun 2026`; one date shared by a `Quarter | Nine Months` pair) — never a
+  fiscal quarter; wrapped labels, values left of labels, repeated labels,
+  note-reference and variance columns; statement-local scale (header zone +
+  explicit "all values are in ..." declarations; footnote/narrative amounts such as
+  `Rs. 243 million` never set a scale; competing evidence -> `conflicting`);
+  text trust (`no_text_layer`, and `ocr_layer_suspected` for a text layer over an
+  opaque full-page raster or with OCR-style separator errors -> no values, no OCR);
+  an independent cross-check against F3's Poppler `-layout` text
+  (disagreement -> `conflicting`, the coordinate value is kept); literal-label
+  accounting signals (A = L + E, revenue/cost/gross profit, PBT/tax/profit) that
+  are never validation. No concept mapping, no sign normalisation, no dash-to-zero.
+- `worker/xlsx_companion.py` — optional cross-check against a spreadsheet
+  companion (stdlib reader; hidden rows/print areas reported); never authoritative,
+  never changes a PDF cell.
+- `worker/extract_filing_statements.py` — CLI; the report holds counts and the
+  column/period structure only, never values:
+
+      python -m worker.extract_filing_statements --filings-json filings.json --report-file f4.json [--with-companion]
+
+  Poppler is checked before anything is downloaded. Primaries + companions count
+  towards the 20-document governance cap (trailing-dot `path2` placeholders are not
+  companions).
+
+Cell statuses: `extracted`; `unresolved` (e.g. `duration_unspecified`,
+`per_share_unit_not_stated`, `column_period_unresolved`, `unlabelled_row`,
+`changes_in_equity_components_not_modelled`); `conflicting` (competing scale
+evidence, `-layout` disagreement); `non_period` (variance/% columns). Statements
+that are scanned or OCR-layered are `unreadable` / `ocr_untrusted` with no cells.
+
+F4 tests (offline): `test_financial_values.py`, `test_pdf_words.py`,
+`test_statement_extraction.py`, `test_xlsx_companion.py`,
+`test_extract_filing_statements.py`. Gated: `F4_REAL_DOCUMENTS=1` —
+`test_statement_extraction_real.py` runs the 20-document benchmark (19 PDFs + COMB's
+.xlsx, one F2 batch, deleted) against the 114-value gold set
+(`tests/fixtures/filings/f4_gold_values.json`: listing metadata + expected values only;
+scoring in `tests/f4_gold.py`). Needs the pinned Poppler (Linux).
+
 ---
 
 # Stage B — Single-Company Vertical Slice
