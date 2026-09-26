@@ -14,9 +14,11 @@ cell table is written anywhere. F5 selects the few facts worth keeping.
 
 What F4 decides, and what it refuses to decide
 - Rows are rebuilt from word coordinates (never from xpdf `-layout` text).
-- Roles come from F3's statement periods, explicit header words, or F3's rules
-  applied to a DOCUMENT-evidenced F3 period - never a period F3 took from the CSE
-  filing title ('metadata_only').
+- Roles come from explicit header words, or - only when F3's document period is
+  document-evidenced ('confirmed' / 'document_only') - from F3's statement periods
+  and F3's rules applied to that period. A 'metadata_only' (CSE title),
+  'conflicting', 'undetermined' or missing period never sets a role, directly or
+  through F3's statement periods; an 'unknown' F3 role is not evidence.
 - Letter-spaced numeric fragments are merged by geometry (financial_values).
 - Statement regions come from F3's heading rules (report_classification,
   read-only); column periods come from F3's header parser applied to a
@@ -843,14 +845,18 @@ def build_columns(kind, block, lines_by_idx, body_value_phrases, classification,
         models.append(m)
     _check_header_durations(kind, models, leaves, header_lines)
     _group_scopes(models, header_lines)
-    # roles: F3's statement_periods first, then F3's own rules mirrored for F4-local periods
+    # roles: F3's statement_periods first (only when F3's document period is document-evidenced: F3 derives
+    # those roles from that period, so a metadata_only/conflicting/undetermined one must not set them), then
+    # explicit header words and F3's own rules mirrored for F4-local periods. An 'unknown' F3 role is no
+    # evidence and leaves the column open to those rules.
+    trusted_period = classification.get("period_status") in DOCUMENT_PERIOD_STATUSES
     for m in models:
         if m.end_date and m.column_kind == "period":
             role, audit, restated = _match_f3_role(classification, kind, m)
-            if role:
+            if role and audit and m.audit_status == "unknown":
+                m.audit_status = audit
+            if trusted_period and role in ("current", "comparative"):
                 m.role, m.role_basis = role, "f3.statement_period"
-                if audit and m.audit_status == "unknown":
-                    m.audit_status = audit
     todo = [m for m in models if m.end_date and m.column_kind == "period" and m.role_basis is None]
     for m in todo:                                  # explicit header words are document evidence
         role = _explicit_role(header_lines, m)

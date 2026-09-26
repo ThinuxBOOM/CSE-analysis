@@ -7,8 +7,11 @@ Stage F4 — regression tests for the two boundaries found in the F4 audit.
    not trusted. A suspicious page yields zero automatic financial cells.
 2. Metadata roles: F4 never derives current/comparative from an F3 period that
    F3 took from the CSE filing title (period_status 'metadata_only') or that is
-   conflicting/undetermined; only document evidence (F3 statement periods,
-   explicit header words, a document-evidenced F3 period) assigns roles.
+   conflicting/undetermined/missing - neither through its own fallback nor through
+   F3's statement_periods (which F3 derives from that period). Only explicit
+   header words, or F3 statement periods / F3's rules under a document-evidenced
+   ('confirmed' / 'document_only') period, assign roles; an 'unknown' F3 role never
+   locks a column.
 
 Unit tests use `pdfimages -list` text (parsed by the real parser); the gated
 tests at the end run the pinned Poppler tools on generated one-page PDFs.
@@ -249,13 +252,84 @@ def test_explicit_header_words_still_assign_roles_with_title_only_period():
     assert (cols[2].end_date, cols[2].role) == ("2026-06-30", "unknown")          # no document evidence for it
 
 
-def test_f3_statement_period_roles_still_used_with_title_only_period():
-    # F3 assigns roles from explicit header words itself; those are document evidence and still flow through
-    periods = [sp("profit_or_loss", "2025-12-31", 3, "3M", "current"), sp("profit_or_loss", "2024-12-31", 3, "3M", "comparative"),
-               sp("profit_or_loss", "2025-12-31", 12, "12M", "current"), sp("profit_or_loss", "2024-12-31", 12, "12M", "comparative")]
-    ext = extract([page(pl_rows())], periods, period_status="metadata_only")
-    assert {(c.role, c.role_basis) for c in ext.statements[0].columns} == {("current", "f3.statement_period"),
-                                                                         ("comparative", "f3.statement_period")}
+CTC_SP = [sp("profit_or_loss", "2025-12-31", 3, "3M", "current"), sp("profit_or_loss", "2024-12-31", 3, "3M", "comparative"),
+          sp("profit_or_loss", "2025-12-31", 12, "12M", "current"), sp("profit_or_loss", "2024-12-31", 12, "12M", "comparative")]
+
+
+def test_f3_statement_period_roles_not_trusted_with_title_only_period():
+    # F3's statement-period roles are only as good as F3's document period: with a title-only period they are
+    # ignored (explicit header words, re-read by F4 itself, remain the route for such documents)
+    ext = extract([page(pl_rows())], CTC_SP, period_status="metadata_only")
+    assert {(c.role, c.role_basis) for c in ext.statements[0].columns} == {("unknown", None)}
+
+
+@pytest.mark.parametrize("status", ["document_only", "confirmed"])
+def test_f3_statement_period_roles_kept_with_document_evidenced_period(status):
+    ext = extract([page(pl_rows())], CTC_SP, period_status=status)
+    got = [(c.end_date, c.duration_months, c.role, c.role_basis) for c in ext.statements[0].columns]
+    assert got == [("2025-12-31", 3, "current", "f3.statement_period"), ("2024-12-31", 3, "comparative", "f3.statement_period"),
+                   ("2025-12-31", 12, "current", "f3.statement_period"), ("2024-12-31", 12, "comparative", "f3.statement_period")]
+
+
+# the audit reproduction: an ACL-like Q1 balance sheet (30-Jun-26 current, 31-Mar-26 comparative) whose front
+# matter names the prior year-end, so F3's document period is 31 Mar 2026 and 'conflicting', and F3's
+# statement_periods call the 31-Mar-26 column 'current' (role.matches_document_period_end)
+SOFP_ROWS = [(40, [L("STATEMENT OF FINANCIAL POSITION", 40)]), (52, [L("Rs.'000", 40)]),
+             (66, [L("As at", 40), R("30-Jun-26", 300), R("31-Mar-26", 380)]),
+             (80, [L("Total assets", 40), R("5,000", 300), R("4,000", 380)])]
+SOFP_WORDS = (60, [L("Current Period", 262), L("Previous Year", 350)])
+CONFLICTING_SP = [sp("financial_position", "2026-06-30", None, None, "unknown", pkind="instant"),
+                  sp("financial_position", "2026-03-31", None, None, "current", "audited", pkind="instant")]
+
+
+def sofp(rows, periods, status, end="2026-03-31"):
+    ext = extract([page(rows)], periods, period_end=end, period_status=status)
+    return {c.end_date: (c.role, c.role_basis, c.reasons) for c in ext.statements[0].columns}, ext
+
+
+def test_conflicting_f3_period_cannot_label_the_comparative_current():
+    cols, ext = sofp(SOFP_ROWS, CONFLICTING_SP, "conflicting")
+    assert cols["2026-03-31"][:2] == ("unknown", None)             # before the fix: ('current', 'f3.statement_period')
+    assert cols["2026-06-30"][:2] == ("unknown", None)
+    assert all("role_not_established:f3_period_conflicting" in r for _, _, r in cols.values())
+    assert {c.current_comparative for c in ext.cells} == {"unknown"}
+    assert {c.raw_value: c.status for c in ext.cells} == {"5,000": "extracted", "4,000": "extracted"}   # values untouched
+
+
+def test_conflicting_f3_period_leaves_explicit_header_words_in_charge():
+    rows = SOFP_ROWS[:2] + [SOFP_WORDS] + SOFP_ROWS[2:]
+    cols, _ = sofp(rows, CONFLICTING_SP, "conflicting")
+    assert cols["2026-06-30"][:2] == ("current", "f4.explicit_header_word")
+    assert cols["2026-03-31"][:2] == ("comparative", "f4.explicit_header_word")
+
+
+def test_unknown_f3_role_does_not_lock_the_column():
+    # document-evidenced period; F3 left the 30-Jun-26 column 'unknown' (its period end is 31 Mar here): that is
+    # not evidence, so the explicit header word over the column still decides, and a column with no evidence
+    # carries no role basis
+    rows = SOFP_ROWS[:2] + [SOFP_WORDS] + SOFP_ROWS[2:]
+    periods = [sp("financial_position", "2026-06-30", None, None, "unknown", pkind="instant"),
+               sp("financial_position", "2026-03-31", None, None, "comparative", "audited", pkind="instant")]
+    cols, _ = sofp(rows, periods, "document_only")
+    assert cols["2026-06-30"][:2] == ("current", "f4.explicit_header_word")      # before the fix: ('unknown', 'f3.statement_period')
+    assert cols["2026-03-31"][:2] == ("comparative", "f3.statement_period")
+    cols, _ = sofp(SOFP_ROWS, periods, "document_only")
+    assert cols["2026-06-30"][:2] == ("unknown", None)
+
+
+@pytest.mark.parametrize("status", ["metadata_only", "conflicting", "undetermined", None])
+def test_untrusted_period_statement_periods_never_set_a_role(status):
+    """The non-empty statement_periods path: F3 claims a role for EVERY column, yet with no document-evidenced
+    F3 period no column gets a role from F3 (explicit header words are the only route left)."""
+    cases = [(pl_rows(), CTC_SP, "2025-12-31"), (SOFP_ROWS, CONFLICTING_SP, "2026-03-31"),
+             (TILE_ROWS, [sp("profit_or_loss", "2018-12-31", 3, "3M", "current"),
+                          sp("profit_or_loss", "2018-12-31", 9, "9M", "current")], "2018-12-31")]
+    for rows, periods, end in cases:
+        ext = extract([page(rows, width=792)], periods, period_end=end, period_start="2018-04-01", period_status=status)
+        for c in ext.statements[0].columns:
+            assert c.role_basis not in ("f3.statement_period", "f4.mirrored_f3_role_rule"), (status, c)
+            assert c.role == "unknown", (status, c)
+        assert {c.current_comparative for c in ext.cells} <= {"unknown"}
 
 
 def test_prior_fiscal_year_end_comparative_needs_a_document_period():
