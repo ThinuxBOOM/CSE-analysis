@@ -52,8 +52,13 @@ def page(rows, number=1, width=595.0, height=842.0):
     return PageWords(number, width, height, words)
 
 
-def doc(*pages, images=()):
-    return DocumentWords(list(pages), EXTRACTOR, images=list(images))
+def doc(*pages, images=(), visible=None):
+    return DocumentWords(list(pages), EXTRACTOR, images=list(images), visible_glyphs=dict(visible or {}))
+
+
+def painted(pg, share=1.0):
+    """What pdftocairo would count on this page if `share` of its text layer is painted."""
+    return {pg.page: int(round(share * sum(len(w.text) for w in pg.words)))}
 
 
 def sp(kind, end, months, label, role, audit="unknown", pkind="duration"):
@@ -61,9 +66,11 @@ def sp(kind, end, months, label, role, audit="unknown", pkind="duration"):
             "duration_label": label, "role": role, "audit_status": audit, "restated": False}
 
 
-def classification(periods=(), period_end=None, period_start=None, fid=1, doc_type="interim_financial_statements"):
+def classification(periods=(), period_end=None, period_start=None, fid=1, doc_type="interim_financial_statements",
+                   period_status="document_only"):
     return {"cse_filing_id": fid, "document_sha256": "ab" * 32, "classifier_version": "f3.1", "document_type": doc_type,
-            "period_end": period_end, "period_start": period_start, "statement_periods": list(periods)}
+            "period_end": period_end, "period_start": period_start, "period_status": period_status,
+            "statement_periods": list(periods)}
 
 
 def find(ext, label, end=None, scope="any", months="any"):
@@ -106,8 +113,9 @@ CTC_PERIODS = [sp("profit_or_loss", "2025-12-31", 3, "3M", "current"), sp("profi
 
 
 def extract(pages, periods=CTC_PERIODS, **kw):
-    cls = classification(periods, period_end=kw.pop("period_end", "2025-12-31"), period_start=kw.pop("period_start", None))
-    return se.extract_from_words(doc(*pages, images=kw.pop("images", ())), cls, **kw)
+    cls = classification(periods, period_end=kw.pop("period_end", "2025-12-31"), period_start=kw.pop("period_start", None),
+                         period_status=kw.pop("period_status", "document_only"))
+    return se.extract_from_words(doc(*pages, images=kw.pop("images", ()), visible=kw.pop("visible", None)), cls, **kw)
 
 
 def test_baseline_statement_rows_columns_periods_roles():
@@ -583,16 +591,20 @@ def test_ocr_separator_anomalies_flag_a_page_even_without_an_image():
 
 
 def test_soft_masked_overlay_is_not_ocr_blue_p4():
-    overlay = PageImage(1, 1870, 2420, 245, 245, "image", 8, soft_masked=True)   # 81% coverage, transparent
-    ext = extract([page(pl_rows(), width=612, height=792)], images=[overlay])
+    # BLUE p4: an 81% soft-masked RGB overlay (signatures) over Excel text that Poppler paints
+    pg = page(pl_rows(), width=612, height=792)
+    overlay = PageImage(1, 1870, 2420, 245, 245, "image", 8, soft_masked=True)
+    ext = extract([pg], images=[overlay], visible=painted(pg))
     assert ext.page_trust[0]["status"] == "text_native" and ext.document_status == "extracted"
+    assert ext.page_trust[0]["reasons"] == ["image_backed_page_text_painted"]
 
 
 def test_clean_text_native_page():
     logo = PageImage(1, 200, 100, 150, 150, "jpeg", 8)
     ext = extract([page(pl_rows())], images=[logo])
-    assert ext.page_trust == [{"page": 1, "status": "text_native", "reasons": [], "image_coverage": ext.page_trust[0]["image_coverage"]}]
-    assert ext.page_trust[0]["image_coverage"] < 0.1
+    t = ext.page_trust[0]
+    assert (t["page"], t["status"], t["reasons"], t["painted_glyphs"]) == (1, "text_native", [], None)
+    assert t["image_coverage"] < 0.1                 # below the image-backed threshold: no visibility check needed
 
 
 # --- cross-check ----------------------------------------------------------------------------------

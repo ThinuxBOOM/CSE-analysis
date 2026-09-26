@@ -111,7 +111,7 @@ def run(filings, *, with_companion=False, temp_root=None, request_delay_seconds=
     if documents > MAX_FILINGS_PER_RUN:
         raise ValueError(f"{documents} documents requested; at most {MAX_FILINGS_PER_RUN} per run "
                          f"(production-scale retrieval is gated pending the CSE terms-of-use decision)")
-    extractor = pdf_words.poppler_identity() if require_poppler else None   # fail before any download
+    extractor = pdf_words.require_tools() if require_poppler else None   # all Poppler tools, before any download
     results = {}
     by_id = {f["cse_filing_id"]: f for f in filings}
     consumer = make_consumer(by_id, results, with_companion=with_companion, fetcher=fetcher, temp_root=temp_root,

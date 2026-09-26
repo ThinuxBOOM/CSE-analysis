@@ -99,7 +99,7 @@ def test_parse_image_list_and_coverage():
 
 
 def test_extract_words_runs_to_stdout_in_memory(monkeypatch):
-    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24})
+    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24, "pdftocairo": POPPLER_24})
     monkeypatch.setattr(pw.shutil, "which", lambda b: f"/usr/bin/{b}")
     calls = []
 
@@ -116,13 +116,14 @@ def test_extract_words_runs_to_stdout_in_memory(monkeypatch):
 
 
 def test_mixed_poppler_installation_is_refused(monkeypatch):
-    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24.replace("24.02.0", "25.03.0")})
+    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24.replace("24.02.0", "25.03.0"),
+                               "pdftocairo": POPPLER_24})
     with pytest.raises(pw.ExtractorUnavailable, match="mixed installation"):
         pw.extract_words("x.pdf", run=lambda *a, **k: None)
 
 
 def test_extractor_failures_are_errors_not_empty_results(monkeypatch):
-    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24})
+    fake_banners(monkeypatch, {"pdftotext": POPPLER_24, "pdfimages": POPPLER_24, "pdftocairo": POPPLER_24})
     bad = lambda cmd, capture_output, timeout: SimpleNamespace(returncode=1, stdout=b"", stderr=b"Syntax Error")
     with pytest.raises(pw.WordExtractionError, match="exit 1"):
         pw.extract_words("x.pdf", run=bad)

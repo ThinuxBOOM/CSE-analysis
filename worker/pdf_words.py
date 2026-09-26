@@ -17,7 +17,10 @@ ExtractorUnavailable. There is no silent fallback to another extractor.
 Text trust. `pdfimages -list` (same Poppler build) gives the raster images of
 every page; with the word layer it lets F4 distinguish a text-native page from
 an image-only scan and from a scan carrying an embedded (untrusted) OCR text
-layer. No OCR is performed here or anywhere in F4.
+layer. On a page that is substantially image-backed, `pdftocairo -svg` (to
+stdout) shows how many glyphs Poppler actually PAINTS: an OCR layer is invisible
+text (render mode 3) and paints nothing, while genuine text under or beside a
+transparent overlay is painted. No OCR is performed here or anywhere in F4.
 """
 import html
 import re
@@ -28,6 +31,13 @@ from typing import Optional
 
 PDFTOTEXT = "pdftotext"
 PDFIMAGES = "pdfimages"
+PDFTOCAIRO = "pdftocairo"
+# page trust geometry (fractions of the page area, summed over all images of the page)
+OPAQUE_SCAN_COVERAGE = 0.8       # opaque rasters covering >= 80% of a page with text: a scan with an OCR layer
+IMAGE_BACKED_COVERAGE = 0.25     # >= 25% raster (opaque or masked): the text must be shown to be painted
+VISIBLE_TEXT_SHARE = 0.9         # painted glyphs must account for >= 90% of the text layer's characters
+GLYPH_USE_RE = re.compile(r'<use\b[^>]*?href="#(glyph[^"]*)"')
+GLYPH_DEF_RE = re.compile(r'<(?:g|symbol)\b[^>]*?\bid="(glyph[^"]*)"[^>]*>(.*?)</(?:g|symbol)>', re.S)   # cairo 1.16/1.18
 EXTRACT_TIMEOUT_SECONDS = 180
 EXTRACTOR_MODE = "-bbox-layout"
 # Poppler releases on which the F4 benchmark (20 real CSE documents, 114 gold
@@ -83,7 +93,7 @@ class PageImage:
     y_ppi: float
     encoding: str
     bits: int
-    soft_masked: bool = False    # drawn with a soft mask / mask (transparency): an overlay, not an opaque scan
+    soft_masked: bool = False    # drawn with a soft mask / mask, or a stencil: not an opaque raster
 
     def coverage(self, page_width, page_height):
         """Fraction of the page the image covers when placed (from its effective resolution)."""
@@ -101,6 +111,7 @@ class DocumentWords:
     producer: Optional[str] = None       # PDF metadata, recorded as evidence only
     creator: Optional[str] = None
     images: list = field(default_factory=list)   # PageImage, all pages
+    visible_glyphs: dict = field(default_factory=dict)   # page -> glyphs painted (None = check failed); image-backed pages only
 
     @property
     def page_count(self):
@@ -202,8 +213,10 @@ _IMAGE_ROW_RE = re.compile(r"^\s*(\d+)\s+\d+\s+(\w+)\s+(\d+)\s+(\d+)\s+\S+\s+\d+
 
 
 def parse_image_list(text: str) -> list:
-    """PageImage rows from `pdfimages -list`: type 'image' rows, flagged soft_masked
-    when a 'smask'/'mask' row on the same page carries the same object id."""
+    """PageImage rows from `pdfimages -list`: 'image' rows (flagged soft_masked when a
+    'smask'/'mask' row on the same page carries the same object id) and 'stencil'
+    rows (1-bit image masks, e.g. the foreground of a mixed-raster scan), which are
+    kept as masked images so that they count towards the page's raster coverage."""
     rows = []
     for line in text.splitlines():
         m = _IMAGE_ROW_RE.match(line)
@@ -212,7 +225,39 @@ def parse_image_list(text: str) -> list:
     masked = {(int(m.group(1)), m.group(7)) for m in rows if m.group(2) in ("smask", "mask")}
     return [PageImage(int(m.group(1)), int(m.group(3)), int(m.group(4)), float(m.group(8)), float(m.group(9)),
                       m.group(6), int(m.group(5)), (int(m.group(1)), m.group(7)) in masked)
-            for m in rows if m.group(2) == "image"]
+            for m in rows if m.group(2) == "image"] + \
+        [PageImage(int(m.group(1)), int(m.group(3)), int(m.group(4)), float(m.group(8)), float(m.group(9)),
+                   m.group(6), int(m.group(5)), True) for m in rows if m.group(2) == "stencil"]
+
+
+def page_image_coverage(images, page_width, page_height):
+    """(opaque, masked) fractions of the page covered by its rasters, SUMMED over all
+    images (a scan split into strips counts in full), each capped at 1. `pdfimages
+    -list` has no positions, so overlapping images are over-counted: conservative."""
+    opaque = sum(im.coverage(page_width, page_height) for im in images if not im.soft_masked)
+    masked = sum(im.coverage(page_width, page_height) for im in images if im.soft_masked)
+    return min(1.0, opaque), min(1.0, masked)
+
+
+def needs_visibility_check(page, images):
+    """A page with a text layer whose rasters (opaque or masked) cover >= IMAGE_BACKED_COVERAGE
+    while its opaque rasters stay below OPAQUE_SCAN_COVERAGE (those are withheld outright)."""
+    if not page.words:
+        return False
+    opaque, masked = page_image_coverage(images, page.width, page.height)
+    return opaque < OPAQUE_SCAN_COVERAGE and min(1.0, opaque + masked) >= IMAGE_BACKED_COVERAGE
+
+
+def count_visible_glyphs(pdf_path, page, *, pdftocairo=PDFTOCAIRO, timeout=EXTRACT_TIMEOUT_SECONDS,
+                         run=subprocess.run):
+    """Glyphs Poppler paints on one page (`pdftocairo -svg` to stdout, in memory).
+    Invisible text (render mode 3, the OCR-layer mode) paints none. Only glyphs with
+    an outline count (a space is an empty glyph and has no counterpart in the text
+    layer); a glyph whose definition cannot be read is not counted (conservative)."""
+    svg = _run([shutil.which(pdftocairo) or pdftocairo, "-svg", "-f", str(page), "-l", str(page), pdf_path, "-"],
+               timeout, run)
+    inked = {gid for gid, body in GLYPH_DEF_RE.findall(svg) if re.search(r'\bd="[^"]*\S', body)}
+    return sum(1 for gid in GLYPH_USE_RE.findall(svg) if gid in inked)
 
 
 def _run(cmd, timeout, run):
@@ -225,19 +270,39 @@ def _run(cmd, timeout, run):
     return out.stdout.decode("utf-8", "replace")
 
 
-def extract_words(pdf_path: str, *, pdftotext: str = PDFTOTEXT, pdfimages: str = PDFIMAGES,
-                  timeout: int = EXTRACT_TIMEOUT_SECONDS, supported=SUPPORTED_POPPLER_VERSIONS,
-                  run=subprocess.run) -> DocumentWords:
-    """Every word with its bounding box, plus the page image list, in memory.
-    Both tools must be the same pinned Poppler release."""
+def require_tools(*, pdftotext=PDFTOTEXT, pdfimages=PDFIMAGES, pdftocairo=PDFTOCAIRO,
+                  supported=SUPPORTED_POPPLER_VERSIONS) -> str:
+    """All three Poppler tools F4 runs, pinned and from ONE release: the extractor
+    identity, or ExtractorUnavailable (checked before any document is retrieved)."""
     identity = poppler_identity(pdftotext, supported)
     version = poppler_version(pdftotext, supported)
-    img_version = poppler_version(pdfimages, supported)
-    if img_version != version:
-        raise ExtractorUnavailable(f"pdfimages is Poppler {img_version} but pdftotext is {version}: mixed installation")
+    for tool in (pdfimages, pdftocairo):
+        v = poppler_version(tool, supported)
+        if v != version:
+            raise ExtractorUnavailable(f"{tool} is Poppler {v} but pdftotext is {version}: mixed installation")
+    return identity
+
+
+def extract_words(pdf_path: str, *, pdftotext: str = PDFTOTEXT, pdfimages: str = PDFIMAGES,
+                  pdftocairo: str = PDFTOCAIRO, timeout: int = EXTRACT_TIMEOUT_SECONDS,
+                  supported=SUPPORTED_POPPLER_VERSIONS, run=subprocess.run) -> DocumentWords:
+    """Every word with its bounding box, the page image list and, for image-backed
+    pages only, the number of glyphs actually painted - all in memory. All tools
+    must be the same pinned Poppler release."""
+    identity = require_tools(pdftotext=pdftotext, pdfimages=pdfimages, pdftocairo=pdftocairo, supported=supported)
     xhtml = _run([shutil.which(pdftotext) or pdftotext, "-bbox-layout", "-enc", "UTF-8", pdf_path, "-"], timeout, run)
     pages, meta = parse_bbox_layout(xhtml)
     del xhtml
     images = parse_image_list(_run([shutil.which(pdfimages) or pdfimages, "-list", pdf_path], timeout, run))
+    by_page = {}
+    for im in images:
+        by_page.setdefault(im.page, []).append(im)
+    visible = {}
+    for pg in pages:
+        if needs_visibility_check(pg, by_page.get(pg.page, [])):
+            try:
+                visible[pg.page] = count_visible_glyphs(pdf_path, pg.page, pdftocairo=pdftocairo, timeout=timeout, run=run)
+            except WordExtractionError:
+                visible[pg.page] = None          # unknown -> the page is not trusted
     return DocumentWords(pages=pages, extractor=identity, producer=meta.get("producer"), creator=meta.get("creator"),
-                         images=images)
+                         images=images, visible_glyphs=visible)

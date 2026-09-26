@@ -150,7 +150,8 @@ is persisted anywhere (the benchmark averages ~640 cells per filing; F5 keeps on
 selected facts).
 
 - `worker/pdf_words.py` — Poppler `pdftotext -bbox-layout` words with coordinates
-  (stdout, in memory) and `pdfimages -list` (image placement, for text trust).
+  (stdout, in memory), `pdfimages -list` (page rasters, for text trust) and, on
+  image-backed pages only, `pdftocairo -svg` to stdout (how many glyphs are painted).
   Pinned: Poppler **24.02.0** (Ubuntu 24.04 / GitHub `ubuntu-24.04`, package
   `poppler-utils 24.02.0-1ubuntu9.x`) or **25.03.0** (Debian 13), which gave
   cell-for-cell identical results on the benchmark. xpdf (the Windows `pdftotext`)
@@ -164,15 +165,22 @@ selected facts).
 - `worker/statement_extraction.py` — rows rebuilt from coordinates; statement
   regions from F3's heading rules (read-only; `(Contd...)` and heading-less
   continuation pages linked); value columns by right-edge clustering, mapped to
-  F3's header anchors by RIGHT edge; F3 periods/roles/audit labels, plus two
+  F3's header anchors by RIGHT edge; F3 periods/roles/audit labels (F4's own role
+  fallback uses F3's period only when F3 took it from the document, never a
+  `metadata_only` period from the CSE title; explicit 'Current/Previous period'
+  header words also count), plus two
   F4-local header rules that yield literal dates only (month ranges such as
   `Apr-Jun 2026`; one date shared by a `Quarter | Nine Months` pair) — never a
   fiscal quarter; wrapped labels, values left of labels, repeated labels,
   note-reference and variance columns; statement-local scale (header zone +
   explicit "all values are in ..." declarations; footnote/narrative amounts such as
   `Rs. 243 million` never set a scale; competing evidence -> `conflicting`);
-  text trust (`no_text_layer`, and `ocr_layer_suspected` for a text layer over an
-  opaque full-page raster or with OCR-style separator errors -> no values, no OCR);
+  text trust (`no_text_layer`; `ocr_layer_suspected` when opaque rasters cover
+  >= 80% of a text page - coverage summed over all images, so strips count - or
+  when rasters incl. masked images/stencils cover >= 25% and Poppler paints < 90%
+  of the text layer (OCR layers are invisible text; text beside or under a
+  transparent overlay is painted), or when the probe fails, or on OCR-style
+  separator errors -> no values, no OCR);
   an independent cross-check against F3's Poppler `-layout` text
   (disagreement -> `conflicting`, the coordinate value is kept); literal-label
   accounting signals (A = L + E, revenue/cost/gross profit, PBT/tax/profit) that

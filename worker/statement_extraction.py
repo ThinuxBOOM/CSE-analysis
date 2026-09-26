@@ -14,6 +14,9 @@ cell table is written anywhere. F5 selects the few facts worth keeping.
 
 What F4 decides, and what it refuses to decide
 - Rows are rebuilt from word coordinates (never from xpdf `-layout` text).
+- Roles come from F3's statement periods, explicit header words, or F3's rules
+  applied to a DOCUMENT-evidenced F3 period - never a period F3 took from the CSE
+  filing title ('metadata_only').
 - Letter-spaced numeric fragments are merged by geometry (financial_values).
 - Statement regions come from F3's heading rules (report_classification,
   read-only); column periods come from F3's header parser applied to a
@@ -28,8 +31,9 @@ What F4 decides, and what it refuses to decide
   competing scale evidence makes the statement 'conflicting'.
 - The printed sign is preserved; no sign is inferred from labels ('Less:').
 - A dash stays representation_class 'dash_nil'; F5/F6 decide what it means.
-- Scanned pages and pages whose text layer sits on a full-page raster
-  (embedded OCR) give NO values: 'unreadable' / 'ocr_untrusted'. No OCR here.
+- Scanned pages, and image-backed pages whose text layer Poppler does not paint
+  (an embedded, invisible OCR layer), give NO values: 'unreadable' /
+  'ocr_untrusted' (see page_trust). No OCR here.
 - No concept mapping: labels are carried raw and normalised for matching only.
   The accounting 'signals' use exact literal labels and are never validation.
 """
@@ -45,7 +49,8 @@ from typing import Optional
 from . import document_text
 from . import report_classification as rc
 from .financial_values import AMOUNT_CLASSES, merge_numeric_fragments, parse_value
-from .pdf_words import Word, layout_text_is_poppler
+from .pdf_words import (IMAGE_BACKED_COVERAGE, OPAQUE_SCAN_COVERAGE, VISIBLE_TEXT_SHARE, Word,
+                        layout_text_is_poppler, page_image_coverage)
 
 F4_EXTRACTOR_VERSION = "f4.1"
 
@@ -62,7 +67,6 @@ ANCHOR_MIN_DIGITS = 3             # only tokens with >=3 digits define column ri
 COLUMN_GAP_MIN = 3.0              # points: right edges closer than this are one column
 LEAF_TOLERANCE_RATIO = 0.5        # leaf-column distance must be < ratio x column spacing
 AMBIGUITY_MARGIN = 2.0            # points: two leaves this close in distance = ambiguous
-OCR_IMAGE_COVERAGE = 0.8          # a text page on a raster covering >= 80% of the page is OCR-suspect
 ANOMALY_MIN = 3                   # malformed-separator numbers on a page ...
 ANOMALY_SHARE = 0.10              # ... and share of its numeric tokens -> OCR-suspect
 MAX_WRAP_LINES = 4
@@ -433,29 +437,48 @@ def build_lines(page):
 
 # --- trust -----------------------------------------------------------------------------------
 
-def page_trust(page, lines, images):
-    """text_native | no_text_layer | ocr_layer_suspected, with reasons. Conservative:
-    a text layer lying on a raster that covers most of the page is treated as OCR
-    (F4 discovery: CRL's PDFium OCR layer misread 47% of balance-sheet separators)."""
+def page_trust(page, lines, images, visible_glyphs=None):
+    """text_native | no_text_layer | ocr_layer_suspected, with reasons. Conservative
+    (F4 discovery: CRL's PDFium OCR layer misread 47% of balance-sheet separators):
+    - raster coverage is SUMMED over all images of the page (strips count in full);
+    - opaque rasters covering >= 80% of a page with text: a scan with an OCR layer;
+    - otherwise, if rasters (opaque or masked) cover >= 25%, the page is trusted only
+      when Poppler actually paints >= 90% of the text layer's characters (an OCR
+      layer is invisible text; genuine text beside or under a transparent overlay,
+      as on BLUE p4, is painted). Unknown visibility -> not trusted;
+    - OCR-style separator errors in the numbers also mark the page."""
     text = "\n".join(l.rendered for l in lines)
-    # opaque rasters only: a soft-masked image is a transparent overlay (BLUE p4: signatures/letterhead over Excel text)
-    coverage = max((im.coverage(page.width, page.height) for im in images if not im.soft_masked), default=0.0)
-    reasons = []
+    opaque, masked = page_image_coverage(images, page.width, page.height)
+    coverage = min(1.0, opaque + masked)
+    reasons, painted = [], None
+    chars = sum(len(w.text) for w in page.words)
     if not document_text.page_has_text(text):
         status = "no_text_layer"
         if coverage >= 0.5:
             reasons.append("image_only_page")
     else:
         status = "text_native"
-        if coverage >= OCR_IMAGE_COVERAGE:
+        if opaque >= OPAQUE_SCAN_COVERAGE:
             status = "ocr_layer_suspected"
             reasons.append("text_layer_over_full_page_raster")
+        elif coverage >= IMAGE_BACKED_COVERAGE:
+            painted = (visible_glyphs or {}).get(page.page)
+            if painted is None:
+                status = "ocr_layer_suspected"
+                reasons.append("image_backed_page_text_visibility_unknown")
+            elif painted < VISIBLE_TEXT_SHARE * chars:
+                status = "ocr_layer_suspected"
+                reasons.append("image_backed_page_text_not_painted")
+            else:
+                reasons.append("image_backed_page_text_painted")      # trusted: overlay/background with real text
         numeric = [w.text for l in lines for w in l.words if any(ch.isdigit() for ch in w.text) and len(w.text) >= 5]
         anomalies = [t for t in numeric if SEPARATOR_ANOMALY_RE.match(t)]
         if len(anomalies) >= ANOMALY_MIN and len(anomalies) >= ANOMALY_SHARE * len(numeric):
             status = "ocr_layer_suspected"
             reasons.append("numeric_separator_anomalies")
-    return {"page": page.page, "status": status, "reasons": reasons, "image_coverage": round(coverage, 3)}
+    return {"page": page.page, "status": status, "reasons": reasons, "image_coverage": round(coverage, 3),
+            "opaque_coverage": round(opaque, 3), "masked_coverage": round(masked, 3), "painted_glyphs": painted,
+            "text_chars": chars}
 
 
 # --- scale -----------------------------------------------------------------------------------
@@ -667,12 +690,36 @@ def _match_f3_role(classification, kind, col):
             next(iter(restated)) if len(restated) == 1 else None)
 
 
+DOCUMENT_PERIOD_STATUSES = ("confirmed", "document_only")    # F3 period_status values backed by the document
+
+
+def document_period(classification):
+    """(end, start) of F3's document period ONLY when F3 established it from the
+    document itself. A 'metadata_only' period (taken from the CSE filing title), a
+    'conflicting' or an 'undetermined' one is never used by F4 to assign roles."""
+    if classification.get("period_status") in DOCUMENT_PERIOD_STATUSES:
+        return classification.get("period_end"), classification.get("period_start")
+    return None, None
+
+
+def _explicit_role(header_lines, col):
+    """'Current period' / 'Previous year' (F3's role.explicit_header_word vocabulary)
+    printed directly over the column - the header cell covers at least half of the
+    column's width, so a neighbour's wide header never leaks in - when only one of
+    the two appears."""
+    texts = [p.text for ln in header_lines for p in ln.phrases
+             if min(p.x1, col.x1) - max(p.x0, col.x0) >= 0.5 * max(1.0, col.x1 - col.x0)]
+    cur = any(rc.CURRENT_WORD_RE.search(t) for t in texts)
+    comp = any(rc.COMPARATIVE_WORD_RE.search(t) for t in texts)
+    return "current" if cur and not comp else ("comparative" if comp and not cur else None)
+
+
 def _mirror_role(classification, kind, col, currents):
     """F3's role rules (report_classification.classify, section 7) applied to an
-    F4-local column: current = ends on the document period end; comparative = the
+    F4-local column: current = ends on the DOCUMENT period end; comparative = the
     same duration one year earlier than a current column (or, for a financial
-    position, the prior fiscal year-end)."""
-    doc_end = classification.get("period_end")
+    position, the prior fiscal year-end). Only a document-evidenced F3 period is used."""
+    doc_end, doc_start = document_period(classification)
     if doc_end and col.end_date == doc_end:
         return "current"
     end = date.fromisoformat(col.end_date)
@@ -682,7 +729,7 @@ def _mirror_role(classification, kind, col, currents):
         if col.period_kind == "duration" == cur.period_kind and col.duration_months == cur.duration_months and same_md_prior:
             return "comparative"
         if col.period_kind == "instant" == cur.period_kind and kind == "financial_position":
-            ps = classification.get("period_start")
+            ps = doc_start
             prior_fy_end = (date.fromisoformat(ps) - timedelta(days=1)) if ps else None
             if same_md_prior or (prior_fy_end is not None and end == prior_fy_end):
                 return "comparative"
@@ -805,14 +852,23 @@ def build_columns(kind, block, lines_by_idx, body_value_phrases, classification,
                 if audit and m.audit_status == "unknown":
                     m.audit_status = audit
     todo = [m for m in models if m.end_date and m.column_kind == "period" and m.role_basis is None]
+    for m in todo:                                  # explicit header words are document evidence
+        role = _explicit_role(header_lines, m)
+        if role:
+            m.role, m.role_basis = role, "f4.explicit_header_word"
+    doc_end, _ = document_period(classification)
     for m in todo:                                  # currents first, so comparatives can refer to them
-        if classification.get("period_end") and m.end_date == classification["period_end"]:
+        if m.role_basis is None and doc_end and m.end_date == doc_end:
             m.role, m.role_basis = "current", "f4.mirrored_f3_role_rule"
     currents = [m for m in models if m.role == "current"]
     for m in todo:
         if m.role_basis is None:
             m.role = _mirror_role(classification, kind, m, currents)
-            m.role_basis = "f4.mirrored_f3_role_rule"
+            if m.role != "unknown":
+                m.role_basis = "f4.mirrored_f3_role_rule"
+            elif classification.get("period_status") not in DOCUMENT_PERIOD_STATUSES:
+                # F3's period came from the CSE title (or is conflicting/undetermined): no role from metadata
+                m.reasons.append(f"role_not_established:f3_period_{classification.get('period_status') or 'missing'}")
     return models, tols
 
 
@@ -1472,7 +1528,8 @@ def extract_from_words(doc_words, classification, *, filing_id=None, sha256=None
     images = {}
     for im in doc_words.images:
         images.setdefault(im.page, []).append(im)
-    trust = [page_trust(pg, lines_by_page[pg.page], images.get(pg.page, [])) for pg in doc_words.pages]
+    trust = [page_trust(pg, lines_by_page[pg.page], images.get(pg.page, []), doc_words.visible_glyphs)
+             for pg in doc_words.pages]
     trust_by_page = {t["page"]: t for t in trust}
     version = re.search(r"poppler-pdftotext\s+(\S+)", doc_words.extractor or "")
     usable_layout = None
