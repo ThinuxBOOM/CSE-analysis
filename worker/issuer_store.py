@@ -41,23 +41,25 @@ class PostgresIssuerStore:
             return self._savepoint(cur, "f5_obs", go)
 
     def _observations_by_symbol(self, cur):
-        cur.execute("select id, symbol, cse_sec_id, observed_at from issuer_identifier_observations "
+        cur.execute("select id, symbol, cse_sec_id, isin, name, observed_at from issuer_identifier_observations "
                     "where symbol is not null order by id")
         out = {}
-        for oid, sym, sec, at in cur.fetchall():
-            out.setdefault(sym, []).append({"id": oid, "cse_sec_id": sec, "observed_at": at.isoformat() if at else None})
+        for oid, sym, sec, isin, name, at in cur.fetchall():
+            out.setdefault(sym, []).append({"id": oid, "cse_sec_id": sec, "isin": isin, "name": name,
+                                            "observed_at": at.isoformat() if at else None})
         return out
 
     def resolve_securities(self) -> dict:
-        """Security -> issuer decisions for every `companies` row with observations. Creates an issuer for
-        each evidenced secId that has none. Returns counts."""
+        """Security -> issuer decisions for every `companies` row with observations, with the secId reuse guard
+        applied over ALL observed symbols (a symbol without a `companies` row still disputes a secId). Creates an
+        issuer only for an evidenced (never a disputed) secId that has none. Returns counts."""
         counts = {"issuers_new": 0, "decisions_new": 0, "evidenced": 0, "conflict": 0, "no_evidence": 0}
         with self.conn.cursor() as cur:
             def go():
-                by_symbol = self._observations_by_symbol(cur)
+                decisions = ii.decide_securities(self._observations_by_symbol(cur))
                 cur.execute("select id, ticker, company_name from companies order by ticker")
                 for company_id, ticker, name in cur.fetchall():
-                    dec = ii.decide_security(ticker, by_symbol.get(ticker, []))
+                    dec = decisions.get(ticker)
                     if dec is None:
                         counts["no_evidence"] += 1
                         continue
@@ -74,10 +76,12 @@ class PostgresIssuerStore:
                         issuer_id = cur.fetchone()[0]
                     cur.execute(
                         "insert into issuer_securities (company_id, issuer_id, link_status, link_basis, observed_sec_ids, "
-                        "evidence_observation_ids, first_evidence_at, last_evidence_at, rule_version, evidence_sha256) "
-                        "values (%s, %s, %s, 'shared_cse_sec_id', %s, %s, %s, %s, %s, %s) on conflict do nothing",
+                        "evidence_observation_ids, first_evidence_at, last_evidence_at, reasons, rule_version, "
+                        "evidence_sha256) values (%s, %s, %s, 'shared_cse_sec_id', %s, %s, %s, %s, %s::text[], %s, %s) "
+                        "on conflict do nothing",
                         (company_id, issuer_id, dec.link_status, dec.observed_sec_ids, dec.evidence_observation_ids,
-                         dec.first_evidence_at, dec.last_evidence_at, dec.rule_version, dec.evidence_sha256))
+                         dec.first_evidence_at, dec.last_evidence_at, dec.reasons, dec.rule_version,
+                         dec.evidence_sha256))
                     counts["decisions_new"] += cur.rowcount
                 return counts
             return self._savepoint(cur, "f5_sec", go)
@@ -102,7 +106,10 @@ class PostgresIssuerStore:
                 path, symbols = got
                 cur.execute("select cse_sec_id, issuer_id from issuers where identity_basis = 'cse_sec_id'")
                 issuers = {sec: str(iid) for sec, iid in cur.fetchall()}
-                dec = ii.decide_filing(cse_filing_id, path, symbols, self.current_security_links(cur), issuers)
+                # the reuse guard is read from ALL recorded observations (append-only), not from decision rows
+                disputed = set(ii.disputed_sec_ids(self._observations_by_symbol(cur)))
+                dec = ii.decide_filing(cse_filing_id, path, symbols, self.current_security_links(cur), issuers,
+                                       disputed)
                 cur.execute(
                     "insert into filing_issuer_links (cse_filing_id, issuer_id, status, basis, path_sec_id, listing_symbols, "
                     "listing_sec_ids, listing_conflicts, reasons, rule_version, evidence_sha256) "

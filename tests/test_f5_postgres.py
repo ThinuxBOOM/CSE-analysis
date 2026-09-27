@@ -232,8 +232,9 @@ def test_changed_evidence_appends_a_new_decision_and_keeps_the_old(env, seeded):
     from worker import issuer_identity as ii
     store = seeded["store"]
     before = store.link_filing(49387)
-    # HNB.N0000 now also reports secId 369: its security link becomes a conflict, the filing too
-    store.record_observations(ii.observations_from_company_info(body_for(HNB, "HNB.N0000", 209, 369), "HNB.N0000",
+    # HNB.N0000 now also reports secId 374: its security link becomes a conflict, the filing too. (Reporting ANOTHER
+    # issuer's secId with its own ISIN is the secId-reuse case: test_f5_issuer_reuse_postgres.py.)
+    store.record_observations(ii.observations_from_company_info(body_for(HNB, "HNB.N0000", 209, 374), "HNB.N0000",
                                                                 "2026-09-28T10:00:00+00:00"))
     store.resolve_securities()
     after = store.link_filing(49387)

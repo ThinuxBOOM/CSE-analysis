@@ -18,22 +18,35 @@
 --     identity, never proof of permanent identity.
 --
 -- Rules encoded here:
---   * issuer_id is internal and immutable; issuers are never merged, updated
---     or deleted. A reused secId cannot silently attach a second issuer (unique).
+--   * issuer_id is internal and immutable; issuer rows are never updated,
+--     merged or deleted. The unique index below allows at most one issuer ROW
+--     per secId; on its own it does NOT stop a reused secId from pointing an
+--     unrelated security at that row.
+--   * secId reuse guard (worker/issuer_identity.py, rule f5.issuer.2): the
+--     securities that claim one secId are linked to its issuer only when the
+--     identity evidence observed with it agrees (CSE ISIN issuer code; the
+--     normalised name where an ISIN is missing on either side). Otherwise the
+--     secId is disputed: every claimant's decision is 'conflict' with reasons,
+--     no issuer is created for it, an existing issuer is left untouched but
+--     gets no new evidenced link, and filings resolving to it are 'conflict'.
+--     This guard is enforced by the resolver, not by a database constraint.
 --   * Every identifier sighting is kept, append-only.
 --   * Security -> issuer and filing -> issuer links are append-only DECISIONS
---     with explicit status (evidenced | conflict [| unresolved for filings]).
+--     with explicit status (evidenced | conflict [| unresolved for filings])
+--     and, for a conflict, its reasons.
 --     A changed evidence set adds a new decision row; the latest row (highest
 --     id) per security / filing is the current one. Nothing is overwritten.
 --   * Predecessor/successor lineage is out of scope (deferred to F8).
 --
--- Security note: RLS and the Supabase default-privilege revocation remain the
--- job of the pending security migration 0006, which must cover these tables.
--- The only security statement here revokes the Supabase API roles' access to
--- the NEW tables (when those roles exist), so F5 adds no newly exposed surface.
+-- Security note: RLS and the Supabase default-privilege revocation are the job
+-- of the pending security migration, which must cover these tables and must be
+-- resolved before this schema is deployed to production; its final number is a
+-- separate, future decision. The only security statement here revokes the
+-- Supabase API roles' access to the NEW tables (when those roles exist), so F5
+-- adds no newly exposed table privilege.
 --
 -- Requires PostgreSQL 15+ (UNIQUE NULLS NOT DISTINCT).
--- Run AFTER 0005 (and after 0006 once it exists). Touches no existing table.
+-- Run AFTER 0005. Touches no existing table.
 -- =============================================================================
 
 -- Shared guard: append-only / immutable tables reject UPDATE, DELETE, TRUNCATE.
@@ -62,8 +75,9 @@ create unique index uq_issuers_cse_sec_id on issuers(cse_sec_id) where identity_
 comment on table issuers is
   'Stage F5: internal issuer (reporting entity) identity. issuer_id is immutable and never reused; rows are never '
   'updated, merged or deleted. cse_sec_id is CSE''s issuer-level secId: the primary CURRENT evidence of identity, '
-  'NOT proof of permanent identity through renames/mergers/restructurings (unverified). A secId may identify at '
-  'most one issuer. Predecessor/successor lineage is deferred (F8).';
+  'NOT proof of permanent identity through renames/mergers/restructurings (unverified). At most one issuer row per '
+  'secId; that alone does not prove that every security reporting the secId is this issuer (see issuer_securities). '
+  'Predecessor/successor lineage is deferred (F8).';
 
 create table issuer_identifier_observations (
   id bigint generated always as identity primary key,
@@ -103,14 +117,17 @@ create table issuer_securities (
   evidence_observation_ids bigint[] not null,
   first_evidence_at timestamptz,                                     -- observed_at range of the evidence
   last_evidence_at timestamptz,
+  reasons text[] not null default '{}',                                  -- why a conflict (e.g. sec_ids_disagree, sec_id_identity_disputed, isin_issuer_code_differs:<symbol>)
   rule_version text not null,
   evidence_sha256 text not null,
   decided_at timestamptz not null default now(),
   constraint chk_is_status check (link_status in ('evidenced', 'conflict')),
   constraint chk_is_basis check (link_basis in ('shared_cse_sec_id', 'manual_review')),
   constraint chk_is_consistent check (
-    (link_status = 'evidenced' and issuer_id is not null and cardinality(observed_sec_ids) = 1)
-    or (link_status = 'conflict' and issuer_id is null and cardinality(observed_sec_ids) > 1)),
+    (link_status = 'evidenced' and issuer_id is not null and cardinality(observed_sec_ids) = 1
+       and cardinality(reasons) = 0)
+    or (link_status = 'conflict' and issuer_id is null and cardinality(observed_sec_ids) >= 1
+       and cardinality(reasons) > 0)),
   constraint chk_is_sha256 check (evidence_sha256 ~ '^[0-9a-f]{64}$'),
   constraint uq_issuer_security_decision unique (company_id, rule_version, evidence_sha256)
 );
@@ -120,8 +137,10 @@ create index idx_issuer_securities_issuer on issuer_securities(issuer_id);
 
 comment on table issuer_securities is
   'Stage F5: append-only security -> issuer decisions. evidenced = every observed secId for the security agrees '
-  '(one value) and the issuer exists; conflict = more than one secId observed (issuer_id cleared, never guessed). '
-  'The current decision for a security is its highest id. A changed evidence set adds a row.';
+  '(one value), no other security claiming that secId carries contradicting or incomparable identity evidence '
+  '(ISIN issuer code / name), and the issuer exists; conflict = more than one secId observed, or the secId is '
+  'disputed (issuer_id cleared, never guessed; reasons and evidence_observation_ids keep the cause). The current '
+  'decision for a security is its highest id. A changed evidence set adds a row.';
 
 create table filing_issuer_links (
   id bigint generated always as identity primary key,
@@ -151,7 +170,8 @@ create index idx_filing_issuer_links_issuer on filing_issuer_links(issuer_id);
 comment on table filing_issuer_links is
   'Stage F5: append-only filing -> issuer decisions. F1 (report_filings) is not altered. evidenced = the document '
   'path prefix and/or the listing symbols'' evidenced secIds name exactly one secId and that issuer exists; '
-  'conflict = they disagree or a listing security is itself in conflict; unresolved = no usable evidence (an '
+  'conflict = they disagree, a listing security is itself in conflict, or the secId is disputed by the reuse '
+  'guard; unresolved = no usable evidence (an '
   'issuer is never created from a path prefix alone). Current decision = highest id per filing.';
 
 create trigger trg_issuers_immutable before update or delete on issuers

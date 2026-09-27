@@ -12,24 +12,50 @@ Rules (rule_version ISSUER_RULE_VERSION):
 - Observations: every identifier field CSE returned is recorded as-is, one row
   per field that carries an issuer secId (so two disagreeing fields stay visible).
 - Security -> issuer: 'evidenced' when every secId ever observed for the security
-  is one value; 'conflict' when more than one (issuer cleared - never guessed);
-  no row when none was observed.
+  is one value AND that secId passes the reuse guard below; 'conflict' when more
+  than one secId was observed (issuer cleared - never guessed); no row when none
+  was observed. Every conflict states its reasons.
+- secId reuse guard (f5.issuer.2). A secId is never enough on its own to put two
+  securities under one issuer. The CLAIMANTS of a secId are all securities with
+  at least one observation carrying it. Two claimants (or one claimant against
+  itself over time) are the same issuer only when the identity evidence observed
+  WITH that secId agrees:
+    * the CSE ISIN issuer code (LK + 4 digits: LK0053N00005 -> 0053) when both
+      sides carry one - every code seen must be the same single code;
+    * otherwise the normalised names (upper case, punctuation/space collapsed)
+      when both sides carry one - every name seen must be the same single name;
+    * otherwise (two different claimants, nothing comparable) it is NOT
+      established.
+  If any pair fails, the secId is DISPUTED: every claimant gets 'conflict'
+  (reasons name the failing pair), whichever was observed first; no issuer is
+  created for a disputed secId; an issuer that already exists is left untouched
+  (rows are immutable) but receives no new evidenced link; and a filing whose
+  path / listing evidence resolves to a disputed secId is 'conflict'. The
+  dispute is decided from all observations ever recorded (append-only), so it
+  cannot silently revert to 'evidenced'; clearing it is a manual review, not
+  implemented here.
 - Filing -> issuer: the document path prefix and the listing symbols' evidenced
   secIds must name exactly one secId whose issuer exists -> 'evidenced'
   (basis: path, listing or both). Disagreement, or a listing security in conflict
-  -> 'conflict'. No usable evidence, or a secId with no issuer yet -> 'unresolved'.
-  An issuer is never created from a path prefix alone.
+  -> 'conflict', as is a disputed secId (above). No usable evidence, or a secId
+  with no issuer yet -> 'unresolved'. An issuer is never created from a path
+  prefix alone.
 - secId is the primary CURRENT evidence of identity, not proof of permanence:
-  issuers are never merged and predecessor/successor lineage is not modelled (F8).
+  issuer rows are never updated, merged or deleted, and predecessor/successor
+  lineage is not modelled (F8). The unique secId index on issuers only stops a
+  second issuer ROW for a secId; it is the reuse guard above that stops an
+  unrelated security or filing from being evidenced to an existing issuer.
 """
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
 from .financial_candidates import path_sec_id
 
-ISSUER_RULE_VERSION = "f5.issuer.1"
+ISSUER_RULE_VERSION = "f5.issuer.2"
+_CSE_ISIN = re.compile(r"^LK(\d{4})[A-Z]\d{5}$")
 
 
 def _sha(obj):
@@ -93,6 +119,18 @@ def observations_from_all_security_codes(items, observed_at, source_ref=None):
     return out
 
 
+def isin_issuer_code(isin):
+    """Issuer code of a CSE ISIN (LK + 4-digit issuer code + class letter + 5 digits; LK0053N00005 -> '0053').
+    None for a missing or differently shaped ISIN, which is then not used as identity evidence."""
+    m = _CSE_ISIN.match(str(isin or "").strip().upper())
+    return m.group(1) if m else None
+
+
+def normalise_name(name):
+    s = re.sub(r"[^0-9A-Z]+", " ", str(name or "").upper()).strip()
+    return s or None
+
+
 @dataclass
 class SecurityDecision:
     symbol: str
@@ -102,24 +140,92 @@ class SecurityDecision:
     evidence_observation_ids: list
     first_evidence_at: Optional[str]
     last_evidence_at: Optional[str]
+    reasons: list = field(default_factory=list)     # why a decision is 'conflict' (empty when evidenced)
     rule_version: str = ISSUER_RULE_VERSION
 
     @property
     def evidence_sha256(self):
         return _sha({"symbol": self.symbol, "status": self.link_status, "sec_ids": self.observed_sec_ids,
-                     "rule": self.rule_version})
+                     "reasons": self.reasons, "rule": self.rule_version})
+
+
+def _span(ev):
+    times = sorted(str(o["observed_at"]) for o in ev if o.get("observed_at") is not None)
+    return sorted({o["id"] for o in ev if o.get("id") is not None}), (times[0] if times else None), (times[-1] if times else None)
 
 
 def decide_security(symbol, observations):
-    """observations: dicts with id, cse_sec_id, observed_at (any source). None when no secId was observed."""
+    """Per-security step only (secId agreement); decide_securities also applies the secId reuse guard.
+    observations: dicts with id, cse_sec_id, observed_at (any source). None when no secId was observed."""
     ev = [o for o in observations if o.get("cse_sec_id") is not None]
     if not ev:
         return None
     secs = sorted({o["cse_sec_id"] for o in ev})
-    times = sorted(str(o["observed_at"]) for o in ev if o.get("observed_at") is not None)
-    return SecurityDecision(symbol, "evidenced" if len(secs) == 1 else "conflict", secs[0] if len(secs) == 1 else None,
-                            secs, sorted(o["id"] for o in ev if o.get("id") is not None),
-                            times[0] if times else None, times[-1] if times else None)
+    ids, first, last = _span(ev)
+    if len(secs) == 1:
+        return SecurityDecision(symbol, "evidenced", secs[0], secs, ids, first, last)
+    return SecurityDecision(symbol, "conflict", None, secs, ids, first, last, ["sec_ids_disagree"])
+
+
+def _identity(observations):
+    """(ISIN issuer codes, normalised names) carried by a claimant's observations of its secId."""
+    codes = {c for c in (isin_issuer_code(o.get("isin")) for o in observations) if c}
+    names = {n for n in (normalise_name(o.get("name")) for o in observations) if n}
+    return codes, names
+
+
+def _same_issuer(a, b, same_security):
+    """None when the identity evidence establishes one issuer, else the failure kind."""
+    (codes_a, names_a), (codes_b, names_b) = a, b
+    if codes_a and codes_b:
+        return None if len(codes_a | codes_b) == 1 else "isin_issuer_code_differs"
+    if names_a and names_b:
+        return None if len(names_a | names_b) == 1 else "name_differs"
+    return None if same_security else "identity_evidence_insufficient"
+
+
+def disputed_sec_ids(observations_by_symbol):
+    """secId -> {symbol: [failure reasons]} for every DISPUTED secId. The claimants of a secId are all securities
+    with at least one observation carrying it; each is compared with every claimant, itself included."""
+    claimants = {}
+    for s, obs in observations_by_symbol.items():
+        for o in obs:
+            if o.get("cse_sec_id") is not None:
+                claimants.setdefault(o["cse_sec_id"], {}).setdefault(s, []).append(o)
+    out = {}
+    for sec, ev in claimants.items():
+        symbols = sorted(ev)
+        ident = {s: _identity(ev[s]) for s in symbols}
+        failures = {s: set() for s in symbols}
+        for i, a in enumerate(symbols):
+            for b in symbols[i:]:
+                kind = _same_issuer(ident[a], ident[b], a == b)
+                if kind:
+                    failures[a].add(f"{kind}:{b}")
+                    failures[b].add(f"{kind}:{a}")
+        if any(failures.values()):
+            out[sec] = {s: sorted(f) for s, f in failures.items()}
+    return out
+
+
+def decide_securities(observations_by_symbol):
+    """symbol -> observations (dicts with id, cse_sec_id, isin, name, observed_at; any source). Returns symbol ->
+    SecurityDecision for every symbol with a secId observation, with the secId reuse guard applied: every claimant
+    of a disputed secId is 'conflict'. The result does not depend on the order of symbols or observations."""
+    decisions = {s: d for s, d in ((s, decide_security(s, obs)) for s, obs in sorted(observations_by_symbol.items()))
+                 if d is not None}
+    disputed = disputed_sec_ids(observations_by_symbol)
+    for s, d in decisions.items():
+        secs = [sec for sec in d.observed_sec_ids if s in disputed.get(sec, {})]
+        if not secs:
+            continue
+        # evidence = this security's secId observations + every claimant's observations of the disputed secId(s)
+        ids, first, last = _span([o for sym, obs in observations_by_symbol.items() for o in obs
+                                  if o.get("cse_sec_id") is not None and (sym == s or o["cse_sec_id"] in secs)])
+        failures = sorted({f for sec in secs for f in disputed[sec][s]})
+        decisions[s] = SecurityDecision(s, "conflict", None, d.observed_sec_ids, ids, first, last,
+                                        list(d.reasons) + [f"sec_id_identity_disputed:{sec}" for sec in secs] + failures)
+    return decisions
 
 
 @dataclass
@@ -143,9 +249,10 @@ class FilingDecision:
                      "conflicts": self.listing_conflicts, "reasons": self.reasons, "rule": self.rule_version})
 
 
-def decide_filing(cse_filing_id, path, listing_symbols, security_links, issuers_by_sec_id):
+def decide_filing(cse_filing_id, path, listing_symbols, security_links, issuers_by_sec_id, disputed):
     """security_links: symbol -> (link_status, sec_id) of the CURRENT security decision (absent = none);
-    issuers_by_sec_id: secId -> issuer_id of existing issuers."""
+    issuers_by_sec_id: secId -> issuer_id of existing issuers; disputed: secIds disputed by the reuse guard
+    (a filing resolving to one is 'conflict', never evidenced to that secId's existing issuer)."""
     symbols = sorted(set(listing_symbols or []))
     psec = path_sec_id(path)
     listing, conflicts, reasons = set(), [], []
@@ -172,7 +279,10 @@ def decide_filing(cse_filing_id, path, listing_symbols, security_links, issuers_
     elif len(secs) == 1:
         sec = next(iter(secs))
         dec.sec_id = sec
-        if sec in issuers_by_sec_id:
+        if sec in disputed:
+            dec.status = "conflict"
+            dec.reasons.append("sec_id_identity_disputed")
+        elif sec in issuers_by_sec_id:
             dec.status, dec.issuer_id = "evidenced", str(issuers_by_sec_id[sec])
         else:
             dec.reasons.append("no_issuer_for_sec_id")

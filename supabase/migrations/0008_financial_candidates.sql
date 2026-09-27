@@ -25,7 +25,8 @@
 -- chain consistency checked on insert.
 --
 -- Security note: as 0007 — only the Supabase API roles' access to these NEW
--- tables is revoked; RLS remains the pending 0006's job.
+-- tables is revoked; RLS remains the job of the pending security migration,
+-- which must be resolved before production deployment (number undecided).
 --
 -- Run AFTER 0007. Touches no existing table.
 -- =============================================================================

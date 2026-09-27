@@ -216,7 +216,9 @@ scoring in `tests/f4_gold.py`). Needs the pinned Poppler (Linux).
     report_filings -> F2 temp document -> F3 -> F4 -> F5 candidates (in memory) -> F2 deletes -> persisted candidates -> F6
 
 Migrations `0007_issuers.sql` and `0008_financial_candidates.sql` (PostgreSQL 15+;
-apply after 0005, and after the pending security migration 0006 once it exists).
+apply after 0005). The pending security migration (RLS, default privileges) must be
+resolved before the F5 schema is deployed to production; its final number (it was
+planned as 0006) is a separate, future decision.
 Candidates are **not facts**: there is no `financial_facts` table (F6), no
 `available_at` policy, no economic-fact identity and no supersession (F8).
 
@@ -225,8 +227,18 @@ Candidates are **not facts**: there is no `financial_facts` table (F6), no
   share classes, equal to its document-path prefix) is the primary CURRENT evidence,
   not proof of permanence. Append-only identifier observations; append-only
   security -> issuer decisions (`evidenced` / `conflict`) and filing -> issuer
-  decisions (`evidenced` / `conflict` / `unresolved`). Issuers are never merged and
-  never created from a path prefix alone.
+  decisions (`evidenced` / `conflict` / `unresolved`). Issuer rows are never
+  updated, merged or deleted, and never created from a path prefix alone.
+  **secId reuse guard** (rule `f5.issuer.2`): the unique secId index only prevents a
+  second issuer row; a shared secId alone never links two securities to one issuer.
+  Securities claiming the same secId are linked only when the identity evidence
+  observed with it agrees (CSE ISIN issuer code, `LK0053N00005` -> `0053`; the
+  normalised name where either side lacks an ISIN). Otherwise the secId is disputed:
+  every claimant is `conflict` (with reasons), no issuer is created for it, an
+  existing issuer stays untouched but gets no new evidenced link, and filings
+  resolving to it are `conflict` — independent of which security was seen first,
+  and it never reverts to `evidenced` by itself (manual review is not implemented).
+  A genuine rename observed without an ISIN is also flagged `conflict`.
 
       python -m worker.link_issuers --from-market-observations --link-filings all
 
@@ -277,7 +289,9 @@ must be decided before F7 backfill or sustained live operation.
 F5 tests (offline): `test_f5_concepts.py`, `test_f5_candidates.py`,
 `test_f5_issuer_identity.py`, `test_f5_lifecycle.py`. Gated: `F5_TEST_DATABASE_URL`
 (scratch Postgres 15+, CREATE DATABASE/ROLE) — `test_f5_postgres.py` applies
-0001–0008 and runs the stores as the restricted worker role.
+0001–0008 and runs the stores as the restricted worker role;
+`test_f5_issuer_reuse_postgres.py` runs the secId-reuse scenarios (either insertion
+order, one batch) each in a fresh database.
 
 ---
 
