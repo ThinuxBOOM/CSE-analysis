@@ -211,6 +211,74 @@ F4 tests (offline): `test_financial_values.py`, `test_pdf_words.py`,
 (`tests/fixtures/filings/f4_gold_values.json`: listing metadata + expected values only;
 scoring in `tests/f4_gold.py`). Needs the pinned Poppler (Linux).
 
+## Stage F5 — issuer identity, v1 concepts, fact CANDIDATES (Design B)
+
+    report_filings -> F2 temp document -> F3 -> F4 -> F5 candidates (in memory) -> F2 deletes -> persisted candidates -> F6
+
+Migrations `0007_issuers.sql` and `0008_financial_candidates.sql` (PostgreSQL 15+;
+apply after 0005, and after the pending security migration 0006 once it exists).
+Candidates are **not facts**: there is no `financial_facts` table (F6), no
+`available_at` policy, no economic-fact identity and no supersession (F8).
+
+- `worker/issuer_identity.py` + `issuer_store.py` + CLI `link_issuers.py` — an
+  internal, immutable `issuer_id`; CSE's issuer-level `secId` (shared by an issuer's
+  share classes, equal to its document-path prefix) is the primary CURRENT evidence,
+  not proof of permanence. Append-only identifier observations; append-only
+  security -> issuer decisions (`evidenced` / `conflict`) and filing -> issuer
+  decisions (`evidenced` / `conflict` / `unresolved`). Issuers are never merged and
+  never created from a path prefix alone.
+
+      python -m worker.link_issuers --from-market-observations --link-filings all
+
+- `worker/financial_concepts.py` — vocabulary v1 (36 active concepts; insurance
+  reserved) and deterministic, versioned label rules (`MAPPER_VERSION`). A label
+  matching several concepts is `ambiguous`. The bank/finance template comes from the
+  document's own income-statement labels (`net interest income`), never from
+  `companies.sector`; under it generic `revenue` has no rule.
+- `worker/financial_candidates.py` — pure F4 -> F5 builder, run inside the F2
+  consumer. Persists only statements with candidates, their period columns, mapped
+  rows and candidates (no PDF, no text, no unmapped cells).
+  - `period_kind` (`instant` | `duration`) must equal the concept's (I-1, also a
+    composite FK); `period_class` (`3m` `6m` `9m` `12m` `other_Nm` `unspecified`)
+    only for durations, from the column's own duration — never the title or
+    `manualDate`. `fiscal_label` only from a documented F3 fiscal year-end under a
+    `confirmed` / `document_only` F3 period.
+  - Values exactly as printed: raw text, F4's parsed `Decimal`, representation,
+    sign as printed, reported scale and currency. No sign flip, no dash -> 0, no
+    currency default/conversion, no scaled amount.
+  - `role_trust` / `audit_trust` are `trusted` only under a `confirmed` /
+    `document_only` F3 period. **`audit_trust = trusted` means only "passed the F5
+    v1 provenance rule"**, not a proven audit status of the column;
+    `audit_evidence_source` keeps `f3_cover_page_inference` distinct from
+    `column_header_word` and never upgrades it.
+  - Canonical scope: `consolidated` <- group; `separate` <- company/bank only beside
+    a group column of the same statement; otherwise `unresolved` (`bank` is not
+    `separate` by itself).
+  - Each run keeps the raw timestamp snapshot (uploaded / authorized + raw strings,
+    path epoch, CDN `Last-Modified`, F1 first-seen, retrieval time, `recorded_at`);
+    none of them is an availability time.
+- `worker/financial_candidates_store.py` + CLI `extract_financial_candidates.py` —
+  append-only persistence (UPDATE/DELETE/TRUNCATE rejected by triggers); identical
+  input + versions -> `already_present`; a new mapper/vocabulary version -> a new run.
+  Nothing is persisted unless the consumer succeeded and F2 verified the deletion.
+
+      python -m worker.extract_financial_candidates --db-ids 52157,52620 --write-db --report-file f5.json
+
+Known limits: mapped-only persistence means a later concept needs the document
+downloaded again; v1 rules were checked on 19 benchmark documents only (no insurer,
+few banks); `secId` permanence across restructurings is unverified.
+
+**Cross-phase blocker (not solved in F5):** the current market-data schema
+(`raw_market_observations` + `daily_market_data`) measures ~540 MB per year of
+full-universe two-window capture — incompatible with the Supabase Free 500 MB
+target before any F5 data. Raw-observation retention / compression / aggregation
+must be decided before F7 backfill or sustained live operation.
+
+F5 tests (offline): `test_f5_concepts.py`, `test_f5_candidates.py`,
+`test_f5_issuer_identity.py`, `test_f5_lifecycle.py`. Gated: `F5_TEST_DATABASE_URL`
+(scratch Postgres 15+, CREATE DATABASE/ROLE) — `test_f5_postgres.py` applies
+0001–0008 and runs the stores as the restricted worker role.
+
 ---
 
 # Stage B — Single-Company Vertical Slice
