@@ -12,6 +12,10 @@ from typing import Any
 
 P2_TABLES = ("market_capture_runs", "market_capture_run_events", "market_capture_block_acknowledgements",
              "market_response_bodies", "market_source_responses", "market_capture_security_results")
+# The capture worker may READ these but never insert (G-1 owner review; migration 0013).
+OWNER_ONLY_TABLES = ("market_capture_block_acknowledgements",)
+# P1's owner-delegation login: only root reaches its OS user (sudo); it acts as cse_owner via SET LOCAL ROLE.
+OWNER_PATH_ROLE = "cse_migrator"
 # One P2 process at a time may contact CSE (G-1: no parallel requests, even across processes). Session-level, so it
 # is released automatically when the process dies - which is how a dead 'running' run is recognised as abandoned.
 GLOBAL_LOCK_KEY = 4_346_836_117_002_312          # the migration runner uses ...311
@@ -132,11 +136,22 @@ def unacknowledged_blocks(conn):
     return [{"run_id": str(r[0]), "trading_date": str(r[1]), "capture_mode": r[2], "reason": r[3]} for r in rows]
 
 
-def acknowledge_block(conn, run_id, note):
+def acknowledge_block_as_owner(conn, run_id, note, operator=None):
+    """G-1 owner review of a blocked run. Accepted ONLY from P1's owner-delegation login (cse_migrator, which only root
+    can reach, via `sudo ops/bin/cse-capture acknowledge-block`), acting as cse_owner through SET LOCAL ROLE for
+    exactly this one INSERT in one transaction. The capture worker cannot do this: it has no INSERT privilege on the
+    table (0013), is not a member of cse_owner (so cannot SET ROLE to it), and the table's guard trigger refuses any
+    service-role session. The blocked -> running transition still requires this row (0012 trigger)."""
+    who = _q(conn, "select session_user", fetch="one")[0]
+    if who != OWNER_PATH_ROLE:
+        raise RunRefused(f"acknowledge-block is an owner action (G-1): connected as {who!r}; run it with "
+                         f"`sudo bash ops/bin/cse-capture acknowledge-block ...`, which runs as {OWNER_PATH_ROLE}")
+    recorder = f"{os_user()} (operator: {operator})" if operator else os_user()
     try:
         with conn.cursor() as cur:
-            cur.execute("insert into market_capture_block_acknowledgements (run_id, note, os_user) values (%s, %s, %s) "
-                        "returning id", (run_id, note, os_user()))
+            cur.execute("set local role cse_owner")
+            cur.execute("insert into market_capture_block_acknowledgements (run_id, note, os_user, acknowledged_by) "
+                        "values (%s, %s, %s, session_user) returning id", (run_id, note, recorder))
             ack = str(cur.fetchone()[0])
         conn.commit()
     except BaseException:
@@ -155,8 +170,9 @@ def seconds_since_last_request(conn, now):
 
 def security_preflight(conn, expected_role):
     """Problems (list of str) with the capture role; [] means the P1 role model holds for P2. Checked before every
-    CSE-contacting command: the worker must not be a superuser, an owner, the migration role or the backup role,
-    must not be able to rewrite archived evidence, and the append-only triggers must be in place."""
+    capture-role command: the worker must not be a superuser, an owner, the migration role or the backup role,
+    must not be able to rewrite archived evidence or acknowledge its own block, and the append-only triggers must be
+    in place."""
     import psycopg2
     problems = []
     who = _q(conn, "select current_user, r.rolsuper, r.rolcreaterole, r.rolcreatedb, r.rolreplication, r.rolbypassrls "
@@ -190,9 +206,16 @@ def _role_checks(conn, user):
         for priv in ("UPDATE", "DELETE", "TRUNCATE"):
             if _q(conn, "select has_table_privilege(current_user, %s, %s)", (f"public.{t}", priv), fetch="one")[0]:
                 problems.append(f"{user} has {priv} on {t}")
-        if not _q(conn, "select has_table_privilege(current_user, %s, 'INSERT') and "
-                        "has_table_privilege(current_user, %s, 'SELECT')", (f"public.{t}", f"public.{t}"),
-                  fetch="one")[0]:
+        can_insert, can_select = _q(conn, "select has_table_privilege(current_user, %s, 'INSERT'), "
+                                          "has_table_privilege(current_user, %s, 'SELECT')",
+                                    (f"public.{t}", f"public.{t}"), fetch="one")
+        if t in OWNER_ONLY_TABLES:
+            if can_insert:
+                problems.append(f"{user} can INSERT into {t}: G-1 block acknowledgements are owner-only "
+                                f"(apply migration 0013)")
+            if not can_select:
+                problems.append(f"{user} lacks SELECT on {t}")
+        elif not (can_insert and can_select):
             problems.append(f"{user} lacks SELECT/INSERT on {t}")
         trig = _q(conn, "select coalesce(bool_or(tgenabled = 'O' and (tgtype & 1) = 1 and (tgtype & 24) <> 0), false), "
                         "coalesce(bool_or(tgenabled = 'O' and (tgtype & 32) <> 0), false) from pg_trigger "

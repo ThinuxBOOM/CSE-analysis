@@ -46,6 +46,7 @@ No frozen file is modified. A unit test pins the SHA-256 of every Stage E module
 | Path | Purpose |
 |---|---|
 | `supabase/migrations/0012_market_capture_archive.sql` | Run ledger, events, block acknowledgements, bodies, attempts and per-security results. All append-only. |
+| `supabase/migrations/0013_market_capture_owner_acknowledgement.sql` | Review fix: block acknowledgements become owner-only. It revokes the worker's INSERT and adds a guard that refuses service-role sessions. |
 | `worker/market_capture/config.py` | G-1 request policy (bounded), capture policies, endpoint specs, User-Agent. |
 | `worker/market_capture/http.py` | Transport (exact bytes, no proxies or cookies, no redirects), throttle, classification, retry and backoff. |
 | `worker/market_capture/archive.py` | Journal, then spool, then PostgreSQL archive; spool recovery. |
@@ -71,7 +72,7 @@ Run every command as `sudo bash /opt/cse/app/ops/bin/cse-capture <command> …`.
 | `status --run-id UUID \| --trading-date YYYY-MM-DD` | no | State history plus dimensions A–E (read-only). |
 | `protection --run-id UUID` | no | The same as `status`, run as `cse-backup` so dimension F can be evaluated. |
 | `record-missed --trading-date D --mode M --reason TEXT` | no | Records that a capture did not happen in its window. |
-| `acknowledge-block --run-id UUID --note TEXT` | no | Owner review after CSE blocked or rate-limited a run (G-1). |
+| `acknowledge-block --run-id UUID --note TEXT` | no | **Owner** review after CSE blocked or rate-limited a run (G-1). It runs through the owner path, **never as the capture worker** (§9). |
 | `verify-archive --run-id UUID` | no | Recomputes every body's SHA-256 from PostgreSQL **and** from the spool. |
 | `export-company-info --run-id UUID --out FILE` | no | Exports companyInfoSummery bodies in F5 `link_issuers --company-info-json` format. Refuses paths inside the repository. |
 
@@ -101,9 +102,9 @@ There is deliberately **no purge or delete command** (§12).
 |---|---|---|
 | 1. Sparse, sequential | The P0.5 minimum plan (below); a non-reentrant lock around every request; a PostgreSQL advisory lock so only one P2 process runs at a time | `test_no_parallel_requests_even_from_threads`, `test_one_capture_process_at_a_time` |
 | 2. At least 1.5 s apart | `Throttle`: at least `min_interval` from the **end** of one request to the **start** of the next. Also seeded from the archive's last request, so the gap holds across processes. `RequestPolicy` refuses values below 1.5 s. | `test_requests_are_sequential_spaced_and_identified`, `test_request_spacing_holds_across_processes`, `test_min_interval_can_never_go_below_one_and_a_half_seconds` |
-| 3. Backoff on errors and rate limiting | 5xx, network errors, timeouts and unusable bodies back off at 5 s × 2^(n−1), capped at 120 s (ceiling 600 s), within bounded attempts per purpose (at most 5). 429 honours `Retry-After` up to 300 s; a longer request stops the run. At most 5 consecutive failures end the run (circuit breaker). | `test_server_error_backoff_is_exponential_and_bounded`, `test_429_backoff_and_long_retry_after`, `test_circuit_breaker_stops_a_run_that_cannot_reach_cse` |
+| 3. Backoff on errors and rate limiting | 5xx, network errors, timeouts and unusable bodies back off at 5 s × 2^(n−1), capped at 120 s (ceiling 600 s), within bounded attempts per purpose (at most 5). 429 honours `Retry-After` up to 300 s; a longer request stops the run. **Circuit breaker:** any 5 consecutive non-OK attempts of **any** classification stop the run. That includes non-retryable ones (`http_error`, `unexpected_redirect`, `too_large`), across request keys, and is checked before the "not retried" decision. A block still stops the run at once, and 429 keeps its own `Retry-After` handling; if the 5th failure is a 429, the run ends as rate-limited (`blocked`). | `test_server_error_backoff_is_exponential_and_bounded`, `test_429_backoff_and_long_retry_after`, `test_circuit_breaker_stops_a_run_that_cannot_reach_cse`, `test_circuit_breaker_counts_non_retryable_http_errors`, `test_circuit_breaker_resets_on_success`, `test_circuit_breaker_stops_a_capture_run_on_non_retryable_errors` |
 | 4. Identifiable User-Agent with a contact e-mail | `cse-analysis-capture/p2.capture.1 (personal non-commercial research; contact: <CSE_CAPTURE_CONTACT_EMAIL>)`. Commands that contact CSE refuse to start without a valid address. | `test_user_agent_requires_a_contact_email`, `test_capture_refused_without_contact_email_before_any_connection` |
-| 5 and 6. Never bypass; no proxies or IP rotation | `trust_env=False` (environment proxies and `.netrc` ignored), `proxies={}`, no redirects followed. 401/403/407/451 stop the run immediately with no retry. After a block, **every** later capture or resume is refused until the owner records `acknowledge-block` (enforced in code and by a database trigger). | `test_transport_ignores_proxy_environment_and_never_sends_cookies`, `test_403_stops_the_run_at_once_and_gates_every_later_capture` |
+| 5 and 6. Never bypass; no proxies or IP rotation | `trust_env=False` (environment proxies and `.netrc` ignored), `proxies={}`, no redirects followed. 401/403/407/451 stop the run immediately with no retry. After a block, **every** later capture or resume is refused until the **owner** records `acknowledge-block` (enforced in code and by a database trigger). The capture worker **cannot** record it (§9). | `test_transport_ignores_proxy_environment_and_never_sends_cookies`, `test_403_stops_the_run_at_once_and_gates_every_later_capture`, `test_worker_cannot_acknowledge_a_block_but_the_owner_path_can` |
 | No credentials or cookies | The cookie policy stores none, so none is ever sent. `Set-Cookie`, `WWW-Authenticate` and similar headers are removed from the archive; only their names are kept. | `test_sensitive_headers_are_dropped_but_named` |
 | 7 and 8. No redistribution; nothing in Git | There is no export except the local F5 file, which refuses repository paths. Bodies live only in PostgreSQL, the spool and encrypted backups. | `test_metadata_sweep_archives_only_and_exports_f5_input` |
 | 10. Stop if CSE asks | Blocks stop the run and gate further capture. An explicit cessation request is an owner action: no capture runs without an operator (there are no timers in P2). | — |
@@ -139,13 +140,13 @@ Only after every response of the run is archived are raw observations derived, c
 - **Numbers never clash.** `sequence_no` (per run) and `attempt_no` (per request key) continue across resumes and take journal intents into account, so a crash between the spool and the database can't produce a duplicate number.
 - **An HTTP success alone never counts as captured.** Only an attempt with outcome `ok` and a committed row does.
 
-**PostgreSQL (migration 0012), all tables append-only:**
+**PostgreSQL (migrations 0012 and 0013), all tables append-only:**
 
 | Table | Contents |
 |---|---|
 | `market_capture_runs` | Immutable run identity: `id` (= the Stage E `request_attempt_id` of every observation the run derives), kind, **explicit** trading date and its basis (`operator`; `scheduler` reserved for P3), mode, full policy snapshot, User-Agent, tool version, code revision, host, OS user. |
 | `market_capture_run_events` | The state history (§6). The latest event is the current state. The `market_capture_run_state` view shows it. |
-| `market_capture_block_acknowledgements` | The owner's review of a blocked run. The note must be at least 10 characters. |
+| `market_capture_block_acknowledgements` | The **owner's** review of a blocked run. The note must be at least 10 characters. It is inserted only through the owner path; it records `acknowledged_by` (the login role) and the OS user plus the sudo operator. The capture worker can read it but not insert (0013). |
 | `market_response_bodies` | Exact bytes, content-addressed by SHA-256, stored once however often they are received. |
 | `market_source_responses` | One row per HTTP attempt: request key and purpose, sequence and attempt numbers, trading date, mode, endpoint, method, URL, params, sanitized request headers, User-Agent, security symbol, requested/observed time, elapsed ms, outcome, HTTP status, sanitized response headers plus the names of removed ones, body SHA-256 and size, whether identical bytes were already archived, parse status, error, spool keys, and `recovered_from_spool`. |
 | `market_capture_security_results` | Per security per derivation pass (`capture` / `resume` / `reprocess`): universe and tradeSummary membership, role, cross-check flag, the response ids used, raw status and observation id, canonical status, reconciliation and validation status, reason. |
@@ -178,12 +179,12 @@ Only after every response of the run is archived are raw observations derived, c
                   \          -> partial   -> running (resume / reprocess)
                    \         -> failed    -> running (resume / reprocess)
                     \        -> abandoned -> running (resume / reprocess)   [found dead by the next command]
-                     \       -> blocked   -> running ONLY after an owner acknowledgement (G-1)
+                     \       -> blocked   -> running ONLY after an OWNER acknowledgement (G-1; owner path, §9)
                       -> missed                                  (final; `record-missed`)
 ```
 
 - A database trigger enforces the transitions: consecutive sequence numbers, legal transitions only, and `blocked` → `running` only with an acknowledgement.
-- **`succeeded`:** tradeSummary archived (A), universe known (B), every expected raw observation produced (C), and the snapshot shows the trading date (E1).
+- **`succeeded`:** an `ok` tradeSummary attempt is committed in the PostgreSQL archive (A), universe known (B), every expected raw observation produced (C), and the snapshot shows the trading date (E1).
 - **`partial`:** A is captured, but B is unknown, C is incomplete, or the run was stopped early (budget, circuit breaker or spool failure). **A stopped run is never `succeeded`.**
 - **`failed`:** tradeSummary not archived, or E1 false.
 - **`blocked`:** CSE refused (401/403/407/451) or kept rate-limiting.
@@ -195,7 +196,7 @@ Only after every response of the run is archived are raw observations derived, c
 
 | Dimension | Question | Where it comes from |
 |---|---|---|
-| **A** Source snapshot | Was tradeSummary archived in both copies? Per-request attempts and last outcome | `market_source_responses` |
+| **A** Source snapshot | Does the PostgreSQL archive hold a successful (`ok`) tradeSummary attempt for the run? Per-request attempts and last outcome. A checks the **database only**. Every `ok` row is committed only after its bytes were spooled and read back SHA-256-verified, but agreement between the database and the spool is verified **separately, on demand**, by `verify-archive`. | `market_source_responses` |
 | **B** Universe | Was allSecurityCode archived? Size, duplicate symbols, members, tradeSummary members, absent securities, tradeSummary-only securities | The archived bodies |
 | **C** Raw observations | Expected (the deterministic plan: universe ∪ tradeSummary for post_close, tradeSummary for post_open), produced, and missing with a reason (`source_missing`, `company_missing`, `mapping_failed`, `insert_failed`, `not_derived`) | `market_capture_security_results` checked against the plan, **never** row counts |
 | **D** Canonicalisation | Written, or failed with reasons. Can be partial while the run is `succeeded`. | Same |
@@ -238,14 +239,29 @@ The reports also give:
 
 | Role | P2 tables |
 |---|---|
-| `cse_worker` (the capture) | SELECT + INSERT only. No UPDATE, DELETE, TRUNCATE or ALTER. Must not be superuser, an owner, or a member of `cse_owner` / `cse_migrator` / `cse_backup` / `pg_read_all_data` |
+| `cse_worker` (the capture) | SELECT + INSERT only, **except `market_capture_block_acknowledgements`: SELECT only** (0013). No UPDATE, DELETE, TRUNCATE or ALTER. Must not be superuser, an owner, or a member of `cse_owner` / `cse_migrator` / `cse_backup` / `pg_read_all_data` |
+| `cse_migrator` (P1's owner-delegation login; OS user `cse-migrator`, reachable only by root via sudo) | No privileges of its own on P2 tables. For `acknowledge-block` only, it acts as `cse_owner` through `SET LOCAL ROLE`, for exactly one INSERT in one transaction |
 | `cse_owner` (NOLOGIN) | Owns everything. Append-only triggers stop even the owner |
 | `cse_reader` | SELECT |
 | `cse_backup` | Read via `pg_read_all_data`; no write |
 | PUBLIC | Nothing |
 
-- Every command that writes runs a **security preflight** first. It checks that the role is `cse_worker` and not elevated, owns nothing, is a member of none of those roles, has no UPDATE/DELETE/TRUNCATE on the archive or raw observations, and that the append-only triggers are present and enabled.
-- The P1 verifier (`verify_server`) still passes with 0012 applied.
+- Every capture-role command that writes runs a **security preflight** first. It checks that:
+  - the role is `cse_worker` and not elevated;
+  - it owns nothing and is a member of none of those roles;
+  - it has no UPDATE/DELETE/TRUNCATE on the archive or raw observations;
+  - it **cannot INSERT a block acknowledgement** (capture is refused until 0013 is applied);
+  - the append-only triggers are present and enabled.
+- **The owner acknowledgement path (G-1).**
+  - `sudo bash ops/bin/cse-capture acknowledge-block …` runs as OS `cse-migrator`, peer-authenticated as `cse_migrator`.
+  - The code refuses any other login role. It then runs `SET LOCAL ROLE cse_owner` and one INSERT in one transaction, recording `acknowledged_by = session_user` and the sudo operator.
+  - It uses no new role, grant or SECURITY DEFINER function. It is P1's existing owner-delegation path (the one migrations use), and this is its only non-migration use.
+  - **The capture worker is refused three ways:**
+    1. no INSERT privilege (0013);
+    2. no membership in `cse_owner`, so it cannot `SET ROLE`;
+    3. the table's guard trigger refuses any session whose *login* role (`session_user`, which `SET ROLE` cannot change) is `cse_worker`, `cse_backup` or `cse_reader`, even if INSERT were ever granted again by mistake.
+  - **Service roles never become owner or superuser.** The `blocked` → `running` trigger rule is unchanged.
+- The P1 verifier (`verify_server`) still passes with 0012 and 0013 applied.
 - **Migration review of 0012:**
   - it is additive, with no ALTER/DROP;
   - PUBLIC gets nothing;
@@ -254,6 +270,12 @@ The reports also give:
   - the reader sees everything (explicit grants plus P1's default privileges);
   - the backup role can read it (`pg_read_all_data`);
   - its hash is recorded by the P1 runner (CRLF-normalised, the same on Windows and Linux).
+- **Migration review of 0013 (review fix):**
+  - it is additive: one REVOKE (the worker's INSERT on `market_capture_block_acknowledgements`) and a replaced trigger-function body (same name, signature and trigger);
+  - it has no GRANT, no new role and no SECURITY DEFINER function;
+  - PUBLIC still gets nothing;
+  - its hash is recorded by the P1 runner;
+  - 0012 stays byte-identical to its committed version, which a unit test pins, because it may already be applied somewhere.
 
 ## 10. Backup boundary
 
@@ -287,7 +309,7 @@ Set `CSE_CAPTURE_CONTACT_EMAIL` in that file.
 sudo CSE_APP_DIR=/opt/cse/app bash /opt/cse/app/ops/provision/provision.sh verify
 ```
 
-- `migrate apply` applies 0012 as `cse_migrator`.
+- `migrate apply` applies 0012 and 0013 as `cse_migrator`.
 - `provision.sh verify` runs the P1 verifier. It checks that the migration ledger is clean and the roles unchanged.
 
 ## 12. Purge design (G-1 §6) — designed, NOT implemented, separately gated
@@ -400,7 +422,11 @@ Rejected alternative: a SECURITY DEFINER function gated by a session flag. It wo
 - **No finality re-polling.** A `post_close` snapshot taken before CSE publishes closing prices is kept verbatim and warned about (E2). Scheduling a later capture is P3's job.
 - **No trading calendar.** `trading_calendar` is not written by P2 (session evidence is recorded instead). Calendar truth is P3's.
 - **No automatic abandoned detection.** A run is marked `abandoned` only when the next P2 command runs. P3's scheduler will run commands regularly.
-- **Master data.** The security master is created from CSE's own `allSecurityCode` entries (never invented), and `companies.cse_active_flag` mirrors CSE's `active`.
+- **Master data.** The security master is created from CSE's own `allSecurityCode` entries (never invented).
+  - `companies.cse_active_flag` mirrors CSE's `active` **only forward in time**. A snapshot updates it only when the `allSecurityCode` response's `observed_at` is strictly newer than the stored `cse_active_flag_checked_at`.
+  - So resuming or reprocessing an older run, or the same run again, never rolls it back. The archive keeps every snapshot.
+- **Owner decision to confirm.** The acknowledgement owner path reuses P1's migration login, `cse_migrator` acting as `cse_owner`, rather than adding a role, since P1's bootstrap alone can create roles.
+  - The alternative is the `postgres` superuser, which is stronger than needed.
 
 ## 15. Testing
 
@@ -430,5 +456,5 @@ No test contacts CSE or sleeps for real; fake clock, fake transport and local se
 At most 4 CSE requests, at least 1.5 s apart: allSecurityCode, tradeSummary, 1 absent fallback, 1 cross-check.
 
 - **Expected state: `partial`, by design.** The absent fallback is limited, so C is incomplete.
-- **Stop immediately on any `blocked` result.** Record `acknowledge-block` only after review.
+- **Stop immediately on any `blocked` result.** Only the owner records `acknowledge-block`, after review.
 - **Check the archive** with `status` and `verify-archive`.

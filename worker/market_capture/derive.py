@@ -212,7 +212,9 @@ def _bool_active(v):
 def ensure_companies(conn, universe, ts_by_symbol, checked_at):
     """{symbol: company_id} for every security of the run. Missing security-master rows are created from CSE's own
     allSecurityCode entry (or, for a symbol only in tradeSummary, its row) - name and active flag as CSE reports them;
-    a symbol with no name in either source gets no row (never invented). cse_active_flag mirrors allSecurityCode."""
+    a symbol with no name in either source gets no row (never invented). cse_active_flag mirrors allSecurityCode as of
+    `checked_at` (the observed_at of the archived allSecurityCode response the flags come from) and is only ever moved
+    forward in time (see below)."""
     symbols = [e["symbol"] for e in universe] + sorted(set(ts_by_symbol) - {e["symbol"] for e in universe})
     names = {s: (r or {}).get("name") for s, r in ts_by_symbol.items()}
     names.update({e["symbol"]: e["name"] or names.get(e["symbol"]) for e in universe})
@@ -239,10 +241,14 @@ def ensure_companies(conn, universe, ts_by_symbol, checked_at):
                     created.append(sym)
                 ids[sym] = str(row[0])
             flags = [(s, active[s]) for s in active if active[s] is not None and s in ids]
-            if flags:
+            if flags and checked_at is not None:
+                # The current-state projection only moves FORWARD: a snapshot updates the mirror only when it is
+                # strictly newer than the one already recorded, so resuming or reprocessing an older run (or the same
+                # run again) never rolls cse_active_flag back. The archive itself keeps every snapshot unchanged.
                 cur.execute("update companies c set cse_active_flag = v.active, cse_active_flag_checked_at = %s "
-                            "from unnest(%s::text[], %s::boolean[]) as v(ticker, active) where c.ticker = v.ticker",
-                            (checked_at, [f[0] for f in flags], [f[1] for f in flags]))
+                            "from unnest(%s::text[], %s::boolean[]) as v(ticker, active) where c.ticker = v.ticker "
+                            "and (c.cse_active_flag_checked_at is null or c.cse_active_flag_checked_at < %s)",
+                            (checked_at, [f[0] for f in flags], [f[1] for f in flags], checked_at))
         conn.commit()
     except BaseException:
         conn.rollback()

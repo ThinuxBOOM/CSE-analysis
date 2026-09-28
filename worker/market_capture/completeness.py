@@ -1,7 +1,10 @@
 """
 Completeness of a run, as SEPARATE dimensions (never one boolean), all computed from what is in the database:
 
-  A  source snapshot capture      was tradeSummary (the market snapshot) archived in both copies?
+  A  source snapshot capture      does the PostgreSQL archive hold a successful ('ok') tradeSummary attempt for the
+                                  run? (Such a row is only ever committed after its bytes were spooled and read back
+                                  SHA-256-verified, but A itself checks the database only; spool-vs-database agreement
+                                  is verified separately and on demand by `verify-archive`.)
   B  universe completeness        was allSecurityCode archived, and how does tradeSummary relate to that universe?
   C  raw observation completeness were the EXPECTED raw observations produced? (explicit per-security outcomes,
                                   checked against the deterministic plan - never inferred from row counts)

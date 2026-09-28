@@ -11,6 +11,8 @@ G-1 controls enforced here:
   - bounded exponential backoff on server errors, network failures, timeouts and unusable bodies;
   - HTTP 429: Retry-After honoured within a bound, a longer one ends the run (never retried early);
   - HTTP 401/403/407/451: the run STOPS at once (no retry, no alternative path);
+  - circuit breaker: any 5 (max_consecutive_failures) consecutive non-OK attempts of ANY classification - retryable or
+    not, across request keys - stop the run (the two rules above take precedence);
   - requests.Session with trust_env=False (environment proxies ignored), no proxies, a cookie policy that stores none
     (so none is ever sent), redirects not followed (recorded instead);
   - the configured identifiable User-Agent on every request.
@@ -303,10 +305,12 @@ class Requester:
                 result.ok, result.parsed = archived, parsed
                 return result
             self.consecutive_failures += 1
+            # 1. a block stops the run at once (never retried)
             if outcome == "blocked":
                 raise Blocked(f"CSE refused {spec.request_key} with HTTP {ex.status}: capture stopped (G-1)", archived)
             last = i == allowed - 1
             delay = None
+            # 2. 429 keeps its own Retry-After handling; exhausting it ends the run as rate-limited (blocked)
             if outcome == "rate_limited":
                 wanted = retry_after_seconds(ex.response_headers, self.wall())
                 if wanted is not None and wanted > self.policy.retry_after_max_seconds:
@@ -315,12 +319,16 @@ class Requester:
                 if last:
                     raise RateLimited(f"CSE kept rate-limiting {spec.request_key}; capture stopped (G-1)", archived)
                 delay = wanted
-            elif outcome not in RETRYABLE:
-                return result                              # http_error, redirect, too_large: not retried
+            # 3. circuit breaker: ANY N consecutive non-OK attempts - retryable or not (http_error, redirect,
+            #    too_large included), across request keys - stop the run before another request is made
             if self.consecutive_failures >= self.policy.max_consecutive_failures:
+                if outcome == "rate_limited":
+                    raise RateLimited(f"{self.consecutive_failures} consecutive failed requests ending in rate "
+                                      f"limiting at {spec.request_key}; capture stopped (G-1)", archived)
                 raise CircuitOpen(f"{self.consecutive_failures} consecutive failed requests; stopping the run",
                                   archived)
-            if last:
+            # 4. only then: non-retryable outcomes are not retried; retryable ones retry within the attempt bound
+            if outcome not in RETRYABLE or last:
                 return result
             wait = self.policy.backoff(i + 1) if delay is None else max(delay, self.policy.min_interval_seconds)
             self.log(f"  backing off {wait:.1f} s before retrying {spec.request_key}")

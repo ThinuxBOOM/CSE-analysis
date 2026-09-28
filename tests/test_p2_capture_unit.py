@@ -652,3 +652,117 @@ FROZEN_STAGE_E = {   # SHA-256 (LF-normalised) at the P2 start (HEAD 79b7a5c): P
 def test_frozen_stage_e_modules_unchanged():
     for name, sha in FROZEN_STAGE_E.items():
         assert mig.file_sha256(os.path.join(REPO, "worker", name)) == sha, f"frozen Stage E module {name} changed"
+
+
+# ------------------------------------------------------------------------------------------------ review fixes
+
+def test_circuit_breaker_counts_non_retryable_http_errors():
+    """Five consecutive non-OK attempts of ANY classification stop the run - including the ones never retried."""
+    script = {"companyInfoSummery:S1.N0000": [R(500, b""), R(500, b"")],        # retryable: 2 failures
+              "companyInfoSummery:S2.N0000": [R(404, b"")],                     # never retried: 3
+              "companyInfoSummery:S3.N0000": [R(302, b"", {"Location": "/x"})], # redirect, never retried: 4
+              "companyInfoSummery:S4.N0000": [R(400, b"")],                     # never retried: 5 -> stop
+              "companyInfoSummery:S5.N0000": [R(200, b"{}")]}
+    req, cse, clock, _ = requester(script=script)
+    with pytest.raises(p2http.CircuitOpen):
+        for s in ("S1.N0000", "S2.N0000", "S3.N0000", "S4.N0000", "S5.N0000"):
+            req.fetch(cfgmod.company_info_spec(s, "cross_check"))
+    assert cse.keys() == ["companyInfoSummery:S1.N0000"] * 2 + ["companyInfoSummery:S2.N0000",
+                                                              "companyInfoSummery:S3.N0000",
+                                                              "companyInfoSummery:S4.N0000"]
+    only_4xx = {f"companyInfoSummery:X{i}.N0000": [R(404, b"")] for i in range(6)}
+    req, cse, clock, _ = requester(script=only_4xx)
+    with pytest.raises(p2http.CircuitOpen):
+        for i in range(6):
+            req.fetch(cfgmod.company_info_spec(f"X{i}.N0000", "cross_check"))
+    assert len(cse.calls) == 5
+
+
+def test_circuit_breaker_resets_on_success():
+    script = {f"companyInfoSummery:X{i}.N0000": [R(404, b"")] for i in range(9) if i != 4}
+    req, cse, clock, _ = requester(script=script)          # X4 answers OK (default body)
+    for i in range(9):
+        req.fetch(cfgmod.company_info_spec(f"X{i}.N0000", "cross_check"))
+    assert len(cse.calls) == 9 and req.consecutive_failures == 4
+
+
+def test_block_and_rate_limit_keep_their_meaning_when_they_are_the_fifth_failure():
+    base = {f"companyInfoSummery:X{i}.N0000": [R(404, b"")] for i in range(4)}
+    req, cse, clock, _ = requester(script={**base, "companyInfoSummery:B.N0000": [R(403, b"")]})
+    with pytest.raises(p2http.Blocked) as ei:
+        for s in [f"X{i}.N0000" for i in range(4)] + ["B.N0000"]:
+            req.fetch(cfgmod.company_info_spec(s, "cross_check"))
+    assert type(ei.value) is p2http.Blocked
+    req, cse, clock, _ = requester(script={**base, "companyInfoSummery:L.N0000": [R(429, b"")]})
+    with pytest.raises(p2http.RateLimited):
+        for s in [f"X{i}.N0000" for i in range(4)] + ["L.N0000"]:
+            req.fetch(cfgmod.company_info_spec(s, "cross_check"))
+    assert len(cse.calls) == 5 and ei.value.state == "blocked"
+
+
+class _OneRowConn:
+    """Minimal stand-in: every query returns the given row (enough for the owner-path role check)."""
+
+    def __init__(self, row):
+        self.row, self.executed = row, []
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, args=None):
+        self.executed.append(sql)
+        self.description = ("x",)
+
+    def fetchone(self):
+        return self.row
+
+    def commit(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
+def test_owner_acknowledgement_refuses_every_login_but_the_owner_path():
+    from worker.market_capture import runs
+    for login in ("cse_worker", "cse_backup", "cse_owner", "postgres"):
+        c = _OneRowConn((login,))
+        with pytest.raises(runs.RunRefused, match="owner action"):
+            runs.acknowledge_block_as_owner(c, "r", "a reviewed block note")
+        assert not any("insert" in sql.lower() or "set local role" in sql.lower() for sql in c.executed)
+    assert runs.OWNER_PATH_ROLE == "cse_migrator"
+
+
+def test_migration_0013_makes_acknowledgements_owner_only():
+    path = os.path.join(REPO, "supabase", "migrations", "0013_market_capture_owner_acknowledgement.sql")
+    sql = open(path, encoding="utf-8").read().lower()
+    code = "\n".join(l.split("--")[0] for l in sql.splitlines())
+    assert "bytea" not in sql and "cse.lk" not in sql
+    assert not re.search(r"\b\w*(blob|file_path|document_path|storage_path|local_path)\w*\s+(text|varchar)", sql)
+    assert re.search(r"revoke insert on market_capture_block_acknowledgements from cse_worker;", code)
+    assert not re.search(r"\bgrant\b", code) and not re.search(r"\b(alter|drop|delete|truncate|update)\b", code)
+    assert "security definer" not in code and "create role" not in code
+    guard = code[code.index("create or replace function market_capture_block_ack_guard"):]
+    assert "session_user in ('cse_worker', 'cse_backup', 'cse_reader')" in guard
+    assert "insufficient_privilege" in guard and "<> 'blocked'" in guard       # the blocked-only rule is kept
+
+
+def test_committed_migration_0012_is_never_edited():
+    """0012 is committed (8fd83ca) and may be applied somewhere: later changes go in new migrations (0013+)."""
+    assert mig.file_sha256(os.path.join(REPO, "supabase", "migrations", "0012_market_capture_archive.sql")) == \
+        "164c3c8e19019f822f2e18aca251d6da4e2883bf03f1346232f9446ee1ada135"
+
+
+def test_wrapper_runs_acknowledgement_as_the_owner_path_only():
+    text = open(os.path.join(REPO, "ops", "bin", "cse-capture"), encoding="utf-8").read()
+    assert 'user=cse-worker; role=cse_worker' in text                       # default: the capture worker
+    assert re.search(r"acknowledge-block\)\s+user=cse-migrator; role=cse_migrator", text)
+    assert re.search(r"protection\)\s+shift; set -- status \"\$@\"; user=cse-backup; role=cse_backup", text)
+    assert '[[ $EUID -eq 0 ]]' in text and "runuser -u \"$user\"" in text   # reached only through sudo
+    assert "cse_owner" not in text.replace("acting as cse_owner", "")       # never logs in as the owner

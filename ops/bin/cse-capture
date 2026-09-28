@@ -1,27 +1,35 @@
 #!/usr/bin/env bash
-# Run the CSE P2 market capture as its service user (OS cse-worker -> PostgreSQL cse_worker by peer authentication)
-# with the server configuration loaded. Never as root, never as postgres. P2 is MANUAL: there is no capture timer
-# (P3 decides scheduling and go-live). G-1: owner-accepted risk, NOT CSE authorization - see
+# Run the CSE P2 market capture with the server configuration loaded. Never as root, never as postgres. P2 is MANUAL:
+# there is no capture timer (P3 decides scheduling and go-live). G-1: owner-accepted risk, NOT CSE authorization - see
 # docs/governance/G-1_CSE_DATA_USE.md and docs/ops/P2_MARKET_CAPTURE.md before using the commands that contact CSE.
+#
+# Who runs what (all reached only through sudo, i.e. by root/the owner):
+#   every capture command           OS cse-worker   -> PostgreSQL cse_worker (peer)  - the capture worker
+#   acknowledge-block (G-1 review)  OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner for ONE insert -
+#                                   the owner path; the capture worker can never acknowledge its own block
+#   protection (dimension F)        OS cse-backup   -> PostgreSQL cse_backup, read-only
 #
 #   sudo bash /opt/cse/app/ops/bin/cse-capture capture --trading-date 2026-09-28 --mode post_close
 #   sudo bash /opt/cse/app/ops/bin/cse-capture status --trading-date 2026-09-28
 #   sudo bash /opt/cse/app/ops/bin/cse-capture recover | resume --run-id UUID | reprocess --run-id UUID
-#   sudo bash /opt/cse/app/ops/bin/cse-capture protection --run-id UUID      # dimension F, read-only as cse-backup
+#   sudo bash /opt/cse/app/ops/bin/cse-capture acknowledge-block --run-id UUID --note "reviewed: ..."
+#   sudo bash /opt/cse/app/ops/bin/cse-capture protection --run-id UUID
 set -euo pipefail
 APP="${CSE_APP_DIR:-/opt/cse/app}"
 [[ $# -ge 1 ]] || { echo "usage: $0 <command> [args...]  (python -m worker.market_capture --help)" >&2; exit 2; }
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
 user=cse-worker; role=cse_worker
-if [[ "$1" == "protection" ]]; then            # the backup role can read P1's ops.backup_runs; status is read-only
-  shift; set -- status "$@"; user=cse-backup; role=cse_backup
-fi
+case "$1" in
+  protection)        shift; set -- status "$@"; user=cse-backup; role=cse_backup ;;
+  acknowledge-block) user=cse-migrator; role=cse_migrator ;;
+esac
+operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an acknowledgement
 exec runuser -u "$user" -- bash -c '
   set -a
   . /etc/cse/cse.env
   if [ -r /etc/cse/capture.env ]; then . /etc/cse/capture.env; fi
   set +a
-  export PYTHONPATH="$0" CSE_DB_USER="$1"
-  shift 1
+  export PYTHONPATH="$0" CSE_DB_USER="$1" CSE_OPERATOR="$2"
+  shift 2
   cd /
-  exec python3 -m worker.market_capture "$@"' "$APP" "$role" "$@"
+  exec python3 -m worker.market_capture "$@"' "$APP" "$role" "$operator" "$@"

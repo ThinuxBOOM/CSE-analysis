@@ -275,6 +275,10 @@ def test_reader_and_backup_roles_have_only_read_access(pg):
                      "'INSERT'), has_table_privilege('cse_backup', %s, 'UPDATE'), has_table_privilege('cse_worker', %s, "
                      "'UPDATE') or has_table_privilege('cse_worker', %s, 'DELETE')", (t, t, t, t, t)) == \
             [(True, False, False, False)], t
+    assert q(su, "select has_table_privilege('cse_worker', 'market_capture_block_acknowledgements', 'INSERT'), "
+                 "has_table_privilege('cse_worker', 'market_capture_block_acknowledgements', 'SELECT'), "
+                 "has_table_privilege('cse_backup', 'market_capture_block_acknowledgements', 'INSERT')") == \
+        [(False, True, False)]                                                           # owner-only (0013)
     # PUBLIC has nothing on the new tables; nothing new is owned by a login role
     assert q(su, "select count(*) from pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a "
                  "where c.relname = any(%s) and a.grantee = 0", (list(P2_TABLES),)) == [(0,)]
@@ -295,6 +299,15 @@ def test_security_preflight_refuses_the_wrong_roles(pg, tmp_path):
         c.close()
     w = conn(pg, "cse_worker")
     assert runs.security_preflight(w, "cse_worker") == []
+    su = conn(pg, "postgres", autocommit=True)
+    q(su, "grant insert on market_capture_block_acknowledgements to cse_worker")      # as 0012 alone had it
+    try:
+        problems = runs.security_preflight(w, "cse_worker")
+        assert any("owner-only" in p and "market_capture_block_acknowledgements" in p for p in problems), problems
+    finally:
+        q(su, "revoke insert on market_capture_block_acknowledgements from cse_worker")
+        su.close()
+    assert runs.security_preflight(w, "cse_worker") == []
     w.close()
 
 
@@ -308,13 +321,14 @@ def test_verify_server_still_passes_with_0012(pg):
     assert not rep.failed, rep.failed
 
 
-def test_migration_runner_recorded_0012_with_its_hash(pg):
+def test_migration_runner_recorded_0012_and_0013_with_their_hashes(pg):
     from worker.ops import migrate as mig
     su = conn(pg, "postgres")
-    got = dict(q(su, "select filename, sha256 from ops.schema_migrations where version = 12"))
+    got = dict(q(su, "select filename, sha256 from ops.schema_migrations where version in (12, 13)"))
     su.close()
     m = {x.filename: x.sha256 for x in mig.discover(MIGDIR)}
-    assert got == {"0012_market_capture_archive.sql": m["0012_market_capture_archive.sql"]}
+    names = ("0012_market_capture_archive.sql", "0013_market_capture_owner_acknowledgement.sql")
+    assert got == {n: m[n] for n in names}
 
 
 # ------------------------------------------------------------------------------------------------ G-1 request policy
@@ -335,9 +349,11 @@ def test_403_stops_the_run_at_once_and_gates_every_later_capture(env):
     assert len(e.cse.calls) == n                                                      # refused before any request
     with pytest.raises(Exception, match="illegal state transition"):                  # the database agrees
         runs.append_event(e.ctl, rep["run_id"], "running")
+    owner = conn(e.pg, "cse_migrator")                                              # the owner path (G-1)
     with pytest.raises(Exception, match="chk_mcba_note"):
-        capture.acknowledge_block(e.ctl, e.cfg, rep["run_id"], "short", rt=e.rt)     # a real note is required
-    capture.acknowledge_block(e.ctl, e.cfg, rep["run_id"], "owner reviewed: test block, resuming", rt=e.rt)
+        capture.acknowledge_block(owner, rep["run_id"], "short", operator="owner-test")   # a real note is required
+    capture.acknowledge_block(owner, rep["run_id"], "owner reviewed: test block, resuming", operator="owner-test")
+    owner.close()
     state2, rep2 = capture.resume(e.ctl, e.work, e.cfg, rep["run_id"], rt=e.rt)
     assert state2 == "succeeded" and e.cse.keys()[n] == "tradeSummary"
     assert q(e.ctl, "select array_agg(outcome order by attempt_no) from market_source_responses where run_id = %s "
@@ -837,3 +853,114 @@ def test_command_line_end_to_end(env, capsys, tmp_path):
     assert cli.main(["capture", "--trading-date", "2026-09-04", "--mode", "post_close"], rt=e.rt,
                     env={**envvars, "CSE_DB_USER": "cse_backup"}) == 5                  # wrong role: refused
     assert len(e.cse.calls) == 9                                                         # no request from refusals
+
+
+# ------------------------------------------------------------------------------------------------ review fixes
+
+def test_worker_cannot_acknowledge_a_block_but_the_owner_path_can(env, pg):
+    """G-1: after a block, only the OWNER may record the review that lets capture continue. The capture worker is
+    refused by its code path, by privileges (0013), by role membership and - should INSERT ever be granted again by
+    mistake - by the table's guard trigger. The blocked -> running rule still requires the acknowledgement."""
+    import psycopg2
+    from worker.market_capture import capture, runs
+    e = env(script={"tradeSummary": [R(403, b"denied")]})
+    state, rep = e.capture()
+    run = rep["run_id"]
+    assert state == "blocked"
+    ins = "insert into market_capture_block_acknowledgements (run_id, note) values (%s, %s)"
+    w = conn(pg, "cse_worker")
+    with pytest.raises(runs.RunRefused, match="owner action"):                    # 1. its code path
+        capture.acknowledge_block(w, run, "the worker acknowledging its own block")
+    with pytest.raises(psycopg2.errors.InsufficientPrivilege):                      # 2. no INSERT privilege
+        q(w, ins, (run, "the worker acknowledging its own block"))
+    w.rollback()
+    with pytest.raises(psycopg2.errors.InsufficientPrivilege):                      # 3. cannot become the owner
+        q(w, "set role cse_owner")
+    w.rollback()
+    su = conn(pg, "postgres", autocommit=True)
+    q(su, "grant insert on market_capture_block_acknowledgements to cse_worker")    # 4. a mistaken re-grant ...
+    try:
+        with pytest.raises(psycopg2.errors.InsufficientPrivilege, match="owner action"):
+            q(w, ins, (run, "the worker acknowledging its own block"))            # ... is still refused (trigger)
+        w.rollback()
+    finally:
+        q(su, "revoke insert on market_capture_block_acknowledgements from cse_worker")
+        su.close()
+    w.close()
+    b = conn(pg, "cse_backup")
+    with pytest.raises(psycopg2.errors.InsufficientPrivilege):                      # the backup role cannot either
+        q(b, ins, (run, "the backup role acknowledging a block"))
+    b.close()
+    assert state_of(e.ctl, run) == "blocked"
+    assert q(e.ctl, "select count(*) from market_capture_block_acknowledgements where run_id = %s", (run,)) == [(0,)]
+    with pytest.raises(runs.RunRefused, match="G-1"):                              # capture stays stopped ...
+        capture.resume(e.ctl, e.work, e.cfg, run, rt=e.rt)
+    with pytest.raises(Exception, match="illegal state transition"):               # ... and the database agrees
+        runs.append_event(e.ctl, run, "running")
+    owner = conn(pg, "cse_migrator")                                                # the owner path
+    ack = capture.acknowledge_block(owner, run, "owner reviewed the CSE block; resuming", operator="owner-test")
+    assert q(owner, "select current_user, session_user") == [("cse_migrator", "cse_migrator")]   # SET LOCAL ended
+    owner.close()
+    assert q(e.ctl, "select id, acknowledged_by, os_user from market_capture_block_acknowledgements where "
+                    "run_id = %s", (run,))[0][:2] == (ack["acknowledgement_id"], "cse_migrator")
+    assert "owner-test" in q(e.ctl, "select os_user from market_capture_block_acknowledgements where run_id = %s",
+                             (run,))[0][0]
+    state2, _ = capture.resume(e.ctl, e.work, e.cfg, run, rt=e.rt)
+    assert state2 == "succeeded"
+
+
+def test_acknowledging_a_run_that_is_not_blocked_is_refused_even_for_the_owner(env, pg):
+    from worker.market_capture import capture
+    e = env()
+    state, rep = e.capture(absent_fallback=False, cross_check_size=0)
+    owner = conn(pg, "cse_migrator")
+    with pytest.raises(Exception, match="not blocked"):
+        capture.acknowledge_block(owner, rep["run_id"], "nothing to acknowledge here at all")
+    owner.close()
+
+
+def test_circuit_breaker_stops_a_capture_run_on_non_retryable_errors(env):
+    e = env(script={f"companyInfoSummery:{s}": [R(404, b"not found")] for s in TRADED + ABSENT})
+    state, rep = e.capture()
+    keys = e.cse.keys()
+    assert keys[:2] == ["allSecurityCode", "tradeSummary"] and len(keys) == 7       # 5 x 404 (never retried), stop
+    assert rep["stop"]["type"] == "CircuitOpen" and state == "partial"
+    assert q(e.ctl, "select array_agg(outcome) from market_source_responses where run_id = %s and "
+                    "request_key like 'companyInfoSummery:%%'", (rep["run_id"],)) == [(["http_error"] * 5,)]
+
+
+def test_older_snapshot_never_rolls_the_active_flag_back(env):
+    """companies.cse_active_flag is the CURRENT projection of allSecurityCode: only a strictly newer snapshot may move
+    it, whatever order captures and reprocessing happen in. The archived snapshots themselves are all kept."""
+    from worker.market_capture import capture
+    from p2_fakes import universe_body
+
+    def uni(active):
+        return universe_body() + [{"id": 777, "name": "FLAG TEST PLC", "symbol": "FLAGT.N0000", "active": active}]
+
+    def flag(c):
+        return q(c, "select cse_active_flag, cse_active_flag_checked_at from companies where ticker = 'FLAGT.N0000'")
+
+    def snapshot_at(e, run):
+        return q(e.ctl, "select observed_at from market_source_responses where run_id = %s and request_key = "
+                        "'allSecurityCode' and outcome = 'ok'", (run,))[0][0]
+
+    utc = timezone.utc
+    older = env(universe=uni(1), clock_start=datetime(2026, 9, 4, 9, 0, tzinfo=utc))      # 14:30 Colombo
+    newer = env(universe=uni(0), clock_start=datetime(2026, 9, 4, 12, 0, tzinfo=utc))     # 17:30 Colombo
+    s_old, r_old = older.capture(absent_fallback=False, cross_check_size=0)
+    assert flag(older.ctl) == [(True, snapshot_at(older, r_old["run_id"]))]
+    s_new, r_new = newer.capture(absent_fallback=False, cross_check_size=0)
+    t_new = snapshot_at(newer, r_new["run_id"])
+    assert s_old == s_new == "succeeded" and flag(newer.ctl) == [(False, t_new)]
+    capture.reprocess(older.ctl, older.work, older.cfg, r_old["run_id"], rt=older.rt)       # older re-derived later
+    assert flag(older.ctl) == [(False, t_new)]                                            # not rolled back
+    capture.reprocess(newer.ctl, newer.work, newer.cfg, r_new["run_id"], rt=newer.rt)       # the same snapshot again
+    assert flag(newer.ctl) == [(False, t_new)]                                            # equal: unchanged
+    latest = env(universe=uni(1), clock_start=datetime(2026, 9, 4, 13, 0, tzinfo=utc))
+    s3, r3 = latest.capture(absent_fallback=False, cross_check_size=0)
+    assert flag(latest.ctl) == [(True, snapshot_at(latest, r3["run_id"]))]                # newer: moves forward
+    bodies = q(latest.ctl, "select count(distinct body_sha256) from market_source_responses where request_key = "
+                           "'allSecurityCode' and run_id in (%s, %s, %s)", (r_old["run_id"], r_new["run_id"],
+                                                                             r3["run_id"]))
+    assert bodies == [(2,)]                                        # both CSE snapshots stay archived, unchanged

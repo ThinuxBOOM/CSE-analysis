@@ -166,7 +166,9 @@ def derive_run(ctl, work, run, policy, pass_kind, rt):
     universe = (derive.universe_entries(derive.body_of(ctl, ok["allSecurityCode"]["body_sha256"])[1])[0]
                 if "allSecurityCode" in ok else [])
     p = derive.plan(universe, ts_by, run["trading_date"], policy)
-    ids, companies = derive.ensure_companies(work, universe, ts_by, ts_att["observed_at"])
+    # the active flags come from allSecurityCode, so that response's own time decides whether they are newer
+    snapshot_at = ok["allSecurityCode"]["observed_at"] if "allSecurityCode" in ok else None
+    ids, companies = derive.ensure_companies(work, universe, ts_by, snapshot_at)
     tol = derive.load_tolerances(work)
     pass_no = _next_pass(ctl, run["id"])
     last = derive.last_outcomes(ctl, run["id"])
@@ -333,11 +335,12 @@ def record_missed(ctl, cfg, *, trading_date, capture_mode, reason, rt=None):
         return "missed", {"run_id": run_id, "state": "missed", "reason": reason}
 
 
-def acknowledge_block(ctl, cfg, run_id, note, rt=None):
-    rt = rt or Runtime()
-    with _locked(ctl, cfg, rt, contacting_cse=False):
-        ack = runs.acknowledge_block(ctl, run_id, note)
-        return {"run_id": run_id, "acknowledgement_id": ack}
+def acknowledge_block(conn, run_id, note, operator=None):
+    """G-1 owner review of a blocked run. NOT a capture-role command: `conn` must be P1's owner-delegation login
+    (cse_migrator), which only root reaches through `sudo ops/bin/cse-capture acknowledge-block`; the capture worker
+    is refused by privileges (0013), by role membership and by the table's guard trigger. No CSE request."""
+    ack = runs.acknowledge_block_as_owner(conn, run_id, note, operator)
+    return {"run_id": run_id, "acknowledgement_id": ack}
 
 
 def verify_archive(conn, spool_root, run_id):

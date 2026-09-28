@@ -1,6 +1,8 @@
 """
-P2 market capture command line. On the server run it through ops/bin/cse-capture (as the cse-worker OS user, which
-peer-authenticates as cse_worker); a JSON report goes to stdout, progress to stderr.
+P2 market capture command line. On the server run it through ops/bin/cse-capture: normally as the cse-worker OS user
+(peer-authenticated as cse_worker); `acknowledge-block` as the owner-delegation login cse_migrator (owner-only, root via
+sudo; the capture worker cannot acknowledge); `protection` read-only as cse_backup. A JSON report goes to stdout,
+progress to stderr.
 
     capture   --trading-date YYYY-MM-DD --mode post_close|post_open [--cross-check-size N] [--no-absent-fallback]
               [--absent-fallback-limit N] [--max-requests N]                            (contacts CSE)
@@ -10,7 +12,8 @@ peer-authenticates as cse_worker); a JSON report goes to stdout, progress to std
     recover                                  ingest spooled attempts missing from PostgreSQL; mark dead runs abandoned
     status    --run-id UUID | --trading-date YYYY-MM-DD
     record-missed --trading-date YYYY-MM-DD --mode post_close|post_open --reason TEXT
-    acknowledge-block --run-id UUID --note TEXT      (owner review after CSE blocked / rate-limited a run - G-1)
+    acknowledge-block --run-id UUID --note TEXT      OWNER review after CSE blocked / rate-limited a run (G-1);
+                                             owner path only (cse_migrator acting as cse_owner) - never the worker
     verify-archive --run-id UUID             database vs spool SHA-256 agreement
     export-company-info --run-id UUID --out FILE     F5 link_issuers --company-info-json input (never inside the repo)
 
@@ -22,6 +25,7 @@ data; run `recover`), 5 refused before any CSE request.
 """
 import argparse
 import json
+import os
 import sys
 
 from ..ops import settings as ops_settings
@@ -129,7 +133,11 @@ def main(argv=None, rt=None, env=None):
             elif args.command == "status":
                 report = capture.status(ctl, run_id=args.run_id, trading_date=args.trading_date)
             elif args.command == "acknowledge-block":
-                report = capture.acknowledge_block(ctl, cfg, args.run_id, args.note, rt=rt)
+                operator = (env if env is not None else os.environ).get("CSE_OPERATOR") or None
+                try:
+                    report = capture.acknowledge_block(ctl, args.run_id, args.note, operator=operator)
+                except _psycopg2_error() as exc:
+                    raise runs.RunRefused(f"acknowledgement not recorded: {str(exc).strip()}") from None
             elif args.command == "verify-archive":
                 report = capture.verify_archive(ctl, cfg.spool_root, args.run_id)
                 _print(report)
