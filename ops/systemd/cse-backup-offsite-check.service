@@ -1,0 +1,29 @@
+[Unit]
+Description=CSE off-site repository integrity check (restic check, data subset)
+Wants=network-online.target postgresql.service
+After=network-online.target postgresql.service
+RequiresMountsFor=/srv/cse-backup
+
+[Service]
+Type=oneshot
+User=cse-backup
+Group=cse-backup
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/backup.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_backup"
+WorkingDirectory=/opt/cse/app
+ExecStart=/usr/bin/python3 -m worker.ops.offsite check
+SuccessExitStatus=2
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=idle
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes

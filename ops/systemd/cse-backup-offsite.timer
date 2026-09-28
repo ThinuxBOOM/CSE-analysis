@@ -1,0 +1,11 @@
+# Off-site sync 10 min after every boot and then hourly while the server is up: backup delivery never depends on
+# continuous uptime; each run uploads whatever is not yet off-site (restic deduplicates).
+[Unit]
+Description=CSE off-site backup sync (boot + hourly retry)
+
+[Timer]
+OnBootSec=10min
+OnUnitInactiveSec=1h
+
+[Install]
+WantedBy=timers.target

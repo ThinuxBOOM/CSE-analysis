@@ -1,0 +1,10 @@
+# Nightly dump; Persistent=true runs a missed dump once at boot (the server is not always on).
+[Unit]
+Description=CSE nightly local PostgreSQL dump
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Colombo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

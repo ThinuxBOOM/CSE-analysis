@@ -1,0 +1,30 @@
+# CSE P1: restore the newest local dump into a throwaway cluster (initdb under /srv/cse-backup/restore-scratch,
+# private socket, no TCP) and verify every table digest against the manifest. Never touches the production cluster.
+[Unit]
+Description=CSE restore check of the newest local dump (P1)
+Wants=postgresql.service
+After=postgresql.service cse-backup-dump.service
+RequiresMountsFor=/srv/cse-backup
+
+[Service]
+Type=oneshot
+User=cse-backup
+Group=cse-backup
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/backup.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_backup"
+WorkingDirectory=/opt/cse/app
+ExecStart=/usr/bin/python3 -m worker.ops.restore_check
+TimeoutStartSec=6h
+Nice=10
+IOSchedulingClass=idle
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes

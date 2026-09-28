@@ -1,0 +1,9 @@
+[Unit]
+Description=CSE weekly restore check
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00 Asia/Colombo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run a CSE P1 ops module as its service user with the server configuration loaded (never as root, never as postgres).
+#
+#   sudo bash /opt/cse/app/ops/bin/cse-ops backup status --verify
+#   sudo bash /opt/cse/app/ops/bin/cse-ops backup verify --all
+#   sudo bash /opt/cse/app/ops/bin/cse-ops offsite init|sync|check
+#   sudo bash /opt/cse/app/ops/bin/cse-ops restore_check [--dump DIR]
+#   sudo bash /opt/cse/app/ops/bin/cse-ops migrate status|verify|apply
+set -euo pipefail
+APP="${CSE_APP_DIR:-/opt/cse/app}"
+[[ $# -ge 1 ]] || { echo "usage: $0 {backup|offsite|restore_check|migrate} [args...]" >&2; exit 2; }
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+mod="$1"; shift
+case "$mod" in
+  migrate)                      user=cse-migrator; role=cse_migrator ;;
+  backup|offsite|restore_check) user=cse-backup;   role=cse_backup ;;
+  *) echo "unknown module: $mod" >&2; exit 2 ;;
+esac
+exec runuser -u "$user" -- bash -c '
+  set -a
+  . /etc/cse/cse.env
+  if [ -r /etc/cse/backup.env ]; then . /etc/cse/backup.env; fi
+  set +a
+  export PYTHONPATH="$0" CSE_DB_USER="$1"
+  shift 1
+  cd /
+  exec python3 -m "worker.ops.$@"' "$APP" "$role" "$mod" "$@"

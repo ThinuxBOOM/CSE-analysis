@@ -1,0 +1,21 @@
+# Surfaces backup problems: exits non-zero (unit shows as failed in `systemctl --failed`) when the last local dump is
+# older than 30 h, off-site protection is older than 48 h or not configured, a run failed, or a dump is not off-site.
+[Unit]
+Description=CSE backup protection status check (P1)
+Wants=postgresql.service
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=cse-backup
+Group=cse-backup
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/backup.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_backup"
+WorkingDirectory=/opt/cse/app
+ExecStart=/usr/bin/python3 -m worker.ops.backup status
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup
+ProtectHome=yes
+PrivateTmp=yes

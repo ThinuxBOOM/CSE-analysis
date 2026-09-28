@@ -1,3 +1,10 @@
+# Platform (P1): local server + PostgreSQL 17
+
+Production now runs on a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
+runtime). Provisioning, the migration runner/ledger, roles, append-only protection and backups are documented in
+[docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
+`python -m worker.ops.migrate apply` (as `cse_migrator`); older sections below that mention Supabase are historical.
+
 # ⚠️ Operational requirements — read before any live capture
 
 Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).

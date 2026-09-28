@@ -1,0 +1,10 @@
+[Unit]
+Description=CSE daily backup status check
+
+[Timer]
+OnBootSec=30min
+OnCalendar=*-*-* 09:00:00 Asia/Colombo
+Persistent=true
+
+[Install]
+WantedBy=timers.target

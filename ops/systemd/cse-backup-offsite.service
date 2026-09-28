@@ -1,0 +1,32 @@
+# CSE P1: encrypted off-site sync (restic, provider-neutral; see /etc/cse/backup.env). A failure is recorded in
+# ops.backup_runs and retried by the next timer run; 'not_configured' is never recorded as success.
+[Unit]
+Description=CSE encrypted off-site backup sync (P1)
+Wants=network-online.target postgresql.service
+After=network-online.target postgresql.service
+RequiresMountsFor=/srv/cse-backup
+
+[Service]
+Type=oneshot
+User=cse-backup
+Group=cse-backup
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/backup.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_backup"
+WorkingDirectory=/opt/cse/app
+ExecStart=/usr/bin/python3 -m worker.ops.offsite sync
+# exit 2 = not configured: recorded + visible in `backup status`, not a unit failure spam
+SuccessExitStatus=2
+TimeoutStartSec=12h
+Nice=10
+IOSchedulingClass=idle
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
