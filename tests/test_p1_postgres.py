@@ -462,6 +462,83 @@ def test_abandoned_running_rows_are_closed_as_failed(pg, dumped):
     c.close()
 
 
+def test_dump_whose_terminal_ledger_update_fails_is_never_reported_as_success(pg, migrated, tmp_path):
+    """A real dump: the run row is inserted, then the LEDGER connection is killed; the dump itself completes and the
+    terminal UPDATE fails. Nothing may claim success; the artifact is kept; capture data is untouched; the next run of
+    the kind closes the orphaned row as failed (never succeeded), keeping what the run reported."""
+    from worker.ops import backup as ops_backup, dbhash, ledger as ops_ledger
+    from worker.ops.redact import Redactor
+    s = ops_env(pg, tmp_path / "backup")
+    su, b = conn(pg, pg.superuser), conn(pg, "cse_backup")
+
+    def capture_state():
+        with b.cursor() as cur:
+            dbhash.apply_session_settings(cur)
+            return {k: v for k, v in dbhash.inventory(cur)["tables"].items() if not k.startswith("ops.")}
+
+    before = capture_state()
+    led, lc = make_ledger(s)
+    killed = []
+
+    def log(msg):   # first call: run row inserted, snapshot taken -> drop the ledger's connection (only that one)
+        if not killed:
+            killed.append(q(su, "select pg_terminate_backend(%s, 10000)", (lc.get_backend_pid(),))[0][0])
+
+    code, rec = ops_backup.dump(s, led, Redactor(), log)
+    assert killed == [True]
+    assert q(b, "select status from ops.backup_runs where id = %s", (rec["id"],)) == [("running",)]
+    assert code != 0 and rec["status"] != "succeeded"
+    assert (rec["outcome"], rec["status"], rec["ledger"]) == ("succeeded", "unrecorded", "update_failed")
+    st = ops_ledger.read_status(os.path.join(s.backup_root, "status"), "local_dump")
+    assert (st["id"], st["outcome"], st["status"], st["ledger"]) == (rec["id"], "succeeded", "unrecorded", "update_failed")
+    # the backup operation itself completed: the artifact exists and verifies
+    assert ops_backup.verify_dump(os.path.join(s.backup_root, *rec["artifact_key"].split("/")), BINDIR) == []
+    # capture / market / financial state is untouched
+    assert capture_state() == before
+    # never counted as a successful local dump; the unrecorded outcome is an alert
+    ps = ops_backup.protection_status(s, b)
+    assert ps["runs"]["local_dump"]["last_status"] == "running"
+    assert any("local_dump" in a and "NOT recorded" in a for a in ps["alerts"])
+    # the next local_dump run closes the orphaned row at once: failed, with the reported outcome preserved
+    led2, lc2 = make_ledger(s)
+    assert led2.close_abandoned("local_dump", 6) >= 1
+    lc2.close()
+    status, error, details = q(b, "select status, error, details from ops.backup_runs where id = %s", (rec["id"],))[0]
+    assert status == "failed" and "not recorded" in error
+    assert details["operation_outcome"] == "succeeded" and details["reported"]["artifact_key"] == rec["artifact_key"]
+    with pytest.raises(Exception) as ei:                           # and it stays that way (append-only ledger)
+        q(b, "update ops.backup_runs set status = 'succeeded' where id = %s", (rec["id"],))
+    assert ei.value.pgcode == "23001"
+    for c in (su, b, lc):
+        c.close()
+
+
+def test_terminal_update_rejected_by_the_database_falls_back_to_a_non_success_status(pg, migrated, tmp_path):
+    """The terminal UPDATE is refused by a constraint (connection still alive): a minimal NON-success terminal status is
+    committed instead - 'failed' for a reported success, the same status otherwise ('not_configured' stays itself)."""
+    from worker.ops import ledger as ops_ledger
+    s = ops_env(pg, tmp_path / "backup")
+    led, lc = make_ledger(s)
+    b = conn(pg, "cse_backup")
+    run = led.start("offsite_sync")
+    rec = led.finish(run, "succeeded", offsite_snapshot="f" * 64, covers=["pg/dumps/2099/01/cse_x"],
+                     artifact_sha256="not-a-sha256")                     # violates chk_backup_runs_sha256
+    assert rec["status"] != "succeeded"
+    assert (rec["outcome"], rec["status"], rec["ledger"]) == ("succeeded", "failed", "update_failed")
+    assert "chk_backup_runs_sha256" in rec["ledger_error"] and ops_ledger.exit_code(rec) == 1
+    status, covers, snap, details = q(b, "select status, covers, offsite_snapshot, details from ops.backup_runs "
+                                         "where id = %s", (rec["id"],))[0]
+    assert (status, covers, snap) == ("failed", [], None)                # nothing counts as off-site protection
+    assert details["operation_outcome"] == "succeeded" and details["reported"]["offsite_snapshot"] == "f" * 64
+    run2 = led.start("offsite_sync")
+    rec2 = led.finish(run2, "not_configured", details=["not", "an", "object"])   # violates chk_backup_runs_details
+    assert (rec2["outcome"], rec2["status"], rec2["ledger"]) == ("not_configured", "not_configured", "update_failed")
+    assert q(b, "select status from ops.backup_runs where id = %s", (rec2["id"],)) == [("not_configured",)]
+    assert ops_ledger.exit_code(rec2) == 1
+    lc.close()
+    b.close()
+
+
 def test_offsite_not_configured_is_never_success(pg, dumped):
     from worker.ops import offsite
     s0, _ = dumped
@@ -470,7 +547,7 @@ def test_offsite_not_configured_is_never_success(pg, dumped):
         target, redact = offsite.resolve(s)
         led, c = make_ledger(s, redact)
         code, rec = offsite.sync(s, led, target, lambda m: None)
-        assert code == 2 and rec["status"] == "not_configured"
+        assert code == 2 and (rec["outcome"], rec["status"], rec["ledger"]) == ("not_configured",) * 2 + ("database",)
         assert q(c, "select status from ops.backup_runs where id = %s", (rec["id"],)) == [("not_configured",)]
         c.close()
 

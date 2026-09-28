@@ -147,7 +147,7 @@ def sync(s, led, target, log):
         rec = led.finish(run, "not_configured", details={"reason": target.reason},
                          error=f"off-site backup not configured: {target.reason}")
         log(rec["error"])
-        return 2, rec
+        return ops_ledger.exit_code(rec), rec
     covers, problems = [], {}
     for d in ops_backup.list_dumps(s):
         key = os.path.relpath(d, s.backup_root).replace(os.sep, "/")
@@ -172,9 +172,13 @@ def sync(s, led, target, log):
                                             "total_files_processed", "total_bytes_processed")}
     details["local_problems"] = problems
     rec = led.finish(run, "succeeded", offsite_snapshot=snap, covers=covers, details=details)
-    log(f"off-site sync succeeded: snapshot {snap}, {len(covers)} dump(s) covered"
-        + (f", {len(problems)} local dump(s) FAILED verification and are not counted" if problems else ""))
-    return 0, rec
+    problem = ops_ledger.ledger_problem(rec)
+    if problem:
+        log(f"off-site snapshot {snap} was uploaded but is NOT counted as protection: {problem}")
+    else:
+        log(f"off-site sync succeeded: snapshot {snap}, {len(covers)} dump(s) covered"
+            + (f", {len(problems)} local dump(s) FAILED verification and are not counted" if problems else ""))
+    return ops_ledger.exit_code(rec), rec
 
 
 def check(s, led, target, log):
@@ -182,14 +186,18 @@ def check(s, led, target, log):
     if isinstance(target, NotConfigured):
         rec = led.finish(run, "not_configured", details={"reason": target.reason},
                          error=f"off-site backup not configured: {target.reason}")
-        return 2, rec
+        return ops_ledger.exit_code(rec), rec
     try:
         out = target.check()
     except OffsiteError as exc:
         rec = led.finish(run, "failed", error=str(exc))
         log(f"off-site check FAILED: {rec['error']}")
         return 1, rec
-    return 0, led.finish(run, "succeeded", details={"output_tail": out})
+    rec = led.finish(run, "succeeded", details={"output_tail": out})
+    problem = ops_ledger.ledger_problem(rec)
+    if problem:
+        log(problem)
+    return ops_ledger.exit_code(rec), rec
 
 
 def main(argv=None):

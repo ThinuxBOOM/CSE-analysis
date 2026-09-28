@@ -152,8 +152,10 @@ def dump(s, led, redact, log):
                          artifact_bytes=files[DUMP_FILE]["bytes"], manifest_sha256=msha,
                          details={"tables": len(inv["tables"]), "rows": sum(t["rows"] for t in inv["tables"].values()),
                                   "toc_entries": entries, "snapshot_at": snapshot_at.isoformat()})
-        log(f"local dump succeeded: {key}")
-        return 0, rec
+        problem = ops_ledger.ledger_problem(rec)
+        log(f"local dump written to {key} but NOT counted as a successful backup: {problem}" if problem
+            else f"local dump succeeded: {key}")
+        return ops_ledger.exit_code(rec), rec
     except Exception as exc:  # noqa: BLE001 — every failure is recorded, then reported
         if stage and os.path.isdir(stage):
             shutil.rmtree(stage, ignore_errors=True)
@@ -255,8 +257,9 @@ def protection_status(s, conn, max_local_age_h=30.0, max_offsite_age_h=48.0, ver
         source = "status_files"
         for kind in ops_ledger.KINDS:
             st = ops_ledger.read_status(paths["status"], kind) or {}
+            committed_success = st.get("status") == "succeeded" and st.get("ledger") == "database"
             last[kind] = {"last_status": st.get("status"), "last_error": st.get("error"),
-                          "last_success_at": st.get("finished_at") if st.get("status") == "succeeded" else None,
+                          "last_success_at": st.get("finished_at") if committed_success else None,
                           "age_hours": None}
     dumps = []
     for d in list_dumps(s):
@@ -278,6 +281,10 @@ def protection_status(s, conn, max_local_age_h=30.0, max_offsite_age_h=48.0, ver
     for k, v in last.items():
         if v.get("last_status") == "failed":
             alerts.append(f"last {k} run failed: {v.get('last_error')}")
+    for kind in ops_ledger.KINDS:                  # a finished run whose terminal status never reached the ledger
+        st = ops_ledger.read_status(paths["status"], kind) or {}
+        if st.get("status") == ops_ledger.UNRECORDED:
+            alerts.append(ops_ledger.ledger_problem(st))
     unprotected = [d["artifact_key"] for d in dumps if d["protection"] == "local_only"]
     if unprotected:
         alerts.append(f"{len(unprotected)} local dump(s) not yet off-site")

@@ -152,6 +152,15 @@ P2 capture (not in P1)                                 P1 backup (asynchronous, 
 - Backup state lives only in `ops.backup_runs` and `status/*.json`. No backup run reads or writes capture, market or financial state.
 - A failed or unavailable backup never turns a successful capture into a failed or missed one.
 - A run that is still `running` after `CSE_STALE_RUN_HOURS` (6) is closed as failed ("abandoned") by the next run of the same kind.
+- **The database ledger is authoritative for success.** Every finished run records two things separately:
+  - `outcome`: what the operation itself reported (`succeeded`, `failed` or `not_configured`);
+  - `status`: the terminal status actually **committed** to `ops.backup_runs`, or `unrecorded` if nothing was committed.
+- A run is `succeeded`, and exits 0, only if the database committed `succeeded`. If the terminal UPDATE fails, or there is no database at all, the run is never reported as succeeded: not in its output, its status file or its exit code (it exits 1).
+  - The ledger then commits a minimal **non-success** status instead: `failed` for a reported success, otherwise the same status (`not_configured` stays `not_configured`). The reported outcome and its evidence go under `details.operation_outcome` and `details.reported`.
+  - If even that can't be committed, the status file says `unrecorded` (with `ledger_error`) and the row stays `running`. The next run of that kind closes the row immediately as `failed`, never `succeeded`, keeping the reported outcome.
+  - `backup status` raises an alert for every `unrecorded` run.
+  - The artifact itself is kept and still verifies. Such a dump counts as neither a successful dump nor off-site protection until a later run records success.
+- `not_configured` still exits 2 when it is recorded normally.
 - Protection levels per dump: `local_only`, then `offsite` (a succeeded off-site sync whose `covers` lists it), plus a separate `restore_verified` flag.
 - **Off-site is never reported as successful unless all three hold:**
   - restic exited 0;
@@ -301,6 +310,7 @@ sudo bash /opt/cse/app/ops/bin/cse-ops backup status    # alerts "off-site not c
 **Handling problems**
 - **Server was off:** timers with `Persistent=true` run the missed dump and checks after boot, and off-site sync runs 10 minutes after boot and then hourly. Nothing else is needed.
 - **Off-site failing:** the ledger shows `failed` with a redacted reason, and it retries hourly. Local dumps stay `local_only` (alerted after 48 hours).
+- **Alert "outcome … is NOT recorded as such in ops.backup_runs":** a run finished but couldn't commit its terminal status, typically because PostgreSQL went away mid-run. Nothing is counted as success. Fix PostgreSQL. The next run of that kind closes the orphaned row as `failed`, and a new successful run restores protection.
 - **Backup disk missing or full:** `RequiresMountsFor` stops the units, the status unit fails, and capture (P2) is unaffected by design. Fix the disk, then run the dump and off-site units.
 
 **Never run the test suite with `DATABASE_URL` pointing at production.** The legacy Stage E tests insert rows, and append-only tables cannot be cleaned. Peer authentication already stops any OS user other than the service users from connecting as a service role.

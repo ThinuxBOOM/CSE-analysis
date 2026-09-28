@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 import pytest
 
@@ -222,7 +223,7 @@ class _FakeLedger:
         return run
 
     def finish(self, run, status, **kw):
-        run.update(status=status, **kw)
+        run.update(status=status, outcome=status, ledger="database", **kw)
         return dict(run)
 
 
@@ -300,7 +301,7 @@ def test_ledger_without_database_records_status_file_and_redacts(tmp_path):
     assert ops_ledger.read_status(str(tmp_path / "status"), "offsite_sync")["status"] == "running"
     rec = led.finish(run, "failed", error="restic: bad password topsecret-pw", details={"x": "topsecret-pw"})
     st = ops_ledger.read_status(str(tmp_path / "status"), "offsite_sync")
-    assert st["status"] == "failed" and st["ledger"] == "status_file_only"
+    assert (st["outcome"], st["status"], st["ledger"]) == ("failed", "unrecorded", "unavailable")
     assert "topsecret-pw" not in json.dumps(st) and "topsecret-pw" not in json.dumps(rec)
 
 
@@ -309,9 +310,82 @@ def test_local_dump_failure_is_recorded_not_raised(tmp_path):
     s = _settings(tmp_path, CSE_DB_HOST=str(tmp_path / "nosock"), CSE_DB_PORT="1")
     led = ops_ledger.Ledger(None, str(tmp_path / "backup" / "status"), "h", "t", "rev", Redactor())
     code, rec = ops_backup.dump(s, led, Redactor(), lambda m: None)
-    assert code == 1 and rec["status"] == "failed" and rec["error"]
+    assert code == 1 and (rec["outcome"], rec["status"]) == ("failed", "unrecorded") and rec["error"]
     assert os.listdir(tmp_path / "backup" / "pg" / "staging") == []
     assert ops_backup.list_dumps(s) == []
+
+
+class _LostConnection:
+    """Stands in for the ledger's autocommit connection: the first `ok` statements succeed (the run-row INSERT returns
+    id 41), then the server is gone and every later statement raises."""
+
+    def __init__(self, ok):
+        self.ok, self.autocommit, self.description = ok, False, None
+
+    def cursor(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def execute(self, sql, args=()):
+        if self.ok <= 0:
+            raise RuntimeError("server closed the connection unexpectedly (password=topsecret-pw)")
+        self.ok -= 1
+        self.description = ("id", "started_at")
+
+    def fetchall(self):
+        return [(41, datetime(2026, 9, 28, tzinfo=timezone.utc))]
+
+
+def test_run_whose_terminal_ledger_update_fails_is_never_reported_as_success(tmp_path):
+    """The run row was inserted, the backup completed, then the terminal UPDATE failed: neither the returned record
+    nor the status file may say 'succeeded'; the reported outcome is kept separately; the exit code is non-zero."""
+    status = str(tmp_path / "status")
+    led = ops_ledger.Ledger(_LostConnection(ok=1), status, "h", "t", "rev", Redactor(["topsecret-pw"]))
+    run = led.start("local_dump")
+    assert run["id"] == 41
+    rec = led.finish(run, "succeeded", artifact_key="pg/dumps/2026/09/cse_x", artifact_sha256="a" * 64,
+                     manifest_sha256="b" * 64)
+    st = ops_ledger.read_status(status, "local_dump")
+    for r in (rec, st):
+        assert r["status"] != "succeeded"
+        assert (r["outcome"], r["status"], r["ledger"]) == ("succeeded", "unrecorded", "update_failed")
+        assert r["artifact_key"] == "pg/dumps/2026/09/cse_x" and "server closed the connection" in r["ledger_error"]
+        assert "topsecret-pw" not in json.dumps(r, default=str)
+    assert ops_ledger.exit_code(rec) == 1
+    # the run row could not even be inserted: the run is not interrupted, and still never reported as success
+    led2 = ops_ledger.Ledger(_LostConnection(ok=0), status, "h", "t", "rev", Redactor(["topsecret-pw"]))
+    run2 = led2.start("restore_check")
+    assert run2["id"] is None
+    rec2 = led2.finish(run2, "succeeded", artifact_key="pg/dumps/2026/09/cse_x", covers=["pg/dumps/2026/09/cse_x"])
+    assert (rec2["outcome"], rec2["status"], rec2["ledger"]) == ("succeeded", "unrecorded", "unavailable")
+    assert ops_ledger.exit_code(rec2) == 1 and "topsecret-pw" not in json.dumps(rec2, default=str)
+
+
+def test_exit_codes_follow_the_committed_ledger_status():
+    rec = lambda status, ledger="database": {"status": status, "outcome": status, "ledger": ledger}
+    assert [ops_ledger.exit_code(rec(x)) for x in ("succeeded", "failed", "not_configured")] == [0, 1, 2]
+    assert ops_ledger.exit_code(rec("not_configured", ledger="update_failed")) == 1
+    assert ops_ledger.exit_code(dict(rec("unrecorded", ledger="unavailable"), outcome="succeeded")) == 1
+
+
+def test_offsite_sync_that_cannot_record_its_success_exits_nonzero_and_alerts(tmp_path):
+    s = _settings(tmp_path)
+    d = _fake_dump(tmp_path / "backup")
+    logs = []
+    led = ops_ledger.Ledger(_LostConnection(ok=1), os.path.join(s.backup_root, "status"), "h", "t", "rev", Redactor())
+    code, rec = offsite.sync(s, led, _FakeTarget(), logs.append)
+    assert code == 1 and (rec["outcome"], rec["status"]) == ("succeeded", "unrecorded")
+    assert rec["covers"] == ["pg/dumps/2026/10/" + d.name]           # what the run reported is preserved...
+    assert any("NOT recorded" in m for m in logs) and not any("sync succeeded" in m for m in logs)
+    st = ops_backup.protection_status(s, None)                         # ...but it never counts as protection
+    assert st["source"] == "status_files" and st["runs"]["offsite_sync"]["last_success_at"] is None
+    assert [x["protection"] for x in st["dumps"]] == ["local_only"]
+    assert any("offsite_sync" in a and "NOT recorded" in a for a in st["alerts"])
 
 
 # ------------------------------------------------------------------------------------------------ static config

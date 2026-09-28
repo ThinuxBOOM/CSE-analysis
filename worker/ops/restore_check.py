@@ -19,7 +19,7 @@ import json
 import os
 import sys
 
-from . import backup as ops_backup, dbhash, settings as ops_settings
+from . import backup as ops_backup, dbhash, ledger as ops_ledger, settings as ops_settings
 from .ephemeral_pg import EphemeralCluster, EphemeralError
 from .redact import Redactor
 
@@ -110,7 +110,11 @@ def run(s, led, redact, log, dump_dir=None, keep=False, cluster_factory=Ephemera
     if problems:
         return 1, led.finish(rec_run, "failed", artifact_key=key, covers=[],
                              details={"problems": problems[:50], **info}, error=problems[0])
-    return 0, led.finish(rec_run, "succeeded", artifact_key=key, covers=[key], details=info)
+    rec = led.finish(rec_run, "succeeded", artifact_key=key, covers=[key], details=info)
+    problem = ops_ledger.ledger_problem(rec)
+    if problem:
+        log(problem)
+    return ops_ledger.exit_code(rec), rec
 
 
 def main(argv=None):
