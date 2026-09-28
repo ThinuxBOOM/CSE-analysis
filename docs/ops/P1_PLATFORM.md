@@ -22,7 +22,12 @@ P1 is the platform that must exist **before** P2 (market capture). It contains:
 - F6.3, F6.4, F4 persistence;
 - a dashboard, predictions or Gemini.
 
-**The CSE governance blocker G-1 still applies.** Nothing may poll CSE automatically, and no CSE content may be stored in production, until the owner has resolved it. P1 needs no CSE access.
+**CSE governance (G-1) is an accepted owner risk, not a CSE authorization.** On 2026-09-28 the owner recorded G-1 as `accepted_risk`; see [docs/governance/G-1_CSE_DATA_USE.md](../governance/G-1_CSE_DATA_USE.md).
+- No written CSE permission or licence exists, and nothing may claim one.
+- P2/P3 may proceed **only subject to the scope and mandatory controls in that record**: personal, non-commercial, private use; sequential polling at least 1.5 s apart with backoff; an identifiable User-Agent; no circumvention; no redistribution; no raw responses in Git; stop on CSE request.
+- P2 must design an owner-controlled purge procedure (§12). The P1 protections are not weakened for it.
+
+P1 itself needs no CSE access.
 
 ---
 
@@ -334,4 +339,5 @@ bash ops/tests/provision_in_docker.sh                                    # clean
 - **The container test did not exercise systemd units, timers, ufw or time synchronisation** (the container has no systemd). The commands in §9 verify them on the real server.
 - **There is no alert delivery channel** (email or push). Problems surface in `systemctl --failed`, the journal, `backup status` and `status/*.json`.
 - **Documentation and naming are still Supabase-era in places.** The README and the `supabase/migrations` directory name are unchanged (renaming is deferred; tests depend on the path), and the two expired GitHub workflows remain. That cleanup is deferred (M10).
+- **There is no purge path for CSE data yet, by design.** Append-only triggers, write-once spool files and immutable backups make deleting data deliberately hard. G-1 ([decision record](../governance/G-1_CSE_DATA_USE.md) §6) requires P2 to design an owner-authorised purge/retention procedure covering the active database, spool copies and backups, without weakening these protections.
 - **The P2 archive table's body column type is not settled.** F2's guard test forbids `bytea` in any migration (`tests/test_document_retrieval.py`), so P2 must choose a column type for raw response bodies, or scope that guard to document tables in a reviewed change.

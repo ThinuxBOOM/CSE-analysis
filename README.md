@@ -5,6 +5,10 @@ runtime). Provisioning, the migration runner/ledger, roles, append-only protecti
 [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
 `python -m worker.ops.migrate apply` (as `cse_migrator`); older sections below that mention Supabase are historical.
 
+**CSE data use (G-1) is an owner-accepted risk, NOT CSE authorization.** No CSE permission or licence exists. Any
+CSE access must follow the scope and mandatory controls in
+[docs/governance/G-1_CSE_DATA_USE.md](docs/governance/G-1_CSE_DATA_USE.md).
+
 # ⚠️ Operational requirements — read before any live capture
 
 Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).
