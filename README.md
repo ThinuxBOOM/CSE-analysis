@@ -9,6 +9,10 @@ runtime). Provisioning, the migration runner/ledger, roles, append-only protecti
 CSE access must follow the scope and mandatory controls in
 [docs/governance/G-1_CSE_DATA_USE.md](docs/governance/G-1_CSE_DATA_USE.md).
 
+**P2 market capture** (`worker/market_capture`, migration 0012) archives exact CSE responses (spool, then PostgreSQL)
+and derives observations through the frozen Stage E code. It is run by hand for an explicit trading date; it is not
+scheduling or go-live (P3). Runbook: [docs/ops/P2_MARKET_CAPTURE.md](docs/ops/P2_MARKET_CAPTURE.md).
+
 # ⚠️ Operational requirements — read before any live capture
 
 Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).

@@ -31,6 +31,10 @@ FROZEN = {
     "0005_report_classification.sql": "2b035d8dba6a9e7e8ec8321bb44b2eb906e239435688c6e09594612c46cdddcc",
     "0007_issuers.sql": "68533d33e009bb1b18bda424db4bb86692a1afbe9240a8f6281f9a154d633b1b",
     "0008_financial_candidates.sql": "53aec0f040eb017cd1b10bcec3cff2ade645a3a3756988da7ee3b77aad7fbdb2",
+    # P1 (frozen at 43f6b85)
+    "0009_local_security_boundary.sql": "f573d327d55468a839f75ec874714e31ea9bb36dbf66ce0a0c5621274049077f",
+    "0010_append_only_source_evidence.sql": "f4fdc0e7bcac16c4babe12a79ea99cd33204eea073dc90247616aaa67764703d",
+    "0011_ops_backup_ledger.sql": "401dfbb27a1c703bf6517904de1ef8b24d6223170273d652893e77f54dfbb7fa",
 }
 
 
@@ -41,8 +45,10 @@ def test_frozen_migrations_unchanged_and_0006_unused():
     for name, sha in FROZEN.items():
         assert found.get(name) == sha, f"frozen migration {name} changed"
     assert not any(n.startswith("0006_") for n in found), "0006 must stay unused"
-    assert [n for n in found if n >= "0009"] == ["0009_local_security_boundary.sql",
-                                                  "0010_append_only_source_evidence.sql", "0011_ops_backup_ledger.sql"]
+    # P1's migrations come first; later phases append (P2: 0012)
+    assert [n for n in found if n >= "0009"][:3] == ["0009_local_security_boundary.sql",
+                                                      "0010_append_only_source_evidence.sql",
+                                                      "0011_ops_backup_ledger.sql"]
 
 
 def test_hash_normalises_line_endings(tmp_path):
