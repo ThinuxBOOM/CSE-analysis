@@ -1,6 +1,6 @@
 # P3: Capture scheduler, catch-up and production operations
 
-**Status: implementation for review.** P3 makes the frozen P2 capture pipeline run reliably on the intermittently-online Linux server. It does **not** perform the first production capture: that is a separate, owner-controlled operation after P3 is accepted (§15).
+**Status: frozen/accepted at `40e15bccbe0c4caf8ba74898237f69be6ad169f7`.** P3 makes the frozen P2 capture pipeline run reliably on the intermittently-online Linux server. It does **not** perform the first production capture: that is a separate, owner-controlled operation after P3 is accepted (§15).
 
 > **G-1 is an owner-accepted risk, not CSE authorization** ([docs/governance/G-1_CSE_DATA_USE.md](../governance/G-1_CSE_DATA_USE.md)).
 > - No CSE permission or licence exists, and nothing here may claim one.
