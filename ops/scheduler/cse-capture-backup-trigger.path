@@ -1,0 +1,13 @@
+# CSE P3: after every capture action the scheduler atomically rewrites /var/lib/cse-scheduler/capture-finished;
+# this starts P1's local dump unit (cse-backup-dump.service, unchanged) ASYNCHRONOUSLY. The capture state is already
+# final when the marker is written and never depends on the dump, which records its own outcome in ops.backup_runs
+# (P1). The nightly dump timer runs regardless; off-site sync and restore checks stay independent P1 units.
+[Unit]
+Description=CSE local dump after a capture (P3 -> P1, asynchronous)
+
+[Path]
+PathChanged=/var/lib/cse-scheduler/capture-finished
+Unit=cse-backup-dump.service
+
+[Install]
+WantedBy=paths.target

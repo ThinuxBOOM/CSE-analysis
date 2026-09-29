@@ -1,0 +1,45 @@
+# CSE P3: ONE scheduler wake-up. systemd only wakes the scheduler; PostgreSQL decides what is due (migration 0014).
+# Nothing contacts CSE unless the OWNER armed the scheduler for this host with an exact User-Agent (`arm`, owner path);
+# every CSE request is made by P2's code (one at a time, >= 1.5 s apart, backoff, stop on blocks).
+# G-1: owner-accepted risk, NOT CSE authorization (docs/governance/G-1_CSE_DATA_USE.md).
+[Unit]
+Description=CSE capture scheduler wake-up (P3)
+Wants=postgresql.service network-online.target time-sync.target
+After=postgresql.service network-online.target time-sync.target local-fs.target
+RequiresMountsFor=/srv/cse-backup
+
+[Service]
+Type=oneshot
+User=cse-worker
+Group=cse-worker
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/capture.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_worker"
+WorkingDirectory=/opt/cse/app
+ExecStart=/usr/bin/python3 -m worker.scheduler run --trigger timer
+# Exit 2 (attention), 3 (G-1 block), 4 (PostgreSQL unavailable) and 5 (refused) leave the unit failed, so they show in
+# `systemctl --failed`. A hung wake-up is killed here: PostgreSQL then frees its capture lock, and the next wake-up
+# expires its lease and resumes the capture run under the same run id.
+TimeoutStartSec=2h
+StateDirectory=cse-scheduler
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup/spool
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=

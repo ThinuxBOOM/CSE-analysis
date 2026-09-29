@@ -13,6 +13,11 @@ CSE access must follow the scope and mandatory controls in
 and derives observations through the frozen Stage E code. It is run by hand for an explicit trading date; it is not
 scheduling or go-live (P3). Runbook: [docs/ops/P2_MARKET_CAPTURE.md](docs/ops/P2_MARKET_CAPTURE.md).
 
+**P3 capture scheduler** (`worker/scheduler`, migration 0014) runs that P2 capture from a systemd timer that only wakes
+it: PostgreSQL decides which Colombo trading dates are due, catches up after downtime (dates whose window closed are
+recorded as missed, never relabelled), recovers stale runs under the same run id, and allows one capture at a time.
+It contacts nobody until the owner arms it at the release gate. Runbook: [docs/ops/P3_SCHEDULER.md](docs/ops/P3_SCHEDULER.md).
+
 # ⚠️ Operational requirements — read before any live capture
 
 Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).
