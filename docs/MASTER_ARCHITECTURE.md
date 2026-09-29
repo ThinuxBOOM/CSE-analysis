@@ -422,14 +422,21 @@ Rules:
 -   errata/amendments are represented through version/supersession
     logic.
 
-Possible reconciliation states:
+Possible reconciliation states (`f6.reconciliation.1`; defined in
+`docs/F6.2_DESIGN.md` §7):
 
 ``` text
 single_source
 corroborated
 conflicting
-nil_reported
 ```
+
+When the state is not `conflicting`, the result also carries
+`value_kind = numeric | nil`. A nil fact (a printed dash, or the words
+`Nil` / `None`) is therefore `single_source` or `corroborated` with
+`value_kind = nil`; there is no separate `nil_reported` state. Nil is
+never zero: nil against a numeric value, including a printed `0`, is
+`conflicting`.
 
 ------------------------------------------------------------------------
 
@@ -1566,20 +1573,19 @@ Frozen/accepted:
 -   P0.5;
 -   G-1;
 -   P1;
--   P2.
+-   P2;
+-   P3.
 
 F6.2 is an accepted design but needs its storage amendments formally
 implemented.
 
-P3 is implemented/pushed but is **not yet frozen/accepted**.
+P3 was implemented, independently reviewed and passed its acceptance
+gate (§53). It is **frozen/accepted** at commit `40e15bcc`.
 
-Current P3 commit:
+F6.3 is implemented at commit `3c497c7d`. It is not yet frozen: it is
+entering its own acceptance/freeze gate.
 
-``` text
-40e15bccbe0c4caf8ba74898237f69be6ad169f7
-```
-
-Important earlier accepted commits:
+Important accepted commits:
 
 ``` text
 G-1:
@@ -1590,6 +1596,15 @@ P1 fix:
 
 P2:
 00af041dbb414bb15255a4434ad30a82f17d23ad
+
+P3:
+40e15bccbe0c4caf8ba74898237f69be6ad169f7
+```
+
+Current F6.3 commit (implemented; not yet frozen):
+
+``` text
+3c497c7d3b1fd02a3627299f11d9dd21cd959072
 ```
 
 P3 reported tests included:
@@ -1608,7 +1623,10 @@ execution by this document.
 
 # 53. P3 Acceptance Gate
 
-Before freezing P3:
+**Status: passed.** P3 was independently reviewed against the
+repository and this architecture, passed this gate, and is
+frozen/accepted at commit `40e15bcc` (§52). This section records what
+the gate required:
 
 -   independently inspect the repository;
 -   verify migration 0014 is additive;
@@ -1623,8 +1641,7 @@ Before freezing P3:
 -   verify clean provisioning;
 -   verify no CSE contact in tests;
 -   perform migration lineage audit;
--   document D-2;
--   then freeze.
+-   document D-2.
 
 The first production capture is a separate gate.
 
