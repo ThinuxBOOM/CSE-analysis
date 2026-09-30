@@ -429,5 +429,6 @@ def test_frozen_p1_and_p2_files_are_unchanged():
 
 def test_new_migrations_continue_after_0013_and_0006_stays_unused():
     names = [m.filename for m in mig.discover(os.path.join(REPO, "supabase", "migrations"))]
-    assert names[-2:] == ["0013_market_capture_owner_acknowledgement.sql", "0014_market_capture_scheduler.sql"]
+    i = names.index("0013_market_capture_owner_acknowledgement.sql")
+    assert names[i:i + 2] == ["0013_market_capture_owner_acknowledgement.sql", "0014_market_capture_scheduler.sql"]
     assert not any(n.startswith("0006_") for n in names)

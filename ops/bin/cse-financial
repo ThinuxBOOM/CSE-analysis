@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Run the F6.4 financial truth store command line with the server configuration loaded. Never as root, never as
+# postgres. No network, no CSE request, no PDF: F6.4 reads only the persisted F1/F3/F5 rows (docs/F6.4_DESIGN.md).
+#
+# Who runs what (all reached only through sudo, i.e. by root/the owner):
+#   every F6.4 command               OS cse-worker   -> PostgreSQL cse_worker (peer)
+#   designate (owner decision)       OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner for ONE insert -
+#                                    the owner path; the worker can never designate a configuration itself
+#
+#   sudo bash /opt/cse/app/ops/bin/cse-financial preflight
+#   sudo bash /opt/cse/app/ops/bin/cse-financial validate --pending
+#   sudo bash /opt/cse/app/ops/bin/cse-financial reconcile --designated
+#   sudo bash /opt/cse/app/ops/bin/cse-financial verify --sample 10
+set -euo pipefail
+APP="${CSE_APP_DIR:-/opt/cse/app}"
+[[ $# -ge 1 ]] || { echo "usage: $0 <command> [args...]  (python -m worker.financial_truth_store --help)" >&2; exit 2; }
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+user=cse-worker; role=cse_worker
+case "$1" in
+  designate) user=cse-migrator; role=cse_migrator ;;
+esac
+operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an owner decision
+exec runuser -u "$user" -- bash -c '
+  set -a
+  . /etc/cse/cse.env
+  set +a
+  export PYTHONPATH="$0" CSE_DB_USER="$1" CSE_OPERATOR="$2"
+  shift 2
+  cd /
+  exec python3 -m worker.financial_truth_store "$@"' "$APP" "$role" "$operator" "$@"
