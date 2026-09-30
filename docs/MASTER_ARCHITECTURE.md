@@ -1532,7 +1532,8 @@ Worker code must not operate as the database owner.
 
 # 51. Migration Lineage Audit
 
-Current migration sequence reaches 0014.
+Current migration sequence reaches 0015 (F6.4's additive
+`0015_financial_truth_persistence.sql`); `0006` remains unused.
 
 Historical notes:
 
@@ -1570,20 +1571,55 @@ Frozen/accepted:
 -   F5;
 -   F6.0;
 -   F6.1;
+-   F6.3;
+-   F6.4;
 -   P0.5;
 -   G-1;
 -   P1;
 -   P2;
 -   P3.
 
-F6.2 is an accepted design but needs its storage amendments formally
-implemented.
+F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
+§10--§11) are implemented by F6.4 (migration 0015).
 
 P3 was implemented, independently reviewed and passed its acceptance
 gate (§53). It is **frozen/accepted** at commit `40e15bcc`.
 
-F6.3 is implemented at commit `3c497c7d`. It is not yet frozen: it is
-entering its own acceptance/freeze gate.
+F6.3 --- the pure financial-truth layer (`worker/financial_truth/`:
+validation, admission, source observations, economic-fact identity and
+reconciliation) --- is **implemented and frozen/accepted** at commit
+`3c497c7d`.
+
+F6.4 is **implemented and frozen/accepted** at commit `54d71c47`, built
+from the frozen design `docs/F6.4_DESIGN.md` (commit `84804a14`). It is
+the durable PostgreSQL persistence layer of the financial truth layer
+(migration `0015_financial_truth_persistence.sql`, package
+`worker/financial_truth_store/`, operator wrapper
+`ops/bin/cse-financial`). It provides:
+
+-   validation-run persistence: every candidate validation, OP1 records,
+    economic-fact identities, and source observations with their members
+    and member comparisons;
+-   reconciliation persistence: configurations, the owner's designation,
+    per-issuer batches, per-fact record history, inputs,
+    cross-observation comparisons and batch results;
+-   provenance from each fact to its source observations, candidates, F5
+    run, classification, filing and listing observations, and back;
+-   immutable history: every table is append-only (no UPDATE, DELETE or
+    TRUNCATE for any role), so new results are appended and nothing is
+    overwritten;
+-   a job ledger: jobs, job events, locking and cleanup of abandoned
+    jobs;
+-   projections (six rebuildable views) and verification (`verify`
+    re-proves the stored hashes, decompositions, seals and chains and
+    reproduces validation runs; a security preflight);
+-   database-enforced integrity: each F6.3 output is stored as its
+    byte-exact canonical JSON envelope, and guard, deferred completeness
+    and seal triggers prove that its typed columns and child rows are
+    exactly that envelope (F6.4 design §11.6, EDI-1 to EDI-6).
+
+F6.4 implements no availability, supersession or as-of policy (F8) and
+no forecasting.
 
 Important accepted commits:
 
@@ -1599,12 +1635,22 @@ P2:
 
 P3:
 40e15bccbe0c4caf8ba74898237f69be6ad169f7
+
+F6.3:
+3c497c7d3b1fd02a3627299f11d9dd21cd959072
+
+F6.4 design (frozen):
+84804a142db6804bdde3b42a3aae3495eb4487b4
+
+F6.4:
+54d71c4782856ddd6855401673e10acaa465a2c8
 ```
 
-Current F6.3 commit (implemented; not yet frozen):
+Migration 0015 (F6.4), as the migration ledger records it (LF-normalised
+SHA-256):
 
 ``` text
-3c497c7d3b1fd02a3627299f11d9dd21cd959072
+afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2
 ```
 
 P3 reported tests included:
@@ -1615,6 +1661,26 @@ P3 reported tests included:
 -   Linux full suite: 930 passed, 46 skipped, 2 expected D-2 xfails;
 -   clean Ubuntu/systemd: 26/26;
 -   P1 clean-server regression: 17/17.
+
+These are implementation-agent-reported results, not an independent
+execution by this document.
+
+F6.4 was independently cross-checked against the repository: the
+implementation boundary, the structure of migration 0015, the absence
+of `SECURITY DEFINER`, the unmodified frozen migrations and stages, and
+the writer's concurrency/idempotency handling. The cross-check did not
+execute the test suites. F6.4 reported tests included:
+
+-   171 F6.4 unit tests (U1--U10);
+-   27 F6.4 PostgreSQL tests (P1--P16, P18) on PostgreSQL 17.11;
+-   3 F6.4 real-corpus PostgreSQL tests (F6.2 §14 counts reproduced);
+-   Linux full suite: 1321 passed, 46 skipped, 2 expected D-2 xfails;
+-   Windows full suite: 1128 passed, 241 skipped;
+-   clean Ubuntu 24.04 provisioning, with F6.4 exercised through
+    `ops/bin/cse-financial`: 48/48;
+-   mutation audit of migration 0015: 75 of 78 mutants killed (the three
+    survivors are unreachable or shadowed checks); Python pre-insert
+    mirror: 52 of 52.
 
 These are implementation-agent-reported results, not an independent
 execution by this document.
@@ -1682,11 +1748,15 @@ architecture should be implemented in dependency order.
 
 ## Phase 1 --- Complete financial truth
 
--   formalize F6.2 storage changes;
--   F6.3 reconciliation;
--   F6.4 persistence;
+-   formalize F6.2 storage changes --- done: implemented by F6.4
+    (migration 0015);
+-   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
+-   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation;
--   availability/supersession.
+-   availability/supersession (F8; explicitly deferred by F6.4).
+
+The remaining Phase 1 items and every later phase below are not yet
+implemented.
 
 ## Phase 2 --- Historical financial backfill
 
