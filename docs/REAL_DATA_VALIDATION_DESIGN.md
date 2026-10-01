@@ -1,7 +1,8 @@
 # Real-data financial-truth validation (design)
 
-**Status:** DESIGN, self-audited (§19). The implementation follows in the same phase. **Not frozen**: this phase
-is frozen only after independent acceptance and the Master Architecture update (Master Architecture §55, Phase 1).
+**Status:** DESIGN, self-audited (§19). The implementation followed in the same phase. Both were committed at
+`12bc8f2ce0c7d06757299cbaebdc3fcc03164b51` and are **frozen/accepted** at that commit, as recorded in the Master
+Architecture (§52; §55, Phase 1). The rest of this document is the design as frozen.
 
 **Date:** 2026-10-01.
 

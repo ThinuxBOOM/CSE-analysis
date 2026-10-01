@@ -1573,6 +1573,7 @@ Frozen/accepted:
 -   F6.1;
 -   F6.3;
 -   F6.4;
+-   real-data validation;
 -   P0.5;
 -   G-1;
 -   P1;
@@ -1621,6 +1622,91 @@ the durable PostgreSQL persistence layer of the financial truth layer
 F6.4 implements no availability, supersession or as-of policy (F8) and
 no forecasting.
 
+Real-data validation is **implemented and frozen/accepted** at commit
+`12bc8f2c`. That one commit holds both its design
+(`docs/REAL_DATA_VALIDATION_DESIGN.md`) and its implementation
+(`docs/REAL_DATA_VALIDATION_IMPLEMENTATION.md` and the validation
+harness `tests/rdv_*.py` and `tests/test_rdv_*.py`). It checked whether
+the frozen financial-truth layers (F6.1, F6.3, F6.4) behave correctly
+on actual persisted F1/F3/F5 evidence. It changed no frozen code, added
+no migration and introduced no new financial semantics.
+
+Its scope:
+
+-   only the existing real evidence, pinned by a SHA-256 manifest: the
+    26-filing F6 corpus, four F0 captures and eight Stage E fixtures;
+    the evidence and the reports stay outside Git;
+-   the evidence was replayed into throwaway PostgreSQL 17 databases
+    through the frozen P2, F1, F5 and F3 stores, then validated and
+    reconciled by F6.4's jobs, offline and with no CSE contact;
+-   issuer links were decided only by the frozen F5 issuer rule, from
+    real secId and listing evidence: no issuer was invented, and none
+    was inferred from a document path prefix alone.
+
+Measured coverage:
+
+-   the F1 replay discovered 12,493 filings; the validation population
+    is the 26 filings with F3/F5 evidence (19 issuers by source symbol,
+    2,248 F5 candidates);
+-   issuer decisions: 4 COMB filings have an evidenced listing-based
+    link (admissible under F6.3 A-2); 1 LOLC filing is linked by its
+    path prefix only (refused); 21 filings are unresolved (refused);
+-   admission: 440 numeric and 8 nil candidates admitted and 1,800 not
+    admitted, with every refusal reason counted; 1,378 candidates are
+    refused only for issuer evidence;
+-   404 source observations and **321 persisted economic facts, all for
+    COMB, from 4 of the 26 filings**: 234 single-source numeric, 6
+    single-source nil, 73 corroborated and 8 conflicting (all within
+    one document);
+-   determinism holds: repeated jobs write nothing new; results are
+    reproduced from the persisted inputs and do not depend on input
+    order; two replays are identical apart from database-generated
+    identifiers; a different result for an existing input is refused
+    and nothing is overwritten;
+-   provenance traces every sampled fact to its listing and issuer
+    evidence, and `verify` reproduces all 26 validation runs.
+
+The real-world limit is issuer evidence, not financial-truth logic. 17
+corpus issuers lack secId evidence and LOLC lacks a listing, so F6.3
+A-2 refuses their filings. A counterfactual differential (a proxy
+issuer for every filing, computed in memory and never persisted)
+explains every difference from the real result and reproduces the F6.2
+§14 measurements exactly (1,488 facts).
+
+Suspected frozen-layer defects, recorded as change-control findings
+and **not fixed** (each needs its own change-control decision):
+
+-   P-18, F5 document-path parsing: `PATH_RE` reads no secId or upload
+    epoch from 2,502 of 12,486 real CSE document paths (5 corpus
+    filings). It fails closed, but loses the path/listing cross-check
+    and the path epoch;
+-   P-23, F5 v1 mapping: in COMB's annual report, 8 identities each
+    receive two different printed rows (6 because the
+    total-comprehensive-income attribution block is mapped onto the
+    profit-attribution concepts, 2 from two different "Interest
+    income" rows), giving 8 conflicting facts (F6.2 E5);
+-   P-1, F3 period dating: DIAL 52713 is mis-dated (known since F6.0),
+    and F6.1 refuses its 16 candidates.
+
+Still open after real-data validation:
+
+-   F8 availability/supersession: errata, amendment and restatement
+    supersession, the choice of availability time, and commit-time
+    as-of;
+-   Phase 2 --- historical financial backfill --- remains the next
+    major architectural phase and is not implemented.
+
+The real-data validation owner questions remain future decisions and
+operational requirements, not completed work:
+
+-   Q1: issuer evidence for every symbol (`/api/financials` listing
+    discovery and secId evidence) belongs to the Phase 2 backfill
+    design;
+-   Q2: any change to F5 path parsing needs a separate F5
+    version/change-control phase;
+-   Q3: the external F6 evidence corpus needs a private backup outside
+    Git.
+
 Important accepted commits:
 
 ``` text
@@ -1644,6 +1730,9 @@ F6.4 design (frozen):
 
 F6.4:
 54d71c4782856ddd6855401673e10acaa465a2c8
+
+Real-data validation (design and implementation, one commit):
+12bc8f2ce0c7d06757299cbaebdc3fcc03164b51
 ```
 
 Migration 0015 (F6.4), as the migration ledger records it (LF-normalised
@@ -1681,6 +1770,31 @@ execute the test suites. F6.4 reported tests included:
 -   mutation audit of migration 0015: 75 of 78 mutants killed (the three
     survivors are unreachable or shadowed checks); Python pre-insert
     mirror: 52 of 52.
+
+These are implementation-agent-reported results, not an independent
+execution by this document.
+
+Real-data validation was independently cross-checked against the
+repository. The cross-check covered:
+
+-   exactly the seven added files, with no modified frozen stage or
+    migration (0001--0015) and no new migration or database
+    architecture;
+-   the internal consistency of the reported population, candidate,
+    admission, source-observation and fact counts;
+-   the determinism checks;
+-   the reporting of the three suspected defects as change-control
+    findings.
+
+The cross-check did not execute the test suites. Real-data validation
+reported tests included:
+
+-   27 real-data tests (14 database-free; 13 PostgreSQL, V1--V11) on
+    PostgreSQL 17.11, offline, with the evidence mounted;
+-   Linux full suite: 1348 passed, 46 skipped, 2 expected D-2 xfails;
+-   Windows full suite: 1138 passed, 258 skipped;
+-   mutation sanity check of the new tests: 5 of 5 planted faults
+    killed.
 
 These are implementation-agent-reported results, not an independent
 execution by this document.
@@ -1752,11 +1866,13 @@ architecture should be implemented in dependency order.
     (migration 0015);
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
--   real-data validation;
+-   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
 -   availability/supersession (F8; explicitly deferred by F6.4).
 
-The remaining Phase 1 items and every later phase below are not yet
-implemented.
+The remaining Phase 1 item (F8 availability/supersession) and every
+later phase below are not yet implemented. Phase 2 --- historical
+financial backfill --- remains the next major architectural phase; its
+design decides real-data validation Q1 (issuer evidence; §52).
 
 ## Phase 2 --- Historical financial backfill
 

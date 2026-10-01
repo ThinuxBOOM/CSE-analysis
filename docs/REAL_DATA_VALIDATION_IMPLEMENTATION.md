@@ -1,7 +1,9 @@
 # Real-data financial-truth validation (implementation)
 
-**Status:** implemented and self-audited (§16). Uncommitted. Awaiting independent audit. **Not frozen.** The Master
-Architecture is updated only after independent acceptance (Phase 1 workflow).
+**Status:** implemented and self-audited (§16). Committed at `12bc8f2ce0c7d06757299cbaebdc3fcc03164b51` and
+**frozen/accepted** at that commit, as recorded in the Master Architecture (§52; §55, Phase 1). The rest of this note
+describes the state when it was written, before that commit. Since then, the two stale status lines of §15 item 7 have
+been corrected.
 
 **Date:** 2026-10-01.
 
