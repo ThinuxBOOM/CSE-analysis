@@ -1,7 +1,9 @@
 # Phase 2: Historical financial backfill (design)
 
-**Status:** DESIGN ONLY. No code, no migration, no test, no CSE contact. Awaiting review. **Not frozen; Phase 2 is not
-implemented.** One design blocker (§26, HB-X1) must be decided by the owner before implementation can start.
+**Status:** DESIGN ONLY. No code, no migration, no test, no CSE contact. **Not frozen; Phase 2 is not implemented.**
+Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
+- HB-X1, with HB-X3, before implementation step HB-1;
+- HB-X2 and prerequisite HB-P1 before any live CSE request.
 
 **Date:** 2026-10-01.
 
@@ -76,7 +78,8 @@ phase, continuous collection after the backfill, forecasting and everything afte
   migrations (§23.4).
 
 **Prerequisite HB-P1** (§26): the security master (`companies`) is created only by a derived P2 market capture.
-Phase 2's first stage therefore needs the first production capture (MA §54) or an owner-run manual P2 capture.
+Phase 2's first stage therefore needs the first production capture (MA §54) or an owner-run manual P2 capture. That
+capture itself needs the contact e-mail of HB-X2(b).
 
 ## 2. Objectives
 
@@ -145,11 +148,11 @@ functions and never edits or wraps their logic.
 
 | Component | Phase 2 uses (unchanged) | Phase 2 never |
 |---|---|---|
-| F1 `report_discovery`, `report_filings_store` (0004) | Pure: `parse_listing_item`, `extract_feed_items`, `extract_listing_buckets`. Store: `PostgresFilingStore.begin_run` / `apply_observation` / `finish_run` / `commit`. Normalisation and company linkage are F1's own | `discover`, `discover_feed_window` and `discover_company_listing` for live traffic: they call `cse_client`, whose default User-Agent has no contact address and whose callers default to 1.0 s pacing (§16.1). F1 rows are never written directly |
-| F2 `document_retrieval` | `process_filing(filing, consumer, fetcher=<governed fetcher>)`, `validate_temp_root`, its record. The `fetcher` parameter is F2's own injection point (its tests use it) | `RequestsFetcher` (default User-Agent). It never persists a document, text or temporary path |
+| F1 `report_discovery`, `report_filings_store` (0004) | The bodies of `discover_feed_window` / `discover_company_listing` with only the request replaced (HB-U4): F1's own `_new_summary`, `extract_feed_items` / `extract_listing_buckets`, `_collect` (parsing, rejects, duplicate ids, missing paths), `_ingest` (per-item failure isolation) and `_finish` (run status, `finish_run`, `commit`), over `PostgresFilingStore`. Normalisation and company linkage are F1's own | `discover`, `discover_feed_window` and `discover_company_listing` for live traffic: they call `cse_client`, whose default User-Agent has no contact address and whose callers default to 1.0 s pacing (§16.1). F1 rows are never written directly |
+| F2 `document_retrieval` | `process_batch([filing], consumer, role="primary", fetcher=<governed fetcher>, temp_root=…)` with one filing: exactly F5 `run()`'s call. It adds F2's leftover check and returns the full retrieval record. Also `validate_temp_root`. The `fetcher` parameter is F2's own injection point (its tests use it) | `RequestsFetcher` (default User-Agent). It never persists a document, text or temporary path |
 | F3 `report_classification`, `document_text`, store (0005) | Through F5's consumer; `PostgresClassificationStore.save` | A new classifier version; persisted text |
 | F4 `statement_extraction`, `pdf_words` | Through F5's consumer; `pdf_words.require_tools()` before any download | Companion (`path2`) retrieval: the frozen F5 path never uses it |
-| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | `make_consumer` (F3 → F4 → F5 in memory) and `attach_timestamps`. Persistence in `_persist`'s exact order: F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`. Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
+| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | The functions F5's `run()` composes, called as it calls them: `load_filings_from_db` (the filing row F3 and F5 read), `make_consumer` (F3 → F4 → F5 in memory), `attach_timestamps` and F5's own `_persist` (F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`). Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
 | F6.1, F6.3 | Only through F6.4's jobs | Direct calls in production paths |
 | F6.4 `financial_truth_store` (0015) | `jobs.validate`, `jobs.pending_runs`, `jobs.reconcile` (incl. `only_issuer`), `jobs.register_configuration`, `jobs.configuration_from_present_runs`, `jobs.designate` (owner path), `verify`, `preflight`, the views | A new F6 table, column or job kind; backfill job state in F6 tables |
 | P1 `worker/ops` | Settings, `spool` (content-addressed, write-once), the migration runner and ledger, backups unchanged | Any P1 change; units in `ops/systemd` |
@@ -158,10 +161,11 @@ functions and never edits or wraps their logic.
 
 ### 4.2 Boundary rules
 
-- **HB-B1. Frozen code is unchanged.** Every composition point has an equivalence test against the frozen entry point
-  it replaces (§23.2):
+- **HB-B1. Frozen code is unchanged.** The backfill calls the frozen functions themselves, including F1's run helpers
+  and F5's `_persist`. Only the network call and the CLI cap differ. Every composition point has an equivalence test
+  against the frozen entry point it mirrors (§23.1):
   - discovery against F1's `discover_*` with a fake `cse_client`;
-  - persistence against F5's `_persist` order.
+  - the document worker against F5's `run()` with a fake fetcher, which must give identical rows.
 - **HB-B2. Frozen tables are written only by their frozen stores or jobs.** F1 rows are written by F1's store, F3 by
   F3's store, F5 by F5's stores, F6 by F6.4's jobs, and the security master by P2's `ensure_companies`.
 - **HB-B3. Every Phase 2 CSE request goes through the governed transport** (§16). Not through:
@@ -173,7 +177,8 @@ functions and never edits or wraps their logic.
 - **HB-B5. Frozen governance gates stay as they are.** The F2/F3/F5 CLIs keep `MAX_FILINGS_PER_RUN = 20`, and
   `link_issuers` keeps `MAX_LIVE_SYMBOLS = 20`. Production-scale retrieval happens only under the owner's recorded
   Phase 2 authorization (HB-X2, §16.6). That is the "deliberate later decision" the F2 CLI comment anticipates. The
-  backfill processes one filing per F5 orchestration call.
+  backfill never calls the capped CLIs or F5's `run()`. It calls the same frozen functions `run()` composes, one
+  filing at a time (HB-R1).
 - **HB-B6. No migration in this phase.** The ledger is blocker HB-X1.
 - **HB-B7. The RDV corpus is never production data.** It is evidence for offline tests only.
 - **HB-B8. Constraints frozen tests impose on any implementation:**
@@ -239,14 +244,20 @@ Two observations seen in F0 are not a Phase 2 source unless the owner approves o
 
 ### 6.2 Construction, in a fixed dependency order
 
-- **HB-U1. Security master.** P2's own path only:
-  - an archived `allSecurityCode` response → `ensure_companies`, inside `derive_run`;
-  - that runs only for a **derived P2 market capture** whose session matched its trading date;
-  - P2's metadata sweep archives `allSecurityCode` but creates no `companies` rows.
+- **HB-U1. Security master.** P2's own path only.
+  - `ensure_companies` (`market_capture/derive.py`) is the only `INSERT INTO companies` in the repository. It runs only
+    inside `capture.derive_run`.
+  - `derive_run` runs only for a P2 **market-capture** run whose archived `tradeSummary` matched its trading date:
+    either a live capture or an archive-only `reprocess` of such a run, whatever the run's final state.
+  - The universe comes from that run's archived `allSecurityCode`. Without it, only securities present in
+    `tradeSummary` get rows.
+  - A P2 metadata sweep archives `allSecurityCode` but creates no rows. `reprocess` refuses any run that is not a
+    market capture.
 
-  Phase 2 therefore needs at least one successful derived P2 capture before HB-S1 (prerequisite HB-P1, §26): the first
-  production capture (MA §54) or an owner-run manual P2 capture. Phase 2 makes no `allSecurityCode` request. It reads
-  P2's latest archive and refuses to start if that is older than the owner's bound (HB-Q8).
+  Phase 2 therefore needs at least one such derived run, with `allSecurityCode` archived, before HB-S1 (prerequisite
+  HB-P1, §26): the first production capture (MA §54) or an owner-run manual P2 capture. Phase 2 makes no
+  `allSecurityCode` request. It refuses to start if the latest **derived** run's `allSecurityCode` is older than the
+  owner's bound (HB-Q8). A newer sweep does not refresh `companies`.
 - **HB-U2. Feed windows.** One request per Colombo calendar month of W: 66 requests, each `fromDate` = the first day and
   `toDate` = the last day of the month (F1 accepts any dates).
   - Without dates CSE returns only the latest three filings, so dates are always sent (`cse_client`).
@@ -259,14 +270,21 @@ Two observations seen in F0 are not a Phase 2 source unless the owner approves o
   - Querying every security keeps `listing_symbols` complete and deterministic. It costs about 33 requests more than
     one per base symbol (294 bases at F0), which is negligible against about 8,750 documents.
   - Delisted securities are not in the master. They are queried only if HB-Q5 approves a source for their full symbols.
-- **HB-U4. Ingestion.** Each HTTP attempt is one F1 discovery run (F1: "one row per discovery HTTP request"):
-  - `begin_run` before the request;
-  - after the response, the governed response is wrapped in `cse_client.CSEResponse`;
-  - F1's own extract functions → `parse_listing_item` per item → `apply_observation`;
-  - `finish_run`;
-  - `commit`.
+- **HB-U4. Ingestion: F1's own code, with only the request replaced.** Each HTTP attempt is one F1 discovery run (F1:
+  "one row per discovery HTTP request"). The step is the body of `discover_feed_window` / `discover_company_listing`
+  with only the `cse_client` call replaced. It calls F1's own functions and never re-implements them:
+  1. `_new_summary(endpoint, params)` and `PostgresFilingStore.begin_run(endpoint, params, <intent time>)`, before the
+     request. F1 commits the run row at once.
+  2. The governed request. The archived response is wrapped in `cse_client.CSEResponse`: `ok` = HTTP status below 400,
+     `body` = the parsed JSON, `error` set as `cse_client` sets it.
+  3. `extract_feed_items` / `extract_listing_buckets`. On a failure category, `_finish` records the run as failed.
+  4. `_collect` (parsing, rejects, duplicate ids, missing paths), then `_ingest` (per-item failure isolation). The `now`
+     passed is the response's `observed_at`, which is F1's meaning: time after receipt.
+  5. `_finish` (run status, `finish_run`, `commit`).
 
-  The `now` passed for ingestion is the response's `observed_at`, which is F1's meaning (time after receipt).
+  These helpers are module-level functions of the frozen `report_discovery`. Calling them, rather than rebuilding the
+  run summary, is what keeps a single interpretation of F1. F1 persists only part of the summary (`_finish`'s
+  `details`). The rest (duplicate ids, missing-path ids) is recomputed by the audit from the archived response (L5).
 - **HB-U5. Discovery closure.** Discovery is closed when:
   - every feed month of W and every listing of the plan has reached a terminal state (succeeded, or failed after its
     bounded attempts, §14);
@@ -284,7 +302,7 @@ Two observations seen in F0 are not a Phase 2 source unless the owner approves o
 |---|---|
 | Filing identity | `cse_filing_id`: one `report_filings` row, shared by both endpoints (F1). Endpoint, bucket and query symbol identify **sources**, never the filing |
 | The same filing in several sources or share-class listings | One row; `listing_symbols` accumulates; each source's current version is kept in `current_versions` (F1) |
-| The same id twice in one response | F1 counts it in `duplicate_ids_in_response`; audited |
+| The same id twice in one response | F1's run summary counts it (`duplicate_ids_in_response`) but does not persist the count. The audit recomputes it from the archived response (L5) |
 | A changed listing entry | A new `report_filing_observations` row and `metadata_changed_at` (F1); earlier versions are kept |
 | Document identity | Document SHA-256 (F2). One document under two filings → one F5 run per filing; F6.3 annotates `same_document_multiple_filings` and counts one document |
 | A changed `path` under one filing id (re-upload) | A new document item. A different SHA-256 → new F3/F5 runs, and **both documents are kept**. Which one prevails is F8's question (§19.2, class 4) |
@@ -361,7 +379,7 @@ used to create or strengthen a link.
 
 | Evidence | Source | Captured by | Phase 2 status |
 |---|---|---|---|
-| **IE-1.** The security master (full symbols, names, active) | `allSecurityCode` | P2 **derived market captures** (archived; `ensure_companies` in `derive_run`) | Existing; read only. Needs at least one derived P2 capture (HB-P1) |
+| **IE-1.** The security master (full symbols, names, active) | `allSecurityCode` | P2 **derived market-capture runs** (archived; `ensure_companies` in `derive_run`) | Existing; read only. Needs at least one derived run with `allSecurityCode` archived (HB-P1) |
 | **IE-2.** Per-security identity: secId (two fields), ISIN, name, per-security id | `companyInfoSummery` | P2's weekly **sweep** (archived with exact bytes and `observed_at`) | Existing P2 capability, owner-run. No new request type |
 | **IE-3.** Per-security filing listings (the listing-symbol basis) | `/api/financials` | Phase 2 governed transport (§16) → F1 | New at scale (HB-X2) |
 | **IE-4.** Listing secIds | `/api/financials` `reqFinancial[].secId` | Same response as IE-3 → F5 `observations_from_financials` | New at scale; recorded under the hold rule (§7.7). F0: the field is **empty** for some securities (CBNK, NAVF), so IE-2 is the primary secId source |
@@ -370,8 +388,8 @@ used to create or strengthen a link.
 
 ### 7.4 Acquisition order (rule `hb.acquire.1`)
 
-1. **IE-1.** At least one successful derived P2 market capture has created the security master (HB-P1). The latest
-   P2 `allSecurityCode` archive is fresh (HB-Q8).
+1. **IE-1.** At least one derived P2 market-capture run with `allSecurityCode` archived has created the security
+   master (HB-P1, HB-U1). That run's `allSecurityCode` is within the freshness bound (HB-Q8).
 2. **IE-2.** At least one successful P2 sweep after IE-1. The sweep archives identity evidence and creates no
    `companies` rows.
    - Run it on a **non-trading day**, or after that day's P3 capture has succeeded. P3's daily budget counts every
@@ -380,11 +398,20 @@ used to create or strengthen a link.
    - Import it in one of two equivalent ways:
      - **(a) the frozen tools:** `cse-capture export-company-info --run-id … --out <outside the repository>`, then
        `python -m worker.link_issuers --company-info-json <file>`. That records the observations with the archived
-       `observed_at` and `source_ref = market_source_responses:<id>`, and runs `resolve_securities`. Path (a) does no
-       dispute simulation. It is used only when every exported body carries an ISIN or a name, so the hold rule
-       (§7.7) cannot apply;
+       `observed_at` and `source_ref = market_source_responses:<id>`, and runs `resolve_securities`.
+
+       Path (a) records everything and does no dispute simulation. The frozen guard compares ISIN codes only when
+       **both** claimants carry one, and names only when **both** carry one. So an ISIN-only claimant against a
+       name-only claimant is `identity_evidence_insufficient`, and so is any claimant against a secId-only sighting.
+
+       Path (a) is therefore allowed only for the **initial** import, and only when both of these hold:
+       - no secId-only (`/api/financials`) observation has been recorded yet;
+       - every exported body carries both a CSE-shaped ISIN and a name.
+
+       Every later import, later sweeps included, goes through (b);
      - **(b) the Phase 2 adapter**, which reads the same archive rows in process (no intermediate file) and calls the
-       same F5 functions, with the hold simulation. An equivalence test against (a) is required.
+       same F5 functions, with the hold simulation. An equivalence test against (a), on bodies meeting (a)'s
+       conditions, is required.
 3. **IE-3 / IE-4.** The listings of §6.2, through the governed transport.
    - Listing items → F1.
    - `reqFinancial` secIds → F5 observations, under the **hold rule** (§7.7).
@@ -456,6 +483,13 @@ claimant becomes `conflict`, and filings resolving to it become `conflict`. The 
    - **Recorded at once:** an observation that creates no new dispute.
    - **Held:** an observation whose recording would create a **new** dispute whose only reason is
      `identity_evidence_insufficient`.
+
+   The held set is computed once, deterministically. It is every batch observation that carries a secId whose **new**
+   dispute (disputed over recorded ∪ batch, not over recorded alone) has only `identity_evidence_insufficient`
+   failures.
+   - Disputes are per secId, so holding those observations removes exactly those disputes and changes no other secId.
+   - The rest of the batch is recorded in one `record_observations` call, followed by `resolve_securities`.
+   - The result does not depend on the order of the batch, because the frozen functions are order-independent.
 3. A hold is a ledger record, never a silent drop. It holds:
    - the observation as F5 would record it;
    - the archived response reference;
@@ -574,9 +608,11 @@ Nothing is ever resolved by inference. A later evidence change re-links, and M4 
 
 ## 9. Filing retrieval architecture
 
-- **HB-R1. Library, not CLI.** One filing at a time:
-  `document_retrieval.process_filing(filing, make_consumer(...), role="primary", fetcher=<governed fetcher>,
-  temp_root=<validated root>)`.
+- **HB-R1. Library, not CLI: F5 `run()`'s own calls, one filing at a time.**
+  - `load_filings_from_db(conn, [id])` gives the filing row exactly as F5 reads it.
+  - Then `document_retrieval.process_batch([filing], make_consumer(...), role="primary", fetcher=<governed fetcher>,
+    temp_root=<dedicated root>, request_delay_seconds=0)`. That is the call F5's `run()` makes. It returns the full
+    retrieval record and runs F2's leftover check. Request spacing is the governed fetcher's job.
   - F2 resolves the URL candidates, downloads with identity encoding, and validates length, ETag (strong MD5) and the
     PDF header/EOF.
   - It hashes the document (SHA-256 and MD5) and calls the consumer.
@@ -621,25 +657,28 @@ Nothing is ever resolved by inference. A later evidence change re-links, and M4 
 ### 10.1 One filing (one transaction, F6.2 §10)
 
 ```
-claim item (ledger, lease)            -- inside a slice holding P2's CSE lock (…312)
-F2 process_filing(governed fetcher)
+claim item (ledger, lease)               -- inside a CSE slice holding P2's lock …312 (§16.5)
+F5 load_filings_from_db(conn, [id])      -- the filing row F3 and F5 read
+F2 process_batch([filing], F5 make_consumer(...), fetcher=<governed>)
   └─ consumer (in memory, document exists):
        F3 extract_text (Poppler -layout) + classify
        F4 extract_document (Poppler -bbox-layout)
        F5 build (mapped rows + candidates of every status)
-F2 delete + verify                      -- cleanup failure: STOP (§17)
+  F2 delete + verify; F2 leftover check  -- cleanup failure or leftover: STOP (§17)
 if consumer succeeded and deletion verified:
+  F5 attach_timestamps(result, filing row, retrieval record)   -- pure, no database
   BEGIN
-    F5 attach_timestamps(result, filing row, retrieval record)
-    F3 PostgresClassificationStore.save
-    classification_id
-    F5 PostgresIssuerStore.link_filing       -- same current decision as the link pass (§7.4)
-    F5 PostgresCandidateStore.save
-    ledger: item event 'persisted' (refs: classification id, F5 run id, link id)
+    F5 _persist(stores, got)              -- F3 save → classification_id → link_filing → candidate save;
+                                          -- link_filing returns the link pass's decision (§7.4)
+    ledger: item event 'persisted' (refs: _persist's classification id, F5 run id, link)
   COMMIT
 else:
   ledger: retrieval record + item event (failure, category); nothing else is written
 ```
+
+`_persist`'s stores each use their own SAVEPOINT and leave the commit to the caller, as in F5's `run()`. A database
+error inside `_persist` propagates, because `run()` does not catch it either. The worker then rolls back, and records
+the failure event in a transaction of its own.
 
 ### 10.2 Tool and version pins (checked by the preflight before any download)
 
@@ -665,8 +704,16 @@ else:
   `pending_runs` sweep, in bounded batches, independent of CSE. F6.4 takes its own shared lock and contacts no one. The
   ledger records the F6 job ids.
 - **Configuration:**
-  - `register_configuration(configuration_from_present_runs)` over the backfill's single version tuple;
-  - the **owner** designates it canonical (F6.4's owner path, unchanged).
+  - `register_configuration(configuration_from_present_runs)` over the backfill's single version tuple. It runs in
+    HB-S3, once the pilot's first F5 runs exist, because `configuration_from_present_runs` refuses when there are none.
+  - The **owner** designates it canonical (F6.4's owner path, unchanged) before the pilot's first reconcile. Later runs
+    of the same pinned tuple fall under the same content-addressed configuration.
+- **F6.4's reconcile is global before it is per issuer.**
+  - `reconcile(…, only_issuer=…)` first validates every selected F5 run that lacks its canonical validation run,
+    whatever its issuer (F6.4 §9.4 step 2).
+  - With `--no-validate`, it refuses while any such run is missing.
+  - The backfill therefore runs `validate --pending` before each reconcile pass. A per-issuer pass then validates
+    nothing new; `only_issuer` only limits which partitions are written.
 - **Reconcile per issuer, once its in-window document items are all terminal** (`reconcile(designated,
   only_issuer=…)`), then a final full pass.
   - Reconciling earlier is correct but writes record history that reflects only processing order. A backfill's
@@ -724,6 +771,10 @@ All of these are estimates, to be measured by the pilot.
 | F6.4 T10/T11 | CHECK-restricted to `validate` / `reconcile` / `cleanup`; F6 semantics |
 | P2 archive (0012) | Market-only by CHECK: `request_purpose`, `capture_mode`, a non-null `trading_date`; "never PDFs or documents" |
 | P3 items (0014) | CHECK `work_kind = 'daily_post_close'`; the budget is counted from P2's archive only |
+| P3 wake-ups (0014) | P3's own lease ledger. A P3 wake-up that obtains the lock expires every active row it finds, so a backfill lease stored there would be misread as a dead P3 run |
+| `bulletin_recovery_attempts` (0001; worker SELECT + INSERT; unused) | Market-bulletin semantics: `trade_date NOT NULL`, a bulletin-recovery outcome vocabulary, no filing key. Reusing it would change a frozen table's meaning |
+| `system_config` (0001) | Mutable key-value settings. The worker has SELECT only, and there is no history. Stage E and P2 read it for their tolerances. It cannot hold an append-only, owner-only arming record |
+| P2 block acknowledgements (0013), `ops.backup_runs` (0011), `ops.schema_migrations` | Bound to P2 runs, to backups and to migrations respectively |
 | Spool or journal files, or report files | State outside PostgreSQL authority. The audit cannot query it (rejected: MA §44, PostgreSQL is the scheduler authority) |
 
 **Conclusion: a new, additive migration is genuinely required.** Per the phase rules this is recorded as **design
@@ -732,13 +783,13 @@ blocker HB-X1** and **not** written. The requirements it must meet are below. Th
 | Record | Holds | Invariants |
 |---|---|---|
 | L1 Arming decisions (owner-only, append-only; the latest row is in force) | Armed stages; window W; budgets and slice bounds; the exact User-Agent; host; the version tuple; expected request counts; stop conditions; note | Inserted only through the owner path (`cse_migrator` → `SET LOCAL ROLE cse_owner`, as P2/P3/F6.4); no row = disarmed |
-| L2 Work items | Kind + natural subject key: `feed_window:YYYY-MM`, `listing:<symbol>`, `document:<cse_filing_id>:<path version>`, `link_pass:<n>`, `validate:<f5 run>`, `reconcile:<issuer>`, `audit:<n>` | Unique natural key: duplicate work is impossible |
+| L2 Work items | Kind + natural subject key: `feed_window:YYYY-MM`, `listing:<symbol>`, `document:<cse_filing_id>:<path version>` (the SHA-256 of the `path` value the item was created for), `link_pass:<n>`, `validate:<f5 run>`, `reconcile:<issuer>`, `audit:<n>` | Unique natural key: duplicate work is impossible |
 | L3 Item events | State, reason, evidence references (F1 run, F3 classification, F5 run, link, F6 job, hold) | Append-only; the latest is current; a guard keeps events consistent with their evidence rows (P3 precedent) |
 | L4 HTTP attempts | Host and endpoint, method, URL, parameters, sanitised headers, User-Agent, `requested_at` / `observed_at`, status, outcome class, sizes, body SHA-256, spool keys, slice and wake-up | Intent written before the request; never updated |
 | L5 JSON response bodies (feed and listings only) | Exact bytes (base64 text) with a database-checked SHA-256 | **Never documents**; no `bytea`; no path-named text columns (F2's guard) |
 | L6 Retrieval records | F2 `RetrievalRecord` per document attempt (HB-R8) | No bytes, no temporary path |
 | L7 Holds | The observation as F5 would record it, the response reference, the would-be dispute; owner resolutions | Resolutions owner-only, append-only |
-| L8 Wake-ups and leases | Holder, heartbeat, outcome | Heartbeat and release are the only updates, guarded (P3 precedent) |
+| L8 Wake-ups and leases | Holder, heartbeat, outcome | Heartbeat and release are the only updates, guarded (P3 precedent). An in-flight lease is live only while its holder holds P2's lock `…312` (§14.2, §16.5) |
 | L9 Blocks and acknowledgements | The blocking attempt; the owner's acknowledgement | Acknowledgement owner-only |
 | L10 Anomaly records | Detector id and version, class, subject ids, counts, status | Append-only |
 | L11 Coverage snapshots | Rule version, snapshot digest, per-stage counts | Immutable |
@@ -841,9 +892,9 @@ Phase 2 chooses nothing. It guarantees that every row of §13.1 exists for every
 | **HB-S0 Prerequisites** | Owner decisions (§26); provisioning; migration (if HB-X1 approved); preflight | — |
 | **HB-S1 Security and identity** | IE-1 freshness; a P2 sweep (IE-2, P2's own command); import (§7.4) | S0 armed; at least one derived P2 market capture (HB-P1); P2 sweep run on a non-trading day |
 | **HB-S2 Universe discovery** | 66 feed months; listings; IE-4 with holds; `resolve_securities`; link pass | S1 complete; S2 armed with budgets |
-| **HB-S3 Pilot** | Documents for a stratified sample (§27, HB-6), then validate, reconcile and audit | S2 closed (HB-U5); owner arms S3 |
+| **HB-S3 Pilot** | Documents for a stratified sample (§27, HB-6). Then `register-configuration` over the present runs and the owner's designation (F6.4 owner path; §10.3). Then validate, reconcile and audit | S2 closed (HB-U5); owner arms S3 |
 | **HB-S4 Bulk documents** | Every eligible in-window document, in budgeted slices | **Owner review of the pilot report** |
-| **HB-S5 Validation and reconciliation** | F6.4 validate (pending), configuration and designation (owner), reconcile per issuer, final pass | Per filing after `persisted`; per issuer after its items are terminal |
+| **HB-S5 Validation and reconciliation** | F6.4 validate (pending), then reconcile per issuer under the configuration designated in HB-S3, then a final pass | Per filing after `persisted`; per issuer after its items are terminal |
 | **HB-S6 Audit** | Coverage snapshot, anomaly catalogue, final report | Any time (read-only); final after S5 |
 | Late evidence (loop) | Observations → resolve → link pass → validate pending → reconcile | Owner-approved evidence change |
 
@@ -873,8 +924,11 @@ discovered ─────────┤
    re-entry:  persisted | validated | reconciled ──(new issuer decision or uploaded_at change)──► needs_validation
 ```
 
-- **Interrupted work.** `requesting` and `processing` are leased in-flight states. A dead lease (the process died) →
-  `abandoned`, then reconciliation from evidence (§15.3).
+- **Interrupted work.** `requesting` and `processing` are leased in-flight states. They exist only inside a CSE slice,
+  and the lease is live only while its holder holds P2's session-level lock `…312` (P3's rule).
+  - A slice that obtains the lock and finds an active lease expires it. PostgreSQL released the lock when the holder
+    died. The item becomes `abandoned` and is reconciled from evidence (§15.3).
+  - A slice that cannot obtain the lock never takes over. It only reports a stale heartbeat.
 - **Terminal failures** keep the item's attempts and reasons. Re-queueing is an explicit operator action with a reason,
   never automatic.
 - **Discovery items** (`feed_window`, `listing`): `pending → requesting → succeeded | partial` (F1 `partial` = rejected
@@ -901,10 +955,12 @@ lease heartbeats.
 
 ### 15.2 Request idempotency
 
-- A successful request is **never repeated**. Its F1 run or F5 run exists, and the item is terminal.
+- A request whose result was persisted is **never repeated**. Its F1 run or F5 run exists, and the item is terminal.
 - A request is retried only after a **recorded** failure, within bounds, after backoff.
-- A crash after a successful response but before ingestion is recovered from the spooled bytes (P2's `recover`
-  pattern), not by asking CSE again.
+- **JSON responses.** A crash after a successful response but before ingestion is recovered from the spooled bytes
+  (P2's `recover` pattern), not by asking CSE again.
+- **Documents** are never spooled. A document whose persistence did not commit is retrieved again: one extra request,
+  recorded (§15.3).
 
 ### 15.3 Crash points ("evidence wins")
 
@@ -923,7 +979,9 @@ lease heartbeats.
 - an F5 run exists → `persisted`;
 - a canonical T1 exists → `validated`.
 
-A recorded state never contradicts evidence (the L3 guard). P3 uses the same pattern.
+A recorded state never contradicts evidence (the L3 guard). P3 uses the same pattern. When each kind runs:
+- **In-flight items** are reconciled only inside a CSE slice that holds `…312` (§14.2).
+- **Promotions to terminal states** (`persisted`, `validated`) may run at any wake-up.
 
 ## 16. CSE request governance
 
@@ -932,7 +990,7 @@ A recorded state never contradicts evidence (the L3 guard). P3 uses the same pat
 | G-1 §4 control | Phase 2 (rule `hb.transport.1`) |
 |---|---|
 | 1. Sparse, sequential polling; minimum request set | One request at a time, system-wide (P2's global CSE advisory lock `…312` held per slice). The plan is minimal: 66 feed months, one listing per security, one document per filing, bounded retries, no HEAD probes, no companions |
-| 2. At least 1.5 s between requests | P2's `Throttle` (≥ `RequestPolicy.min_interval_seconds`, floor 1.5 s), measured from the end of one request to the start of the next. Seeded across processes from the latest attempt in **both** the Phase 2 ledger and P2's archive |
+| 2. At least 1.5 s between requests | P2's `Throttle` (≥ `RequestPolicy.min_interval_seconds`, floor 1.5 s), measured from the end of one request to the start of the next. Seeded across processes from the latest attempt in **both** the Phase 2 ledger and P2's archive. The reverse direction needs a guard: P2's own seed (`runs.seconds_since_last_request`) reads only P2's archive and cannot see backfill requests. So a slice keeps `…312` until `min_interval_seconds` has elapsed since its last request ended (the release guard, §16.5) |
 | 3. Backoff | P2's bounded exponential backoff (base 5 s, maximum 120 s); bounded attempts per request; item-level maximum across slices |
 | 4. Identifiable User-Agent with a contact e-mail | P2's `user_agent(contact)`; the contact e-mail in server configuration only (`CSE_CAPTURE_CONTACT_EMAIL`), never in the repository. The exact string is recorded in the owner's arming row and on every attempt. **HB-X2:** the owner has not chosen it yet |
 | 5–6. No bypass, proxies or IP rotation | P2's session hardening: `trust_env = False`, no proxies, a cookie policy that stores none, no automatic redirects (F2 follows at most two, to `cdn.cse.lk` only) |
@@ -963,7 +1021,7 @@ backfill traffic through the governed transport.
 | 429 | Honour `Retry-After` within 300 s; a longer one, or exhausting the attempts → treated as a block (P2's semantics) |
 | CDN 403 / 404 for one document | Item terminal (`forbidden_or_missing` / `not_found`), not a block; counts towards the circuit breaker |
 | 5 consecutive non-OK attempts, of any kind | Circuit open: the slice stops. Three consecutive stopped slices → the stage stops and alerts; owner review |
-| An unacknowledged P2 block | Phase 2 refuses to start any CSE slice (one CSE relationship) |
+| An unacknowledged P2 block | Phase 2 refuses to start any CSE slice (one CSE relationship). It reads P2's own `runs.unacknowledged_blocks`, the function P3's gate uses |
 | Cleanup failure | Stop (§17) |
 
 ### 16.4 Budgets
@@ -993,8 +1051,20 @@ it. Exhausting the budget **defers** work; it never bursts later.
 
 ### 16.5 Coexistence with P2 and P3
 
-- **One CSE client at a time.** Phase 2 takes P2's global lock `…312` per slice with `pg_try_advisory_lock`. If it is
-  busy, Phase 2 does nothing and records a `skipped` wake-up.
+- **One CSE client at a time; the lock scope.**
+  - Only a **CSE slice** holds P2's session-level lock `…312`. A CSE slice is either discovery requests, or documents
+    together with their F3/F4/F5 processing. The lock is taken with `pg_try_advisory_lock`; if it is busy, the slice
+    does nothing and records a `skipped` wake-up.
+  - Inside the slice, after obtaining the lock and before any request, in order:
+    1. dead-lease expiry (§14.2);
+    2. the orphan sweep (§17);
+    3. at most one bounded unit of CSE work.
+  - F6 jobs, the audit and hold bookkeeping never take `…312`, consistent with F6.4 §15.7.
+  - While a slice holds the lock, a P2 command that contacts CSE is refused ("another P2 capture process holds the
+    global capture lock"). The operator retries after the slice.
+- **The release guard.** P2's spacing seed (`runs.seconds_since_last_request`) reads only P2's archive. Before
+  releasing `…312`, a slice therefore waits until `min_interval_seconds` has elapsed since its last request ended. The
+  next P2 or P3 request is then still at least 1.5 s later (G-1 control 2).
 - **The quiet window.** No slice starts while today's P3 item is due and not terminal. Phase 2 reads P3's armed settings
   (`earliest_start_local` … `window_close_local`) and today's item state, read-only. A running slice ends within its
   wall-time bound, and P3 retries at its next 15-minute wake-up. **P3's daily capture has absolute priority** because
@@ -1026,10 +1096,13 @@ No Phase 2 CSE request is possible until the owner records an arming decision (L
   would not run. The 2026-09-27 local-server assessment, reported to the owner but not in the repository, demonstrated
   this. The runner therefore installs a SIGTERM → `SystemExit` handler, so that F2's own cleanup unwinds. A test must
   prove it (§23.2). systemd stop timeouts give the current document time to finish or unwind.
-- **Orphan sweep.** At every wake-up, before any work, the runner removes `cse_f2_*` directories under the root that
-  belong to no live lease, and records counts (never contents). F2's own leftover check sees only its own batch.
-  SIGKILL, OOM or power loss can leave orphans, so the sweep is mandatory.
+- **Orphan sweep.** Inside a CSE slice, after obtaining `…312` (§16.5) and before any download, the runner removes
+  every `cse_f2_*` directory under its **dedicated** temp root and records the counts (never the contents).
+  - Every document slice holds `…312`, so none of those directories can belong to a live slice.
+  - F2's own leftover check sees only its own batch, and SIGKILL, OOM or power loss can leave orphans, so the sweep is
+    mandatory.
 - **Temp root.** A dedicated directory, ideally tmpfs (cleared on reboot), with at least twice F2's 200 MB maximum free.
+  Nothing else uses it: manual F2–F5 CLI runs use the system default, so the sweep never touches their directories.
   Free space is checked before each download (HB-R7).
 - **Cleanup failure.** `cleanup_failed` stops the stage at once and alerts (a document may remain on disk). It needs
   operator action.
@@ -1057,12 +1130,20 @@ No Phase 2 CSE request is possible until the owner records an arming decision (L
 | 1 | **Discovered** | A `report_filings` row whose Colombo upload date is in W; source = feed / listing / both | — |
 | 2 | Retrieval-eligible | `path` non-null and accepted by F2 | `no_document`, `invalid_path` |
 | 3 | **Retrieved** | A retrieval record (L6) whose outcome had validated bytes, or an F3 row for the filing | Each F2 category (`forbidden_or_missing`, `not_found`, `too_large`, `not_pdf`, `truncated`, `etag_mismatch`, `server_error`, `timeout`, …); `not_attempted` (budget or stage) |
-| 4 | **Interpretable** | F3 `classification_status` ∈ {`classified`, `partial`} | F3 `unreadable`; text-extraction failure (`consumer_failed` before F3, L6) |
-| 5 | **Extractable** | F5 run whose F4 `document_status` ∈ {`extracted`, `partial`} | `unreadable`, `ocr_untrusted`, `no_statements`; F4/F5 `consumer_failed` |
+| 4 | **Interpretable** | F3 `classification_status` ∈ {`classified`, `partial`} | F3 `unreadable`; a `consumer_failed` record whose recorded error class is a text-extraction error (`TextExtractionError`) |
+| 5 | **Extractable** | F5 run whose F4 `document_status` ∈ {`extracted`, `partial`} | `unreadable`, `ocr_untrusted`, `no_statements`; any other `consumer_failed` error class (F4/F5). A consumer failure persists nothing, not even F3, so the recorded error class (L6) decides between stages 4 and 5 |
 | 6 | **Candidate-producing** | That run has at least one candidate (any status) | Zero candidates (template, unmapped) |
-| 7 | **Validation-eligible** | The canonical T1 (M4) has at least one T2 `eligibility` ∈ {`eligible`, `normalization_required`} | Every candidate F6.1-ineligible (reason profile) |
-| 8 | **Admitted** | At least one T2 `admitted` | All refused: **issuer evidence only** (link status and basis) or **F6.1/F6.3 rules** (reason profile) |
-| 9 | **Persisted / reconciled** | At least one SO of the canonical run is an input (T14) of the designated configuration's latest batch for its issuer | Not yet reconciled (pending) |
+| 7 | **Validation-eligible, issuer evidence aside** | The canonical T1 (M4) has at least one T2 whose F6.1 `ineligible_reasons`, ignoring every `issuer_evidence_*` reason, is empty | Every candidate F6.1-ineligible for a reason other than issuer evidence (reason profile). F6.1 itself puts `issuer_evidence_<status>` into eligibility, so ignoring it here keeps issuer refusals out of this stage |
+| 8 | **Admitted** | At least one T2 `admitted` | **Issuer evidence**: at least one candidate's refusal reasons are all `issuer_evidence_*` / `issuer_link_*`, so the link alone stands between it and admission (RDV's `issuer_only`; reasons from the stored T2 columns as RDV's `refusal_reasons` rebuilds them). Shown by link status and basis. Otherwise **F6.1/F6.3 rules** (reason profile) |
+| 9 | **Persisted / reconciled** | The filing's canonical validation run contributes at least one SO input to a **current** record of the designated configuration: the frozen view `financial_fact_provenance` (V6), restricted to the designated `canonical` configuration and that `validation_run_key` | Not yet reconciled (pending) |
+
+**One unit per filing, never double-counted:**
+- A filing with more than one document item (a changed `path`, §6.3) is placed at the furthest stage any of its
+  documents reached, and counted once. The multi-document case is reported separately (class 4).
+- Only F5 runs of the armed version tuple count, and only canonical validation runs (M4).
+- One document under two filings counts once for each filing.
+
+Document and extraction stages (2–6) never see issuer evidence. Issuer evidence first matters at stages 7–8.
 
 Each filing is counted at the **first** stage it fails, with one reason, plus orthogonal dimensions:
 - Colombo upload year and month;
@@ -1137,7 +1218,7 @@ imported by production code (HB-B8). Parity is tested on the RDV evidence (§23)
 | 2 | Unresolved or path-prefix-only links; F6.1 ineligibility (untrusted role, missing duration, scale, currency, unit); F5 unresolved/conflicting/ambiguous; OCR-untrusted or unreadable documents; reserved (insurance) concepts; `period_end_after_publication` |
 | 3 | CDN 403 (missing) / 404; 5xx and timeouts; null or invalid path; non-PDF or oversized document; text-extraction failure; budget exhaustion; downtime gaps; `listing_only` / `feed_only`; `listing_withdrawn`; `disappeared_since_f0`; `window_undetermined`; `feed_window_unexpectedly_large`; securities not queryable |
 | 4 | Errata, amendment and restatement supersession; multiple documents under one filing id; the availability choice (date-only times, missing path epoch, `Last-Modified` later than upload); commit-time as-of |
-| 5 | Survivorship security master (HB-Q5); no review mechanism for an absence-driven secId dispute (§7.7); P3's budget and block gate not seeing Phase 2 requests and blocks; no full F4 persistence (re-download for mapper changes, HB-Q7); F6.4 reconcile and F5 `link_filing` cost at scale (both scan all runs or observations; measured by HB-6) |
+| 5 | Survivorship security master (HB-Q5); no review mechanism for an absence-driven secId dispute (§7.7); P3's budget and block gate not seeing Phase 2 requests and blocks; P2's cross-process spacing seed not seeing Phase 2 requests (handled by the release guard, §16.5); no full F4 persistence (re-download for mapper changes, HB-Q7); F6.4 reconcile and F5 `link_filing` cost at scale (both scan all runs or observations; measured by HB-6) |
 | 6 | P-18, P-23, P-1 (below); F5 audit findings: an A→B→A link stale "current" decision; a mapper change without a version bump is `already_present` (guarded by HB-B9) |
 
 ### 19.3 Known frozen-layer findings carried (not fixed)
@@ -1169,10 +1250,19 @@ imported by production code (HB-B8). Parity is tested on the RDV evidence (§23)
      enter only through the owner's checkpoints (§21);
   2. gates: armed? any unacknowledged block (Phase 2 or P2)? budget left? quiet window? clock sane (P3's backwards
      guard)?
-  3. orphan sweep (§17);
-  4. reconcile item states from evidence (§15.3);
-  5. pick the next work in stage order, oldest first: one bounded slice;
-  6. release the lock and record the wake-up (L8).
+  3. non-CSE work, if due and bounded:
+     - F6 jobs through F6.4, which takes its own locks and never `…312`;
+     - audit snapshots;
+     - hold bookkeeping;
+     - promotion of items to terminal states from F-stage evidence (§15.3);
+  4. a CSE slice, if one is due and the gates allow it:
+     1. take `…312` (if it is busy: `skipped`);
+     2. expire dead leases and reconcile those items (§14.2);
+     3. the orphan sweep (§17);
+     4. one bounded unit of CSE work, in stage order, oldest first;
+     5. the release guard (§16.5);
+     6. release `…312`;
+  5. record the wake-up (L8).
 - **Downtime.** Nothing is time-critical: historical filings stay listed. A server off for days resumes exactly where
   it stopped. Budgets apply per Colombo day and never accumulate. MA §44: catch-up never bursts.
 - **Operator commands:**
@@ -1261,13 +1351,23 @@ fake transports, no real sleeping.
   - API and CDN block statuses;
   - the circuit breaker;
   - the budget;
-  - the quiet window.
+  - the quiet window;
+  - the release guard: the lock is never released earlier than `min_interval_seconds` after the last request.
 - **The User-Agent:** P2's format and validation; the contact never in the repository.
 - **Discovery equivalence:** the Phase 2 discovery step equals F1's `discover_feed_window` / `discover_company_listing`
-  under a fake `cse_client`. The same `report_discovery_runs` summary and the same store calls.
-- **The hold rule** on synthetic observations: share classes with and without identity; genuine reuse (recorded at
-  once); the absence-driven dispute (held); order independence.
-- **Persistence order** equals F5's `_persist`.
+  under a fake `cse_client`. It must produce the same `report_discovery_runs` summary and the same store calls.
+- **The hold rule** on synthetic observations:
+  - share classes with and without identity;
+  - an ISIN-only claimant against a name-only claimant (held);
+  - genuine reuse (recorded at once);
+  - an absence-driven dispute (held);
+  - order independence;
+  - path (a) refused once a secId-only observation exists.
+- **Document worker equivalence:** the per-filing path (`load_filings_from_db` → `process_batch` →
+  `attach_timestamps` → `_persist`) must persist rows identical to F5's `run()` on the same fake document, apart from
+  database-generated ids and times.
+- **The funnel's stage 7** ignores `issuer_evidence_*` reasons, so an unresolved-issuer filing stops at stage 8 as
+  issuer evidence, never at stage 7.
 - **The state machine:** every transition; illegal transitions refused.
 - **Static boundary checks:**
   - no frozen file changed (hash pins);
@@ -1292,6 +1392,10 @@ fake transports, no real sleeping.
 - **Idempotency:** every rerun is `already_present` / `unchanged`; no duplicate items or attempts.
 - **Late evidence:** link pass → M4 re-validation → reconcile, with **no** re-retrieval.
 - **Quiet-window and lock coexistence** with fake P3 settings and items, and P2's lock held.
+- **Lease liveness:**
+  - a slice that obtains `…312` and finds an active lease expires it;
+  - a slice that cannot obtain the lock never takes over;
+  - the orphan sweep runs only inside a slice holding `…312`, and only in the dedicated root.
 - **Coverage funnel exactness** on synthetic filings that stop at each stage.
 
 ### 23.3 Real data, offline (the RDV evidence; skipped when absent)
@@ -1306,12 +1410,28 @@ fake transports, no real sleeping.
 
 - **Full suites** on Linux (PostgreSQL 17.11, no network) and Windows. F6.4, F6.3 and RDV real-data suites unchanged.
 - **Frozen-test edit required by HB-X1** (owner approval, like F6.4 §16.6):
-  - `tests/test_rdv_postgres.py::test_v9_persistence_integrity_versions_and_the_job_ledger` asserts
-    `v["migrations"][-1]` is 0015 and `len(...) == 14`;
-  - a new migration fails both;
-  - proposed durable form: assert 0015's position and hash, that every listed migration is present, and that 0006
-    stays unused;
-  - the P3 and F6.4 adjacency tests already use durable forms and need no edit.
+  - **Today.** `tests/test_rdv_postgres.py::test_v9_persistence_integrity_versions_and_the_job_ledger` works over
+    `v["migrations"]`: every `ops.schema_migrations` row as `[filename, sha256]`, ordered by version. It hard-codes
+    `v["migrations"][-1] == ["0015_financial_truth_persistence.sql", "afa82bda…1ec2"]` and
+    `len(v["migrations"]) == 14`, plus `not any(m[0].startswith("0006") …)`.
+  - **Effect of 0016.** Both hard-coded assertions fail: the last entry becomes 0016, and the count becomes 15.
+  - **Durable replacement:**
+    - the first 14 entries are the frozen lineage, ending in 0015 with its exact hash;
+    - no entry starts with `0006`;
+    - every later entry is numbered after 0015.
+
+    ```python
+    names = [m[0] for m in v["migrations"]]
+    i = names.index("0015_financial_truth_persistence.sql")
+    sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
+    assert i == 13 and v["migrations"][i] == ["0015_financial_truth_persistence.sql", sha_0015]
+    assert not any(n.startswith("0006") for n in names)
+    assert all(n[:4] > "0015" for n in names[i + 1:])
+    ```
+  - **No other frozen test pins the count or the last migration.**
+    - P1's ledger test compares the ledger with `mig.discover`.
+    - P2, P3, F6.4 and the P3 container probe look migrations up by name.
+    - The P3 and F6.4 adjacency tests (0013→0014, 0014→0015) tolerate later migrations.
 - **Provisioning.** A clean-server Docker test: provision, migrate, run Phase 2 commands against fakes (as P3 and F6.4
   did).
 - **Mutation sanity:** planted faults that must be killed, for example:
@@ -1380,13 +1500,19 @@ fake transports, no real sleeping.
 | Id | Blocker | Needed before |
 |---|---|---|
 | **HB-X1** | **A backfill ledger needs a new additive migration** (§11.4: no existing table can hold attempts, failures, holds, budgets, blocks, leases or snapshots). Not written in this phase | Implementation step HB-1 |
-| **HB-X2** | **Governance.** (a) Extend G-1's `accepted_risk` explicitly to bulk financial discovery (feed + listings) and production-scale temporary document retrieval, or decide otherwise. That is the decision the F2–F5 CLIs' "pending the terms-of-use decision" gate defers to. The CLIs themselves stay capped; the backfill runs only under the owner's arming decision. (b) The contact e-mail for the User-Agent (G-1 control 4), not yet chosen (P2's smoke test was blocked on it too) | Any live Phase 2 request (HB-6) |
+| **HB-X2** | **Governance.** (a) Extend G-1's `accepted_risk` explicitly to bulk financial discovery (feed + listings) and production-scale temporary document retrieval, or decide otherwise. That is the decision the F2–F5 CLIs' "pending the terms-of-use decision" gate defers to. The CLIs themselves stay capped; the backfill runs only under the owner's arming decision. (b) The contact e-mail for the User-Agent (G-1 control 4), not yet chosen (P2's smoke test was blocked on it too) | (a) and (b): any live Phase 2 request (HB-6). (b) also before HB-P1 and IE-2: P2 refuses `capture`, `sweep` and `resume` without it |
 | **HB-X3** | The frozen RDV test V9 must take the durable form of §23.4 once a migration exists | Together with HB-X1 |
 
-**Prerequisite (not a design blocker).** **HB-P1:** the security master exists only after at least one successful
-**derived P2 market capture**, because `ensure_companies` runs only inside `derive_run` and a sweep derives nothing. The
-first production capture (MA §54, its own release event), or an owner-run manual P2 capture, must precede HB-S1.
-Without it `companies` is empty, and `resolve_securities` decides nothing.
+**Prerequisite (not a design blocker).** **HB-P1:** the security master exists only after at least one **derived P2
+market-capture run** whose archived responses include `allSecurityCode`. That run can be a live capture or an
+archive-only `reprocess` of one.
+- **Why.** `ensure_companies` is the only writer of `companies`, and it runs only inside `derive_run`. A sweep derives
+  nothing, and `reprocess` refuses any run that is not a market capture.
+- **What precedes HB-S1.** The first production capture (MA §54, its own release event), or an owner-run manual P2
+  capture.
+- **Dependency on HB-X2.** P2 refuses `capture`, `sweep` and `resume` without the contact e-mail, so HB-P1 and IE-2
+  both need HB-X2(b) first. They do not need HB-X2(a), because P2 market capture is already within G-1's scope.
+- **Without HB-P1,** `companies` is empty and `resolve_securities` decides nothing.
 
 ### 26.2 Owner questions
 
@@ -1399,7 +1525,7 @@ Without it `companies` is empty, and `resolve_securities` decides nothing.
 | HB-Q5 | Security master for delisted and renamed securities (§8.1: 318 in-window filings) | (a) defer; open a change-control item. Verifying the F0 delisted-list endpoint is a precondition of (b) |
 | HB-Q6 | Approve the hold rule (§7.7) and the acquisition order (§7.4) | Approve |
 | HB-Q7 | Sequence the full F4 persistence phase (R-F4) before bulk documents (HB-S4) | Recommended. Otherwise accept a future full re-download for any F5 change |
-| HB-Q8 | Budgets and bounds (§16.4); the security-master freshness bound for IE-1 (e.g. 7 days) | 600 a day; slices of 30 JSON or 10 documents, at most 600 s; 3 attempts; combined ceiling 800; 7 days |
+| HB-Q8 | Budgets and bounds (§16.4); the freshness bound for the latest derived run's `allSecurityCode` (IE-1, HB-U1; e.g. 7 days) | 600 a day; slices of 30 JSON or 10 documents, at most 600 s; 3 attempts; combined ceiling 800; 7 days |
 | HB-Q9 | Backup capacity, dump retention and checkpoints (§21) | Confirm before HB-S4 |
 | HB-Q10 | Re-retrieval when `path` changes under an existing filing id (§6.3) | Retrieve; keep both; class 4 |
 | HB-Q11 | A Phase 2 block also disarms P3 (procedure now; a shared CSE-block register would be P3 change control) | Procedure |
@@ -1424,10 +1550,10 @@ proceeds past a gate without the owner.
 |---|---|---|---|
 | **HB-1 Ledger** | Migration `0016` (only if HB-Q1 approved), the store, the preflight; the HB-X3 frozen-test edit | HB-Q1, HB-Q3 | §23.2 ledger tests; frozen pins unchanged; full regression |
 | **HB-2 Governed transport** | The JSON requester and the F2 fetcher (§16.2), throttle seeding from both archives, budgets, quiet window, blocks, arming checks | HB-1 | P2-rule parity; fake-clock spacing; block, budget and quiet-window tests; static checks |
-| **HB-3 Discovery and issuer evidence** | Feed and listing steps over F1's functions; the IE-2 import adapter (equivalence with `export-company-info` + `link_issuers`); IE-4 with the hold rule; the link pass | HB-2, HB-Q5, HB-Q6 | F1 equivalence; reproduces RDV's F1 and issuer results from the F0 evidence offline; hold-rule tests |
-| **HB-4 Document worker** | `process_filing` + F5 consumer + per-filing persistence in `_persist`'s order, with the ledger event in the same transaction; temp-root handling, SIGTERM handler, orphan sweep, free-space check, tool pins | HB-2, (HB-Q7) | Crash matrix; cleanup tests; idempotency; `_persist` equivalence |
+| **HB-3 Discovery and issuer evidence** | Feed and listing steps calling F1's own run helpers (HB-U4); the IE-2 import adapter (equivalence with `export-company-info` + `link_issuers` on bodies meeting §7.4(a)); IE-4 with the hold rule; the link pass | HB-2, HB-Q5, HB-Q6 | F1 equivalence; reproduces RDV's F1 and issuer results from the F0 evidence offline; hold-rule tests |
+| **HB-4 Document worker** | `load_filings_from_db` + `process_batch([filing])` + F5's `make_consumer`, `attach_timestamps` and `_persist`, with the ledger event in the same transaction; dedicated temp root, SIGTERM handler, orphan sweep inside locked slices, free-space check, tool pins | HB-2, (HB-Q7) | Crash matrix; cleanup and lease-liveness tests; idempotency; row equivalence with F5's `run()` |
 | **HB-5 F6 orchestration and audit** | Validate-pending batches, configuration (owner designation), per-issuer reconcile; coverage audit (`hb.coverage.1`), anomaly detectors (`hb.anomaly.1`), reports | HB-4 | Funnel exactness (synthetic); RDV population numbers reproduced offline; detector parity |
-| **HB-6 Operations and pilot (release gate)** | CLI and wrapper, timer units in `ops/backfill/`, provisioning, runbook; then, **owner-run**, the first live work: IE-2 (a P2 sweep on a non-trading day, after HB-P1), discovery (HB-S2) and a **pilot of about 50 documents**, stratified by year, document type (annual, interim, errata), template (bank / general), link basis and listed/delisted | HB-1–HB-5, HB-P1, HB-X2, HB-Q2, HB-Q4, HB-Q8, HB-Q9 | Clean-server Docker test; pilot report: requests, time per document, failure rates, DB growth, `companyInfoSummery`/listing completeness, funnel |
+| **HB-6 Operations and pilot (release gate)** | CLI and wrapper, timer units in `ops/backfill/`, provisioning, runbook; then, **owner-run**, the first live work: IE-2 (a P2 sweep on a non-trading day, after HB-P1), discovery (HB-S2) and a **pilot of about 50 documents**, stratified by year, document type (annual, interim, errata), template (bank / general), link basis and listed/delisted | HB-1–HB-5, HB-X2 (its (b) before HB-P1), HB-P1, HB-Q2, HB-Q4, HB-Q8, HB-Q9 | Clean-server Docker test; pilot report: requests, time per document, failure rates, DB growth, `companyInfoSummery`/listing completeness, funnel |
 | **HB-7 Bulk documents** | HB-S4 under the owner's arming, in budgeted slices; checkpoints | Pilot accepted by the owner; HB-Q7 decided | Ledger and audit at every checkpoint; no stop condition unexplained |
 | **HB-8 Validation, reconciliation, final audit** | HB-S5 + HB-S6; the final reports; an implementation note | HB-7 | Funnel and anomaly catalogue complete; F6.4 `verify` clean; restore check of the final dump |
 | **HB-9 Freeze** | Independent cross-check → owner freeze → Master Architecture update | HB-8 | As RDV |
@@ -1465,6 +1591,18 @@ proceeds past a gate without the owner.
   `/api/financials` samples, `allSecurityCode`, a delisted list):
   - counts only (§5, §6, §19.3), with F1's and F5's own frozen functions;
   - **no CSE request was made**, and nothing derived was added to Git.
+- **Design-closure verification** (revision 2) against HEAD `59ac143`, which commits revision 1 byte-identically.
+  Re-read and cross-checked:
+  - F1's run helpers;
+  - F2's `process_batch` / `process_filing`;
+  - F5's `run()`, `_persist` and `load_filings_from_db`, and the issuer functions and tests;
+  - F6.1's issuer eligibility reasons;
+  - F6.4's `jobs` and the 0015 views V4–V6;
+  - P2's `derive.ensure_companies`, `capture.derive_run` / `reprocess` / `_requester`,
+    `runs.seconds_since_last_request` and `cli.main`;
+  - P3's `p2runs.unacknowledged_blocks` gate;
+  - every table of 0001–0015;
+  - every test that pins the migration sequence.
 - **No database, test run, CSE contact or file outside this document** was created or changed by this design.
 
 ## Appendix C. Design self-audit
@@ -1483,3 +1621,25 @@ proceeds past a gate without the owner.
 | PostgreSQL authority; no 24/7 assumption | §14, §15, §20 |
 | G-1 controls | §16.1 |
 | The Master Architecture not edited | Status; the proposed cross-reference is in the phase report only |
+| Design closure: every blocker and owner question re-checked against the repository; defects corrected in this document only | Appendix D |
+
+## Appendix D. Design-closure corrections (revision 2)
+
+Found by re-checking revision 1 against the repository at `59ac143`. Every correction is confined to this document. None
+changes a frozen stage, a blocker conclusion or an owner default.
+
+| # | Where | Defect in revision 1 | Correction | Repository evidence |
+|---|---|---|---|---|
+| D1 | §7.4(a) | Path (a) was called safe when every body carries "an ISIN **or** a name". The frozen guard compares ISIN codes only when both claimants have one, and names only when both have one. So ISIN-only against name-only, or anything against a secId-only sighting, is an irreversible `identity_evidence_insufficient` dispute | (a) is allowed only for the initial import, before any secId-only observation exists, with both a CSE-shaped ISIN and a name in every body; otherwise (b) | `worker/issuer_identity.py` `_same_issuer`; `tests/test_f5_issuer_identity.py` reuse-guard case 3 |
+| D2 | §7.7 | The held set was not defined deterministically | It is computed once from (recorded ∪ batch): every batch observation of a secId whose new dispute is absence-only. Disputes are per secId and order-independent | `issuer_identity.disputed_sec_ids`, `decide_securities` (docstring: order-independent) |
+| D3 | §18.2 stage 7 | F6.1 puts `issuer_evidence_<status>` into eligibility, so every unresolved-issuer filing would have stopped at stage 7 as an F6.1 refusal, misattributing issuer evidence | Stage 7 ignores `issuer_evidence_*`. Stage 8 reports issuer evidence when at least one candidate is refused only by issuer reasons (RDV's prefixes) | `worker/financial_validation.py:379-382`; `tests/rdv_measure.py:31`, `issuer_only` |
+| D4 | §18.2 stages 4, 5, 9 | Stage 9 read "inputs of the latest batch", but T14 inputs belong to records that later batches only reference. A consumer failure was split between stages 4 and 5 by F3 rows that never exist (nothing is persisted on a consumer failure). Several documents per filing could double-count | Stage 9 is defined by the frozen view V6 (current records) under the designated configuration. Stages 4/5 split by the recorded error class. One unit per filing, at the furthest stage reached | 0015 views `financial_reconciliation_current`, `financial_fact_provenance`; `extract_financial_candidates.run` (persist only on success) |
+| D5 | §4.1, HB-U4, §6.3 | Discovery listed only F1's parse and store calls, inviting a second implementation of F1's run summary. It also claimed duplicate ids are "audited" through F1, but F1 does not persist them | The step calls F1's own `_new_summary`, `_collect`, `_ingest` and `_finish`; only the request is replaced. Duplicates are recomputed from the archived response | `worker/report_discovery.py` `discover_feed_window`, `_finish` (`details` keys) |
+| D6 | §4.1, HB-B1, HB-B5, HB-R1, §10.1, §27 | The worker re-listed `_persist`'s calls and used `process_filing`, losing F2's batch leftover check and inviting an equivalence-by-order instead of reuse | The worker calls `load_filings_from_db`, `process_batch([filing])`, `make_consumer`, `attach_timestamps` and F5's own `_persist`, exactly as `run()` does, minus the CLI cap and plus the ledger event. Equivalence is tested on rows against `run()` | `worker/extract_financial_candidates.py` `run`, `_persist`, `load_filings_from_db`; `document_retrieval.process_batch` |
+| D7 | §14.2, §15.3, §16.1, §16.5, §17, §20 | The lock scope and lease liveness were implicit; the orphan sweep could run without the lock; and P2's spacing seed cannot see backfill requests, so P3 could request less than 1.5 s after a backfill request | CSE slices hold `…312`. Dead-lease expiry (P3's rule) and the orphan sweep run inside a slice, in a dedicated temp root. A release guard holds the lock until `min_interval_seconds` after the last request. F6 work never takes `…312`. P2 commands are refused while a slice holds the lock | `market_capture/runs.py:163` `seconds_since_last_request`; `capture.py:90` seed; `capture.py` `_locked`; `scheduler/wakeup.py` (lease rule); F6.4 §15.7 |
+| D8 | §10.3, §14.1 | A per-issuer reconcile was presented as local, but F6.4 first validates every missing canonical run of all issuers, or refuses with `--no-validate`. The pilot reconciled before any configuration could be registered | `validate --pending` precedes every reconcile pass. Registration (needs at least one F5 run) and the owner's designation happen in HB-S3 | `financial_truth_store/jobs.py` `reconcile` (steps 1–2), `configuration_from_present_runs` |
+| D9 | HB-U1, §7.3, §7.4, §26 HB-P1, HB-Q8 | HB-P1 was imprecise. It omitted that an archive-only `reprocess` also derives; that `allSecurityCode` must be in the run (else only traded securities get rows); that freshness must use the derived run, not a sweep; and that P2 refuses to capture without the contact e-mail | All stated. HB-P1 needs HB-X2(b) first, but not HB-X2(a) | `market_capture/derive.py:233` (only `INSERT INTO companies`); `capture.py:171`, `:286` (`reprocess` refuses non-capture runs); `cli.py:104-106` |
+| D10 | §11.4 | The HB-X1 analysis omitted `bulletin_recovery_attempts`, `system_config`, P3 wake-ups and the P2 / `ops` tables | Added; the conclusion (0016 required) is unchanged | Migrations 0001, 0009 (`:81-82` grants), 0011, 0013, 0014 |
+| D11 | §23.4 | The HB-X3 replacement was described loosely | The exact current assertions and the exact durable replacement are given; no other frozen test pins the count | `tests/test_rdv_postgres.py:311-313`; `tests/rdv_measure.py:133`; `tests/test_p1_postgres.py` (dynamic ledger check) |
+| D12 | §15.2 | "A successful request is never repeated" contradicted §15.3: a document whose persistence did not commit is retrieved again | Stated per kind: persisted results are never re-requested; JSON is recovered from the spool; documents are re-retrieved once, recorded | `document_retrieval` (documents never spooled) |
+| D13 | Status, §1 | "One design blocker" beside three listed blockers and a prerequisite | Status lists exactly which decisions gate HB-1 and which gate live requests | §26 |
