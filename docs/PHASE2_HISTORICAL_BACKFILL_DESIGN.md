@@ -1,8 +1,9 @@
 # Phase 2: Historical financial backfill (design)
 
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
-implemented and frozen** on `main` at `40748c3` (Master Architecture §52). HB-2 to HB-6 are not implemented, **Phase 2
-as a whole is not implemented**, and HB-1 makes no CSE contact.
+implemented and frozen** on `main` at `40748c3` (Master Architecture §52). **HB-2 (the governed transport) is
+implemented and awaiting the owner's review; it is not frozen.** HB-3 to HB-6 are not implemented, **Phase 2 as a whole
+is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -19,6 +20,28 @@ two §23.4 frozen-test edits. The frozen baseline includes:
 - the D-2 coverage: PostgreSQL regression tests pinning every 0016 guard clause that a planted fault previously left
   undetected; 37 of 37 planted mutations of 0016 killed;
 - D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
+
+**HB-2 implementation status** (awaiting the owner's review; not frozen; the design text is unchanged). The governed
+transport is the library package `worker/backfill_transport/` (owner decision A1: outside `worker/financial_backfill/`,
+whose frozen tests pin it to HB-1's files). It adds no migration, grant, role, row-level security, SECURITY DEFINER,
+lock key, command, entry point or timer, and changes no frozen file. Owner decisions A1-A10 (the HB-2 design review)
+are implemented:
+- A2: `item_max_attempts` counts item CLAIMS (slices) since the last re-queue; HTTP retries are bounded separately by
+  `attempts_per_json_request` / `attempts_per_document` within one slice;
+- A3: a slice is refused unless the armed `version_tuple` equals the running frozen version tuple;
+- A4: the transport's spool journal is `journal-backfill/` in P1's spool; JSON bodies and outcome records use P1's
+  content-addressed spool;
+- A5: a stage stops when its last 3 completed leases since the arming in force ended `circuit_open`; a newer owner
+  arming decision resumes it; an operator stop is an owner disarm;
+- A6/A7: P3's quiet window and the combined-ceiling reservation of P3's armed daily budget are computed from P3's
+  settings, the trading calendar and today's P3 item, read-only;
+- A8: the slice time bound stops new work; a request in progress finishes;
+- A9: a document starts only if the budgets cover its worst case of 6 requests; CDN 403/404 are terminal attempts that
+  count towards the circuit breaker;
+- A10: the User-Agent is P2's exact `user_agent()` value (`cse-analysis-capture/p2.capture.1 ...`).
+
+Dead slices are expired by the transport's own spool-aware recovery (a spooled response becomes `recovered_from_spool`
+without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.
 
 HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request.
 
