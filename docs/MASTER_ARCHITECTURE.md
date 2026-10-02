@@ -1580,7 +1580,8 @@ Frozen/accepted:
 -   P1;
 -   P2;
 -   P3;
--   Phase 2 HB-1 (governed backfill ledger).
+-   Phase 2 HB-1 (governed backfill ledger);
+-   Phase 2 HB-2 (governed CSE transport).
 
 F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 §10--§11) are implemented by F6.4 (migration 0015).
@@ -1696,9 +1697,11 @@ Still open after real-data validation:
     supersession, the choice of availability time, and commit-time
     as-of;
 -   Phase 2 --- historical financial backfill --- remains the next
-    major architectural phase. Only its first implementation step,
-    HB-1 (the governed backfill ledger, below), is implemented and
-    frozen; Phase 2 as a whole is not implemented.
+    major architectural phase. Only its first two implementation
+    steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
+    CSE transport), both below, are implemented and frozen; HB-3 to
+    HB-6 are not implemented, and Phase 2 as a whole is not
+    implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -1787,6 +1790,69 @@ the ledger. Owner decision HB-X2 (G-1's extension to Phase 2 and the
 User-Agent contact) and prerequisite HB-P1 still gate any live Phase 2
 request. P-18, P-23 and P-1 are unchanged.
 
+Phase 2 HB-2 --- the governed CSE transport --- is **implemented and
+frozen/accepted** on `main` at commit `18962805` (the HB-2
+implementation `3a7512c8` plus the B-HB2-1 correction). It is the
+second implementation step (HB-2, design §27). Every Phase 2 CSE
+request goes through it; it is a library only, with no command, entry
+point or timer (HB-6), and makes no request unless every gate passes.
+Its implementation is frozen; a change to it needs its own
+change-control decision.
+
+It consists of the package `worker/backfill_transport/` (outside the
+frozen HB-1 package, owner decision A1) and its tests. It adds no
+migration, grant, role, row-level security, `SECURITY DEFINER`, lock
+key or entry point, changes no frozen file, and writes only the HB-1
+worker tables through HB-1's guards. Its scope, as approved in the HB-2
+design review (owner decisions A1--A10):
+
+-   the governed JSON requester (`getFinancialAnnouncement`,
+    `financials`): per attempt, the gates, the HB-1 intent committed
+    before the request, the spool journal, pacing, P2's own
+    `RequestsTransport`, P2's classification order with F1's own shape
+    acceptance, the exact body and outcome record spooled, then the
+    outcome (with the JSON body and any block) committed in one
+    transaction, then P2's block / circuit-breaker / retry decision;
+-   the governed F2 fetcher: F2's own `fetch(url)` boundary, every
+    request (including legacy fallbacks and redirects) separately
+    admitted, paced and recorded; P2's hardened session (no
+    environment proxies); documents streamed, never stored or spooled;
+    CDN 401/407/451 are blocks, CDN 403/404 terminal attempts;
+-   the release gates: an owner arming decision in force naming the
+    stage, the exact P2 `user_agent()` value (A10), the host and the
+    running frozen version tuple (A3); no unacknowledged Phase 2 or P2
+    block; the stopped-stage rule (A5: three `circuit_open` slices,
+    resumed only by a newer arming); daily and combined budgets, the
+    combined ceiling reserving P3's armed daily budget (A7); P3's quiet
+    window computed from P3's settings, the trading calendar and
+    today's item (A6); P3's clock rules; arming re-read before every
+    request, so a disarm stops the next one;
+-   the item maximum counts claims since the last re-queue, not HTTP
+    attempts (A2); the slice bounds (JSON requests, documents, and no
+    new work after the time bound, A8); a document starts only if the
+    budgets cover its six-request worst case (A9);
+-   pacing of at least 1.5 s between any two CSE requests, seeded from
+    P2's archive and the ledger, with a release guard before P2's lock
+    is released;
+-   one slice at a time under P2's exclusive lock (HB-1 D-1), with
+    spool-first recovery of dead slices: a spooled response becomes
+    `recovered_from_spool` without another request, otherwise
+    `unrecorded`; recovery is idempotent;
+-   its own preflight (pins of the P3 and HB-1 modules it reads, static
+    boundaries, compatibility, database reads, the spool).
+
+Correction included in the frozen baseline:
+
+-   B-HB2-1 (commit `18962805`): a slice no longer releases its lease
+    while any of its attempts lacks an outcome (an unexpected
+    exception between intent and outcome caught by a caller); the
+    lease stays active and the next slice recovers the attempt
+    spool-first.
+
+HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
+extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
+and an owner arming decision still gate any live Phase 2 request.
+
 Important accepted commits:
 
 ``` text
@@ -1828,6 +1894,12 @@ f1899ec00bb8c8cbb5c22b1c4a2ade2e8f219cae
 
 Phase 2 HB-1 frozen baseline (merge into main):
 40748c3c6a3f7c06f48526af3850a855abd1a96a
+
+Phase 2 HB-2 (implementation):
+3a7512c81408ec6d51f402f875c7a17e4bf82e8a
+
+Phase 2 HB-2 B-HB2-1 correction (frozen baseline):
+189628057c77b4211170b855df665ac05e041412
 ```
 
 Migration 0015 (F6.4), as the migration ledger records it (LF-normalised
@@ -1926,6 +1998,32 @@ RDV and F6.4 corpus tests with the evidence mounted, and the Windows
 full suite. These are implementation-agent-reported results, not an
 independent execution by this document.
 
+Phase 2 HB-2 passed its gates in order: the design review and the
+owner's approval of A1--A10, the implementation, a freeze audit (which
+found B-HB2-1), the B-HB2-1 correction, and the repeated freeze audit.
+HB-2 reported tests on the frozen baseline included:
+
+-   38 HB-2 unit tests and 20 HB-2 PostgreSQL tests, with HB-1's 11
+    unit and 36 PostgreSQL tests still passing;
+-   Linux offline full suite: 1196 passed, 305 skipped;
+-   PostgreSQL regression across HB-2, HB-1, F6.4, P1, P2 and P3: 181
+    passed, 75 skipped (the RDV and F6.4 corpus tests without the
+    evidence, the F3/F5 suites without their scratch databases, P1's
+    restic test), 2 expected D-2 xfails, and 1 failure that is an
+    artefact of running as root (P2's unwritable-spool test, failing
+    identically before HB-1);
+-   mutation audit of the transport: 95 of 95 planted faults killed.
+
+The same caveats as HB-1 apply: PostgreSQL 16.14 with an audit-only
+libpq stand-in for `psycopg2` and a version emulation that reports
+17.11, not a PostgreSQL 17.11 execution (without the emulation, every
+slice is refused by the PostgreSQL 17 version check); no evidence
+corpus; no Windows run; no live CSE request. Not executed by the
+implementation agent: PostgreSQL 17.11 with the real `psycopg2`, the
+corpus tests and the Windows full suite. These are
+implementation-agent-reported results, not an independent execution by
+this document.
+
 ------------------------------------------------------------------------
 
 # 53. P3 Acceptance Gate
@@ -1998,7 +2096,7 @@ architecture should be implemented in dependency order.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
-step, HB-1. Phase 2 --- historical financial backfill --- remains the
+two steps, HB-1 and HB-2. Phase 2 --- historical financial backfill --- remains the
 next major architectural phase; its design decides real-data
 validation Q1 (issuer evidence; §52).
 
@@ -2013,9 +2111,10 @@ validation Q1 (issuer evidence; §52).
 Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 3).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
-§52). HB-2 to HB-6 (governed transport; discovery and issuer evidence;
-document worker; F6 orchestration and audit; operations and pilot) are
-not implemented.
+§52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
+is implemented and frozen (`18962805`; §52). HB-3 to HB-6 (discovery
+and issuer evidence; document worker; F6 orchestration and audit;
+operations and pilot) are not implemented.
 
 ## Phase 3 --- Market feature foundation
 

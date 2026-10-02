@@ -18,10 +18,10 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1. F6.2 is an accepted design; its storage amendments are
+validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1 and HB-2. F6.2 is an accepted design; its storage amendments are
 implemented by F6.4.
 
-**Not implemented:** F8 (availability, supersession, as-of), Phase 2 beyond HB-1 (HB-2 to HB-6), and every later
+**Not implemented:** F8 (availability, supersession, as-of), Phase 2 beyond HB-2 (HB-3 to HB-6), and every later
 roadmap phase (Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
@@ -73,7 +73,7 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **only the first step is done**:
+and **only the first two steps are done**:
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -85,9 +85,14 @@ and **only the first step is done**:
   - **D-1:** only an exclusive hold of P2's global CSE advisory lock satisfies the ledger's slice-lock check;
   - **D-2:** PostgreSQL regression tests pin the 0016 guard clauses (37 of 37 planted mutations killed);
   - **D-3, resolved:** no pre-correction version of migration 0016 was ever applied to a persistent database.
-- **HB-2 to HB-6 are not implemented:** governed transport; discovery and issuer evidence; document worker; F6
-  orchestration and audit; operations and pilot.
-- **No Phase 2 CSE acquisition has started.** HB-1 contacts no network. Any live Phase 2 request still needs owner
+- **HB-2 — Governed CSE Transport: implemented and frozen** on `main` (Master Architecture §52). It is the library
+  package `worker/backfill_transport/`, through which every Phase 2 CSE request must go: owner arming, blocks, budgets,
+  P3's quiet window, at least 1.5 s spacing under P2's exclusive lock, each request recorded in the HB-1 ledger before it
+  is sent, and spool-first crash recovery (including the B-HB2-1 correction). It has no command or timer (HB-6).
+- **HB-3 to HB-6 are not implemented:** discovery and issuer evidence; document worker; F6 orchestration and audit;
+  operations and pilot.
+- **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
+  arming decision. Any live Phase 2 request still needs owner
   decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent
   contact) and prerequisite HB-P1, and then the owner's arming decision. The five-year historical dataset has not been
   built.
@@ -196,7 +201,7 @@ separate directory under the temp directory.
 Governance gate: at most 20 filings per run. Production-scale automated retrieval
 stays disabled until the open CSE terms-of-use question (F0) is decided. This cap
 is the standalone CLI's. It is not the Phase 2 transport policy: Phase 2 requests
-will go only through its governed transport (HB-2, not implemented), under owner
+will go only through its governed transport (HB-2), under owner
 decision HB-X2 and an owner arming decision.
 
 ## Stage F3 — report type & period classification (no values)

@@ -1,9 +1,9 @@
 # Phase 2: Historical financial backfill (design)
 
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
-implemented and frozen** on `main` at `40748c3` (Master Architecture §52). **HB-2 (the governed transport) is
-implemented and awaiting the owner's review; it is not frozen.** HB-3 to HB-6 are not implemented, **Phase 2 as a whole
-is not implemented**, and no Phase 2 CSE request has been made.
+implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
+implemented and frozen** on `main` at `1896280` (Master Architecture §52). HB-3 to HB-6 are not implemented, **Phase 2
+as a whole is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -21,7 +21,9 @@ two §23.4 frozen-test edits. The frozen baseline includes:
   undetected; 37 of 37 planted mutations of 0016 killed;
 - D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
 
-**HB-2 implementation status** (awaiting the owner's review; not frozen; the design text is unchanged). The governed
+**HB-2 implementation status** (recorded at freeze; the design text is unchanged). HB-2 is implemented (`3a7512c`) and
+frozen with the B-HB2-1 correction (`1896280`: a slice never releases its lease while an attempt lacks an outcome; the
+next slice recovers it spool-first). The governed
 transport is the library package `worker/backfill_transport/` (owner decision A1: outside `worker/financial_backfill/`,
 whose frozen tests pin it to HB-1's files). It adds no migration, grant, role, row-level security, SECURITY DEFINER,
 lock key, command, entry point or timer, and changes no frozen file. Owner decisions A1-A10 (the HB-2 design review)
