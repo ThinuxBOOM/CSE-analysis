@@ -16,7 +16,7 @@ append-only, except the guarded heartbeat, release and expiry of wake-ups and le
 TOOL_VERSION = "hb.ledger.1"
 
 LEDGER_MIGRATION = "0016_historical_backfill_ledger.sql"
-LEDGER_MIGRATION_SHA256 = "07727e13dd9061d32976ae7e204659b331c0087c5ee16e1bf2554706931e1701"
+LEDGER_MIGRATION_SHA256 = "f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7"
 
 WORKER_ROLE = "cse_worker"
 OWNER_ROLE = "cse_owner"

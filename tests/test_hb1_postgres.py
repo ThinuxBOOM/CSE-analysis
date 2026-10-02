@@ -816,6 +816,370 @@ def test_l8_a_dead_slice_is_expired_and_its_work_recovered_by_the_next_slice(env
     p2runs.release_global_lock(b)
 
 
+def test_l8_b1_a_discovery_item_whose_attempts_all_died_fails_with_a_reason(env):
+    """HB-1 audit B-1. Every attempt of one listing dies mid-request: F1's run, begun before each request, stays
+    'running'; the next slice expires the dead lease, closes the attempt 'unrecorded' and abandons the item, which
+    returns to pending with its attempt count (design section 15.3). At the item maximum (section 16.4: "then
+    terminal, with the reason") the item fails on a stated reason without a failed F1 run, so discovery can close
+    (HB-U5). succeeded and partial still need their own F1 run, and a named F1 run must itself have failed."""
+    owner.record_arming_as_owner(env.owner_conn(), armed_decision(), "tester")
+    w = env.conn()
+    item_max = store.arming_in_force(w)["item_max_attempts"]
+    assert item_max == 3
+    listing, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    for n in range(1, item_max + 1):
+        a = env.conn()                                                         # a slice that will die
+        assert p2runs.acquire_global_lock(a)
+        wa = wakeup(a)
+        la = store.open_lease(a, wa)
+        store.claim(a, listing["id"], la, wakeup_id=wa)
+        PostgresFilingStore(a).begin_run(f1.LISTING_ENDPOINT, {"symbol": "COMB.N0000"}, now())  # F1: before the request
+        att, attempt_no = store.record_intent(a, listing["id"], la, wa, **LISTING_INTENT)
+        assert attempt_no == n
+        pid, started = q(a, "select backend_pid, backend_started_at from backfill_wakeups where id = %s", (wa,))[0]
+        a.close()                                                              # the slice dies mid-request
+        b = env.conn()                                                         # the next slice
+        wait_until_gone(b, pid, started)
+        end = time.monotonic() + 10
+        while not p2runs.acquire_global_lock(b):                               # PostgreSQL frees the dead lock
+            assert time.monotonic() < end, "the dead session's lock was not released"
+            time.sleep(0.05)
+        wb = wakeup(b)
+        out = store.expire_dead_leases(b, wb)
+        assert [(o["lease_id"], o["attempts_closed"], o["items_abandoned"]) for o in out] == \
+            [(la, [att], [listing["id"]])]
+        store.append_event(b, listing["id"], "pending", "promote", reason="no F1 run of the request finished")
+        assert store.finish_wakeup(b, wb, "completed")
+        p2runs.release_global_lock(b)
+        b.close()
+    assert [(x["attempt_no"], x["outcome"]) for x in store.attempts(w, listing["id"])] == \
+        [(n, "unrecorded") for n in range(1, item_max + 1)]
+    f1_runs = q(w, "select id, status from report_discovery_runs where source_endpoint = %s and "
+                   "request_params ->> 'symbol' = %s", (f1.LISTING_ENDPOINT, "COMB.N0000"))
+    assert len(f1_runs) == item_max and {s for _, s in f1_runs} == {"running"}
+    assert store.current_state(w, listing["id"])["state"] == "pending"
+    # the item maximum is reached: the next slice records the terminal state without a further request
+    running = str(f1_runs[0][0])
+    reason = f"item maximum of {item_max} attempts reached: every attempt ended unrecorded"
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, listing["id"], lid, wakeup_id=wid)
+        refused(lambda: store.append_event(w, listing["id"], "succeeded", "record", lease_id=lid, reason=reason),
+                match="succeeded needs an F1 run")
+        refused(lambda: store.append_event(w, listing["id"], "partial", "record", lease_id=lid, reason=reason,
+                                           f1_run_id=running), match="whose own status is partial")
+        refused(lambda: store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=reason,
+                                           f1_run_id=running), match="whose own status is failed")
+        refused(lambda: store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=" "),
+                match="needs a reason")
+        store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=reason)
+    assert len(store.attempts(w, listing["id"])) == item_max                   # no request beyond the maximum
+    final = store.current_state(w, listing["id"])["state"]
+    assert final == "failed" and final in states.FINAL["listing"]
+    assert states.next_states("listing", final) == {"pending": "requeue"}      # only an explicit operator re-queue
+    # discovery closure (HB-U5) is no longer blocked by this item: every discovery item is in a final state
+    assert q(w, "select count(*) from backfill_item_state where item_kind in ('feed_window', 'listing') and "
+                "not state = any(%s)", (sorted(states.FINAL["listing"]),)) == [(0,)]
+
+
+def test_l3_b1_a_failure_without_f1_evidence_never_contradicts_a_finished_f1_run(env):
+    """B-1's correction, other half (evidence wins): with no failed F1 run named, a discovery item is refused 'failed'
+    while an F1 run of its own request succeeded or partially succeeded (for example: the slice died after F1 finished
+    the run, before the ledger recorded it); it terminates on that run's own status instead. Another request's
+    finished run is not its evidence."""
+    w = env.conn()
+    april, _ = store.ensure_item(w, keys.feed_window(2021, 4))
+    may, _ = store.ensure_item(w, keys.feed_window(2021, 5))
+    comb, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    lolc, _ = store.ensure_item(w, keys.listing("LOLC.N0000"))
+    april_run = f1_run(w, f1.FEED_ENDPOINT, {"fromDate": "2021-04-01", "toDate": "2021-04-30"}, status="partial")
+    comb_run = f1_run(w, f1.LISTING_ENDPOINT, {"symbol": "COMB.N0000"})        # succeeded
+    reason = "item maximum reached: every attempt ended unrecorded"
+    with cse_slice(w) as (wid, lid):
+        for item in (april, may, comb, lolc):
+            store.claim(w, item["id"], lid, wakeup_id=wid)
+        for item in (april, comb):
+            refused(lambda: store.append_event(w, item["id"], "failed", "record", lease_id=lid, reason=reason),
+                    match="succeeded or partially succeeded")
+        store.append_event(w, may["id"], "failed", "record", lease_id=lid, reason=reason)     # April's run is not May's
+        store.append_event(w, lolc["id"], "failed", "record", lease_id=lid, reason=reason)    # COMB's run is not LOLC's
+        store.append_event(w, april["id"], "partial", "record", lease_id=lid, f1_run_id=april_run)
+        store.append_event(w, comb["id"], "succeeded", "record", lease_id=lid, f1_run_id=comb_run)
+    assert store.state_counts(w) == {("feed_window", "partial"): 1, ("feed_window", "failed"): 1,
+                                     ("listing", "succeeded"): 1, ("listing", "failed"): 1}
+
+
+# ------------------------------------------------------------------------------------------------ guard clauses pinned
+# Each test below pins 0016 guard clauses that no other test made fail when planted faults removed them: every invalid
+# case is refused by the real trigger or CHECK, and its valid control case is accepted.
+
+def _int4(v):
+    return v - (1 << 32) if v >= 1 << 31 else v
+
+
+def test_l8_only_an_exclusive_hold_of_p2s_exact_key_is_the_cse_lock(env):
+    """D-1: hb_holds_cse_lock() accepts only P2's exclusive session lock on its exact key (pg_try_advisory_lock, as
+    runs.acquire_global_lock takes it). A shared hold of that key, or any neighbouring key, is not the CSE lock."""
+    w, other = env.conn(), env.conn()
+    key = p2runs.GLOBAL_LOCK_KEY
+    assert q(w, "select hb_cse_lock_key()") == [(key,)]
+
+    def holds(c):
+        return q(c, "select hb_holds_cse_lock(pg_backend_pid())")[0][0]
+    wid = wakeup(w)
+    assert not holds(w)
+    # the neighbouring keys (P1's migration runner ...311, F6.4's ...313) and the same key split into two int4 halves
+    for take, release in ((f"pg_try_advisory_lock({key - 1})", f"pg_advisory_unlock({key - 1})"),
+                          (f"pg_try_advisory_lock({key + 1})", f"pg_advisory_unlock({key + 1})"),
+                          (f"pg_try_advisory_lock({_int4(key >> 32)}, {_int4(key & 0xFFFFFFFF)})",
+                           f"pg_advisory_unlock({_int4(key >> 32)}, {_int4(key & 0xFFFFFFFF)})")):
+        assert q(w, f"select {take}")[0][0]
+        assert not holds(w) and not store.holds_cse_lock(w), take
+        refused(lambda: store.open_lease(w, wid), match="global CSE lock")
+        q(w, f"select {release}")
+    # P2's exact key held only in shared mode is not the lock
+    assert q(w, "select pg_try_advisory_lock_shared(%s)", (key,))[0][0]
+    assert not holds(w)
+    refused(lambda: store.open_lease(w, wid), match="global CSE lock")
+    q(w, "select pg_advisory_unlock_shared(%s)", (key,))
+    # control: P2's own helper (exclusive) is the lock, and a lease opens
+    assert p2runs.acquire_global_lock(w) and holds(w) and store.holds_cse_lock(w)
+    assert q(other, "select hb_holds_cse_lock(%s)", (q(w, "select pg_backend_pid()")[0][0],)) == [(True,)]
+    assert not q(other, "select pg_try_advisory_lock_shared(%s)", (key,))[0][0]   # an exclusive holder excludes sharers
+    lid = store.open_lease(w, wid)
+    assert store.release_lease(w, lid, "completed")
+    p2runs.release_global_lock(w)
+
+
+def test_l8_a_shared_holder_never_takes_over_a_live_lease(env):
+    """D-1: a session sharing P2's key cannot expire another session's lease nor open its own; only an exclusive holder
+    can, and only once the lease's holder no longer holds the lock."""
+    a, b, c = env.conn(), env.conn(), env.conn()
+    key = p2runs.GLOBAL_LOCK_KEY
+    lst, _ = store.ensure_item(a, keys.listing("COMB.N0000"))
+    assert p2runs.acquire_global_lock(a)
+    wa = wakeup(a)
+    la = store.open_lease(a, wa)
+    store.claim(a, lst["id"], la, wakeup_id=wa)
+    # A moves to a shared hold of the key: its lease is no longer live (it cannot record in flight) ...
+    assert q(a, "select pg_try_advisory_lock_shared(%s)", (key,))[0][0]
+    p2runs.release_global_lock(a)
+    refused(lambda: store.record_intent(a, lst["id"], la, wa, **LISTING_INTENT), match="not live in this session")
+    # ... and B, now able to share the key too, still cannot take the slice over
+    assert q(b, "select pg_try_advisory_lock_shared(%s)", (key,))[0][0]
+    wb = wakeup(b)
+    refused(lambda: q(b, "update backfill_leases set state = 'expired', released_at = now(), expired_by_wakeup = %s "
+                         "where id = %s", (wb, la)), match="only a slice holding the CSE lock")
+    with pytest.raises(store.LedgerError):
+        store.expire_dead_leases(b, wb)
+    refused(lambda: store.open_lease(b, wb), match="global CSE lock")
+    assert q(b, "select state from backfill_leases where id = %s", (la,)) == [("active",)]
+    assert not p2runs.acquire_global_lock(c)                                 # sharers exclude P2's exclusive lock
+    q(a, "select pg_advisory_unlock_shared(%s)", (key,))
+    q(b, "select pg_advisory_unlock_shared(%s)", (key,))
+    # control: an exclusive holder expires the lease whose holder no longer holds the lock
+    assert p2runs.acquire_global_lock(c)
+    wc = wakeup(c)
+    out = store.expire_dead_leases(c, wc)
+    assert [(o["lease_id"], o["items_abandoned"]) for o in out] == [(la, [lst["id"]])]
+    lc = store.open_lease(c, wc)
+    assert store.release_lease(c, lc, "completed")
+    p2runs.release_global_lock(c)
+
+
+def _doc_item(w, fid, *, n=None, persist=False):
+    """A document item at its path version, promoted to pending; (item, path, the persisted F5 result, its Doc)."""
+    path = f"cmt/upload_report_file/{fid}_1700000000000.pdf"
+    d = Doc(fid, doc=n or fid % 1000).one()
+    p = S.persist(w, d) if persist else None
+    if not persist:
+        filing(w, fid)
+    item, _ = store.ensure_item(w, keys.document(fid, path))
+    store.append_event(w, item["id"], "pending", "promote")
+    return item, path, p, d
+
+
+def _retrieval(fid, path, **over):
+    return f2_record(**dict(dict(cse_filing_id=fid, source_path=path, final_url="https://cdn.cse.lk/" + path), **over))
+
+
+DOWNLOAD_FAILED = dict(outcome="download_failed", failure_category="forbidden_or_missing", final_url=None,
+                       http_status=403, content_type=None, content_length_header=None, etag=None, last_modified=None,
+                       byte_length=None, sha256=None, md5=None, validation=None, retrieved_at=None,
+                       consumer_status="not_run", cleanup_status="deleted")
+CONSUMER_FAILED = dict(outcome="consumer_failed", consumer_status="failed", consumer_error="TextExtractionError: x")
+
+
+def test_l3_document_failure_states_match_their_retrieval_outcome(env):
+    """retrieval_failed names a retrieval failure; consumer_failed names a consumer_failed record."""
+    w = env.conn()
+    x, xpath, _, _ = _doc_item(w, 9411)
+    y, ypath, _, _ = _doc_item(w, 9412)
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, x["id"], lid, wakeup_id=wid)
+        store.claim(w, y["id"], lid, wakeup_id=wid)
+        x_ok = store.record_retrieval(w, x["id"], lid, _retrieval(9411, xpath))
+        x_consumer = store.record_retrieval(w, x["id"], lid, _retrieval(9411, xpath, **CONSUMER_FAILED))
+        x_download = store.record_retrieval(w, x["id"], lid, _retrieval(9411, xpath, **DOWNLOAD_FAILED))
+        for rid in (x_ok, x_consumer):
+            refused(lambda: store.append_event(w, x["id"], "retrieval_failed", "record", lease_id=lid,
+                                               retrieval_id=rid), match="retrieval record with that outcome")
+        store.append_event(w, x["id"], "retrieval_failed", "record", lease_id=lid, retrieval_id=x_download)  # control
+        y_ok = store.record_retrieval(w, y["id"], lid, _retrieval(9412, ypath))
+        y_consumer = store.record_retrieval(w, y["id"], lid, _retrieval(9412, ypath, **CONSUMER_FAILED))
+        store.append_event(w, y["id"], "processing", "record", lease_id=lid)
+        refused(lambda: store.append_event(w, y["id"], "consumer_failed", "record", lease_id=lid, retrieval_id=y_ok),
+                match="retrieval record with that outcome")
+        store.append_event(w, y["id"], "consumer_failed", "record", lease_id=lid, retrieval_id=y_consumer)  # control
+    assert store.current_state(w, x["id"])["state"] == "retrieval_failed"
+    assert store.current_state(w, y["id"])["state"] == "consumer_failed"
+
+
+def test_l3_persisted_names_the_retrieval_of_the_f5_runs_own_document(env):
+    w = env.conn()
+    item, path, p, d = _doc_item(w, 9421, n=31, persist=True)
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, item["id"], lid, wakeup_id=wid)
+        other_doc = store.record_retrieval(w, item["id"], lid, _retrieval(9421, path, sha256="e" * 64))
+        same_doc = store.record_retrieval(w, item["id"], lid, _retrieval(9421, path, sha256=d.sha))
+        store.append_event(w, item["id"], "processing", "record", lease_id=lid)
+        refused(lambda: store.append_event(w, item["id"], "persisted", "record", lease_id=lid, f5_run_id=p["run_id"],
+                                           retrieval_id=other_doc), match="same document")
+        store.append_event(w, item["id"], "persisted", "record", lease_id=lid, f5_run_id=p["run_id"],
+                           retrieval_id=same_doc)                                # control
+    assert store.current_state(w, item["id"])["state"] == "persisted"
+
+
+def test_l3_an_issuer_link_is_the_items_own_filings(env):
+    w = env.conn()
+    item, _, p, _ = _doc_item(w, 9431, n=32, persist=True)
+    other = S.persist(w, Doc(9432, doc=33).one())
+    assert p["link_id"] is not None and other["link_id"] is not None
+    refused(lambda: store.append_event(w, item["id"], "persisted", "promote", f5_run_id=p["run_id"],
+                                       issuer_link_id=other["link_id"]), match="another filing")
+    store.append_event(w, item["id"], "persisted", "promote", f5_run_id=p["run_id"], issuer_link_id=p["link_id"])
+
+
+def test_l3_an_event_names_only_its_own_items_attempt(env):
+    w = env.conn()
+    a_item, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    b_item, _ = store.ensure_item(w, keys.listing("LOLC.N0000"))
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, a_item["id"], lid, wakeup_id=wid)
+        store.claim(w, b_item["id"], lid, wakeup_id=wid)
+        a_att, _ = store.record_intent(w, a_item["id"], lid, wid, **LISTING_INTENT)
+        b_att, _ = store.record_intent(w, b_item["id"], lid, wid, **dict(LISTING_INTENT, params={"symbol": "LOLC.N0000"}))
+        refused(lambda: store.append_event(w, b_item["id"], "retry_wait", "record", lease_id=lid, attempt_id=a_att,
+                                           reason="ReadTimeout"), match="belongs to another item")
+        store.append_event(w, b_item["id"], "retry_wait", "record", lease_id=lid, attempt_id=b_att,
+                           reason="ReadTimeout")                                 # control
+
+
+def test_l3_retry_wait_needs_a_reason(env):
+    w = env.conn()
+    lst, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, lst["id"], lid, wakeup_id=wid)
+        for blank in (None, "", "   "):
+            refused(lambda: store.append_event(w, lst["id"], "retry_wait", "record", lease_id=lid, reason=blank),
+                    match="retry_wait needs a reason")
+        store.append_event(w, lst["id"], "retry_wait", "record", lease_id=lid, reason="ReadTimeout")   # control
+
+
+def test_l3_a_failed_document_needs_a_reason(env):
+    w = env.conn()
+    item, _, _, _ = _doc_item(w, 9441)
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, item["id"], lid, wakeup_id=wid)
+        store.append_event(w, item["id"], "processing", "record", lease_id=lid)
+        for blank in (None, "", "   "):
+            refused(lambda: store.append_event(w, item["id"], "failed", "record", lease_id=lid, reason=blank),
+                    match="failed needs a reason")
+        store.append_event(w, item["id"], "failed", "record", lease_id=lid, reason="F3 raised: unreadable")  # control
+
+
+def test_l8_an_item_is_abandoned_only_after_its_lease_expired_by_a_lock_holder(env):
+    a, b = env.conn(), env.conn()
+    lst, _ = store.ensure_item(a, keys.listing("COMB.N0000"))
+    assert p2runs.acquire_global_lock(a)
+    wa = wakeup(a)
+    la = store.open_lease(a, wa)
+    store.claim(a, lst["id"], la, wakeup_id=wa)
+    refused(lambda: store.append_event(a, lst["id"], "abandoned", "expire", lease_id=la),   # the lease is live
+            match="abandoned only after")
+    pid, started = q(a, "select backend_pid, backend_started_at from backfill_wakeups where id = %s", (wa,))[0]
+    a.close()
+    wait_until_gone(b, pid, started)
+    end = time.monotonic() + 10
+    while not p2runs.acquire_global_lock(b):
+        assert time.monotonic() < end
+        time.sleep(0.05)
+    wb = wakeup(b)
+    q(b, "update backfill_leases set state = 'expired', released_at = now(), expired_by_wakeup = %s where id = %s",
+      (wb, la))
+    p2runs.release_global_lock(b)
+    refused(lambda: store.append_event(b, lst["id"], "abandoned", "expire", lease_id=la),   # no lock held
+            match="abandoned only after")
+    assert p2runs.acquire_global_lock(b)
+    store.append_event(b, lst["id"], "abandoned", "expire", lease_id=la, reason="its slice died")   # control
+    p2runs.release_global_lock(b)
+
+
+def test_l8_intents_and_retrieval_records_need_the_lock_still_held(env):
+    w = env.conn()
+    lst, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    doc, path, _, _ = _doc_item(w, 9451)
+    assert p2runs.acquire_global_lock(w)
+    wid = wakeup(w)
+    lid = store.open_lease(w, wid)
+    store.claim(w, lst["id"], lid, wakeup_id=wid)
+    store.claim(w, doc["id"], lid, wakeup_id=wid)
+    p2runs.release_global_lock(w)                         # same session and lease, but the lock is gone
+    refused(lambda: store.record_intent(w, lst["id"], lid, wid, **LISTING_INTENT), match="not live in this session")
+    refused(lambda: store.record_retrieval(w, doc["id"], lid, _retrieval(9451, path)), match="not live in this session")
+    assert p2runs.acquire_global_lock(w)                  # control: the holder holds the lock again
+    assert store.record_intent(w, lst["id"], lid, wid, **LISTING_INTENT)[1] == 1
+    store.record_retrieval(w, doc["id"], lid, _retrieval(9451, path))
+    assert store.release_lease(w, lid, "completed")
+    p2runs.release_global_lock(w)
+
+
+def test_l8_expiry_names_the_expiring_sessions_own_active_wakeup(env):
+    a, b, c = env.conn(), env.conn(), env.conn()
+    assert p2runs.acquire_global_lock(a)
+    wa = wakeup(a)
+    la = store.open_lease(a, wa)
+    pid, started = q(a, "select backend_pid, backend_started_at from backfill_wakeups where id = %s", (wa,))[0]
+    a.close()
+    wait_until_gone(b, pid, started)
+    end = time.monotonic() + 10
+    while not p2runs.acquire_global_lock(b):
+        assert time.monotonic() < end
+        time.sleep(0.05)
+    wb, wc = wakeup(b), wakeup(c)
+    expire_lease = ("update backfill_leases set state = 'expired', released_at = now(), expired_by_wakeup = %s "
+                    "where id = %s")
+    expire_wakeup = "update backfill_wakeups set state = 'expired', finished_at = now(), expired_by = %s where id = %s"
+    refused(lambda: q(b, expire_lease, (wc, la)), match="current session's active wake-up")      # C's wake-up
+    refused(lambda: q(c, expire_wakeup, (wb, wa)), match="current session's active wake-up")     # B's wake-up
+    q(b, expire_lease, (wb, la))                                                                 # controls
+    q(c, expire_wakeup, (wc, wa))
+    assert q(c, "select state, expired_by from backfill_wakeups where id = %s", (wa,)) == [("expired", wc)]
+    assert q(c, "select state, expired_by_wakeup from backfill_leases where id = %s", (la,)) == [("expired", wb)]
+    p2runs.release_global_lock(b)
+
+
+def test_l6_a_succeeded_retrieval_has_its_document_deleted(env):
+    w = env.conn()
+    doc, path, _, _ = _doc_item(w, 9461)
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, doc["id"], lid, wakeup_id=wid)
+        refused(lambda: store.record_retrieval(w, doc["id"], lid, _retrieval(9461, path, cleanup_status="not_needed")),
+                pgcode="23514")
+        store.record_retrieval(w, doc["id"], lid, _retrieval(9461, path, cleanup_status="deleted"))   # control
+        store.record_retrieval(w, doc["id"], lid, _retrieval(9461, path, **dict(DOWNLOAD_FAILED,
+                                                                                cleanup_status="not_needed")))
+
+
 def test_l9_a_block_stops_its_item_until_the_owner_acknowledges_it(env):
     w, m = env.conn(), env.owner_conn()
     listing, _ = store.ensure_item(w, keys.listing("COMB.N0000"))

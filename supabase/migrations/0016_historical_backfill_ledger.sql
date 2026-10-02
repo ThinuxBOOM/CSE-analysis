@@ -70,11 +70,13 @@ end $$;
 create function hb_cse_lock_key() returns bigint
 language sql immutable as $$ select 4346836117002312::bigint $$;
 
--- Does backend p_pid hold P2's lock as a session-level advisory lock on this database?
+-- Does backend p_pid hold P2's lock as a session-level advisory lock on this database? Only P2's own exclusive hold
+-- (pg_try_advisory_lock) counts: shared holders of the key coexist, so a shared hold would not exclude another slice.
 create function hb_holds_cse_lock(p_pid integer) returns boolean
 language sql stable as $$
   select exists (select 1 from pg_locks l
-                  where l.locktype = 'advisory' and l.granted and l.pid = p_pid and l.objsubid = 1
+                  where l.locktype = 'advisory' and l.granted and l.mode = 'ExclusiveLock' and l.pid = p_pid
+                    and l.objsubid = 1
                     and l.database = (select d.oid from pg_database d where d.datname = current_database())
                     and l.classid = (hb_cse_lock_key() >> 32)::oid
                     and l.objid = (hb_cse_lock_key() & 4294967295)::oid)
@@ -1022,9 +1024,33 @@ begin
     end if;
   end if;
   -- 5. the evidence each state claims
-  if new.state in ('succeeded', 'partial', 'failed') and it.item_kind in ('feed_window', 'listing') then
+  if new.state in ('succeeded', 'partial') and it.item_kind in ('feed_window', 'listing') then
     if new.f1_run_id is null or f1.status <> new.state then
       raise exception 'item %: % needs an F1 run of this request whose own status is %', new.item_id, new.state, new.state
+        using errcode = 'check_violation';
+    end if;
+  end if;
+  -- a discovery item fails on a failed F1 run of its request, or, with no F1 run named, on a stated reason: when every
+  -- attempt ended unrecorded its F1 runs stay 'running' (design sections 15.3 and 16.4). Never against an F1 run of
+  -- the request that succeeded or partially succeeded (evidence wins).
+  if new.state = 'failed' and it.item_kind in ('feed_window', 'listing') then
+    if new.f1_run_id is not null then
+      if f1.status <> 'failed' then
+        raise exception 'item %: % needs an F1 run of this request whose own status is %', new.item_id, new.state,
+          new.state using errcode = 'check_violation';
+      end if;
+    elsif exists (select 1 from report_discovery_runs r
+                   where r.status in ('succeeded', 'partial')
+                     and ((it.item_kind = 'feed_window' and r.source_endpoint = 'getFinancialAnnouncement'
+                           and r.request_params ->> 'fromDate' = to_char(it.window_month, 'YYYY-MM-DD')
+                           and r.request_params ->> 'toDate'
+                               = to_char((it.window_month + interval '1 month' - interval '1 day')::date, 'YYYY-MM-DD'))
+                          or (it.item_kind = 'listing' and r.source_endpoint = 'financials'
+                              and r.request_params ->> 'symbol' = it.query_symbol))) then
+      raise exception 'item %: an F1 run of this request succeeded or partially succeeded: the item is not failed',
+        new.item_id using errcode = 'check_violation';
+    elsif length(btrim(coalesce(new.reason, ''))) = 0 then
+      raise exception 'item %: failed without a failed F1 run of this request needs a reason', new.item_id
         using errcode = 'check_violation';
     end if;
   end if;
