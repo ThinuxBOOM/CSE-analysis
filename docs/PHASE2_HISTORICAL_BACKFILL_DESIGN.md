@@ -1,11 +1,26 @@
 # Phase 2: Historical financial backfill (design)
 
-**Status:** DESIGN ONLY. No code, no migration, no test, no CSE contact. **Not frozen; Phase 2 is not implemented.**
+**Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
+implemented and frozen** on `main` at `40748c3` (Master Architecture §52). HB-2 to HB-6 are not implemented, **Phase 2
+as a whole is not implemented**, and HB-1 makes no CSE contact.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
 
 Revision 3 (2026-10-02) corrects blocker HB-X3: HB-X1 needs two frozen-test edits, not one (§23.4; Appendix D, D14).
+
+**HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
+HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
+`f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7`), the package `worker/financial_backfill/` and the
+two §23.4 frozen-test edits. The frozen baseline includes:
+- the B-1 correction: a discovery item whose attempts all ended `unrecorded` (crash-only) can terminate as `failed`
+  with a stated reason, never against an F1 run of the same request that succeeded or partially succeeded;
+- the D-1 hardening: only an exclusive hold of P2's lock `…312` satisfies the ledger's lock check;
+- the D-2 coverage: PostgreSQL regression tests pinning every 0016 guard clause that a planted fault previously left
+  undetected; 37 of 37 planted mutations of 0016 killed;
+- D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
+
+HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request.
 
 **Date:** 2026-10-01.
 
@@ -53,7 +68,8 @@ filing universe (F1) + issuer evidence (P2 archive, F5) -> temporary documents (
 ```
 
 **What this document is.** An implementation-ready design: the architecture, rules, state machine, governance, audit
-and plan. Nothing is implemented. Every number in it either comes from the repository or is labelled an estimate.
+and plan. Apart from HB-1 (the ledger; see Status), nothing is implemented. Every number in it either comes from the
+repository or is labelled an estimate.
 
 **Phase 2 adds no financial semantics.** It orchestrates frozen stages. It never decides:
 - a value, a period, a scale or a sign;
@@ -63,7 +79,7 @@ and plan. Nothing is implemented. Every number in it either comes from the repos
 
 The only new elements are infrastructure:
 - a governed CSE transport;
-- a backfill ledger (blocked, HB-X1);
+- a backfill ledger (HB-X1; implemented and frozen as HB-1, migration 0016);
 - an issuer-evidence acquisition procedure around the frozen F5 rule;
 - a read-only coverage audit and anomaly catalogue.
 

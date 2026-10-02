@@ -1532,7 +1532,8 @@ Worker code must not operate as the database owner.
 
 # 51. Migration Lineage Audit
 
-Current migration sequence reaches 0015 (F6.4's additive
+Current migration sequence reaches 0016 (Phase 2 HB-1's additive
+`0016_historical_backfill_ledger.sql`, after F6.4's additive
 `0015_financial_truth_persistence.sql`); `0006` remains unused.
 
 Historical notes:
@@ -1578,7 +1579,8 @@ Frozen/accepted:
 -   G-1;
 -   P1;
 -   P2;
--   P3.
+-   P3;
+-   Phase 2 HB-1 (governed backfill ledger).
 
 F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 §10--§11) are implemented by F6.4 (migration 0015).
@@ -1694,7 +1696,9 @@ Still open after real-data validation:
     supersession, the choice of availability time, and commit-time
     as-of;
 -   Phase 2 --- historical financial backfill --- remains the next
-    major architectural phase and is not implemented.
+    major architectural phase. Only its first implementation step,
+    HB-1 (the governed backfill ledger, below), is implemented and
+    frozen; Phase 2 as a whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -1706,6 +1710,82 @@ operational requirements, not completed work:
     version/change-control phase;
 -   Q3: the external F6 evidence corpus needs a private backup outside
     Git.
+
+Phase 2 HB-1 --- the governed backfill ledger --- is **implemented and
+frozen/accepted** on `main` at merge commit `40748c3c` (pull request
+#1). It is the first implementation step (HB-1, design §27) of the
+Phase 2 design `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 3,
+commit `75fd8354`), built under owner decisions HB-Q1 (the ledger
+migration) and HB-Q3 (two frozen-test edits). It is the durable
+PostgreSQL ledger and state-machine foundation of Phase 2: every later
+Phase 2 step records its work, attempts, failures, holds, blocks,
+leases and audits through it. Its implementation is frozen; a change to
+it needs a new migration and its own change-control decision.
+
+It consists of:
+
+-   migration `0016_historical_backfill_ledger.sql` (additive; no
+    existing table, function or migration 0001--0015 changed), holding
+    the design's records L1--L11: owner arming decisions; work items
+    with unique natural keys; append-only item events checked against a
+    fixed transition table (91 rules, mirrored by
+    `worker/financial_backfill/states.py`) and against the evidence rows
+    they name; HTTP attempt intents and outcomes; exact JSON response
+    bodies (never documents); F2 retrieval records (never bytes or
+    temporary paths); holds and the owner's resolutions; wake-ups and
+    leases; blocks and the owner's acknowledgements; anomaly records;
+    coverage snapshots;
+-   package `worker/financial_backfill/` (`states`, `keys`, `records`,
+    `store`, `owner`, `preflight`): the worker's ledger operations, the
+    owner path (`cse_migrator` → `SET LOCAL ROLE cse_owner`) for arming,
+    hold resolutions and block acknowledgements, and a preflight
+    (migration lineage, frozen-file and version pins, role and
+    privilege model, triggers, the rule table and P2's lock key);
+-   the two owner-approved HB-X3 frozen-test edits (RDV V9 and F6.4's
+    migration-ledger/preflight test), in the durable form of the design
+    §23.4: 0015 stays at position 14 with its frozen hash, `0006` stays
+    unused, and later migrations are numbered after 0015.
+
+Its invariants:
+
+-   append-only for every role: no DELETE or TRUNCATE for anyone, and
+    the transition rules cannot be changed without a migration; only
+    the guarded heartbeat, release and expiry of wake-ups and leases are
+    updates;
+-   least privilege: `cse_worker` SELECT + INSERT (UPDATE only on
+    wake-ups and leases), owner decisions only through the owner path,
+    `cse_reader` SELECT; no `SECURITY DEFINER`, no row-level security
+    and no new role;
+-   one CSE slice at a time: a lease, request intent, outcome or
+    retrieval record of an in-flight item is accepted only from the
+    session that holds P2's global CSE advisory lock
+    (`4346836117002312`) **exclusively**; a dead holder's lease is
+    expired only by another session that then holds that lock. No new
+    lock key is introduced.
+
+Corrections included in the frozen baseline:
+
+-   B-1 (commit `0de7a2eb`): a discovery item whose attempts all ended
+    `unrecorded` (its F1 runs left `running`) can now reach `failed`
+    with a stated reason; `succeeded` and `partial` still need a
+    matching F1 run, and a bare `failed` is refused when an F1 run of
+    the same request succeeded or partially succeeded (evidence wins);
+-   D-1 (commit `f1899ec0`): only an exclusive hold of P2's exact lock
+    key satisfies the ledger's lock check; a shared hold, or a
+    neighbouring key, does not;
+-   D-2 (commit `f1899ec0`): PostgreSQL regression tests pin every 0016
+    guard clause that a planted fault previously left undetected;
+-   D-3 (owner-confirmed): no pre-correction version of migration 0016
+    was ever applied to a persistent database, so no migration-lineage
+    remediation is needed.
+
+HB-1 contacts no network and implements no CSE transport, discovery,
+issuer acquisition, document retrieval, F6 orchestration, runner, CLI
+or coverage reporting (HB-2 to HB-6). The attempt maximum and request
+budgets recorded in the arming decision are enforced by HB-2, not by
+the ledger. Owner decision HB-X2 (G-1's extension to Phase 2 and the
+User-Agent contact) and prerequisite HB-P1 still gate any live Phase 2
+request. P-18, P-23 and P-1 are unchanged.
 
 Important accepted commits:
 
@@ -1733,6 +1813,21 @@ F6.4:
 
 Real-data validation (design and implementation, one commit):
 12bc8f2ce0c7d06757299cbaebdc3fcc03164b51
+
+Phase 2 design (revision 3):
+75fd83549604398b02309d858fd1363a038fd7c5
+
+Phase 2 HB-1 (implementation; with the design revision 3):
+75fd83549604398b02309d858fd1363a038fd7c5
+
+Phase 2 HB-1 B-1 correction:
+0de7a2eb2e062da553f00e074e0737c6e1f1aab9
+
+Phase 2 HB-1 D-1/D-2 hardening:
+f1899ec00bb8c8cbb5c22b1c4a2ade2e8f219cae
+
+Phase 2 HB-1 frozen baseline (merge into main):
+40748c3c6a3f7c06f48526af3850a855abd1a96a
 ```
 
 Migration 0015 (F6.4), as the migration ledger records it (LF-normalised
@@ -1740,6 +1835,14 @@ SHA-256):
 
 ``` text
 afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2
+```
+
+Migration 0016 (Phase 2 HB-1, hardened), as the migration ledger
+records it (LF-normalised SHA-256; pinned as `LEDGER_MIGRATION_SHA256`
+in `worker/financial_backfill/__init__.py`):
+
+``` text
+f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7
 ```
 
 P3 reported tests included:
@@ -1798,6 +1901,30 @@ reported tests included:
 
 These are implementation-agent-reported results, not an independent
 execution by this document.
+
+Phase 2 HB-1 passed its gates in order: a post-implementation audit
+(which found B-1), the B-1 correction audit, the acceptance audit (which
+recommended D-1 and D-2), the D-1/D-2 hardening, the owner's
+acceptance, and the merge into `main`. HB-1 reported tests on the
+frozen baseline included:
+
+-   11 HB-1 unit tests and 36 HB-1 PostgreSQL tests;
+-   Linux offline full suite: 1158 passed, 285 skipped;
+-   PostgreSQL regression across HB-1, F6.4, P1, P2 and P3: 161 passed,
+    75 skipped (the RDV and F6.4 corpus tests without the evidence, the
+    F3/F5 suites without their scratch databases, P1's restic test), 2
+    expected D-2 xfails, and 1 failure that is an artefact of running as
+    root (P2's unwritable-spool test, failing identically before HB-1);
+-   mutation audit of migration 0016: 37 of 37 planted faults killed.
+
+These ran on PostgreSQL 16.14 with an audit-only libpq stand-in for
+`psycopg2` and a version emulation that reports 17.11; they are not a
+PostgreSQL 17.11 execution. Without the emulation, the only additional
+failures are the six PostgreSQL 17 version checks. Not executed by the
+implementation agent: PostgreSQL 17.11 with the real `psycopg2`, the
+RDV and F6.4 corpus tests with the evidence mounted, and the Windows
+full suite. These are implementation-agent-reported results, not an
+independent execution by this document.
 
 ------------------------------------------------------------------------
 
@@ -1870,9 +1997,10 @@ architecture should be implemented in dependency order.
 -   availability/supersession (F8; explicitly deferred by F6.4).
 
 The remaining Phase 1 item (F8 availability/supersession) and every
-later phase below are not yet implemented. Phase 2 --- historical
-financial backfill --- remains the next major architectural phase; its
-design decides real-data validation Q1 (issuer evidence; §52).
+later phase below are not yet implemented, apart from Phase 2's first
+step, HB-1. Phase 2 --- historical financial backfill --- remains the
+next major architectural phase; its design decides real-data
+validation Q1 (issuer evidence; §52).
 
 ## Phase 2 --- Historical financial backfill
 
@@ -1881,6 +2009,13 @@ design decides real-data validation Q1 (issuer evidence; §52).
 -   validation;
 -   reconciliation;
 -   coverage audit.
+
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 3).
+HB-1, the governed backfill ledger (migration 0016,
+`worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
+§52). HB-2 to HB-6 (governed transport; discovery and issuer evidence;
+document worker; F6 orchestration and audit; operations and pilot) are
+not implemented.
 
 ## Phase 3 --- Market feature foundation
 
