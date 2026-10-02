@@ -733,3 +733,35 @@ def test_x4_spool_paths_are_checked(tmp_path):
     assert preflight.spool_problems(str(tmp_path)) == []
     assert preflight.spool_problems(str(tmp_path / "missing"))
     assert preflight.spool_problems(None)
+
+
+def test_k1_a_slice_closes_completed_only_when_every_attempt_has_an_outcome(tmp_path, monkeypatch):
+    """B-HB2-1: an attempt without an outcome (or an unverifiable lease) keeps the lease ACTIVE for recovery; nothing
+    is invented, and a slice whose attempts all have outcomes still closes 'completed'."""
+    from worker.backfill_transport import slice as tslice
+    from worker.financial_backfill import store as hb1_store
+    calls = []
+    monkeypatch.setattr(hb1_store, "release_lease", lambda conn, lease, result, details: calls.append(("lease", result)))
+    monkeypatch.setattr(hb1_store, "finish_wakeup", lambda conn, w, result, details, error=None:
+                        calls.append(("wakeup", result, error)))
+    monkeypatch.setattr(tslice, "_release_lock", lambda conn: calls.append(("lock",)))
+
+    def run(open_attempts):
+        calls.clear()
+        sl, *_ = make_slice(tmp_path / str(len(os.listdir(tmp_path))), monkeypatch)
+        monkeypatch.setattr(hb1_store, "open_attempts", open_attempts)
+        sl.close()
+        return list(calls), sl
+    out, _ = run(lambda conn, lease: [])
+    assert out == [("lease", "completed"), ("wakeup", "completed", None), ("lock",)]
+    out, _ = run(lambda conn, lease: [42])
+    assert [c[:2] for c in out] == [("wakeup", "error"), ("lock",)] and "[42]" in out[0][2]      # lease kept
+    out, _ = run(lambda conn, lease: (_ for _ in ()).throw(RuntimeError("db gone")))
+    assert [c[:2] for c in out] == [("wakeup", "error"), ("lock",)] and "not verifiable" in out[0][2]
+    # a stop with its own result: still never released while an attempt lacks an outcome
+    calls.clear()
+    sl, *_ = make_slice(tmp_path / "stop", monkeypatch)
+    monkeypatch.setattr(hb1_store, "open_attempts", lambda conn, lease: [7])
+    sl.stop = Refused([("budget", "spent")])
+    sl.close()
+    assert [c[:2] for c in calls] == [("wakeup", "error"), ("lock",)]

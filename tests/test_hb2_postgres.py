@@ -401,6 +401,63 @@ def test_c4_a_spooled_block_is_recovered_as_a_block(env, monkeypatch):
     assert store.current_state(b_conn, item)["state"] == "abandoned"
 
 
+def test_c5_b_hb2_1_an_attempt_left_without_an_outcome_is_never_released_and_is_recovered(env, monkeypatch):
+    """B-HB2-1: an unexpected exception between an intent and its outcome, caught by the caller inside the slice, then
+    a normal close. The lease must stay active (never 'completed'), and the next slice recovers the attempt
+    spool-first: 'unrecorded' when nothing reached the spool, 'recovered_from_spool' when its record did, without
+    another request. Recovery is idempotent."""
+    a_conn, b_conn, c_conn = env.conn(), env.conn(), env.conn()
+    arm(env)
+    first, second = listing_item(a_conn, "COMB.N0000"), listing_item(a_conn, "LOLC.N0000")
+    clock = F.FakeClock()
+    # 1. after the intent, the send itself fails unexpectedly: nothing reached the spool
+    rt = runtime(env, clock, script=[ok()])
+    monkeypatch.setattr(rt.transport_double, "send", lambda *a, **k: (_ for _ in ()).throw(ValueError("bug")))
+    with open_slice(a_conn, stage="HB-S2", kind="json", runtime=rt) as sl:
+        sl.claim(first)
+        with pytest.raises(ValueError):
+            sl.json_request(first, *LISTING)                 # the caller swallows it, and the slice closes normally
+    lease1 = sl.lease_id
+    assert q(c_conn, "select state, result from backfill_leases where id = %s", (lease1,)) == [("active", None)]
+    assert q(c_conn, "select state, result from backfill_wakeups where id = %s", (sl.wakeup_id,)) == \
+        [("released", "error")]
+    # 2. the next slice (another session) recovers it 'unrecorded'; then a response reaches the spool and an
+    #    unexpected error follows before its outcome is written
+    real_spool_record = journal.spool_record
+
+    def spool_then_fail(j, record):
+        real_spool_record(j, record)
+        raise ValueError("bug after the spool")
+    rt2 = runtime(env, clock, script=[ok()])
+    with open_slice(b_conn, stage="HB-S2", kind="json", runtime=rt2) as sl2:
+        assert [(r["lease_id"], r["recovered_from_spool"], len(r["unrecorded"])) for r in sl2.recovered["leases"]] \
+            == [(lease1, [], 1)]
+        sl2.claim(second)
+        monkeypatch.setattr(journal, "spool_record", spool_then_fail)
+        with pytest.raises(ValueError):
+            sl2.json_request(second, f1.LISTING_ENDPOINT, {"symbol": "LOLC.N0000"})
+        monkeypatch.setattr(journal, "spool_record", real_spool_record)
+    lease2 = sl2.lease_id
+    assert q(c_conn, "select state from backfill_leases where id = %s", (lease2,)) == [("active",)]
+    rt3 = runtime(env, clock)                                # no script: recovery sends nothing
+    with open_slice(c_conn, stage="HB-S2", kind="json", runtime=rt3) as sl3:
+        rec = sl3.recovered["leases"]
+    assert [(r["lease_id"], len(r["recovered_from_spool"]), r["unrecorded"]) for r in rec] == [(lease2, 1, [])]
+    assert rt3.transport_double.calls == [] and len(rt2.transport_double.calls) == 1
+    assert q(c_conn, "select a.lease_id, o.outcome, o.recovered_from_spool from backfill_request_attempts a join "
+                     "backfill_request_outcomes o on o.attempt_id = a.id order by a.id") == \
+        [(lease1, "unrecorded", False), (lease2, "ok", True)]
+    assert store.current_state(c_conn, second)["state"] == "abandoned"
+    assert q(c_conn, "select count(*) from backfill_leases where state = 'active'") == [(0,)]
+    from worker.backfill_transport import recovery
+    assert p2runs.acquire_global_lock(c_conn)                # idempotent: another pass changes nothing
+    w3 = store.start_wakeup(c_conn, trigger="manual", runner_time=datetime.now(UTC), tool_version="t")
+    assert recovery.expire_dead(c_conn, w3, str(env.spool)) == []
+    assert q(c_conn, "select count(*) from backfill_request_outcomes") == [(2,)]
+    store.finish_wakeup(c_conn, w3, "done")
+    p2runs.release_global_lock(c_conn)
+
+
 # ------------------------------------------------------------------------------------------------ locks and P3
 
 def test_l1_one_slice_at_a_time_p3_and_shared_holders_are_never_taken_over(env):

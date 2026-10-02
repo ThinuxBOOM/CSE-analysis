@@ -25,7 +25,7 @@ from ..ops import settings as ops_settings
 from ..scheduler import schedule as p3schedule
 from . import (DOCUMENT_WORST_CASE_REQUESTS, RULE_VERSION, STOPPED_STAGE_SLICES, TOOL_VERSION, gates, journal,
                ledger, recovery, throttle)
-from .errors import Refused, SliceBusy, SliceRefused, TransportStop
+from .errors import DurabilityStop, Refused, SliceBusy, SliceRefused, TransportStop
 
 
 def _utcnow():
@@ -264,8 +264,13 @@ class Slice:
     # -------------------------------------------------------------------------------------------- close
 
     def close(self, error=None):
-        """The release guard, then the lease, the wake-up and P2's lock. After a DurabilityStop the lease is left
-        active, so the next slice expires it and recovers its attempts."""
+        """The release guard, then the lease, the wake-up and P2's lock.
+
+        The lease is released only when every attempt it made has an outcome. After a DurabilityStop, an unexpected
+        error, or any attempt still without an outcome (for example an exception between an intent and its outcome
+        that a caller caught inside the slice), the slice closes as 'error' and leaves its lease ACTIVE: no outcome is
+        invented here, and the next slice holding P2's lock (another session; HB-1 lets no holder expire its own
+        lease) expires it and recovers each open attempt from the spool, or closes it 'unrecorded'."""
         if self.closed:
             return
         self.closed = True
@@ -276,6 +281,19 @@ class Slice:
             result = stop.lease_result
         else:
             result = "completed"
+        open_attempts = []
+        if result != "error":
+            try:
+                open_attempts = hb1_store.open_attempts(self.conn, self.lease_id)
+            except Exception:  # noqa: BLE001 — unverifiable: keep the lease for recovery
+                hb1_store._rollback(self.conn)
+                open_attempts = None
+            if open_attempts or open_attempts is None:
+                result = "error"
+                if error is None and stop is None:
+                    error = DurabilityStop(f"lease {self.lease_id} has attempts without an outcome "
+                                           f"({open_attempts if open_attempts is not None else 'not verifiable'}); "
+                                           f"left active for recovery")
         try:
             self.throttle.release_guard()
             if result != "error":
