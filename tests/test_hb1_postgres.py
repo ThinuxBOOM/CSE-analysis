@@ -816,6 +816,98 @@ def test_l8_a_dead_slice_is_expired_and_its_work_recovered_by_the_next_slice(env
     p2runs.release_global_lock(b)
 
 
+def test_l8_b1_a_discovery_item_whose_attempts_all_died_fails_with_a_reason(env):
+    """HB-1 audit B-1. Every attempt of one listing dies mid-request: F1's run, begun before each request, stays
+    'running'; the next slice expires the dead lease, closes the attempt 'unrecorded' and abandons the item, which
+    returns to pending with its attempt count (design section 15.3). At the item maximum (section 16.4: "then
+    terminal, with the reason") the item fails on a stated reason without a failed F1 run, so discovery can close
+    (HB-U5). succeeded and partial still need their own F1 run, and a named F1 run must itself have failed."""
+    owner.record_arming_as_owner(env.owner_conn(), armed_decision(), "tester")
+    w = env.conn()
+    item_max = store.arming_in_force(w)["item_max_attempts"]
+    assert item_max == 3
+    listing, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    for n in range(1, item_max + 1):
+        a = env.conn()                                                         # a slice that will die
+        assert p2runs.acquire_global_lock(a)
+        wa = wakeup(a)
+        la = store.open_lease(a, wa)
+        store.claim(a, listing["id"], la, wakeup_id=wa)
+        PostgresFilingStore(a).begin_run(f1.LISTING_ENDPOINT, {"symbol": "COMB.N0000"}, now())  # F1: before the request
+        att, attempt_no = store.record_intent(a, listing["id"], la, wa, **LISTING_INTENT)
+        assert attempt_no == n
+        pid, started = q(a, "select backend_pid, backend_started_at from backfill_wakeups where id = %s", (wa,))[0]
+        a.close()                                                              # the slice dies mid-request
+        b = env.conn()                                                         # the next slice
+        wait_until_gone(b, pid, started)
+        end = time.monotonic() + 10
+        while not p2runs.acquire_global_lock(b):                               # PostgreSQL frees the dead lock
+            assert time.monotonic() < end, "the dead session's lock was not released"
+            time.sleep(0.05)
+        wb = wakeup(b)
+        out = store.expire_dead_leases(b, wb)
+        assert [(o["lease_id"], o["attempts_closed"], o["items_abandoned"]) for o in out] == \
+            [(la, [att], [listing["id"]])]
+        store.append_event(b, listing["id"], "pending", "promote", reason="no F1 run of the request finished")
+        assert store.finish_wakeup(b, wb, "completed")
+        p2runs.release_global_lock(b)
+        b.close()
+    assert [(x["attempt_no"], x["outcome"]) for x in store.attempts(w, listing["id"])] == \
+        [(n, "unrecorded") for n in range(1, item_max + 1)]
+    f1_runs = q(w, "select id, status from report_discovery_runs where source_endpoint = %s and "
+                   "request_params ->> 'symbol' = %s", (f1.LISTING_ENDPOINT, "COMB.N0000"))
+    assert len(f1_runs) == item_max and {s for _, s in f1_runs} == {"running"}
+    assert store.current_state(w, listing["id"])["state"] == "pending"
+    # the item maximum is reached: the next slice records the terminal state without a further request
+    running = str(f1_runs[0][0])
+    reason = f"item maximum of {item_max} attempts reached: every attempt ended unrecorded"
+    with cse_slice(w) as (wid, lid):
+        store.claim(w, listing["id"], lid, wakeup_id=wid)
+        refused(lambda: store.append_event(w, listing["id"], "succeeded", "record", lease_id=lid, reason=reason),
+                match="succeeded needs an F1 run")
+        refused(lambda: store.append_event(w, listing["id"], "partial", "record", lease_id=lid, reason=reason,
+                                           f1_run_id=running), match="whose own status is partial")
+        refused(lambda: store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=reason,
+                                           f1_run_id=running), match="whose own status is failed")
+        refused(lambda: store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=" "),
+                match="needs a reason")
+        store.append_event(w, listing["id"], "failed", "record", lease_id=lid, reason=reason)
+    assert len(store.attempts(w, listing["id"])) == item_max                   # no request beyond the maximum
+    final = store.current_state(w, listing["id"])["state"]
+    assert final == "failed" and final in states.FINAL["listing"]
+    assert states.next_states("listing", final) == {"pending": "requeue"}      # only an explicit operator re-queue
+    # discovery closure (HB-U5) is no longer blocked by this item: every discovery item is in a final state
+    assert q(w, "select count(*) from backfill_item_state where item_kind in ('feed_window', 'listing') and "
+                "not state = any(%s)", (sorted(states.FINAL["listing"]),)) == [(0,)]
+
+
+def test_l3_b1_a_failure_without_f1_evidence_never_contradicts_a_finished_f1_run(env):
+    """B-1's correction, other half (evidence wins): with no failed F1 run named, a discovery item is refused 'failed'
+    while an F1 run of its own request succeeded or partially succeeded (for example: the slice died after F1 finished
+    the run, before the ledger recorded it); it terminates on that run's own status instead. Another request's
+    finished run is not its evidence."""
+    w = env.conn()
+    april, _ = store.ensure_item(w, keys.feed_window(2021, 4))
+    may, _ = store.ensure_item(w, keys.feed_window(2021, 5))
+    comb, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
+    lolc, _ = store.ensure_item(w, keys.listing("LOLC.N0000"))
+    april_run = f1_run(w, f1.FEED_ENDPOINT, {"fromDate": "2021-04-01", "toDate": "2021-04-30"}, status="partial")
+    comb_run = f1_run(w, f1.LISTING_ENDPOINT, {"symbol": "COMB.N0000"})        # succeeded
+    reason = "item maximum reached: every attempt ended unrecorded"
+    with cse_slice(w) as (wid, lid):
+        for item in (april, may, comb, lolc):
+            store.claim(w, item["id"], lid, wakeup_id=wid)
+        for item in (april, comb):
+            refused(lambda: store.append_event(w, item["id"], "failed", "record", lease_id=lid, reason=reason),
+                    match="succeeded or partially succeeded")
+        store.append_event(w, may["id"], "failed", "record", lease_id=lid, reason=reason)     # April's run is not May's
+        store.append_event(w, lolc["id"], "failed", "record", lease_id=lid, reason=reason)    # COMB's run is not LOLC's
+        store.append_event(w, april["id"], "partial", "record", lease_id=lid, f1_run_id=april_run)
+        store.append_event(w, comb["id"], "succeeded", "record", lease_id=lid, f1_run_id=comb_run)
+    assert store.state_counts(w) == {("feed_window", "partial"): 1, ("feed_window", "failed"): 1,
+                                     ("listing", "succeeded"): 1, ("listing", "failed"): 1}
+
+
 def test_l9_a_block_stops_its_item_until_the_owner_acknowledges_it(env):
     w, m = env.conn(), env.owner_conn()
     listing, _ = store.ensure_item(w, keys.listing("COMB.N0000"))
