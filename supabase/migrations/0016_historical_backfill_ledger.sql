@@ -70,11 +70,13 @@ end $$;
 create function hb_cse_lock_key() returns bigint
 language sql immutable as $$ select 4346836117002312::bigint $$;
 
--- Does backend p_pid hold P2's lock as a session-level advisory lock on this database?
+-- Does backend p_pid hold P2's lock as a session-level advisory lock on this database? Only P2's own exclusive hold
+-- (pg_try_advisory_lock) counts: shared holders of the key coexist, so a shared hold would not exclude another slice.
 create function hb_holds_cse_lock(p_pid integer) returns boolean
 language sql stable as $$
   select exists (select 1 from pg_locks l
-                  where l.locktype = 'advisory' and l.granted and l.pid = p_pid and l.objsubid = 1
+                  where l.locktype = 'advisory' and l.granted and l.mode = 'ExclusiveLock' and l.pid = p_pid
+                    and l.objsubid = 1
                     and l.database = (select d.oid from pg_database d where d.datname = current_database())
                     and l.classid = (hb_cse_lock_key() >> 32)::oid
                     and l.objid = (hb_cse_lock_key() & 4294967295)::oid)
