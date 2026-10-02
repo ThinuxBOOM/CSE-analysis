@@ -1,13 +1,46 @@
+# CSE Financial Intelligence & Forecasting Platform
+
+A personal, local research platform for Colombo Stock Exchange (CSE) market and financial-filing data. This README is
+the entry point and a short status summary. The authorities are:
+
+- [docs/MASTER_ARCHITECTURE.md](docs/MASTER_ARCHITECTURE.md): the architecture and the current project state (§52);
+- [docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md): the Phase 2 design;
+- the runbooks [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md), [docs/ops/P2_MARKET_CAPTURE.md](docs/ops/P2_MARKET_CAPTURE.md)
+  and [docs/ops/P3_SCHEDULER.md](docs/ops/P3_SCHEDULER.md), and the governance record
+  [docs/governance/G-1_CSE_DATA_USE.md](docs/governance/G-1_CSE_DATA_USE.md);
+- the financial-truth designs [docs/F6.2_DESIGN.md](docs/F6.2_DESIGN.md),
+  [docs/F6.3_IMPLEMENTATION.md](docs/F6.3_IMPLEMENTATION.md), [docs/F6.4_DESIGN.md](docs/F6.4_DESIGN.md), and the
+  real-data validation [design](docs/REAL_DATA_VALIDATION_DESIGN.md) and
+  [implementation](docs/REAL_DATA_VALIDATION_IMPLEMENTATION.md).
+
+Where this README and those documents differ, they win.
+
+## Current state
+
+**Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
+validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1. F6.2 is an accepted design; its storage amendments are
+implemented by F6.4.
+
+**Not implemented:** F8 (availability, supersession, as-of), Phase 2 beyond HB-1 (HB-2 to HB-6), and every later
+roadmap phase (Master Architecture §55).
+
+**Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
+parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
+
 # Platform (P1): local server + PostgreSQL 17
 
 Production now runs on a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
-runtime). Provisioning, the migration runner/ledger, roles, append-only protection and backups are documented in
-[docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
-`python -m worker.ops.migrate apply` (as `cse_migrator`); older sections below that mention Supabase are historical.
+runtime); GitHub is source control only. Provisioning, the migration runner/ledger, roles, append-only protection and
+backups are documented in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
+`python -m worker.ops.migrate apply` (as `cse_migrator`). The sequence is 0001–0005 and 0007–0016; `0006` stays unused,
+and the local security boundary is 0009–0011 (Master Architecture §51). Older sections below that mention Supabase,
+or tell you to apply a single migration by hand, are historical.
 
 **CSE data use (G-1) is an owner-accepted risk, NOT CSE authorization.** No CSE permission or licence exists. Any
 CSE access must follow the scope and mandatory controls in
 [docs/governance/G-1_CSE_DATA_USE.md](docs/governance/G-1_CSE_DATA_USE.md).
+
+**P0.5** is the accepted capture plan (the backup/capture order and the minimum request plan) that P1–P3 follow.
 
 **P2 market capture** (`worker/market_capture`, migration 0012) archives exact CSE responses (spool, then PostgreSQL)
 and derives observations through the frozen Stage E code. It is run by hand for an explicit trading date; it is not
@@ -18,10 +51,57 @@ it: PostgreSQL decides which Colombo trading dates are due, catches up after dow
 recorded as missed, never relabelled), recovers stale runs under the same run id, and allows one capture at a time.
 It contacts nobody until the owner arms it at the release gate. Runbook: [docs/ops/P3_SCHEDULER.md](docs/ops/P3_SCHEDULER.md).
 
-# ⚠️ Operational requirements — read before any live capture
+# Financial truth layer (F6)
+
+    F1 discovery -> F2 temporary document -> F3 -> F4 -> F5 candidates -> F6 validation -> reconciliation -> economic facts
+
+- **F6.1** validation (`worker/financial_validation.py`) and **F6.3**, the pure financial-truth layer
+  (`worker/financial_truth/`: admission, source observations, economic-fact identity, reconciliation).
+- **F6.4** (migration `0015_financial_truth_persistence.sql`, package `worker/financial_truth_store/`, operator wrapper
+  `ops/bin/cse-financial`) persists validation and reconciliation results append-only, with provenance from each fact
+  back to its candidates, F5 run, filing and listing observations. It implements no availability, supersession or
+  as-of policy (F8).
+- **Real-data validation** replayed the existing evidence offline through the frozen layers. Its result: 321 persisted
+  economic facts, all for COMB; the limit is issuer evidence, not financial-truth logic (Master Architecture §52).
+
+Rules kept by every layer (Master Architecture §7.3, §8, §9): PDFs are temporary extraction inputs, never a permanent
+archive in PostgreSQL; no silent sign, scale or currency transformation and no silent FX conversion; printed nil is
+never zero; conflicts are preserved and no arbitrary winner is chosen; Group/Company/Bank values are never silently merged; no
+issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics are not changed casually (§8).
+
+# Phase 2 — Historical backfill (staged implementation in progress)
+
+Phase 2 builds about five years of CSE financial filings through the frozen pipeline
+([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
+and **only the first step is done**:
+
+- **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
+  `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
+  ledger and state machine for the backfill (owner arming decisions, work items, item events, request attempts and
+  outcomes, JSON response bodies, retrieval records, holds, wake-ups and leases, blocks, anomalies, coverage snapshots).
+  The frozen baseline includes:
+  - **B-1:** a discovery item whose attempts all ended `unrecorded` (crash-only) can terminate as `failed` with a stated
+    reason, never against an F1 run of the same request that succeeded or partially succeeded;
+  - **D-1:** only an exclusive hold of P2's global CSE advisory lock satisfies the ledger's slice-lock check;
+  - **D-2:** PostgreSQL regression tests pin the 0016 guard clauses (37 of 37 planted mutations killed);
+  - **D-3, resolved:** no pre-correction version of migration 0016 was ever applied to a persistent database.
+- **HB-2 to HB-6 are not implemented:** governed transport; discovery and issuer evidence; document worker; F6
+  orchestration and audit; operations and pilot.
+- **No Phase 2 CSE acquisition has started.** HB-1 contacts no network. Any live Phase 2 request still needs owner
+  decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent
+  contact) and prerequisite HB-P1, and then the owner's arming decision. The five-year historical dataset has not been
+  built.
+
+---
+
+# Historical: Stage E reconciliation change (2026-09-24)
+
+The two items below were the operational requirements when Stage E's reconciliation became window-aware. They are
+kept as a record. On the current platform, migration 0003 is applied with all the others, only through the P1
+migration runner (above).
 
 Reconciliation became window-aware on 2026-09-24 (`worker/reconciliation.py`).
-Before running ANY live (non-`--dry-run`) capture with the current code:
+At that time, before running ANY live (non-`--dry-run`) capture:
 
 1. **Apply `supabase/migrations/0003_eod_observation_completeness.sql`** (after
    0001 and 0002). `worker/db.py` now writes
@@ -35,6 +115,10 @@ Before running ANY live (non-`--dry-run`) capture with the current code:
    re-derive values. Raw observations are unaffected and remain the source of
    truth, so re-running `reconciliation.reconcile()` + the canonical upsert for
    each affected (company, date) is sufficient.
+
+# Frozen foundation: Stage E and F1–F5
+
+Frozen/accepted and described as built; not to be changed without an explicit decision (Master Architecture §8).
 
 ## Reconciliation layer: FROZEN (2026-09-24)
 
@@ -77,7 +161,7 @@ patched ad hoc:
 
 Discovers which financial filings CSE lists and records them verbatim in
 `report_filings` / `report_filing_observations` / `report_discovery_runs`
-(migration `0004_report_filings.sql` — apply it before `--store postgres`).
+(migration `0004_report_filings.sql`, applied through the P1 migration runner).
 
     python -m worker.discover_financial_filings --store memory --from-date 2026-09-01 --to-date 2026-09-24
     python -m worker.discover_financial_filings --store postgres --from-date 2026-09-01 --to-date 2026-09-24
@@ -110,7 +194,10 @@ separate directory under the temp directory.
     python -m worker.retrieve_filing_documents --filings-json filings.json --report-file report.json
 
 Governance gate: at most 20 filings per run. Production-scale automated retrieval
-stays disabled until the open CSE terms-of-use question (F0) is decided.
+stays disabled until the open CSE terms-of-use question (F0) is decided. This cap
+is the standalone CLI's. It is not the Phase 2 transport policy: Phase 2 requests
+will go only through its governed transport (HB-2, not implemented), under owner
+decision HB-X2 and an owner arming decision.
 
 ## Stage F3 — report type & period classification (no values)
 
@@ -142,8 +229,9 @@ conflicts are kept (`metadata_conflicts`), and the document wins. Documents with
 text layer are `unreadable` (no OCR; never classified from the title). Headers and
 labels only: no financial values are read, and evidence snippets are <= 160 chars
 with amounts redacted. Persistence: migration `0005_report_classification.sql`
-(classification, statement periods, evidence). It adds no RLS; the security-boundary
-migration (now 0006) is still required before anything is deployed to `public`.
+(classification, statement periods, evidence). It adds no RLS. (Historical: this once
+pointed to a planned security migration 0006. `0006` stays unused; the local security
+boundary is 0009–0011, P1.)
 
     python -m worker.classify_filing_documents --filings-json filings.json --report-file f3.json [--write-db]
 
@@ -235,12 +323,12 @@ scoring in `tests/f4_gold.py`). Needs the pinned Poppler (Linux).
 
     report_filings -> F2 temp document -> F3 -> F4 -> F5 candidates (in memory) -> F2 deletes -> persisted candidates -> F6
 
-Migrations `0007_issuers.sql` and `0008_financial_candidates.sql` (PostgreSQL 15+;
-apply after 0005). The pending security migration (RLS, default privileges) must be
-resolved before the F5 schema is deployed to production; its final number (it was
-planned as 0006) is a separate, future decision.
-Candidates are **not facts**: there is no `financial_facts` table (F6), no
-`available_at` policy, no economic-fact identity and no supersession (F8).
+Migrations `0007_issuers.sql` and `0008_financial_candidates.sql`, applied through the
+P1 migration runner. (Historical: a security migration once planned as 0006 was
+resolved by P1's 0009–0011; `0006` stays unused.)
+Candidates are **not facts**: validation, economic-fact identity and reconciliation are
+F6 (F6.1, F6.3, persisted by F6.4), and availability/supersession is F8, which is not
+implemented.
 
 - `worker/issuer_identity.py` + `issuer_store.py` + CLI `link_issuers.py` — an
   internal, immutable `issuer_id`; CSE's issuer-level `secId` (shared by an issuer's
@@ -300,11 +388,13 @@ Known limits: mapped-only persistence means a later concept needs the document
 downloaded again; v1 rules were checked on 19 benchmark documents only (no insurer,
 few banks); `secId` permanence across restructurings is unverified.
 
-**Cross-phase blocker (not solved in F5):** the current market-data schema
+**Historical (Supabase era) sizing note:** the market-data schema
 (`raw_market_observations` + `daily_market_data`) measures ~540 MB per year of
 full-universe two-window capture — incompatible with the Supabase Free 500 MB
 target before any F5 data. Raw-observation retention / compression / aggregation
-must be decided before F7 backfill or sustained live operation.
+must be decided before F7 backfill or sustained live operation. The Supabase Free
+target no longer applies (local PostgreSQL 17); this README records no decision on
+that retention question.
 
 F5 tests (offline): `test_f5_concepts.py`, `test_f5_candidates.py`,
 `test_f5_issuer_identity.py`, `test_f5_lifecycle.py`. Gated: `F5_TEST_DATABASE_URL`
@@ -315,7 +405,12 @@ order, one batch) each in a fresh database.
 
 ---
 
-# Stage B — Single-Company Vertical Slice
+# Historical: Stage B — Single-Company Vertical Slice (Supabase era)
+
+Kept as a record of the first vertical slice. It is not the current production setup:
+the database is local PostgreSQL 17 with the P1 roles (P1 runbook), production market
+capture is P2/P3, and P2 does not use these Stage E `capture_*.py` entry points (P2
+runbook). Any live CSE request must follow G-1.
 
 ## Setup
     pip install -r requirements.txt
