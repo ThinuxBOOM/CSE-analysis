@@ -5,6 +5,8 @@ Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendi
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
 
+Revision 3 (2026-10-02) corrects blocker HB-X3: HB-X1 needs two frozen-test edits, not one (§23.4; Appendix D, D14).
+
 **Date:** 2026-10-01.
 
 **Naming.** "Phase 2" is Master Architecture §55 Phase 2, the historical financial backfill. It is **not** the P2 market
@@ -74,8 +76,9 @@ phase, continuous collection after the backfill, forecasting and everything afte
 - **HB-X2.** Governance. G-1's accepted risk names P2/P3 market capture. Its extension to bulk financial discovery and
   temporary document retrieval, and the server contact e-mail for the User-Agent, are owner decisions. They are
   required before any live Phase 2 request.
-- **HB-X3.** HB-X1 also requires one frozen-test edit. RDV's V9 asserts that 0015 is the last of exactly 14
-  migrations (§23.4).
+- **HB-X3.** HB-X1 also requires two frozen-test edits (§23.4):
+  - RDV's V9 asserts that 0015 is the last of exactly 14 migrations;
+  - F6.4's migration-ledger/preflight regression test asserts that 0015 is the last applied migration.
 
 **Prerequisite HB-P1** (§26): the security master (`companies`) is created only by a derived P2 market capture.
 Phase 2's first stage therefore needs the first production capture (MA §54) or an owner-run manual P2 capture. That
@@ -1409,29 +1412,55 @@ fake transports, no real sleeping.
 ### 23.4 Regression, frozen tests and the release gate
 
 - **Full suites** on Linux (PostgreSQL 17.11, no network) and Windows. F6.4, F6.3 and RDV real-data suites unchanged.
-- **Frozen-test edit required by HB-X1** (owner approval, like F6.4 §16.6):
-  - **Today.** `tests/test_rdv_postgres.py::test_v9_persistence_integrity_versions_and_the_job_ledger` works over
-    `v["migrations"]`: every `ops.schema_migrations` row as `[filename, sha256]`, ordered by version. It hard-codes
-    `v["migrations"][-1] == ["0015_financial_truth_persistence.sql", "afa82bda…1ec2"]` and
-    `len(v["migrations"]) == 14`, plus `not any(m[0].startswith("0006") …)`.
-  - **Effect of 0016.** Both hard-coded assertions fail: the last entry becomes 0016, and the count becomes 15.
-  - **Durable replacement:**
-    - the first 14 entries are the frozen lineage, ending in 0015 with its exact hash;
-    - no entry starts with `0006`;
-    - every later entry is numbered after 0015.
+- **Frozen-test edits required by HB-X1: two** (owner approval, like F6.4 §16.6). Both keep the same invariants:
+  0015 is present at position 14 with its exact frozen hash, `0006` stays unused, and every later migration is
+  numbered after 0015.
+  - **Edit 1: RDV V9.**
+    - **Today.** `tests/test_rdv_postgres.py::test_v9_persistence_integrity_versions_and_the_job_ledger` works over
+      `v["migrations"]`: every `ops.schema_migrations` row as `[filename, sha256]`, ordered by version. It hard-codes
+      `v["migrations"][-1] == ["0015_financial_truth_persistence.sql", "afa82bda…1ec2"]` and
+      `len(v["migrations"]) == 14`, plus `not any(m[0].startswith("0006") …)`.
+    - **Effect of 0016.** Both hard-coded assertions fail: the last entry becomes 0016, and the count becomes 15.
+    - **Durable replacement:**
+      - the first 14 entries are the frozen lineage, ending in 0015 with its exact hash;
+      - no entry starts with `0006`;
+      - every later entry is numbered after 0015.
 
-    ```python
-    names = [m[0] for m in v["migrations"]]
-    i = names.index("0015_financial_truth_persistence.sql")
-    sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
-    assert i == 13 and v["migrations"][i] == ["0015_financial_truth_persistence.sql", sha_0015]
-    assert not any(n.startswith("0006") for n in names)
-    assert all(n[:4] > "0015" for n in names[i + 1:])
-    ```
-  - **No other frozen test pins the count or the last migration.**
+      ```python
+      names = [m[0] for m in v["migrations"]]
+      i = names.index("0015_financial_truth_persistence.sql")
+      sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
+      assert i == 13 and v["migrations"][i] == ["0015_financial_truth_persistence.sql", sha_0015]
+      assert not any(n.startswith("0006") for n in names)
+      assert all(n[:4] > "0015" for n in names[i + 1:])
+      ```
+  - **Edit 2: F6.4's migration-ledger/preflight regression test** (revision 3, D14).
+    - **Today.** `tests/test_f64_postgres.py::test_p1_migration_ledger_verifier_and_every_preflight` re-applies the
+      migration set and asserts `again["applied"] == [] and again["already_applied"][-1] == name`, where `name` is
+      `0015_financial_truth_persistence.sql`. Its earlier hash check compares the ledger with the file, not with the
+      frozen hash.
+    - **Effect of 0016.** The last applied migration becomes 0016, so the assertion fails.
+    - **Durable replacement:**
+      - the re-application applies nothing and reports every ledger row as already applied;
+      - in the ledger, 0015 is at position 14 with its exact frozen hash;
+      - no entry starts with `0006`;
+      - every later entry is numbered after 0015.
+
+      ```python
+      ledger = q(su, "select filename, sha256 from ops.schema_migrations order by version")
+      names = [r[0] for r in ledger]
+      i = names.index(name)
+      sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
+      assert again["applied"] == [] and again["already_applied"] == names
+      assert i == 13 and ledger[i] == (name, sha_0015) and not any(n.startswith("0006") for n in names)
+      assert all(n[:4] > "0015" for n in names[i + 1:])
+      ```
+  - **No third frozen test pins the count or the last migration.**
     - P1's ledger test compares the ledger with `mig.discover`.
-    - P2, P3, F6.4 and the P3 container probe look migrations up by name.
+    - P2, P3, the F6.4 unit test U9 and the P3 container probe look migrations up by name.
     - The P3 and F6.4 adjacency tests (0013→0014, 0014→0015) tolerate later migrations.
+    - Checked by running the full offline suite with a no-op 0016 in a throwaway copy: exactly these two tests
+      failed (D14).
 - **Provisioning.** A clean-server Docker test: provision, migrate, run Phase 2 commands against fakes (as P3 and F6.4
   did).
 - **Mutation sanity:** planted faults that must be killed, for example:
@@ -1501,7 +1530,7 @@ fake transports, no real sleeping.
 |---|---|---|
 | **HB-X1** | **A backfill ledger needs a new additive migration** (§11.4: no existing table can hold attempts, failures, holds, budgets, blocks, leases or snapshots). Not written in this phase | Implementation step HB-1 |
 | **HB-X2** | **Governance.** (a) Extend G-1's `accepted_risk` explicitly to bulk financial discovery (feed + listings) and production-scale temporary document retrieval, or decide otherwise. That is the decision the F2–F5 CLIs' "pending the terms-of-use decision" gate defers to. The CLIs themselves stay capped; the backfill runs only under the owner's arming decision. (b) The contact e-mail for the User-Agent (G-1 control 4), not yet chosen (P2's smoke test was blocked on it too) | (a) and (b): any live Phase 2 request (HB-6). (b) also before HB-P1 and IE-2: P2 refuses `capture`, `sweep` and `resume` without it |
-| **HB-X3** | The frozen RDV test V9 must take the durable form of §23.4 once a migration exists | Together with HB-X1 |
+| **HB-X3** | Two frozen tests must take the durable forms of §23.4 once a migration exists: RDV V9, and F6.4's migration-ledger/preflight regression test (`tests/test_f64_postgres.py`) | Together with HB-X1 |
 
 **Prerequisite (not a design blocker).** **HB-P1:** the security master exists only after at least one **derived P2
 market-capture run** whose archived responses include `allSecurityCode`. That run can be a live capture or an
@@ -1520,7 +1549,7 @@ archive-only `reprocess` of one.
 |---|---|---|
 | HB-Q1 | Approve HB-X1 (a ledger migration, 0016) with the requirements of §11.4, under its own reviewed implementation step | Approve |
 | HB-Q2 | HB-X2 (a) and (b) | Extend G-1 to Phase 2 with §16's controls; owner configures the contact on the server |
-| HB-Q3 | HB-X3 durable form | Approve |
+| HB-Q3 | HB-X3 durable forms (two frozen-test edits, §23.4) | Approve |
 | HB-Q4 | The window W (§5) | 2021-04-01 … 2026-09-30 Colombo upload dates (8,750 feed filings at F0) |
 | HB-Q5 | Security master for delisted and renamed securities (§8.1: 318 in-window filings) | (a) defer; open a change-control item. Verifying the F0 delisted-list endpoint is a precondition of (b) |
 | HB-Q6 | Approve the hold rule (§7.7) and the acquisition order (§7.4) | Approve |
@@ -1542,13 +1571,13 @@ archive-only `reprocess` of one.
 
 ## 27. Implementation plan (independently reviewable steps)
 
-Every step is new files only, apart from the owner-approved migration and the one frozen-test edit of HB-X3. Every step
-is offline, with no CSE contact, until HB-6. Each ends with its own self-audit and independent review. Nothing
+Every step is new files only, apart from the owner-approved migration and the two frozen-test edits of HB-X3. Every
+step is offline, with no CSE contact, until HB-6. Each ends with its own self-audit and independent review. Nothing
 proceeds past a gate without the owner.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
-| **HB-1 Ledger** | Migration `0016` (only if HB-Q1 approved), the store, the preflight; the HB-X3 frozen-test edit | HB-Q1, HB-Q3 | §23.2 ledger tests; frozen pins unchanged; full regression |
+| **HB-1 Ledger** | Migration `0016` (only if HB-Q1 approved), the store, the preflight; the two HB-X3 frozen-test edits (RDV V9, F6.4's migration-ledger/preflight test) | HB-Q1, HB-Q3 | §23.2 ledger tests; frozen pins unchanged; full regression |
 | **HB-2 Governed transport** | The JSON requester and the F2 fetcher (§16.2), throttle seeding from both archives, budgets, quiet window, blocks, arming checks | HB-1 | P2-rule parity; fake-clock spacing; block, budget and quiet-window tests; static checks |
 | **HB-3 Discovery and issuer evidence** | Feed and listing steps calling F1's own run helpers (HB-U4); the IE-2 import adapter (equivalence with `export-company-info` + `link_issuers` on bodies meeting §7.4(a)); IE-4 with the hold rule; the link pass | HB-2, HB-Q5, HB-Q6 | F1 equivalence; reproduces RDV's F1 and issuer results from the F0 evidence offline; hold-rule tests |
 | **HB-4 Document worker** | `load_filings_from_db` + `process_batch([filing])` + F5's `make_consumer`, `attach_timestamps` and `_persist`, with the ledger event in the same transaction; dedicated temp root, SIGTERM handler, orphan sweep inside locked slices, free-space check, tool pins | HB-2, (HB-Q7) | Crash matrix; cleanup and lease-liveness tests; idempotency; row equivalence with F5's `run()` |
@@ -1568,7 +1597,7 @@ proceeds past a gate without the owner.
 | 2 | Source of truth consumed | CSE feed, listings and documents through the governed transport; P2's archive for identity; the frozen F1–F6.4 tables |
 | 3 | Information available at its timestamp | Listings as of each response's `observed_at`; documents as of retrieval; identity as of observation. Every system time is the backfill's own; historical availability exists only as CSE-reported evidence (§13) |
 | 4 | Provenance retained | §12: fact → printed cell → document SHA-256 → filing → listing item → HTTP attempt → archived bytes; issuer → observation → archived response |
-| 5 | Frozen components touched | None. HB-X3 is one owner-approved frozen-test edit, bound to HB-X1 |
+| 5 | Frozen components touched | None. HB-X3 is two owner-approved frozen-test edits (RDV V9; F6.4's migration-ledger/preflight test), bound to HB-X1 |
 | 6 | New migration | Required (HB-X1), **blocked**, not written |
 | 7 | Leakage prevention | No availability chosen (F8); system and source times kept apart; backfilled facts never labelled as known at historical dates; retrospective views labelled (§13.2) |
 | 8 | Tests | §23 |
@@ -1623,10 +1652,13 @@ proceeds past a gate without the owner.
 | The Master Architecture not edited | Status; the proposed cross-reference is in the phase report only |
 | Design closure: every blocker and owner question re-checked against the repository; defects corrected in this document only | Appendix D |
 
-## Appendix D. Design-closure corrections (revision 2)
+## Appendix D. Design corrections (revisions 2 and 3)
 
-Found by re-checking revision 1 against the repository at `59ac143`. Every correction is confined to this document. None
-changes a frozen stage, a blocker conclusion or an owner default.
+D1–D13 (revision 2) were found by re-checking revision 1 against the repository at `59ac143`. D14 (revision 3) was found
+at `62a24f6`, before implementation step HB-1 wrote anything. Every correction is confined to this document.
+- D1–D13 change no frozen stage, blocker conclusion or owner default.
+- D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
+  2026-10-02.
 
 | # | Where | Defect in revision 1 | Correction | Repository evidence |
 |---|---|---|---|---|
@@ -1643,3 +1675,4 @@ changes a frozen stage, a blocker conclusion or an owner default.
 | D11 | §23.4 | The HB-X3 replacement was described loosely | The exact current assertions and the exact durable replacement are given; no other frozen test pins the count | `tests/test_rdv_postgres.py:311-313`; `tests/rdv_measure.py:133`; `tests/test_p1_postgres.py` (dynamic ledger check) |
 | D12 | §15.2 | "A successful request is never repeated" contradicted §15.3: a document whose persistence did not commit is retrieved again | Stated per kind: persisted results are never re-requested; JSON is recovered from the spool; documents are re-retrieved once, recorded | `document_retrieval` (documents never spooled) |
 | D13 | Status, §1 | "One design blocker" beside three listed blockers and a prerequisite | Status lists exactly which decisions gate HB-1 and which gate live requests | §26 |
+| D14 | Status, §1, §23.4, §26 (HB-X3, HB-Q3), §27, Appendix A | Revision 2 named one frozen-test edit (RDV V9) and stated that no other frozen test pins the count or the last migration (D11). F6.4's migration-ledger/preflight regression test also re-applies the migrations and asserts that 0015 is the last applied one, so any 0016 fails it | HB-X3 is two narrow durable edits with the same invariants: 0015 present at position 14 with its exact frozen hash, `0006` unused, every later migration numbered after 0015, and re-application a no-op | `tests/test_f64_postgres.py:239-241` (`again["already_applied"][-1] == name`). The full offline suite, run with a no-op 0016 in a throwaway copy, failed exactly this test and RDV V9 |

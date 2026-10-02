@@ -238,7 +238,15 @@ def test_p1_migration_ledger_verifier_and_every_preflight(env):
              (list(TABLES),)) == [(0,)]
     m = env.conn("cse_migrator")
     again = mig.apply(m, mig.discover(S.MIGDIR), log=lambda x: None)                # re-apply: a no-op
-    assert again["applied"] == [] and again["already_applied"][-1] == name
+    # Phase 2 HB-X3 (owner-approved durable form): 0015 keeps its frozen position and hash, 0006 stays unused, and
+    # every later migration is numbered after 0015
+    ledger = q(su, "select filename, sha256 from ops.schema_migrations order by version")
+    names = [r[0] for r in ledger]
+    i = names.index(name)
+    sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
+    assert again["applied"] == [] and again["already_applied"] == names
+    assert i == 13 and ledger[i] == (name, sha_0015) and not any(n.startswith("0006") for n in names)
+    assert all(n[:4] > "0015" for n in names[i + 1:])
     w = env.conn()
     assert p2runs.security_preflight(w, "cse_worker") == []
     assert p3pre.problems(w) == []

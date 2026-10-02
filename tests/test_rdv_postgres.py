@@ -308,9 +308,14 @@ def test_v9_persistence_integrity_versions_and_the_job_ledger(run):
                               "f4_extractor_version": "f4.1", "builder_version": "f5.1",
                               "mapper_version": "f5.map.1", "vocabulary_version": "v1"}]
     assert v["issuer_rules"] == ["f5.issuer.2"]
-    assert v["migrations"][-1] == ["0015_financial_truth_persistence.sql",
-                                   "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"]
-    assert len(v["migrations"]) == 14 and not any(m[0].startswith("0006") for m in v["migrations"])
+    # Phase 2 HB-X3 (owner-approved durable form): 0015 keeps its frozen position and hash, 0006 stays unused, and
+    # every later migration is numbered after 0015
+    names = [m[0] for m in v["migrations"]]
+    i = names.index("0015_financial_truth_persistence.sql")
+    sha_0015 = "afa82bda53a635b456a356ee278ddf6ccabd185bc892a827cf15cb546b3b1ec2"
+    assert i == 13 and v["migrations"][i] == ["0015_financial_truth_persistence.sql", sha_0015]
+    assert not any(n.startswith("0006") for n in names)
+    assert all(n[:4] > "0015" for n in names[i + 1:])
 
 
 # ------------------------------------------------------------------------------------------------ V10 differential
