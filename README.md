@@ -21,8 +21,11 @@ Where this README and those documents differ, they win.
 validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1 and HB-2. F6.2 is an accepted design; its storage amendments are
 implemented by F6.4.
 
-**Not implemented:** F8 (availability, supersession, as-of), Phase 2 beyond HB-2 (HB-3 to HB-6), and every later
-roadmap phase (Master Architecture §55).
+**Implemented offline, not yet reviewed or frozen:** Phase 2 HB-3 (discovery and issuer evidence); live discovery waits
+for the deployment prerequisite HB-P1.
+
+**Not implemented:** F8 (availability, supersession, as-of), Phase 2 HB-4 to HB-6, and every later roadmap phase
+(Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
 parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
@@ -73,7 +76,7 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **only the first two steps are done**:
+and **only the first two steps are done** (frozen); the third is implemented offline and awaiting review:
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -89,8 +92,14 @@ and **only the first two steps are done**:
   package `worker/backfill_transport/`, through which every Phase 2 CSE request must go: owner arming, blocks, budgets,
   P3's quiet window, at least 1.5 s spacing under P2's exclusive lock, each request recorded in the HB-1 ledger before it
   is sent, and spool-first crash recovery (including the B-HB2-1 correction). It has no command or timer (HB-6).
-- **HB-3 to HB-6 are not implemented:** discovery and issuer evidence; document worker; F6 orchestration and audit;
-  operations and pilot.
+- **HB-3 — Discovery and Issuer Evidence: implemented and tested offline, not yet reviewed or frozen.** It is the
+  library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per security of the verified
+  security master, each request one F1 run and one governed HB-2 attempt (`attempts_per_json_request = 1`), the G2
+  in-flight lease guard, G10 terminalisation, the issuer-evidence import with the hold rule, and the link passes.
+- **HB-P1 is a deployment prerequisite, not an implementation prerequisite:** HB-3 refuses live discovery until the
+  deployed database holds a derived P2 security master (`allSecurityCode`), produced after the software freeze by the
+  first governed P2 capture (server setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → verification).
+- **HB-4 to HB-6 are not implemented:** document worker; F6 orchestration and audit; operations and pilot.
 - **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
   arming decision. Any live Phase 2 request still needs owner
   decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent

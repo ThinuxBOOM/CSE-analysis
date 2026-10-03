@@ -1699,9 +1699,10 @@ Still open after real-data validation:
 -   Phase 2 --- historical financial backfill --- remains the next
     major architectural phase. Only its first two implementation
     steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
-    CSE transport), both below, are implemented and frozen; HB-3 to
-    HB-6 are not implemented, and Phase 2 as a whole is not
-    implemented.
+    CSE transport), both below, are implemented and frozen; HB-3
+    (discovery and issuer evidence) is implemented and tested
+    offline but not yet reviewed or frozen (below); HB-4 to HB-6 are
+    not implemented, and Phase 2 as a whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -1852,6 +1853,31 @@ Correction included in the frozen baseline:
 HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
+
+Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented
+and tested offline, not yet reviewed or frozen**. It is the library
+package `worker/backfill_discovery/`, built under the HB-3 design
+gate's owner decisions: D-HB3-1 (one F1 run per actual HTTP attempt:
+discovery runs only under an arming with `attempts_per_json_request =
+1` and an item maximum of at most 3, each claim being one separately
+governed request with its own F1 run), D-HB3-2 / G2 (a discovery slice
+never releases its lease while an item claimed under it is in
+flight), G10 (an item at its claim maximum is made final atomically,
+evidence first, with no request), HB-Q5 and HB-Q6. It adds no
+migration, grant, role, row-level security, `SECURITY DEFINER`, lock
+key or entry point, and changes no frozen file.
+
+HB-P1 is a **deployment / runtime prerequisite, not an implementation
+prerequisite**. HB-3 may be implemented and tested offline before any
+production security-master capture exists. Live HB-3 discovery remains
+forbidden until HB-P1 is satisfied in the deployment environment:
+every HB-3 entry point that could make a discovery request refuses
+unless the database holds a derived P2 market capture with a verified
+archived `allSecurityCode` within the freshness bound, and nothing in
+HB-3 creates that evidence. The deployment sequence is: software
+freeze → server setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2
+capture → `allSecurityCode` verification → derived security master →
+HB-P1 satisfied → live HB-3.
 
 Important accepted commits:
 
@@ -2096,7 +2122,8 @@ architecture should be implemented in dependency order.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
-two steps, HB-1 and HB-2. Phase 2 --- historical financial backfill --- remains the
+two steps, HB-1 and HB-2 (HB-3 is implemented offline and awaiting
+review). Phase 2 --- historical financial backfill --- remains the
 next major architectural phase; its design decides real-data
 validation Q1 (issuer evidence; §52).
 
@@ -2112,9 +2139,11 @@ Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 3).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
-is implemented and frozen (`18962805`; §52). HB-3 to HB-6 (discovery
-and issuer evidence; document worker; F6 orchestration and audit;
-operations and pilot) are not implemented.
+is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
+evidence (`worker/backfill_discovery/`), is implemented and tested
+offline, not yet reviewed or frozen; live discovery waits for HB-P1, a
+deployment prerequisite (§52). HB-4 to HB-6 (document worker; F6
+orchestration and audit; operations and pilot) are not implemented.
 
 ## Phase 3 --- Market feature foundation
 

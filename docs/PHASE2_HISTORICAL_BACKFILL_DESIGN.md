@@ -2,8 +2,9 @@
 
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
-implemented and frozen** on `main` at `1896280` (Master Architecture §52). HB-3 to HB-6 are not implemented, **Phase 2
-as a whole is not implemented**, and no Phase 2 CSE request has been made.
+implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
+issuer evidence) is implemented and tested offline, not yet reviewed or frozen** (see below). HB-4 to HB-6 are not
+implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -46,6 +47,35 @@ Dead slices are expired by the transport's own spool-aware recovery (a spooled r
 without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.
 
 HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request.
+
+**HB-3 implementation status** (offline implementation; the design text is unchanged). HB-3 is the library package
+`worker/backfill_discovery/`, built under the HB-3 design gate's owner decisions:
+- **D-HB3-1 (Option B):** discovery runs only under an arming with `attempts_per_json_request = 1` and
+  `item_max_attempts` at most 3. Each claim begins one F1 run (F1's own `begin_run`, before the request intent), makes
+  exactly one governed HTTP attempt through HB-2, and finishes that F1 run with F1's own helpers from the attempt's
+  recorded response. A retry is a later claim with its own F1 run. HB-Q8's three attempts are three such cycles.
+- **D-HB3-2 (G2):** a discovery slice never releases its lease while an item claimed under it is in flight. Handled
+  stops record the item's event first; any other exit closes the HB-2 slice with a non-stop error, so the lease stays
+  active, the connection is discarded, and the next slice recovers the item from evidence.
+- **G10:** an item whose claims reached the armed maximum is made final in one transaction, with no request: evidence
+  wins (a successful F1 run of the request), otherwise `failed` with a reason, naming its last F1 run only when that run
+  itself failed.
+- HB-Q5 and HB-Q6 as approved: listings only for the verified security master, no delisted-security discovery, no
+  write to `companies`; the hold rule (HB-I-HOLD) applied to the IE-2 and IE-4 batches, holds recorded as L7 rows.
+
+It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
+changes no frozen file.
+
+**HB-P1 is a deployment / runtime prerequisite, not an implementation prerequisite.** HB-3 may be implemented and
+tested offline before any production security-master capture exists. Live HB-3 discovery remains forbidden until HB-P1
+is satisfied in the deployment environment: every HB-3 entry point that could make a discovery request (a discovery
+slice, the listing plan, the issuer import and link passes) refuses unless the database holds a derived P2 market
+capture with a verified, archived `allSecurityCode` within the HB-Q8 freshness bound. Nothing in HB-3 creates that
+evidence. Offline tests produce it only in throwaway databases, through P2's own capture code driven by a scripted
+transport; that never satisfies production HB-P1. The deployment sequence is:
+
+`software freeze → server setup → HB-X2(b) → CSE_CAPTURE_CONTACT_EMAIL → P2 capture → allSecurityCode verification →
+derived security master → HB-P1 satisfied → live HB-3`
 
 **Date:** 2026-10-01.
 
