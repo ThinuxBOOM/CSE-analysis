@@ -54,6 +54,9 @@ HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request
   `item_max_attempts` at most 3. Each claim begins one F1 run (F1's own `begin_run`, before the request intent), makes
   exactly one governed HTTP attempt through HB-2, and finishes that F1 run with F1's own helpers from the attempt's
   recorded response. A retry is a later claim with its own F1 run. HB-Q8's three attempts are three such cycles.
+  Consequence under HB-2's frozen rule (§16.3: a 429 that exhausts the attempts is a block): with one attempt per
+  governed call, the **first** HTTP 429 of a discovery request is recorded as a block and stops Phase 2 until the
+  owner acknowledges it; it is never retried after `Retry-After` inside the call.
 - **D-HB3-2 (G2):** a discovery slice never releases its lease while an item claimed under it is in flight. Handled
   stops record the item's event first; any other exit closes the HB-2 slice with a non-stop error, so the lease stays
   active, the connection is discarded, and the next slice recovers the item from evidence.
@@ -64,14 +67,17 @@ HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request
   write to `companies`; the hold rule (HB-I-HOLD) applied to the IE-2 and IE-4 batches, holds recorded as L7 rows.
 
 It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
-changes no frozen file.
+changes no frozen file. The §23.3 discovery replay is `tests/test_hb3_replay_postgres.py`: it needs the RDV evidence
+outside Git (`CSE_F6_CORPUS_DIR`, `CSE_F0_CAPTURE_DIR`) and `P1_PG_BINDIR`, and it skips without them; a skip is an
+environment limitation, not evidence of equivalence.
 
 **HB-P1 is a deployment / runtime prerequisite, not an implementation prerequisite.** HB-3 may be implemented and
 tested offline before any production security-master capture exists. Live HB-3 discovery remains forbidden until HB-P1
 is satisfied in the deployment environment: every HB-3 entry point that could make a discovery request (a discovery
 slice, the listing plan, the issuer import and link passes) refuses unless the database holds a derived P2 market
 capture with a verified, archived `allSecurityCode` within the HB-Q8 freshness bound. Nothing in HB-3 creates that
-evidence. Offline tests produce it only in throwaway databases, through P2's own capture code driven by a scripted
+evidence. HB-P1 is not satisfied: the deployment server has not been provisioned yet, so no production database or
+production capture exists. Offline tests produce it only in throwaway databases, through P2's own capture code driven by a scripted
 transport; that never satisfies production HB-P1. The deployment sequence is:
 
 `software freeze → server setup → HB-X2(b) → CSE_CAPTURE_CONTACT_EMAIL → P2 capture → allSecurityCode verification →

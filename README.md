@@ -32,9 +32,11 @@ parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Mas
 
 # Platform (P1): local server + PostgreSQL 17
 
-Production now runs on a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
-runtime); GitHub is source control only. Provisioning, the migration runner/ledger, roles, append-only protection and
-backups are documented in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
+The deployment target is a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
+runtime); GitHub is source control only. **That server has not been provisioned yet:** there is no production database,
+and no production CSE capture has run. Setting it up is a deployment step after the software freeze (Master
+Architecture §54). Provisioning, the migration runner/ledger, roles, append-only protection and backups are documented
+in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
 `python -m worker.ops.migrate apply` (as `cse_migrator`). The sequence is 0001–0005 and 0007–0016; `0006` stays unused,
 and the local security boundary is 0009–0011 (Master Architecture §51). Older sections below that mention Supabase,
 or tell you to apply a single migration by hand, are historical.
@@ -96,9 +98,11 @@ and **only the first two steps are done** (frozen); the third is implemented off
   library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per security of the verified
   security master, each request one F1 run and one governed HB-2 attempt (`attempts_per_json_request = 1`), the G2
   in-flight lease guard, G10 terminalisation, the issuer-evidence import with the hold rule, and the link passes.
-- **HB-P1 is a deployment prerequisite, not an implementation prerequisite:** HB-3 refuses live discovery until the
-  deployed database holds a derived P2 security master (`allSecurityCode`), produced after the software freeze by the
-  first governed P2 capture (server setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → verification).
+- **HB-P1 is a deployment prerequisite, not an implementation prerequisite, and it is not satisfied:** HB-3 refuses
+  live discovery until the database on the deployment server (not yet provisioned) holds a derived P2 security master
+  (`allSecurityCode`), produced after the software freeze by the first governed P2 capture (software freeze → server
+  setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → `allSecurityCode` verification → derived security
+  master → HB-P1 satisfied → live HB-3).
 - **HB-4 to HB-6 are not implemented:** document worker; F6 orchestration and audit; operations and pilot.
 - **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
   arming decision. Any live Phase 2 request still needs owner

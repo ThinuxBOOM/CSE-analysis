@@ -25,7 +25,6 @@ of the same request that succeeded or partially succeeded makes it succeeded / p
 reason, naming the last F1 run only when that run itself failed (a 'running' run is never named). From pending this is
 HB-1's tested B-1 path: a terminal claim under the live lease, then the record.
 """
-import json
 from dataclasses import dataclass, field
 
 from .. import report_discovery as f1
@@ -124,11 +123,14 @@ def current(conn, item_id):
 
 
 def success_run(conn, endpoint, params):
-    """Evidence wins: the latest F1 run of exactly this request that succeeded or partially succeeded (HB-1's own
-    rule for 'failed'), as (run_id, status), or None."""
-    row = _q(conn, "select id, status from report_discovery_runs where source_endpoint = %s and request_params = "
-                   "%s::jsonb and status in ('succeeded', 'partial') order by started_at desc, id desc limit 1",
-             (endpoint, json.dumps(params, sort_keys=True)), fetch="one")
+    """Evidence wins: the latest F1 run of this request that succeeded or partially succeeded, matched field by field
+    exactly as HB-1's own guard for 'failed' matches it (fromDate and toDate, or symbol), as (run_id, status), or
+    None."""
+    fields = ("fromDate", "toDate") if endpoint == f1.FEED_ENDPOINT else ("symbol",)
+    row = _q(conn, "select id, status from report_discovery_runs where source_endpoint = %s and "
+                   + " and ".join(f"request_params ->> '{k}' = %s" for k in fields)
+                   + " and status in ('succeeded', 'partial') order by started_at desc, id desc limit 1",
+             (endpoint, *[str(params[k]) for k in fields]), fetch="one")
     return None if row is None else (str(row[0]), row[1])
 
 
@@ -141,6 +143,18 @@ def claim_runs(conn, item_id, endpoint, params):
                  (item_id, lease_id))
         out.append((seq, lease_id, at, run, att[-1][0] if att else None))
     return out
+
+
+def attempt_of_run(conn, item_id, run_id):
+    """The Phase 2 attempt behind an F1 run begun for one of the item's claims (its started_at is that claim's own
+    time, any re-queue included), or None when the run is not one of this item's claims (F1 evidence of another
+    origin)."""
+    row = _q(conn, """
+        select a.id from report_discovery_runs r
+          join backfill_item_events e on e.item_id = %s and e.action = 'claim' and e.occurred_at = r.started_at
+          join backfill_request_attempts a on a.item_id = e.item_id and a.lease_id = e.lease_id
+         where r.id = %s order by a.id desc limit 1""", (item_id, run_id), fetch="one")
+    return None if row is None else row[0]
 
 
 def _claim_time(conn, item_id, lease_id):
@@ -243,12 +257,16 @@ class DiscoverySlice:
         """Record the item's event for this claim, while the lease is live. A 'failed' at the item maximum is G10
         (case a): evidence wins first."""
         details = dict(details or {}, **self._details(item_id))
-        refs = {k: v for k, v in (("attempt_id", attempt_id), ("block_id", block_id)) if v is not None}
         if state == "failed":
             won = success_run(self.conn, endpoint, params)
             if won is not None:
                 state, f1_run_id, f1_status = won[1], won[0], won[1]
                 reason = "evidence wins: an F1 run of this request " + won[1]
+                if attempt_id is not None:
+                    details["last_attempt"] = attempt_id
+                # the event names the response behind the winning run (IE-4 reads it), never this failed attempt
+                attempt_id = attempt_of_run(self.conn, item_id, won[0])
+        refs = {k: v for k, v in (("attempt_id", attempt_id), ("block_id", block_id)) if v is not None}
         if f1_run_id is not None and (state in SUCCESS or f1_status == "failed"):
             refs["f1_run_id"] = f1_run_id                   # a 'running' F1 run is never named
         elif f1_run_id is not None:

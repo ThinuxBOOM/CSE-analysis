@@ -103,13 +103,30 @@ def recorded_by_symbol(conn):
     return out
 
 
+def _hold_key(o):
+    return tuple(o.get(k) for k in store.HOLD_KEY)
+
+
+def owner_held(conn):
+    """{HOLD_KEY: dispute} of every hold the owner has not released: unresolved, or resolved keep_held (design section
+    7.7 step 4: resolution is owner-only). Only apply_resolutions records a held observation."""
+    rows = _q(conn, f"""
+        select {', '.join('h.' + k for k in store.HOLD_KEY)}, h.dispute from backfill_holds h
+          join backfill_hold_state s on s.hold_id = h.id where s.resolution is null or s.resolution = 'keep_held'""")
+    return {tuple(r[:-1]): r[-1] for r in rows}
+
+
 def record_batch(conn, batch, *, wakeup_id=None):
     """batch: [(observation, {"attempt_id": ..} | {"p2_response_id": ..})]. Holds are recorded FIRST (committed),
     then the rest in one record_observations call and resolve_securities. A rerun recomputes the same held set and
-    adds nothing (F5's and the hold's dedupe keys)."""
+    adds nothing (F5's and the hold's dedupe keys). An observation the owner has not released from an earlier hold
+    stays held, whatever the simulation now says (owner-only resolution)."""
     observations = [o for o, _ in batch]
     source = {id(o): src for o, src in batch}
-    record, hold = split_batch(recorded_by_symbol(conn), observations)
+    pinned = owner_held(conn)
+    free = [o for o in observations if _hold_key(o) not in pinned]
+    record, hold = split_batch(recorded_by_symbol(conn), free)
+    hold += [(o, pinned[_hold_key(o)]) for o in observations if _hold_key(o) in pinned]
     holds = []
     for o, dispute in hold:
         hid, _ = store.record_hold(conn, {k: o[k] for k in store.OBSERVATION_FIELDS}, dispute=dispute,
@@ -193,11 +210,8 @@ def listing_responses(conn):
         ev = _q(conn, "select f1_run_id, attempt_id from backfill_item_events where item_id = %s order by seq desc "
                       "limit 1", (item["id"],), fetch="one")
         run_id, attempt_id = (str(ev[0]) if ev[0] else None), ev[1]
-        if attempt_id is None and run_id is not None:
-            endpoint, params = plan.request_for(item)
-            for _s, _l, _a, run, att in discovery.claim_runs(conn, item["id"], endpoint, params):
-                if run is not None and run[0] == run_id:
-                    attempt_id = att
+        if run_id is not None:                            # the response behind the run the event names
+            attempt_id = discovery.attempt_of_run(conn, item["id"], run_id)
         if attempt_id is None:
             without.append(item["query_symbol"])
         else:

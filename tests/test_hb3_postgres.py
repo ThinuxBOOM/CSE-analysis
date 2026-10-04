@@ -107,12 +107,12 @@ class Env:
         assert state == "succeeded"
         return rep["run_id"]
 
-    def sweep(self, start=SWEEP_START, limit=None):
+    def sweep(self, start=SWEEP_START, limit=None, **fake):
         """A P2 metadata sweep on a non-trading Colombo day (the calendar records it closed)."""
         day = start.astimezone(p2config.COLOMBO).date()
         q(self.conn(), "insert into trading_calendar (trade_date, market_status, established_by) values (%s, "
                        "'closed', 'live_capture') on conflict do nothing", (day,))
-        state, rep = self.p2(start, p2config.sweep_policy(sweep_limit=limit), day)
+        state, rep = self.p2(start, p2config.sweep_policy(sweep_limit=limit), day, **fake)
         assert state == "succeeded"
         return rep["run_id"]
 
@@ -580,6 +580,30 @@ def test_g2_refused_after_the_claim_before_the_f1_run(env, monkeypatch):
     assert f1_runs(w, "COMB.N0000") == []
 
 
+def test_g10_a_refusal_on_the_last_claim_is_final_at_once(env, monkeypatch):
+    """G10 case a on the refusal path: a claim refused before any request that was the item's last allowed claim
+    makes it failed at once, with the reason (never retry_wait left for a later slice)."""
+    clock, _ = ready(env)
+    arm(env, item_max_attempts=1)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    real = accounting.claims
+
+    def claims_then_disarm(conn, item_id):
+        disarm(env)
+        return real(conn, item_id)
+    rt = runtime(env, clock, script=[])
+    ds = DiscoverySlice(w, runtime=rt)
+    with ds:
+        monkeypatch.setattr(accounting, "claims", claims_then_disarm)      # after the slice opened
+        with pytest.raises(Refused):
+            ds.discover_one(it)
+    ev = last_event(w, it)
+    assert (ev["state"], ev["action"], ev["f1_run_id"]) == ("failed", "record", None)
+    assert "refused before any request" in ev["reason"] and ev["details"]["claims"] == 1
+    assert rt.transport_double.calls == [] and f1_runs(w, "COMB.N0000") == []
+
+
 def test_g2_refused_after_the_f1_run_never_names_the_running_run(env, monkeypatch):
     clock, _ = ready(env)
     w = env.conn()
@@ -761,6 +785,7 @@ def test_g10_evidence_wins_over_recovery_and_terminalisation(env, monkeypatch):
     one_slice(env, clock, it, script=[ok(listing_body([COMB_SEC]))])
     one_slice(env, clock, it2, script=[ok(listing_body([373]))])
     good, good2 = f1_runs(w, "COMB.N0000")[0][0], f1_runs(w, "HNB.N0000")[0][0]
+    good_att, good_att2 = store.attempts(w, it["id"])[0]["id"], store.attempts(w, it2["id"])[0]["id"]
     for x in (it, it2):
         store.append_event(w, x["id"], "pending", "requeue", reason="operator re-queue in an HB-3 test")
     _crash_before_f1(env, clock, it, monkeypatch, 1)        # a crashed claim: recovery promotes to the old success
@@ -780,6 +805,10 @@ def test_g10_evidence_wins_over_recovery_and_terminalisation(env, monkeypatch):
     evs = store.events(w, it2["id"])
     assert [(e["state"], e["action"]) for e in evs[-2:]] == [("requesting", "claim"), ("succeeded", "record")]
     assert evs[-1]["f1_run_id"] == good2 and "evidence wins" in evs[-1]["reason"] and rt.transport_double.calls == []
+    # IE-4 reads the response behind each winning run (a claim before the re-queue), though neither event names it
+    found, without = identity.listing_responses(w)
+    assert sorted((sym, att) for _i, sym, att, _r in found) == [("COMB.N0000", good_att), ("HNB.N0000", good_att2)]
+    assert without == []
 
 
 def test_g10_terminalisation_is_atomic(env, monkeypatch):
@@ -832,6 +861,19 @@ def test_g10_never_while_an_attempt_has_no_outcome(env):
     assert ds.lease_kept                                      # an attempt without an outcome: HB-2 keeps the lease
 
 
+def test_g10_never_below_the_maximum(env):
+    """terminalise itself refuses an item below its claim maximum (not only its caller's filter): nothing recorded."""
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    one_slice(env, clock, it, script=[dict(status=503, body=b"busy")])
+    assert state(w, it) == "retry_wait" and accounting.claims(w, it["id"]) == 1
+    n = len(store.events(w, it["id"]))
+    with DiscoverySlice(env.conn(), runtime=runtime(env, clock, script=[])) as ds:
+        assert discovery.terminalise(ds, item(w, "listing:COMB.N0000")) is None
+    assert len(store.events(w, it["id"])) == n and state(w, it) == "retry_wait"
+
+
 def test_g2_an_unverifiable_in_flight_check_keeps_the_lease(env, monkeypatch):
     clock, _ = ready(env)
     a = env.conn()
@@ -858,6 +900,114 @@ def test_g10_evidence_wins_when_the_last_live_attempt_fails(env):
     ev = last_event(w, it)
     assert (ev["state"], ev["action"], ev["f1_run_id"]) == ("succeeded", "record", good)
     assert "evidence wins" in ev["reason"] and accounting.counts(w, it["id"]) == {"claims": 3, "http_attempts": 3}
+
+
+def test_g10_evidence_wins_names_the_response_behind_the_winning_run_for_ie4(env):
+    """Evidence wins on a live failure: the event names the attempt behind the winning F1 run (never the failed
+    attempt), so IE-4 reads that run's archived listing and records its secIds instead of reporting the listing as
+    having no Phase 2 response."""
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    one_slice(env, clock, it, script=[ok(listing_body([COMB_SEC]))])
+    good_run, good_attempt = f1_runs(w, "COMB.N0000")[0][0], store.attempts(w, it["id"])[0]["id"]
+    store.append_event(w, it["id"], "pending", "requeue", reason="operator re-queue in an HB-3 test")
+    for _ in range(3):
+        one_slice(env, clock, it, script=[dict(status=503, body=b"busy")])
+    ev = last_event(w, it)
+    assert (ev["state"], ev["f1_run_id"], ev["attempt_id"]) == ("succeeded", good_run, good_attempt)
+    assert ev["details"]["last_attempt"] == store.attempts(w, it["id"])[-1]["id"] != good_attempt
+    found, without = identity.listing_responses(w)
+    assert [(sym, att) for _i, sym, att, _r in found] == [("COMB.N0000", good_attempt)] and without == []
+    batch, without = identity.ie4_batch(w)
+    assert [(o["symbol"], o["cse_sec_id"]) for o, _ in batch] == [("COMB.N0000", COMB_SEC)] and without == []
+
+
+def test_g10_evidence_wins_matches_the_request_as_hb1s_guard_does(env):
+    """Evidence wins on the request's fields, exactly as HB-1's guard for 'failed' matches them (here: symbol), not on
+    the whole parameter object: a succeeded F1 run of the same listing with another parameter shape still wins."""
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    from worker.report_filings_store import PostgresFilingStore
+    fs = PostgresFilingStore(w)
+    at = clock.wall() - timedelta(days=30)
+    other = fs.begin_run("financials", {"symbol": "COMB.N0000", "page": 1}, at)
+    fs.finish_run(other, {"status": "succeeded", "failure_category": None, "http_status": 200, "rows_returned": 0,
+                          "filings_new": 0, "observations_new": 0, "metadata_changes": 0, "rows_rejected": 0,
+                          "item_failures": 0, "details": {}}, at)
+    fs.commit()
+    for _ in range(3):
+        one_slice(env, clock, it, script=[dict(status=503, body=b"busy")])
+    ev = last_event(w, it)
+    assert (ev["state"], ev["f1_run_id"], ev["attempt_id"]) == ("succeeded", other, None)
+    assert identity.listing_responses(w) == ([], ["COMB.N0000"])     # no Phase 2 response behind it: reported
+
+
+def test_d1_a_call_behind_more_than_one_attempt_is_refused_and_g2_keeps_the_lease(env, monkeypatch):
+    """Defence in depth for D-HB3-1: should the governed call ever report more than one HTTP attempt, HB-3 refuses
+    to record an outcome for the claim, and G2 leaves the lease active with the item in flight."""
+    from worker.backfill_transport.slice import Slice
+    real = Slice.json_request
+
+    def doubled(self, item_id, endpoint, params):
+        result = real(self, item_id, endpoint, params)
+        result.attempts = list(result.attempts) * 2
+        return result
+    monkeypatch.setattr(Slice, "json_request", doubled)
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    ds, err, _rt = one_slice(env, clock, it, script=[ok(listing_body([COMB_SEC]))])
+    assert isinstance(err, RuntimeError) and "D-HB3-1" in str(err)
+    assert state(w, it) == "requesting" and ds.lease_kept and lease_row(w, ds.sl.lease_id)[0] == "active"
+
+
+def test_d1_one_attempt_turns_any_429_into_a_block(env):
+    """D-HB3-1 under HB-2's frozen rule: a 429 that exhausts the attempts is a block. With one attempt per governed
+    call the first 429 is the last attempt, so it blocks Phase 2 (owner acknowledgement), never a hidden retry."""
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "listing:COMB.N0000")
+    ds, err, rt = one_slice(env, clock, it, script=[dict(status=429, body=b"slow down", headers={"Retry-After": "5"})])
+    assert type(err).__name__ == "Blocked" and len(rt.transport_double.calls) == 1
+    assert state(w, it) == "blocked" and not ds.lease_kept
+    assert accounting.counts(w, it["id"]) == {"claims": 1, "http_attempts": 1}
+
+
+def test_hold_an_owner_hold_is_never_released_by_a_later_import(env):
+    """Resolution is owner-only (design section 7.7 step 4): a held observation stays held, unresolved or keep_held,
+    even when later evidence would let the simulation record it; only the owner's acquire_evidence releases it."""
+    clock, _ = ready(env)
+    env.sweep(limit=5)
+    w = env.conn()
+    identity.identity_pass(w, wall=clock.wall())
+    bodies = {s: listing_body() for s in P.TRADED + P.ABSENT}
+    bodies["ABSB.N0000"] = listing_body([9901])               # ABSB lists ABSA's secId, with no identity evidence
+    _close_discovery(env, clock, bodies)
+    identity.closure_pass(w, wall=clock.wall())
+    assert q(w, "select symbol from issuer_identifier_observations where cse_sec_id = 9901") == [("ABSB.N0000",)]
+    env.sweep(start=SWEEP_START + timedelta(days=7))          # every security: ABSA's identity (9901, ISIN, name)
+    late = identity.late_pass(w, wall=clock.wall())
+    held = [r[0] for r in q(w, "select id from backfill_holds where symbol = 'ABSA.N0000' order by id")]
+    assert len(held) == 2 and set(held) <= set(late["held"])  # absence-only dispute against ABSB's sighting
+    agreeing = P.absent_ci_body("ABSA.N0000", 1)              # ABSB now carries ABSA's identity: no dispute at all
+    agreeing["reqSymbolInfo"]["symbol"] = "ABSB.N0000"
+    env.sweep(start=SWEEP_START + timedelta(days=14), ci=dict(P.real_ci_bodies(), **{"ABSB.N0000": agreeing}))
+    late = identity.late_pass(w, wall=clock.wall())           # unresolved: still held, whatever the simulation says
+    assert set(held) <= set(late["held"])
+    assert q(w, "select count(*) from issuer_identifier_observations where symbol = 'ABSA.N0000'") == [(0,)]
+    for h in held:
+        owner.resolve_hold_as_owner(env.owner_conn(), h, "keep_held", "owner keeps ABSA held for review")
+    late = identity.late_pass(w, wall=clock.wall())           # keep_held: still held
+    assert set(held) <= set(late["held"]) and sorted(late["resolutions"]["still_held"]) == held
+    assert q(w, "select count(*) from issuer_identifier_observations where symbol = 'ABSA.N0000'") == [(0,)]
+    for h in held:
+        owner.resolve_hold_as_owner(env.owner_conn(), h, "acquire_evidence", "owner: comparable evidence acquired")
+    late = identity.late_pass(w, wall=clock.wall())
+    assert late["resolutions"]["recorded"] == 2 and late["resolutions"]["still_held"] == []
+    assert not set(held) & set(late["held"])                  # released: no longer reported as held
+    assert q(w, "select count(*) from issuer_identifier_observations where symbol = 'ABSA.N0000'") == [(2,)]
 
 
 def test_acc_an_attempt_proven_not_sent_is_not_an_http_attempt(env, monkeypatch):

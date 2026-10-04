@@ -18,7 +18,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from worker import report_discovery as f1  # noqa: E402
+from worker import issuer_identity as ii, report_discovery as f1  # noqa: E402
 from worker.backfill_discovery import (ATTEMPTS_PER_JSON_REQUEST, ITEM_MAX_ATTEMPTS, SECURITY_MASTER_MAX_AGE_DAYS,  # noqa: E402
                                        discovery, errors, f1_cycle, identity, plan, preflight, security_master)
 from worker.backfill_transport import classify  # noqa: E402
@@ -101,6 +101,14 @@ def test_u4_an_absence_driven_dispute_is_held_and_a_contradiction_is_recorded():
     record, hold = identity.split_batch({}, [ci("A.N0000", 1, "LK0001N00001", "A PLC"),
                                              ci("B.N0000", 1, "LK0002N00002", "B PLC")])
     assert hold == [] and len(record) == 2
+    # a mixed new dispute (a real contradiction AND a claimant without identity): the dispute is not absence-only, so
+    # nothing is held; the contradiction is real and is recorded at once (design section 7.7: "only" insufficient)
+    mixed = [ci("A.N0000", 9, "LK0010N00001", "A PLC"), ci("B.N0000", 9, "LK0011N00002", "B PLC"), fin("C.N0000", 9)]
+    failures = ii.disputed_sec_ids(identity.by_symbol(mixed))[9]
+    assert any(f.startswith("isin_issuer_code_differs:") for fs in failures.values() for f in fs)
+    assert any(f.startswith("identity_evidence_insufficient:") for fs in failures.values() for f in fs)
+    record, hold = identity.split_batch({}, mixed)
+    assert hold == [] and len(record) == 3
     # ISIN-only against name-only: nothing comparable -> held (design D1)
     record, hold = identity.split_batch({}, [ci("A.N0000", 2, isin="LK0003N00003"), ci("B.N0000", 2, name="B PLC")])
     assert record == [] and len(hold) == 2
@@ -140,6 +148,8 @@ def test_u6_admissible_links_need_listing_evidence():
     assert not identity.admissible({"status": "evidenced", "basis": "document_path_prefix"})
     assert not identity.admissible({"status": "unresolved", "basis": "listing_symbol_sec_id"})
     assert not identity.admissible(None)
+    from worker.financial_truth import admission                 # the frozen A-2 rule itself, not a copy of it
+    assert identity.ADMISSIBLE_BASES == admission.ADMISSIBLE_ISSUER_BASES
 
 
 # ------------------------------------------------------------------------------------------------ HB-P1
