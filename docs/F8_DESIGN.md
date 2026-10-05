@@ -1,8 +1,9 @@
 # F8: Availability, supersession and point-in-time financial views (design gate report)
 
 **Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTED — REVISION 3:** the owner's acceptance gate
-(2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **F8 is not implemented:** no code exists,
-no migration is written, and no frozen layer is changed.
+(2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **Implementation (status only):** F8 is
+implemented on the frozen baseline `8e2a3c37` (branch `claude/f8-implementation`, not yet committed) and awaits the
+owner's review and freeze. See `docs/F8_IMPLEMENTATION.md`. The implementation changes nothing in this design.
 
 **History:**
 - Revision 1 was the design gate report (BLOCKED on OD-1 to OD-3).
@@ -17,9 +18,9 @@ no migration is written, and no frozen layer is changed.
 - the HB-3 freeze documentation as `7857347`;
 - the HB-3 code is as of `60d004d`.
 
-`main` is at `e3214537` (the HB-2 freeze). F1–F6.4, P1–P3, HB-1, HB-2 and HB-3 are frozen; HB-3 is frozen on the branch,
-and its merge to `main` is pending. HB-4 onwards is not implemented. The sequencing is the owner's decision of
-2026-10-05, as restated at the acceptance gate:
+`claude/hb3-discovery` has since been merged into `main` and verified by the owner. The frozen baseline is `8e2a3c37`.
+F1–F6.4, P1–P3, HB-1, HB-2 and HB-3 are frozen. HB-4 onwards is not implemented. The sequencing is the owner's decision
+of 2026-10-05, as restated at the acceptance gate (every step before F8's implementation is now done):
 
 ```text
 HB-3 frozen → F8 revision 3 accepted/frozen → merge claude/hb3-discovery into main → verify the merged main
@@ -1176,9 +1177,11 @@ a design or implementation prerequisite (MA §43.1, §52).
 - **No design blocker remains.** OD-5 (the names) is open and does not block.
 - **Accepted (2026-10-05):** revision 3, including F-1 to F-5 and criteria 2 and 4 (Appendix D). The acceptance
   followed the HB-3 freeze.
-- **Next:** the merge, its verification and the new baseline. Only then do F8 implementation and HB-4 begin (§19).
-- **The implementation is not frozen:** it does not exist. No code, no migration (0017 included), and no frozen layer
-  changes. The HB-4/HB-5 producer contract (§3.4) is unchanged.
+- **Done since:** the merge, its verification and the new baseline (`8e2a3c37`), then F8's implementation (F8-1 to F8-3
+  of §19). HB-4 has not started.
+- **The implementation is not frozen.** It exists on the frozen baseline (`docs/F8_IMPLEMENTATION.md`: the package
+  `worker/financial_asof/` and migration 0017, which holds F8's own tables only) and awaits the owner's review and
+  freeze. No frozen layer changes. The HB-4/HB-5 producer contract (§3.4) is unchanged.
 - **HB-P1** remains a deployment/runtime prerequisite for live Phase 2 execution only (§19).
 
 ---

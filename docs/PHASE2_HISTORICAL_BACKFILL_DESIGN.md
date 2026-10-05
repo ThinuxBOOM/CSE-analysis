@@ -232,8 +232,9 @@ The only new elements are infrastructure:
 
 **Not implemented here and not started:** the full F4 structure persistence phase, continuous collection after the
 backfill, forecasting and everything after it in MA §55. **Not implemented here:** F8 (availability, supersession,
-as-of). Its design is `docs/F8_DESIGN.md` (FROZEN / ACCEPTED, revision 3, 2026-10-05), and its implementation has not
-started.
+as-of). Its design is `docs/F8_DESIGN.md` (FROZEN / ACCEPTED, revision 3, 2026-10-05). It is implemented separately, on
+the frozen baseline `8e2a3c37` (`worker/financial_asof/`, migration 0017; `docs/F8_IMPLEMENTATION.md`), and awaits the
+owner's review and freeze.
 
 **Design blockers** (detail in §26):
 - **HB-X1.** A durable, append-only backfill ledger in PostgreSQL needs new tables. No existing table can hold it
@@ -1748,11 +1749,10 @@ hard-code assumptions about the canonical financial-truth layer.
 - F8's design (`docs/F8_DESIGN.md`) passed the design/contract gate at revision 2 (READY, 2026-10-05).
 - Revision 3 adds the independent leakage review and was accepted on 2026-10-05: F8 DESIGN FROZEN / ACCEPTED —
   REVISION 3.
-- HB-3 is frozen (2026-10-05). F8 is not implemented. F8 implementation, and HB-4 implementation, start only after all
-  of these:
-  - the merge into `main`;
-  - its verification;
-  - the new frozen baseline.
+- HB-3 is frozen (2026-10-05). The conditions for starting implementation are met: the merge into `main`
+  (`8e2a3c37`), its verification by the owner, and the new frozen baseline (`8e2a3c37`).
+- F8 is implemented on that baseline (`docs/F8_IMPLEMENTATION.md`) and awaits the owner's review and freeze. HB-4 has
+  not started; when it starts is the owner's decision.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
