@@ -1,22 +1,29 @@
 # F8: Availability, supersession and point-in-time financial views (design gate report)
 
-**Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTANCE READY:** the design text is frozen and
-awaits the owner's final acceptance, which is the F8 design freeze. **F8 is not implemented:** no code exists, no
-migration is written, and no frozen layer is changed.
+**Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTED — REVISION 3:** the owner's acceptance gate
+(2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **F8 is not implemented:** no code exists,
+no migration is written, and no frozen layer is changed.
 
 **History:**
 - Revision 1 was the design gate report (BLOCKED on OD-1 to OD-3).
 - Revision 2 recorded the owner's approval of OD-1, OD-2 and OD-3 and passed the design/contract gate (READY).
 - Revision 3 adds the independent leakage review that §20 criterion 6 requires (Appendix B), with the corrections it
   required (F-1 to F-5), and a final consistency audit (§16).
+- The acceptance gate (2026-10-05) accepted revision 3 with no change to its design content. Only status lines were
+  updated (Appendix D).
 
-**Baseline:** branch `claude/hb3-discovery` at `e8a0605` (revision 2 of this document; the HB-3 code is as of
-`60d004d`); `main` at `e3214537` (the HB-2 freeze). F1–F6.4, P1–P3, HB-1 and HB-2 are frozen. HB-3 is implemented and
-semantically closed; its freeze is pending. HB-4 onwards is not implemented. The sequencing is the owner's decision of
-2026-10-05:
+**Baseline:** branch `claude/hb3-discovery`:
+- revision 3 of this document was committed as `30bba72`;
+- the HB-3 freeze documentation as `7857347`;
+- the HB-3 code is as of `60d004d`.
+
+`main` is at `e3214537` (the HB-2 freeze). F1–F6.4, P1–P3, HB-1, HB-2 and HB-3 are frozen; HB-3 is frozen on the branch,
+and its merge to `main` is pending. HB-4 onwards is not implemented. The sequencing is the owner's decision of
+2026-10-05, as restated at the acceptance gate:
 
 ```text
-HB-3 freeze → F8 design freeze (the acceptance of this document) → HB-4 implementation
+HB-3 frozen → F8 revision 3 accepted/frozen → merge claude/hb3-discovery into main → verify the merged main
+→ establish the new frozen baseline → only then begin F8 implementation
 ```
 
 **Owner decisions (2026-10-05, §17):**
@@ -1098,11 +1105,8 @@ No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
 4. **Open and non-blocking:** OD-5, the choice of mode names and label words (§17).
 5. **Resolved in revision 3:** §20 criterion 6, the independent leakage review (Appendix B), with the corrections F-1
    to F-5 it required.
-6. **Before the F8 design freeze (process, not design):**
-   - the owner's final acceptance of revision 3, including F-1 to F-5;
-   - the formal acceptance of §20's criteria 2 and 4.
-
-   The HB-3 freeze comes first in the owner's sequencing.
+6. **Done (2026-10-05): the F8 design freeze.** HB-3 was frozen first (`7857347`). The owner's acceptance gate then
+   accepted revision 3, including F-1 to F-5 and §20's criteria 2 and 4 (Appendix D).
 
 ---
 
@@ -1110,12 +1114,16 @@ No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
 
 1. **Done (2026-10-05):**
    - the owner approved OD-1 to OD-3, did not adopt OD-4 and confirmed OD-6 (revision 2);
-   - the independent leakage review and its corrections were added (revision 3), and the document is **FROZEN /
-     ACCEPTANCE READY**.
+   - the independent leakage review and its corrections were added (revision 3);
+   - HB-3 was frozen, then the acceptance gate accepted revision 3: **F8 DESIGN FROZEN / ACCEPTED — REVISION 3**
+     (Appendix D).
+2. **Next, in the owner's sequence:**
+   1. merge `claude/hb3-discovery` into `main`;
+   2. verify the merged `main`;
+   3. establish the new frozen baseline.
 
-   The **F8 design freeze** is the owner's final acceptance of revision 3 (§20).
-2. **The order of the freezes and of HB-4.** The owner's sequence is HB-3 freeze → F8 design freeze → HB-4
-   implementation. HB-4 implements §3.4 and does not start before both freezes.
+   Only then does F8 implementation (F8-1 below) begin. HB-4 implements §3.4 and likewise does not start before the
+   merge, its verification and the new baseline.
 3. **F8-1:** a pure library (a new package, for example `worker/financial_asof/`) containing:
    - the availability and knowledge functions;
    - supersession derivation;
@@ -1147,27 +1155,28 @@ a design or implementation prerequisite (MA §43.1, §52).
 5. The compatibility audit (§16) is accepted: C-1 and C-2 are resolved by OD-5 and OD-3, and nothing frozen changes.
 6. An independent review re-derives the leakage guarantees I-1 and I-2 from §7.3.
 
-**Status at revision 3** (the criteria above are unchanged):
+**Status at acceptance (2026-10-05)** (the criteria above are unchanged):
 
 | # | Status |
 |---|---|
 | 1 | **Met.** The owner decided OD-1 to OD-3 on 2026-10-05 (§17) |
-| 2 | **Ready for acceptance.** Both are unchanged since revision 2. The owner reviewed revision 2 against the frozen F6.2, F6.3 and F6.4 boundaries; formal acceptance is part of the freeze |
+| 2 | **Met.** Accepted at the acceptance gate (2026-10-05): the F6.4 boundary with no F6.4 change, and the producer contract §3.4, both unchanged since revision 2 |
 | 3 | **Met** (§16, including the final consistency audit of revision 3) |
-| 4 | **Ready for acceptance.** Extended to T-40 and I-12, including the tests for F-1 to F-5. Acceptance is part of the freeze |
+| 4 | **Met.** Accepted at the acceptance gate (2026-10-05) as the implementation's exit criteria: T-1 to T-40, I-1 to I-12 with I-2r, and the mutation targets |
 | 5 | **Met.** C-2 is resolved (OD-3). C-1 is resolved in substance (§16); OD-5 is only the choice of words. Nothing frozen changes |
 | 6 | **Met, by Appendix B and only by it.** Appendix B re-derives I-1 and I-2 from §7.3 and the rules it rests on (§§4–8), and tests ten adversarial cases. §16's author audit does not count toward this criterion. The derivation goes through only with corrections F-1 to F-5, which revision 3 makes. Appendix B states who performed it |
 
 ---
 
-**Final status: F8 DESIGN FROZEN / ACCEPTANCE READY.**
+**Final status: F8 DESIGN FROZEN / ACCEPTED — REVISION 3.**
 - **Approved by the owner (2026-10-05):** OD-1 `f8.availability.1`, OD-2 `f8.supersession.1` and OD-3
   `f8.knowledge.1`. OD-4 is not adopted, and OD-6 is confirmed.
 - **Independent leakage review:** done (Appendix B). I-1 and I-2 hold for the corrected design, with I-2 scoped to
   `KNOWN` and `AVAILABLE` and I-2r covering `KNOWN_RECORDED`.
 - **No design blocker remains.** OD-5 (the names) is open and does not block.
-- **The F8 design freeze is the owner's final acceptance** of revision 3, including F-1 to F-5 and criteria 2 and 4.
-  It follows the HB-3 freeze. HB-4 follows both (§19).
+- **Accepted (2026-10-05):** revision 3, including F-1 to F-5 and criteria 2 and 4 (Appendix D). The acceptance
+  followed the HB-3 freeze.
+- **Next:** the merge, its verification and the new baseline. Only then do F8 implementation and HB-4 begin (§19).
 - **The implementation is not frozen:** it does not exist. No code, no migration (0017 included), and no frozen layer
   changes. The HB-4/HB-5 producer contract (§3.4) is unchanged.
 - **HB-P1** remains a deployment/runtime prerequisite for live Phase 2 execution only (§19).
@@ -1435,3 +1444,32 @@ copies the retrieval and first-seen times into its own snapshot.
   implemented and semantically closed, with its freeze pending.
 
 **Nothing removed.**
+
+---
+
+## Appendix D. Acceptance record (2026-10-05)
+
+**Accepted:** revision 3, as committed in `30bba72`. **F8 DESIGN FROZEN / ACCEPTED — REVISION 3.**
+
+**What the gate verified.** Before acceptance, the gate re-read this document and checked it against the repository at
+`7857347`:
+- **Prerequisites.** HB-3 is documented as implemented and frozen. This document was unchanged since `30bba72`.
+- **Revision 3 content.** F-1 to F-5 and Appendix B are present. OD-1 to OD-3 are as approved. AC-1 to AC-7 and P-3 are
+  intact.
+- **Positioning.** F8 sits between F6.4's immutable history and the downstream point-in-time datasets. It redefines no
+  F1–F6.4, HB-1 to HB-3, P2 or P3 semantics.
+- **Frozen boundary.** No migration (0016 unchanged, no 0017), schema or F8 code exists.
+
+**Changes made at acceptance: status only.** No rule, mode, invariant, test or interface changed. The status lines
+updated are:
+- the header (status, history, baseline, sequence);
+- §18 item 6;
+- §19 steps 1 and 2;
+- §20's status table (criteria 2 and 4: met);
+- the final status;
+- this appendix.
+
+The revision 3 record in Appendix C is kept as it was.
+
+**Implementation:** not started. F8-1 begins only after the merge of `claude/hb3-discovery` into `main`, the
+verification of the merged `main` and the new frozen baseline (§19).

@@ -1937,10 +1937,12 @@ Still open after real-data validation:
     Its design, `docs/F8_DESIGN.md`, passed the design/contract gate
     at revision 2 (READY: owner decisions OD-1 `f8.availability.1`,
     OD-2 `f8.supersession.1` and OD-3 `f8.knowledge.1`, 2026-10-05).
-    Revision 3 adds the independent leakage review and is FROZEN /
-    ACCEPTANCE READY: the F8 design freeze is pending the owner's
-    final acceptance. F8 is not implemented (no code, no migration
-    0017);
+    Revision 3 adds the independent leakage review; the owner's
+    acceptance gate accepted it on 2026-10-05: **F8 DESIGN FROZEN /
+    ACCEPTED --- REVISION 3**. F8 is not implemented (no code, no
+    migration 0017); its implementation begins only after the merge of
+    `claude/hb3-discovery` into `main`, the verification of the merged
+    `main` and the new frozen baseline;
 -   Phase 2 --- historical financial backfill --- remains the major
     architectural phase in progress. Only its first three
     implementation steps, HB-1 (the governed backfill ledger), HB-2
@@ -2406,8 +2408,9 @@ architecture should be implemented in dependency order.
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
 -   availability/supersession (F8; explicitly deferred by F6.4;
-    brought forward, see below) --- designed (`docs/F8_DESIGN.md`,
-    revision 3: FROZEN / ACCEPTANCE READY), not implemented.
+    brought forward, see below) --- designed and accepted
+    (`docs/F8_DESIGN.md`, revision 3: FROZEN / ACCEPTED), not
+    implemented.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
@@ -2428,12 +2431,11 @@ F8 is brought forward so that the document worker and F6 orchestration
 (HB-4, HB-5) do not hard-code assumptions about the canonical
 financial-truth layer. F8's design passed the design/contract gate at
 revision 2 (READY, 2026-10-05). Revision 3 adds the independent leakage
-review and is FROZEN / ACCEPTANCE READY; the F8 design freeze is
-pending the owner's final acceptance (`docs/F8_DESIGN.md`). F8 is not
-implemented. HB-3 is frozen (2026-10-05). HB-4 implementation starts
+review and was accepted on 2026-10-05: F8 DESIGN FROZEN / ACCEPTED ---
+REVISION 3 (`docs/F8_DESIGN.md`). F8 is not implemented. HB-3 is
+frozen (2026-10-05). F8 implementation, and HB-4 implementation, start
 only after all of the following:
 
--   the F8 design freeze;
 -   the merge of `claude/hb3-discovery` into `main`;
 -   the independent verification of the merged `main`;
 -   the new frozen baseline.
@@ -2456,10 +2458,9 @@ evidence (`worker/backfill_discovery/`), is implemented and frozen
 waits for HB-P1, a deployment prerequisite (§52), and follows the
 release sequence of §43.1. HB-4 to HB-6 (document worker; F6
 orchestration and audit; operations and pilot) are not implemented. The
-F8 design/contract gate has been passed (READY at revision 2; revision
-3 is FROZEN / ACCEPTANCE READY). HB-4 implementation starts only after
-the F8 design freeze, the merge into `main`, its verification and the
-new frozen baseline (Phase 1, above).
+F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05).
+HB-4 implementation starts only after the merge into `main`, its
+verification and the new frozen baseline (Phase 1, above).
 
 ## Phase 3 --- Market feature foundation
 
