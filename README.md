@@ -18,20 +18,25 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1 and HB-2. F6.2 is an accepted design; its storage amendments are
-implemented by F6.4.
+validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1, HB-2 and HB-3. HB-3 (discovery and issuer evidence) is frozen on
+the branch `claude/hb3-discovery`, and its merge to `main` is pending. F6.2 is an accepted design; its storage
+amendments are implemented by F6.4.
 
-**Not implemented:** F8 (availability, supersession, as-of), Phase 2 beyond HB-2 (HB-3 to HB-6), and every later
-roadmap phase (Master Architecture §55).
+**Live HB-3 discovery** waits for the deployment prerequisite HB-P1.
+
+**Not implemented:** F8 (availability, supersession, as-of), Phase 2 HB-4 to HB-6, and every later roadmap phase
+(Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
 parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
 
 # Platform (P1): local server + PostgreSQL 17
 
-Production now runs on a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
-runtime); GitHub is source control only. Provisioning, the migration runner/ledger, roles, append-only protection and
-backups are documented in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
+The deployment target is a local Ubuntu 24.04 server with PostgreSQL 17 (no Supabase, Vercel or GitHub Actions
+runtime); GitHub is source control only. **That server has not been provisioned yet:** there is no production database,
+and no production CSE capture has run. Setting it up is a deployment step after the software freeze (Master
+Architecture §54). Provisioning, the migration runner/ledger, roles, append-only protection and backups are documented
+in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ONLY through
 `python -m worker.ops.migrate apply` (as `cse_migrator`). The sequence is 0001–0005 and 0007–0016; `0006` stays unused,
 and the local security boundary is 0009–0011 (Master Architecture §51). Older sections below that mention Supabase,
 or tell you to apply a single migration by hand, are historical.
@@ -73,7 +78,7 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **only the first two steps are done**:
+and **only the first three steps are done** (frozen; HB-3 is on its branch, and its merge to `main` is pending):
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -89,8 +94,17 @@ and **only the first two steps are done**:
   package `worker/backfill_transport/`, through which every Phase 2 CSE request must go: owner arming, blocks, budgets,
   P3's quiet window, at least 1.5 s spacing under P2's exclusive lock, each request recorded in the HB-1 ledger before it
   is sent, and spool-first crash recovery (including the B-HB2-1 correction). It has no command or timer (HB-6).
-- **HB-3 to HB-6 are not implemented:** discovery and issuer evidence; document worker; F6 orchestration and audit;
-  operations and pilot.
+- **HB-3 — Discovery and Issuer Evidence: implemented and frozen** (final freeze audit 2026-10-05; merge to `main`
+  pending). It is the library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per
+  security of the verified
+  security master, each request one F1 run and one governed HB-2 attempt (`attempts_per_json_request = 1`), the G2
+  in-flight lease guard, G10 terminalisation, the issuer-evidence import with the hold rule, and the link passes.
+- **HB-P1 is a deployment prerequisite, not an implementation prerequisite, and it is not satisfied:** HB-3 refuses
+  live discovery until the database on the deployment server (not yet provisioned) holds a derived P2 security master
+  (`allSecurityCode`), produced after the software freeze by the first governed P2 capture (software freeze → server
+  setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → `allSecurityCode` verification → derived security
+  master → HB-P1 satisfied → live HB-3).
+- **HB-4 to HB-6 are not implemented:** document worker; F6 orchestration and audit; operations and pilot.
 - **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
   arming decision. Any live Phase 2 request still needs owner
   decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent

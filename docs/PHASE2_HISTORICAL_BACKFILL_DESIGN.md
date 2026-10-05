@@ -2,8 +2,10 @@
 
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
-implemented and frozen** on `main` at `1896280` (Master Architecture §52). HB-3 to HB-6 are not implemented, **Phase 2
-as a whole is not implemented**, and no Phase 2 CSE request has been made.
+implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
+issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
+`claude/hb3-discovery`, merge to `main` pending (see below). HB-4 to HB-6 are not implemented, **Phase 2 as a whole is
+not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -46,6 +48,126 @@ Dead slices are expired by the transport's own spool-aware recovery (a spooled r
 without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.
 
 HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request.
+
+**HB-3 implementation status** (implemented and frozen, 2026-10-05; the design text is unchanged). HB-3 is the library package
+`worker/backfill_discovery/`, built under the HB-3 design gate's owner decisions:
+- **D-HB3-1 (Option B):** discovery runs only under an arming with `attempts_per_json_request = 1` and
+  `item_max_attempts` at most 3. Each claim begins one F1 run (F1's own `begin_run`, before the request intent), makes
+  exactly one governed HTTP attempt through HB-2, and finishes that F1 run with F1's own helpers from the attempt's
+  recorded response. A retry is a later claim with its own F1 run. HB-Q8's three attempts are three such cycles.
+  Consequence under HB-2's frozen rule (§16.3: a 429 that exhausts the attempts is a block): with one attempt per
+  governed call, the **first** HTTP 429 of a discovery request is recorded as a block and stops Phase 2 until the
+  owner acknowledges it; it is never retried after `Retry-After` inside the call.
+- **D-HB3-2 (G2):** a discovery slice never releases its lease while an item claimed under it is in flight. Handled
+  stops record the item's event first; any other exit closes the HB-2 slice with a non-stop error, so the lease stays
+  active, the connection is discarded, and the next slice recovers the item from evidence.
+- **G10:** an item whose claims reached the armed maximum is made final in one transaction, with no request: evidence
+  wins (a successful F1 run of the request), otherwise `failed` with a reason, naming its last F1 run only when that run
+  itself failed.
+- HB-Q5 and HB-Q6 as approved: listings only for the verified security master, no delisted-security discovery, no
+  write to `companies`; the hold rule (HB-I-HOLD) applied to the IE-2 and IE-4 batches, holds recorded as L7 rows.
+- **HB-U5 discovery closure (owner decision, 2026-10-05, Option A: current-plan closure).** This resolves the
+  closure-semantics issue found in the HB-3 audit. **Discovery closure is current-plan closure. Historical/out-of-plan
+  discovery items remain preserved and auditable but do not block closure of the currently armed plan.**
+  - **The current plan** is every feed month of the currently armed whole-month window W, plus exactly one listing
+    per security of the currently verified security master (HB-P1). One constructor (`plan.Plan.of`, from the arming
+    in force and the verified security master) supplies plan membership to planning (`create_plan_items`), claiming
+    (the discovery slice) and closure, so they cannot use different universes.
+  - **Closed** means that every current-plan item exists in the ledger and is final. A plan item that has not been
+    created yet (for example a month added by a wider W) keeps discovery open.
+  - **Out-of-plan items** (outside the armed window, or no longer in the verified security master) are never
+    deleted, cancelled or rewritten to a final state because they are out of plan. Their append-only history is
+    unchanged; recovery and G10 apply to them as to any item.
+  - **Anomaly behaviour.** The closure pass records each out-of-plan item as an immutable class-3 anomaly
+    (`discovery_item_out_of_plan`, §19.1): the item, the plan basis it was created under, the current plan basis
+    (arming, window, security master), the reason and its state. It is `open` while the item is not final. Recording
+    the same item under the same basis and state again adds nothing; a new state or plan basis is a new record.
+  - **Re-entry.** An item that becomes part of a later plan is the same ledger item (its natural key): never
+    duplicated. Its claims since its last re-queue still count, its F1 evidence still takes part in evidence-wins
+    and G10, and a final item stays final without a new request.
+  - **IE-4** (the closure pass) runs only once the current plan is closed. It never runs merely because every ledger
+    row is final, and stale out-of-plan items never block it.
+- **IE-4 is plan-versioned (owner decision, 2026-10-05).** This resolves the last HB-3 audit point: a single fixed
+  `link_pass:2` used to satisfy IE-4 once forever, so a later changed plan never got its IE-4.
+  - **One plan, one fingerprint.** The plan fingerprint is the SHA-256 of the canonical JSON (sorted keys, no
+    whitespace, ASCII) of the plan's identity: the armed window W and the planned securities, which determine exactly
+    the plan's natural keys. One helper computes it (`plan.fingerprint_of`, via `Plan.fingerprint`).
+    - It holds no timestamp, no random or database-generated id and no evidence provenance: a new arming decision or
+      a fresh capture of the same universe (which HB-P1's freshness bound requires at least weekly) is the same plan.
+    - Any change of W, or of the verified universe (a security leaving or joining), is a different plan.
+    - The provenance (arming id, capture run, `allSecurityCode` response, its time and body hash) is recorded beside
+      the fingerprint in the pass's details.
+    - **Closed owner decision (2026-10-05): plan identity, not evidence provenance, determines the plan version.**
+      The identity is the armed whole-month window W and the verified security-master universe. Excluded on purpose:
+      arming database ids, P2 capture run ids, `observed_at`, body hashes and every other capture or provenance
+      identifier. Reasons:
+      1. the plan's natural work universe is what decides whether the plan changed;
+      2. fresh HB-P1 captures can carry different provenance while producing the same verified universe;
+      3. the 7-day freshness rule would otherwise create artificial plan versions;
+      4. P1 → P2 → P1 re-entry must be able to reuse the original plan's successful IE-4 pass;
+      5. the provenance is recorded beside the fingerprint, not discarded.
+  - **One successful IE-4 pass satisfies exactly one fingerprint.** HB-1 fixes a link pass's natural key to
+    `link_pass:<n>`, so a plan's IE-4 pass takes the next free number and carries the fingerprint in its immutable
+    details. The plan's pass is the lowest-numbered one carrying its fingerprint.
+  - **Identical plans are idempotent.** For the same plan, or the same plan re-entering after another, the closure
+    pass returns the existing pass (`already`): no second IE-4 execution, no second pass, no request.
+  - **Changed plans need their own closure and IE-4 pass.** A pass is created only after that plan's current-plan
+    closure: a fingerprint alone never runs IE-4. An earlier plan's successful pass never satisfies a new plan. IE-2
+    (`link_pass:1`) is still the prerequisite.
+  - **Previous passes are immutable historical evidence.** They are never deleted, rewritten or cancelled.
+  - **Late passes** (§7.4 step 5) need the successful IE-4 pass of the current plan, and record its fingerprint and
+    pass.
+  - **No HB-1 or HB-2 change is required:** no new state, item kind, migration or key format.
+
+It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
+changes no frozen file. The §23.3 discovery replay is `tests/test_hb3_replay_postgres.py`: it needs the RDV evidence
+outside Git (`CSE_F6_CORPUS_DIR`, `CSE_F0_CAPTURE_DIR`) and `P1_PG_BINDIR`, and it skips without them; a skip is an
+environment limitation, not evidence of equivalence.
+
+**HB-3 freeze (2026-10-05).** HB-3 is implemented and frozen. Its code is as of `60d004d` on `claude/hb3-discovery`,
+unchanged at the audited HEAD `30bba72`. The merge into `main` and the new frozen baseline follow the owner's
+acceptance of F8 revision 3 (MA §55).
+
+The final freeze audit checked the code, the tests and this documentation against each settled decision above:
+D-HB3-1, G2, G10, current-plan closure, plan-versioned IE-4, HB-Q5/HB-Q6, HB-P1 and the recovery state machine. It
+found no failing rule.
+
+- **Offline Linux run.** The `cse-p1-test` container (Python 3.12, PostgreSQL 17, no network), with the RDV evidence
+  mounted:
+  - 1553 passed, 46 skipped (pinned Poppler absent, network tests off, no `DATABASE_URL`; none is an HB test) and 2
+    expected failures;
+  - 1 failure: `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, the known frozen HB-2 fake clock,
+    under owner change control and left unchanged.
+- **Per suite:**
+  - HB-3: 101 of 101 passed (38 unit, 57 PostgreSQL, and the 6 tests of the §23.3 F0/RDV replay);
+  - HB-1: 47 of 47 passed;
+  - HB-2: 57 passed, plus the known failure.
+- **Windows** (Python 3.14): 1225 passed, 377 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Mutation testing:** all 58 deliberately planted HB-3 faults were caught, each by the test aimed at its rule. They
+  cover D-HB3-1, G2, G10, accounting, HB-P1, the hold rule, closure and plan-versioned IE-4.
+- **Frozen boundary.** Against `main` (`e3214537`), only the documentation, the README, the three HB-3 test files and
+  `worker/backfill_discovery/` changed:
+  - migration 0016 is unchanged (SHA-256 `f27c34a1…`), and there is no migration 0017;
+  - no grant, role, row-level security, `SECURITY DEFINER`, lock key, entry point or timer was added;
+  - HB-1's, HB-2's and HB-3's pins and static checks pass.
+- **Observation (not a failing rule).** In G10's evidence-wins terminalisation, and in a live failure at the claim
+  maximum, the event records C and A and names its evidence. The armed maximum M is reached through the event's lease,
+  whose details hold the arming. Only the start-of-slice `failed` terminalisation states C, A and M in its reason.
+- **Known limits, unchanged:**
+  - the replay needs the out-of-Git RDV evidence;
+  - HB-P1 is not satisfied, so no live HB-3 discovery has run.
+
+**HB-P1 is a deployment / runtime prerequisite, not an implementation prerequisite.** HB-3 may be implemented and
+tested offline before any production security-master capture exists. Live HB-3 discovery remains forbidden until HB-P1
+is satisfied in the deployment environment: every HB-3 entry point that could make a discovery request (a discovery
+slice, the listing plan, the issuer import and link passes) refuses unless the database holds a derived P2 market
+capture with a verified, archived `allSecurityCode` within the HB-Q8 freshness bound. Nothing in HB-3 creates that
+evidence. HB-P1 is not satisfied: the deployment server has not been provisioned yet, so no production database or
+production capture exists. Offline tests produce it only in throwaway databases, through P2's own capture code driven by a scripted
+transport; that never satisfies production HB-P1. The deployment sequence is:
+
+`software freeze → server setup → HB-X2(b) → CSE_CAPTURE_CONTACT_EMAIL → P2 capture → allSecurityCode verification →
+derived security master → HB-P1 satisfied → live HB-3`
 
 **Date:** 2026-10-01.
 
@@ -108,8 +230,10 @@ The only new elements are infrastructure:
 - an issuer-evidence acquisition procedure around the frozen F5 rule;
 - a read-only coverage audit and anomaly catalogue.
 
-**Not implemented here and not started:** F8 (availability, supersession, as-of), the full F4 structure persistence
-phase, continuous collection after the backfill, forecasting and everything after it in MA §55.
+**Not implemented here and not started:** the full F4 structure persistence phase, continuous collection after the
+backfill, forecasting and everything after it in MA §55. **Not implemented here:** F8 (availability, supersession,
+as-of). Its design is `docs/F8_DESIGN.md` (FROZEN / ACCEPTED, revision 3, 2026-10-05), and its implementation has not
+started.
 
 **Design blockers** (detail in §26):
 - **HB-X1.** A durable, append-only backfill ledger in PostgreSQL needs new tables. No existing table can hold it
@@ -329,7 +453,8 @@ Two observations seen in F0 are not a Phase 2 source unless the owner approves o
   These helpers are module-level functions of the frozen `report_discovery`. Calling them, rather than rebuilding the
   run summary, is what keeps a single interpretation of F1. F1 persists only part of the summary (`_finish`'s
   `details`). The rest (duplicate ids, missing-path ids) is recomputed by the audit from the archived response (L5).
-- **HB-U5. Discovery closure.** Discovery is closed when:
+- **HB-U5. Discovery closure.** (Owner decision, 2026-10-05: closure is current-plan closure. See "HB-3
+  implementation status" above.) Discovery is closed when:
   - every feed month of W and every listing of the plan has reached a terminal state (succeeded, or failed after its
     bounded attempts, §14);
   - the issuer-evidence stage (§7) has run.
@@ -1615,6 +1740,19 @@ archive-only `reprocess` of one.
 Every step is new files only, apart from the owner-approved migration and the two frozen-test edits of HB-X3. Every
 step is offline, with no CSE contact, until HB-6. Each ends with its own self-audit and independent review. Nothing
 proceeds past a gate without the owner.
+
+**Sequencing (owner decision, 2026-10-05): HB-3 freeze → F8 design/contract gate → subsequent backfill phases
+(HB-4 onwards).** F8 (availability, supersession, as-of; Master Architecture §55 Phase 1) is brought forward as the
+next architecture gate after HB-3 is frozen, so that the document worker and F6 orchestration (HB-4, HB-5) do not
+hard-code assumptions about the canonical financial-truth layer.
+- F8's design (`docs/F8_DESIGN.md`) passed the design/contract gate at revision 2 (READY, 2026-10-05).
+- Revision 3 adds the independent leakage review and was accepted on 2026-10-05: F8 DESIGN FROZEN / ACCEPTED —
+  REVISION 3.
+- HB-3 is frozen (2026-10-05). F8 is not implemented. F8 implementation, and HB-4 implementation, start only after all
+  of these:
+  - the merge into `main`;
+  - its verification;
+  - the new frozen baseline.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|

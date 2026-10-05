@@ -1355,7 +1355,7 @@ forecast
 
 # 43. Local Infrastructure
 
-Target environment:
+Production target environment:
 
 -   Ubuntu 24.04 LTS;
 -   PostgreSQL 17;
@@ -1366,6 +1366,241 @@ Target environment:
 -   encrypted off-site backup.
 
 GitHub remains source control only.
+
+This is the production target. The production server has not been
+provisioned yet (§52, §54).
+
+## 43.1 Environments: Docker staging and integration
+
+**Status:** the approved, intended staging and integration strategy
+(owner decision). It has not been built or deployed: no Docker file,
+compose file, staging image or CI/CD configuration exists for it.
+
+### Environment progression
+
+``` text
+Development
+→ Docker Staging/Integration
+→ Full Acceptance/Frozen Build
+→ Production Deployment
+→ Production Operation
+```
+
+-   **Development:** implementation and offline tests. Each
+    implementation step is audited and frozen on its own (for example
+    Phase 2 HB-1 and HB-2, §52).
+-   **Docker Staging/Integration:** the complete software stack, built
+    from the frozen components, runs together in a reproducible
+    Docker-based environment, on the eventual server or on a separate
+    test machine, before the production application is launched. It
+    exists so that the whole application can be exercised end to end
+    (integration, recovery, concurrency, migrations, permissions,
+    backup/restore, performance) without putting anything into live
+    production.
+-   **Full Acceptance/Frozen Build:** the owner accepts the integrated
+    build that staging validated. That exact build (the same commit and
+    the same pinned dependencies) is the one deployed. A defect found
+    in staging goes back through change control: a frozen component
+    changes only through its own change-control decision, and the
+    corrected build is validated in staging again.
+-   **Production Deployment:** a later, controlled
+    deployment-engineering phase: production server provisioning, the
+    rehearsed installation and production smoke tests.
+-   **Production Operation:** live execution under the release gates
+    (§46, §54, and the owner's arming decisions for Phase 2).
+
+Docker staging is a pre-production validation environment. It is not
+production, and it does not replace the production architecture.
+
+### What staging must be able to reproduce
+
+At minimum:
+
+-   PostgreSQL 17, the production major version;
+-   the application and its services;
+-   the acquisition workers (P2 market capture);
+-   the historical backfill workers (Phase 2);
+-   schedulers and timers where applicable (P3: PostgreSQL decides,
+    the timer only wakes it; §44);
+-   the test runner, running the offline suites against the staging
+    stack;
+-   the local filesystem spool and archive behaviour (spool first,
+    fsync, atomic rename, hash; §48);
+-   the database roles and permissions of §50, including the owner
+    path and least-privilege grants;
+-   migrations, applied only through the migration runner and its hash
+    ledger, over the full lineage (§51);
+-   leases and concurrency: one CSE slice at a time, expiry of a dead
+    holder's lease by another session, duplicate-timer and
+    manual/scheduled concurrency protection;
+-   PostgreSQL locking behaviour, including P2's global advisory lock
+    held exclusively;
+-   append-only enforcement for every role;
+-   crash and recovery behaviour: killed processes, stale runs,
+    spool-first recovery;
+-   retry and recovery behaviour within the governed request rules (no
+    hidden retries);
+-   interrupted slices, recovered by another session;
+-   backup and restore validation: local dumps, the backup ledger,
+    encrypted off-site sync to a test destination, and restore checks
+    (§49);
+-   resource and performance testing: database growth, request pacing,
+    time per unit of work, free space;
+-   the ML and data-processing dependencies of later phases (§55), as
+    the project grows.
+
+The exact container and service decomposition, the images, the
+orchestration technology and the topology are deployment-engineering
+decisions. They are not frozen here.
+
+### Boundaries of staging
+
+-   **No live CSE request.** Staging simulates CSE with the scripted
+    transports and test fixtures the offline suites already use.
+    Recorded CSE evidence is used only where G-1's controls allow it:
+    raw CSE responses never enter Git and are never redistributed, and
+    G-1's controls (§46) apply to any machine that holds CSE data. The
+    first live CSE request is a production event (§54).
+-   **Staging evidence is never production evidence.** A security
+    master produced in staging (for example by P2's own capture code
+    driven by a scripted transport) is test evidence only. It does not
+    satisfy HB-P1 and is never copied into production.
+-   **The frozen build runs as it is.** Staging adds no migration,
+    schema change, role, grant, entry point or timer of its own. Only
+    its configuration is test-specific, for example a test backup
+    destination.
+-   **Differences are recorded.** Where a container cannot reproduce a
+    production behaviour exactly (for example systemd as PID 1, or
+    peer authentication across container boundaries), staging records
+    the difference, and the production smoke tests verify that
+    behaviour on the provisioned server.
+
+### Production remains distinct
+
+The production target above is unchanged:
+
+-   native PostgreSQL 17 on the local Ubuntu 24.04 server;
+-   local Unix socket with peer authentication;
+-   systemd as the wake-only timer mechanism (§44);
+-   the local filesystem spool and backup root;
+-   the dedicated database roles of §50;
+-   local server deployment.
+
+Docker staging reproduces the observable operational contracts and the
+security and data behaviour of that target: the same frozen code,
+migrations, roles and privileges, append-only guards, locks, leases,
+and spool and backup semantics. It does not decide how production is
+deployed. **Production is not declared to run in Docker.** The final
+production deployment may use native services, or another deployment
+arrangement that the owner approves later.
+
+### Reproducibility
+
+Staging is version-pinned so that a frozen build is tested against a
+known environment. Every staging run records:
+
+-   the commit under test;
+-   the PostgreSQL major and minor version;
+-   the Python version and pinned dependencies;
+-   the external tool versions the frozen stages pin (for example
+    Poppler for F4);
+-   the operating-system base.
+
+A result can therefore be traced to exactly what was tested and the
+run repeated. A staging result is evidence about the build and the
+environment it records, not about any other.
+
+The existing Docker-based tests are precursors, not the staging
+environment:
+
+-   `ops/tests/provision_in_docker.sh`: P1 clean-server provisioning
+    on a fresh `ubuntu:24.04` container;
+-   `ops/tests/provision_p3_in_docker.sh`: P1 and P3 with systemd as
+    PID 1;
+-   the offline suites, which implementation and audit runs execute in
+    throwaway Ubuntu 24.04 / PostgreSQL 17 containers without a
+    network.
+
+They test parts of the stack and establish none of the staging results
+above.
+
+### The release sequence before live execution (Phase 2)
+
+``` text
+Software implementation
+→ audits/freezes
+→ Docker staging/integration validation
+→ crash/recovery testing
+→ backup/restore testing
+→ permissions/security validation
+→ deployment rehearsal
+→ production server provisioning
+→ production smoke tests
+→ live execution
+```
+
+-   The steps up to and including the deployment rehearsal run in
+    staging, and none of them contacts CSE.
+-   "Audits/freezes" are the per-step software freezes. Staging
+    validates the integrated frozen build before its full acceptance
+    (the progression above).
+-   Production smoke tests exercise the provisioned server itself and
+    make no CSE request.
+-   Live execution begins with the first production capture (§54), a
+    controlled release event under G-1 (§46).
+
+For Phase 2, live execution also needs the HB-P1 chain. It starts at
+server setup (production server provisioning above) and is unchanged:
+
+``` text
+server setup
+→ HB-X2(b)
+→ CSE_CAPTURE_CONTACT_EMAIL
+→ P2 production capture
+→ allSecurityCode verification
+→ derived security master
+→ HB-P1 satisfied
+→ live HB-3
+```
+
+-   The production smoke tests fall between server setup and the P2
+    production capture.
+-   Every live Phase 2 request also stays gated by owner decision HB-X2
+    and an owner arming decision (§52).
+
+### HB-P1: implementation versus live execution
+
+-   **Implementation prerequisite: no.** HB-P1 does not block the
+    offline implementation or testing of HB-3. Offline tests produce
+    security-master evidence only in throwaway databases.
+-   **Live-execution prerequisite: yes.** HB-P1 must be satisfied in
+    the production database before any live HB-3 discovery. Every HB-3
+    entry point that could make a discovery request refuses without it
+    (§52).
+-   **Docker staging cannot satisfy it.** Staging can validate the
+    software and the deployment behaviour, including that HB-3 refuses
+    without HB-P1 and behaves correctly with test evidence. It cannot
+    fabricate or substitute for real production security-master
+    evidence. HB-P1 is satisfied only by the derived P2 production
+    capture of the chain above.
+
+### Deployment boundary
+
+Production deployment engineering is a later, controlled phase. This
+section records the strategy only. It introduces none of the following:
+
+-   a migration or schema change;
+-   a role or grant;
+-   an entry point or timer;
+-   production server configuration;
+-   a Docker file or compose file;
+-   CI/CD configuration;
+-   implementation code.
+
+It changes no frozen decision; HB-1, HB-2 and every earlier frozen
+stage are unchanged. The concrete staging design (images, services,
+orchestration, topology) is decided during deployment engineering,
+under the owner's control.
 
 ------------------------------------------------------------------------
 
@@ -1581,7 +1816,9 @@ Frozen/accepted:
 -   P2;
 -   P3;
 -   Phase 2 HB-1 (governed backfill ledger);
--   Phase 2 HB-2 (governed CSE transport).
+-   Phase 2 HB-2 (governed CSE transport);
+-   Phase 2 HB-3 (discovery and issuer evidence; frozen on the branch
+    `claude/hb3-discovery`, merge to `main` pending).
 
 F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 §10--§11) are implemented by F6.4 (migration 0015).
@@ -1695,13 +1932,24 @@ Still open after real-data validation:
 
 -   F8 availability/supersession: errata, amendment and restatement
     supersession, the choice of availability time, and commit-time
-    as-of;
--   Phase 2 --- historical financial backfill --- remains the next
-    major architectural phase. Only its first two implementation
-    steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
-    CSE transport), both below, are implemented and frozen; HB-3 to
-    HB-6 are not implemented, and Phase 2 as a whole is not
-    implemented.
+    as-of. Owner decision (2026-10-05): F8 is brought forward, ahead
+    of HB-4 (HB-3 freeze → F8 design freeze → HB-4 implementation).
+    Its design, `docs/F8_DESIGN.md`, passed the design/contract gate
+    at revision 2 (READY: owner decisions OD-1 `f8.availability.1`,
+    OD-2 `f8.supersession.1` and OD-3 `f8.knowledge.1`, 2026-10-05).
+    Revision 3 adds the independent leakage review; the owner's
+    acceptance gate accepted it on 2026-10-05: **F8 DESIGN FROZEN /
+    ACCEPTED --- REVISION 3**. F8 is not implemented (no code, no
+    migration 0017); its implementation begins only after the merge of
+    `claude/hb3-discovery` into `main`, the verification of the merged
+    `main` and the new frozen baseline;
+-   Phase 2 --- historical financial backfill --- remains the major
+    architectural phase in progress. Only its first three
+    implementation steps, HB-1 (the governed backfill ledger), HB-2
+    (the governed CSE transport) and HB-3 (discovery and issuer
+    evidence), all below, are implemented and frozen (HB-3 on its
+    branch; its merge to `main` is pending); HB-4 to HB-6 are not
+    implemented, and Phase 2 as a whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -1852,6 +2100,68 @@ Correction included in the frozen baseline:
 HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
+
+Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented and
+frozen** (final freeze audit 2026-10-05; code as of `60d004d` on the
+branch `claude/hb3-discovery`; the merge to `main` follows the owner's
+acceptance of F8 revision 3). It is the library package
+`worker/backfill_discovery/`, built under the HB-3 design
+gate's owner decisions: D-HB3-1 (one F1 run per actual HTTP attempt:
+discovery runs only under an arming with `attempts_per_json_request =
+1` and an item maximum of at most 3, each claim being one separately
+governed request with its own F1 run), D-HB3-2 / G2 (a discovery slice
+never releases its lease while an item claimed under it is in
+flight), G10 (an item at its claim maximum is made final atomically,
+evidence first, with no request), HB-Q5 and HB-Q6, and the HB-U5
+closure decision (current-plan closure: discovery is closed when every
+item of the currently armed window and verified security master is
+final; items outside that plan are kept unchanged, recorded as
+anomalies and never block closure) and plan-versioned IE-4 (one IE-4
+pass per distinct current plan, identified by a deterministic plan
+fingerprint of the armed window and the verified universe: the same
+plan is idempotent, a changed plan needs its own closure and pass, and
+earlier passes stay as immutable history; closed owner decision: plan
+identity, not evidence provenance, determines the plan version). It
+adds no
+migration, grant, role, row-level security, `SECURITY DEFINER`, lock
+key or entry point, and changes no frozen file.
+
+The final HB-3 freeze audit (2026-10-05) checked the code, the tests
+and this documentation against D-HB3-1, G2, G10, current-plan closure,
+plan-versioned IE-4, HB-Q5/HB-Q6, HB-P1 and the recovery state
+machine. It found no failing rule.
+
+-   **Offline Linux run** (Python 3.12, PostgreSQL 17, with the RDV
+    evidence mounted): 1553 passed, 46 skipped and 2 expected failures.
+    One test failed: the known frozen HB-2 clock test, which is under
+    owner change control.
+-   **HB-3 tests:** all 101 passed, including the six-test F0/RDV
+    replay.
+-   **Mutation testing:** all 58 deliberately planted HB-3 faults were
+    caught.
+-   **Frozen boundary:** against `main`, no frozen file, migration,
+    grant, role, row-level security, `SECURITY DEFINER` or lock key
+    changed.
+
+The Phase 2 design (HB-3 implementation status) records the details.
+
+HB-P1 is a **deployment / runtime prerequisite, not an implementation
+prerequisite**. HB-3 may be implemented and tested offline before any
+production security-master capture exists. Live HB-3 discovery remains
+forbidden until HB-P1 is satisfied in the production deployment
+environment (never by Docker staging, §43.1): every HB-3 entry point
+that could make a discovery request refuses
+unless the database holds a derived P2 market capture with a verified
+archived `allSecurityCode` within the freshness bound, and nothing in
+HB-3 creates that evidence. HB-P1 is not satisfied: the deployment
+server has not been provisioned yet, so no production database or
+production capture exists. The deployment sequence is: software
+freeze → Docker staging/integration validation and deployment
+rehearsal (§43.1) → server setup → HB-X2(b) →
+`CSE_CAPTURE_CONTACT_EMAIL` → P2 production capture →
+`allSecurityCode` verification → derived security master → HB-P1
+satisfied → live HB-3. Docker staging validates the software and the
+deployment behaviour; it cannot satisfy HB-P1 (§43.1).
 
 Important accepted commits:
 
@@ -2059,7 +2369,12 @@ release event.
 
 Before it:
 
+-   the frozen build validated in Docker staging/integration, with
+    crash/recovery, backup/restore and permissions/security
+    validation and a deployment rehearsal (§43.1);
 -   server provisioned;
+-   production smoke tests passed on the provisioned server, without
+    CSE contact (§43.1);
 -   clock synchronized;
 -   backups configured;
 -   scheduler verified;
@@ -2092,13 +2407,38 @@ architecture should be implemented in dependency order.
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
--   availability/supersession (F8; explicitly deferred by F6.4).
+-   availability/supersession (F8; explicitly deferred by F6.4;
+    brought forward, see below) --- designed and accepted
+    (`docs/F8_DESIGN.md`, revision 3: FROZEN / ACCEPTED), not
+    implemented.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
-two steps, HB-1 and HB-2. Phase 2 --- historical financial backfill --- remains the
-next major architectural phase; its design decides real-data
-validation Q1 (issuer evidence; §52).
+three steps, HB-1, HB-2 and HB-3 (HB-3 frozen on its branch; its merge
+to `main` is pending). Phase 2 --- historical financial backfill ---
+remains the major architectural phase in progress; its design decides
+real-data validation Q1 (issuer evidence; §52).
+
+Sequencing (owner decision, 2026-10-05):
+
+``` text
+HB-3 freeze
+→ F8 design/contract gate
+→ subsequent backfill phases (HB-4 onwards)
+```
+
+F8 is brought forward so that the document worker and F6 orchestration
+(HB-4, HB-5) do not hard-code assumptions about the canonical
+financial-truth layer. F8's design passed the design/contract gate at
+revision 2 (READY, 2026-10-05). Revision 3 adds the independent leakage
+review and was accepted on 2026-10-05: F8 DESIGN FROZEN / ACCEPTED ---
+REVISION 3 (`docs/F8_DESIGN.md`). F8 is not implemented. HB-3 is
+frozen (2026-10-05). F8 implementation, and HB-4 implementation, start
+only after all of the following:
+
+-   the merge of `claude/hb3-discovery` into `main`;
+-   the independent verification of the merged `main`;
+-   the new frozen baseline.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2112,9 +2452,15 @@ Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 3).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
-is implemented and frozen (`18962805`; §52). HB-3 to HB-6 (discovery
-and issuer evidence; document worker; F6 orchestration and audit;
-operations and pilot) are not implemented.
+is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
+evidence (`worker/backfill_discovery/`), is implemented and frozen
+(2026-10-05; on its branch, merge to `main` pending). Live discovery
+waits for HB-P1, a deployment prerequisite (§52), and follows the
+release sequence of §43.1. HB-4 to HB-6 (document worker; F6
+orchestration and audit; operations and pilot) are not implemented. The
+F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05).
+HB-4 implementation starts only after the merge into `main`, its
+verification and the new frozen baseline (Phase 1, above).
 
 ## Phase 3 --- Market feature foundation
 
@@ -2260,7 +2606,9 @@ Testing must cover:
 -   leases;
 -   backups;
 -   restore;
--   systemd.
+-   systemd;
+-   end-to-end validation of the frozen build in Docker staging before
+    production (§43.1).
 
 ------------------------------------------------------------------------
 
