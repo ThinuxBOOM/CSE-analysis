@@ -86,6 +86,28 @@ HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request
     and G10, and a final item stays final without a new request.
   - **IE-4** (the closure pass) runs only once the current plan is closed. It never runs merely because every ledger
     row is final, and stale out-of-plan items never block it.
+- **IE-4 is plan-versioned (owner decision, 2026-10-05).** This resolves the last HB-3 audit point: a single fixed
+  `link_pass:2` used to satisfy IE-4 once forever, so a later changed plan never got its IE-4.
+  - **One plan, one fingerprint.** The plan fingerprint is the SHA-256 of the canonical JSON (sorted keys, no
+    whitespace, ASCII) of the plan's identity: the armed window W and the planned securities, which determine exactly
+    the plan's natural keys. One helper computes it (`plan.fingerprint_of`, via `Plan.fingerprint`).
+    - It holds no timestamp, no random or database-generated id and no evidence provenance: a new arming decision or
+      a fresh capture of the same universe (which HB-P1's freshness bound requires at least weekly) is the same plan.
+    - Any change of W, or of the verified universe (a security leaving or joining), is a different plan.
+    - The provenance (arming id, capture run, `allSecurityCode` response, its time and body hash) is recorded beside
+      the fingerprint in the pass's details.
+  - **One successful IE-4 pass satisfies exactly one fingerprint.** HB-1 fixes a link pass's natural key to
+    `link_pass:<n>`, so a plan's IE-4 pass takes the next free number and carries the fingerprint in its immutable
+    details. The plan's pass is the lowest-numbered one carrying its fingerprint.
+  - **Identical plans are idempotent.** For the same plan, or the same plan re-entering after another, the closure
+    pass returns the existing pass (`already`): no second IE-4 execution, no second pass, no request.
+  - **Changed plans need their own closure and IE-4 pass.** A pass is created only after that plan's current-plan
+    closure: a fingerprint alone never runs IE-4. An earlier plan's successful pass never satisfies a new plan. IE-2
+    (`link_pass:1`) is still the prerequisite.
+  - **Previous passes are immutable historical evidence.** They are never deleted, rewritten or cancelled.
+  - **Late passes** (§7.4 step 5) need the successful IE-4 pass of the current plan, and record its fingerprint and
+    pass.
+  - **No HB-1 or HB-2 change is required:** no new state, item kind, migration or key format.
 
 It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
 changes no frozen file. The §23.3 discovery replay is `tests/test_hb3_replay_postgres.py`: it needs the RDV evidence
@@ -1673,6 +1695,11 @@ archive-only `reprocess` of one.
 Every step is new files only, apart from the owner-approved migration and the two frozen-test edits of HB-X3. Every
 step is offline, with no CSE contact, until HB-6. Each ends with its own self-audit and independent review. Nothing
 proceeds past a gate without the owner.
+
+**Sequencing (owner decision, 2026-10-05): HB-3 freeze → F8 design/contract gate → subsequent backfill phases
+(HB-4 onwards).** F8 (availability, supersession, as-of; Master Architecture §55 Phase 1) is brought forward as the
+next architecture gate after HB-3 is frozen, so that the document worker and F6 orchestration (HB-4, HB-5) do not
+hard-code assumptions about the canonical financial-truth layer. F8 is not designed or implemented yet.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|

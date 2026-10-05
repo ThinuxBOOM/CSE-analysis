@@ -9,7 +9,8 @@ and what to hold.
                            observations_from_company_info
     IE-4 batch             reqFinancial secIds of the succeeded listing responses (the archived exact bytes of the
                            attempt behind the listing item's F1 run), by F5's observations_from_financials, recorded
-                           ONCE as a single batch after discovery closure (order-independent)
+                           as a single batch (order-independent) ONCE PER CURRENT PLAN: after that plan's closure, in
+                           the plan's own IE-4 link pass, identified by the plan fingerprint (plan-versioned IE-4)
     HB-I-HOLD              before recording a batch, F5's pure disputed_sec_ids is computed over recorded and over
                            recorded + batch; every batch observation carrying a secId whose NEW dispute fails only with
                            identity_evidence_insufficient is held (an L7 hold record, never a silent drop); the rest
@@ -31,7 +32,7 @@ import json
 from .. import issuer_identity as ii
 from ..backfill_transport import ledger as transport_ledger
 from ..financial_backfill import keys, store
-from . import (ACQUIRE_RULE_VERSION, IDENTITY_STAGE, LINK_PASS_CLOSURE, LINK_PASS_IDENTITY, RULE_VERSION, STAGE,
+from . import (ACQUIRE_RULE_VERSION, IDENTITY_STAGE, LINK_PASS_FIRST_PLAN, LINK_PASS_IDENTITY, RULE_VERSION, STAGE,
                discovery, plan, security_master)
 from .errors import DiscoveryRefused
 
@@ -330,6 +331,56 @@ def _pass_item(conn, n, wakeup_id=None):
     return item, store.current_state(conn, item["id"])["state"]
 
 
+# ------------------------------------------------------------------------------------------------ plan-versioned passes
+# Owner decision (plan-versioned IE-4): IE-4 is idempotent per distinct current plan. HB-1 fixes a link pass's natural
+# key to link_pass:<n>, so a plan-versioned pass takes the next free number and carries the plan's fingerprint in its
+# immutable details; a plan's IE-4 pass is the lowest-numbered pass recorded for its fingerprint.
+
+IE4_PASS, LATE_PASS = "ie4", "late"
+_NEW_PASS_TRIES = 5
+
+
+def _next_pass_number(conn):
+    n = _q(conn, "select coalesce(max(sequence_no), 0) + 1 from backfill_work_items where item_kind = 'link_pass'",
+           fetch="one")[0]
+    return max(int(n), LINK_PASS_FIRST_PLAN)
+
+
+def plan_passes(conn, kind, fingerprint):
+    """The link passes of one kind recorded for one plan fingerprint, lowest number first."""
+    rows = _q(conn, "select natural_key from backfill_work_items where item_kind = 'link_pass' and details ->> 'pass' = "
+                    "%s and details ->> 'plan_fingerprint' = %s order by sequence_no", (kind, fingerprint))
+    return [store.item_by_key(conn, r[0]) for r in rows]
+
+
+def ie4_pass(conn, fingerprint):
+    """The IE-4 pass of the plan with this fingerprint, or None. Read-only: never created here."""
+    found = plan_passes(conn, IE4_PASS, fingerprint)
+    return found[0] if found else None
+
+
+def _new_pass(conn, details, wakeup_id=None):
+    """A new link pass at the next free number: always a newly created item, never one another process took."""
+    for _ in range(_NEW_PASS_TRIES):
+        item, created = store.ensure_item(conn, keys.link_pass(_next_pass_number(conn)),
+                                          details=dict(details, rule=RULE_VERSION), wakeup_id=wakeup_id)
+        if created:
+            return item
+    raise DiscoveryRefused([("link_pass", "no free link_pass number: another process keeps taking them")])
+
+
+def _ie4_pass_for(conn, p, wakeup_id=None):
+    """(item, state) of the current plan's IE-4 pass, created once for its fingerprint. Only ever called after the
+    plan's closure has been established (a fingerprint alone never runs IE-4)."""
+    fp = p.fingerprint()
+    found = ie4_pass(conn, fp)
+    if found is None:
+        _new_pass(conn, {"pass": IE4_PASS, "plan_fingerprint": fp, "plan_identity": p.identity(), "plan": p.basis()},
+                  wakeup_id)
+        found = ie4_pass(conn, fp)          # the lowest-numbered pass of the plan, should two processes have raced
+    return found, store.current_state(conn, found["id"])["state"]
+
+
 def _done(conn, item_id, details, wakeup_id=None):
     store.append_event(conn, item_id, "succeeded", "record", details=dict(details, rule=RULE_VERSION),
                        wakeup_id=wakeup_id)
@@ -355,10 +406,14 @@ def identity_pass(conn, *, wall, wakeup_id=None, preflight=None):
 
 
 def closure_pass(conn, *, wall, wakeup_id=None, preflight=None):
-    """link_pass:2 (HB-S2, after discovery closure): the IE-4 batch with the hold rule, resolve, and the link pass.
-    Closure is current-plan closure (owner decision on HB-U5): every item of the current plan (the armed window W and
-    the verified security master, plan.Plan.of) must exist and be final; discovery items outside the plan never
-    block it, are never changed, and are recorded as out-of-plan anomalies (discovery.audit_out_of_plan)."""
+    """The current plan's IE-4 pass (HB-S2, after discovery closure): the IE-4 batch with the hold rule, resolve, and
+    the link pass.
+    - Closure is current-plan closure (owner decision on HB-U5): every item of the current plan (the armed window W
+      and the verified security master, plan.Plan.of) must exist and be final; discovery items outside the plan never
+      block it, are never changed, and are recorded as out-of-plan anomalies (discovery.audit_out_of_plan).
+    - IE-4 is plan-versioned (owner decision): one IE-4 pass per plan fingerprint, created only once that plan is
+      closed. The same plan again (or re-entering) returns its pass ('already'); a changed plan gets a new pass, and
+      every earlier pass stays as it is."""
     arming, master = _gates(conn, wall, STAGE, preflight)
     first = store.item_by_key(conn, keys.link_pass(LINK_PASS_IDENTITY)["natural_key"])
     if first is None or store.current_state(conn, first["id"])["state"] != "succeeded":
@@ -370,14 +425,15 @@ def closure_pass(conn, *, wall, wakeup_id=None, preflight=None):
                                             f"{len(status.non_final)} of its items not final, {len(status.missing)} "
                                             f"not planned yet (create_plan_items); {len(status.out_of_plan)} items "
                                             f"outside the plan do not count")])
-    item, state = _pass_item(conn, LINK_PASS_CLOSURE, wakeup_id)
+    fp = status.plan.fingerprint()
+    item, state = _ie4_pass_for(conn, status.plan, wakeup_id)
     if state == "succeeded":
-        return {"item": item["id"], "already": True}
+        return {"item": item["id"], "already": True, "plan_fingerprint": fp}
     batch, without = ie4_batch(conn)
     out = record_batch(conn, batch, wakeup_id=wakeup_id)
     links = link_window(conn, *status.plan.window)
-    details = {"listings_without_phase2_response": without, "security_master": master.provenance(),
-               "closure": status.summary(), "out_of_plan_anomalies": anomalies,
+    details = {"plan_fingerprint": fp, "listings_without_phase2_response": without,
+               "security_master": master.provenance(), "closure": status.summary(), "out_of_plan_anomalies": anomalies,
                "observations": out["observations"], "recorded_new": out["recorded_new"], "held": out["held"],
                "securities": out["securities"], "links": links}
     _done(conn, item["id"], details, wakeup_id)
@@ -385,15 +441,17 @@ def closure_pass(conn, *, wall, wakeup_id=None, preflight=None):
 
 
 def late_pass(conn, *, wall, wakeup_id=None, preflight=None):
-    """link_pass:n >= 3 (late evidence, section 7.4 step 5): newly qualifying sweeps, owner hold resolutions,
-    resolve_securities and a full re-link. No document is re-downloaded; F6.4 re-validation (M4) is HB-5's."""
+    """A late-evidence link pass (section 7.4 step 5): newly qualifying sweeps, owner hold resolutions,
+    resolve_securities and a full re-link of the current plan's window. It needs the IE-4 pass of the CURRENT plan to
+    have succeeded (plan-versioned IE-4); an earlier plan's pass never suffices. No document is re-downloaded; F6.4
+    re-validation (M4) is HB-5's."""
     arming, master = _gates(conn, wall, STAGE, preflight)
-    second = store.item_by_key(conn, keys.link_pass(LINK_PASS_CLOSURE)["natural_key"])
-    if second is None or store.current_state(conn, second["id"])["state"] != "succeeded":
-        raise DiscoveryRefused([("order", "the closure pass (link_pass:2) has not succeeded")])
-    n = _q(conn, "select coalesce(max(sequence_no), 0) + 1 from backfill_work_items where item_kind = 'link_pass'",
-           fetch="one")[0]
-    item, state = _pass_item(conn, max(int(n), LINK_PASS_CLOSURE + 1), wakeup_id)
+    p = plan.Plan.of(arming, master)
+    fp = p.fingerprint()
+    ie4 = ie4_pass(conn, fp)
+    if ie4 is None or store.current_state(conn, ie4["id"])["state"] != "succeeded":
+        raise DiscoveryRefused([("order", f"the IE-4 closure pass of the current plan ({fp[:16]}) has not succeeded")])
+    item = _new_pass(conn, {"pass": LATE_PASS, "plan_fingerprint": fp, "ie4_pass": ie4["id"]}, wakeup_id)
     use = [s["run_id"] for s in sweeps(conn, master) if s["qualifies"]]
     imported = record_batch(conn, ie2_batch(conn, use), wakeup_id=wakeup_id)
     resolutions = apply_resolutions(conn)
@@ -404,8 +462,8 @@ def late_pass(conn, *, wall, wakeup_id=None, preflight=None):
     except BaseException:
         conn.rollback()
         raise
-    links = link_window(conn, arming["window_first_date"], arming["window_last_date"])
-    details = {"sweeps": use, "imported_new": imported["recorded_new"], "held": imported["held"],
-               "resolutions": resolutions, "securities": securities, "links": links}
+    links = link_window(conn, *p.window)
+    details = {"plan_fingerprint": fp, "ie4_pass": ie4["id"], "sweeps": use, "imported_new": imported["recorded_new"],
+               "held": imported["held"], "resolutions": resolutions, "securities": securities, "links": links}
     _done(conn, item["id"], details, wakeup_id)
     return dict(details, item=item["id"])

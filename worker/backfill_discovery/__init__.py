@@ -47,6 +47,7 @@ SECURITY_MASTER_MAX_AGE_DAYS = 7
 # HB-U2: a feed month above twice the largest F0 monthly count (346) is flagged, never split.
 FEED_WINDOW_LARGE = 692
 
-# Link-pass sequence numbers (natural keys link_pass:<n>).
+# Link-pass sequence numbers (natural keys link_pass:<n>; HB-1 fixes the key to the number).
 LINK_PASS_IDENTITY = 1                        # IE-2 import + resolve_securities (HB-S1)
-LINK_PASS_CLOSURE = 2                         # after discovery closure: IE-4 batch + resolve + link (HB-S2)
+LINK_PASS_FIRST_PLAN = 2                      # the first number of a plan-versioned pass: the IE-4 pass of a current
+                                              # plan (one per plan fingerprint, in its details) or a late pass

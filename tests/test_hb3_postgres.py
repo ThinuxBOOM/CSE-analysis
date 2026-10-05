@@ -1246,13 +1246,16 @@ def test_link_passes_refuse_while_a_slice_is_active(env):
 # window W and the verified security master); discovery items outside it are kept unchanged, never block closure, and
 # are recorded as out-of-plan anomalies.
 
-def capture_master_on(env, days, universe=None):
+def capture_master_on(env, days, universe=None, ci=None):
     """A derived P2 market capture `days` from P2_START (the same post-close time), through P2's own frozen code;
-    optionally with another allSecurityCode universe. The latest derived capture is the verified security master."""
+    optionally with another allSecurityCode universe (and companyInfoSummery bodies). The latest derived capture is
+    the verified security master."""
     start = P2_START + timedelta(days=days)
     fake = {"shift_days": P2_SHIFT + days}
     if universe is not None:
         fake["universe"] = universe
+    if ci is not None:
+        fake["ci"] = ci
     state_, rep = env.p2(start, p2config.daily_policy("post_close"), start.astimezone(p2config.COLOMBO).date(), **fake)
     assert state_ == "succeeded"
     return rep["run_id"]
@@ -1461,6 +1464,168 @@ def test_plan_one_universe_for_planning_claiming_and_closure(env):
     assert (created["feed_window"], created["listing"], created["existing"]) == (0, 0, 71)
     st = check(p2, created)
     assert {o["natural_key"] for o in st.out_of_plan} == {"listing:ABSB.N0000", "feed_window:2021-04"}
+
+
+# ================================================================================================ plan-versioned IE-4
+# Owner decision: IE-4 (the closure pass) is idempotent per distinct current plan. One IE-4 pass per plan fingerprint
+# (plan.Plan.fingerprint), created only once that plan is closed; earlier passes are never altered.
+
+def ie4_passes(w):
+    """(natural key, plan fingerprint, state) of every IE-4 pass, by number."""
+    return q(w, "select i.natural_key, i.details ->> 'plan_fingerprint', s.state from backfill_work_items i join "
+                "backfill_item_state s on s.item_id = i.id where i.item_kind = 'link_pass' and i.details ->> 'pass' = "
+                "'ie4' order by i.sequence_no")
+
+
+def spy_ie4(monkeypatch):
+    """Counts actual IE-4 executions (each closure pass that builds the IE-4 batch)."""
+    calls, real = [], identity.ie4_batch
+
+    def counted(conn):
+        calls.append(1)
+        return real(conn)
+    monkeypatch.setattr(identity, "ie4_batch", counted)
+    return calls
+
+
+def closed_plan_ready(env):
+    """The security master, the arming, the plan, a qualifying sweep, IE-2, and every current-plan item final."""
+    clock, _ = ready(env)
+    env.sweep()
+    w = env.conn()
+    identity.identity_pass(w, wall=clock.wall())
+    _close_discovery(env, clock, EMPTY_LISTINGS)
+    return clock, w
+
+
+def test_ie4_the_same_plan_is_idempotent(env, monkeypatch):
+    """A: the closure pass runs IE-4 once for a plan; again for the same plan it returns that pass, with no second
+    IE-4 execution, no second pass and no new event on the first."""
+    clock, w = closed_plan_ready(env)
+    calls = spy_ie4(monkeypatch)
+    fp = discovery.current_plan(w, clock.wall()).fingerprint()
+    first = identity.closure_pass(w, wall=clock.wall())
+    assert len(calls) == 1 and "already" not in first and first["plan_fingerprint"] == fp
+    snap = snapshot(w, {"id": first["item"]})
+    again = identity.closure_pass(w, wall=clock.wall())
+    assert again == {"item": first["item"], "already": True, "plan_fingerprint": fp}
+    assert len(calls) == 1 and ie4_passes(w) == [("link_pass:2", fp, "succeeded")]
+    assert snapshot(w, {"id": first["item"]}) == snap
+
+
+def test_ie4_a_wider_window_is_a_new_plan_with_its_own_closure_and_pass(env, monkeypatch):
+    """B, E, H: a wider armed window is a new plan. Until it is closed (an item not planned yet, then not final) IE-4
+    refuses and creates no pass; once closed it gets its own pass and IE-4 runs; the earlier pass is unchanged."""
+    clock, w = closed_plan_ready(env)
+    calls = spy_ie4(monkeypatch)
+    p1 = identity.closure_pass(w, wall=clock.wall())
+    snap1 = snapshot(w, {"id": p1["item"]})
+    arm(env, window_first_date=date(2021, 3, 1))             # P2: W = 2021-03 .. 2026-09
+    fp2 = discovery.current_plan(w, clock.wall()).fingerprint()
+    assert fp2 != p1["plan_fingerprint"]
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and "1 not planned yet" in str(ei.value)
+    create_plan_items(w, wall=clock.wall())
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and "1 of its items not final" in str(ei.value)
+    assert len(ie4_passes(w)) == 1 and len(calls) == 1 and snapshot(w, {"id": p1["item"]}) == snap1
+    one_slice(env, clock, item(w, "feed_window:2021-03"), script=[ok(FEED_EMPTY)])
+    out = identity.closure_pass(w, wall=clock.wall())
+    assert "already" not in out and out["plan_fingerprint"] == fp2 and out["item"] != p1["item"] and len(calls) == 2
+    assert ie4_passes(w) == [("link_pass:2", p1["plan_fingerprint"], "succeeded"), ("link_pass:3", fp2, "succeeded")]
+    assert snapshot(w, {"id": p1["item"]}) == snap1
+
+
+def test_ie4_a_changed_security_master_is_a_new_plan(env, monkeypatch):
+    """C, E, H: a later verified security master with another universe is a new plan: a new fingerprint, its own
+    closure (the new security's listing must be planned and final), then its own IE-4 pass; the earlier one is
+    unchanged."""
+    capture_master_on(env, -1)                               # Thursday: universe A, seven securities
+    arm(env)
+    clock = F.FakeClock()
+    w = env.conn()
+    create_plan_items(w, wall=clock.wall())
+    env.sweep()
+    identity.identity_pass(w, wall=clock.wall())
+    _close_discovery(env, clock, EMPTY_LISTINGS)
+    calls = spy_ie4(monkeypatch)
+    p1 = identity.closure_pass(w, wall=clock.wall())
+    snap1 = snapshot(w, {"id": p1["item"]})
+    capture_master_on(env, 0, universe=P.universe_body(extra=("NEWS.N0000",)),            # Friday: universe B, eight
+                      ci=dict(P.real_ci_bodies(), **{"NEWS.N0000": P.absent_ci_body("NEWS.N0000", 3)}))
+    p2 = discovery.current_plan(w, clock.wall())
+    assert "NEWS.N0000" in p2.symbols and p2.fingerprint() != p1["plan_fingerprint"]
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and "1 not planned yet" in str(ei.value)
+    assert create_plan_items(w, wall=clock.wall())["listing"] == 1
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and len(ie4_passes(w)) == 1 and len(calls) == 1
+    one_slice(env, clock, item(w, "listing:NEWS.N0000"), script=[ok(listing_body())])
+    out = identity.closure_pass(w, wall=clock.wall())
+    assert out["plan_fingerprint"] == p2.fingerprint() and len(calls) == 2
+    assert ie4_passes(w) == [("link_pass:2", p1["plan_fingerprint"], "succeeded"),
+                             ("link_pass:3", p2.fingerprint(), "succeeded")]
+    assert snapshot(w, {"id": p1["item"]}) == snap1
+
+
+def test_ie4_re_entry_reuses_the_plans_pass(env, monkeypatch):
+    """D, H: P1 -> P2 -> P1 again (under a new arming decision): P1's original pass is reused, with no duplicate, no
+    second IE-4 execution and no CSE request."""
+    clock, w = closed_plan_ready(env)
+    calls = spy_ie4(monkeypatch)
+    p1 = identity.closure_pass(w, wall=clock.wall())
+    snap1 = snapshot(w, {"id": p1["item"]})
+    arm(env, window_first_date=date(2021, 5, 1))             # P2: narrower; every item of it is already final
+    p2 = identity.closure_pass(w, wall=clock.wall())
+    assert p2["plan_fingerprint"] != p1["plan_fingerprint"] and len(calls) == 2
+    arm(env, window_first_date=date(2021, 4, 1))             # P1 again
+    again = identity.closure_pass(w, wall=clock.wall())
+    assert again == {"item": p1["item"], "already": True, "plan_fingerprint": p1["plan_fingerprint"]}
+    assert len(calls) == 2 and [k for k, _, _ in ie4_passes(w)] == ["link_pass:2", "link_pass:3"]
+    assert snapshot(w, {"id": p1["item"]}) == snap1
+    rt = runtime(env, clock, script=[])
+    with DiscoverySlice(env.conn(), runtime=rt) as ds:
+        assert ds.run() == []
+    assert rt.transport_double.calls == []
+
+
+def test_ie4_refuses_without_ie2_whatever_the_closure(env):
+    """F: without a successful IE-2 import, IE-4 refuses even for a closed plan, and creates no pass."""
+    clock, _ = ready(env)
+    w = env.conn()
+    _close_discovery(env, clock, EMPTY_LISTINGS)
+    assert discovery.closed(w, discovery.current_plan(w, clock.wall()))
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["order"] and ie4_passes(w) == []
+
+
+def test_late_pass_needs_the_ie4_pass_of_the_current_plan(env):
+    """G: a late pass runs only on the successful IE-4 pass of the CURRENT plan, which it records; an earlier plan's
+    pass never suffices."""
+    clock, w = closed_plan_ready(env)
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.late_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["order"]
+    p1 = identity.closure_pass(w, wall=clock.wall())
+    late1 = identity.late_pass(w, wall=clock.wall())
+    assert (late1["ie4_pass"], late1["plan_fingerprint"]) == (p1["item"], p1["plan_fingerprint"])
+    arm(env, window_first_date=date(2021, 5, 1))             # P2: closed, but its IE-4 pass has not run
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.late_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["order"]
+    p2 = identity.closure_pass(w, wall=clock.wall())
+    late2 = identity.late_pass(w, wall=clock.wall())
+    assert (late2["ie4_pass"], late2["plan_fingerprint"]) == (p2["item"], p2["plan_fingerprint"])
+    assert q(w, "select natural_key, details ->> 'pass', details ->> 'plan_fingerprint' from backfill_work_items "
+                "where item_kind = 'link_pass' order by sequence_no") == [
+        ("link_pass:1", None, None), ("link_pass:2", "ie4", p1["plan_fingerprint"]),
+        ("link_pass:3", "late", p1["plan_fingerprint"]), ("link_pass:4", "ie4", p2["plan_fingerprint"]),
+        ("link_pass:5", "late", p2["plan_fingerprint"])]
 
 
 def test_hb3_preflight_passes_on_the_frozen_baseline(env):

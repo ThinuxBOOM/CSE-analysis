@@ -1930,9 +1930,13 @@ Still open after real-data validation:
 
 -   F8 availability/supersession: errata, amendment and restatement
     supersession, the choice of availability time, and commit-time
-    as-of;
--   Phase 2 --- historical financial backfill --- remains the next
-    major architectural phase. Only its first two implementation
+    as-of. Owner decision (2026-10-05): F8 is brought forward. Its
+    design/contract gate is the next architecture gate after HB-3 is
+    frozen and comes before HB-4 (HB-3 freeze → F8 design/contract
+    gate → subsequent backfill phases). F8 is not designed or
+    implemented yet;
+-   Phase 2 --- historical financial backfill --- remains the major
+    architectural phase in progress. Only its first two implementation
     steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
     CSE transport), both below, are implemented and frozen; HB-3
     (discovery and issuer evidence) is implemented and tested
@@ -2102,7 +2106,11 @@ evidence first, with no request), HB-Q5 and HB-Q6, and the HB-U5
 closure decision (current-plan closure: discovery is closed when every
 item of the currently armed window and verified security master is
 final; items outside that plan are kept unchanged, recorded as
-anomalies and never block closure). It adds no
+anomalies and never block closure) and plan-versioned IE-4 (one IE-4
+pass per distinct current plan, identified by a deterministic plan
+fingerprint of the armed window and the verified universe: the same
+plan is idempotent, a changed plan needs its own closure and pass, and
+earlier passes stay as immutable history). It adds no
 migration, grant, role, row-level security, `SECURITY DEFINER`, lock
 key or entry point, and changes no frozen file.
 
@@ -2368,14 +2376,28 @@ architecture should be implemented in dependency order.
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
--   availability/supersession (F8; explicitly deferred by F6.4).
+-   availability/supersession (F8; explicitly deferred by F6.4;
+    brought forward, see below).
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
 two steps, HB-1 and HB-2 (HB-3 is implemented offline and awaiting
 review). Phase 2 --- historical financial backfill --- remains the
-next major architectural phase; its design decides real-data
+major architectural phase in progress; its design decides real-data
 validation Q1 (issuer evidence; §52).
+
+Sequencing (owner decision, 2026-10-05):
+
+``` text
+HB-3 freeze
+→ F8 design/contract gate
+→ subsequent backfill phases (HB-4 onwards)
+```
+
+F8 is brought forward so that the document worker and F6 orchestration
+(HB-4, HB-5) do not hard-code assumptions about the canonical
+financial-truth layer. This is a gate order only: F8 is not designed or
+implemented yet.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2394,7 +2416,9 @@ evidence (`worker/backfill_discovery/`), is implemented and tested
 offline, not yet reviewed or frozen; live discovery waits for HB-P1, a
 deployment prerequisite (§52), and follows the release sequence of
 §43.1. HB-4 to HB-6 (document worker; F6 orchestration and audit;
-operations and pilot) are not implemented.
+operations and pilot) are not implemented. After HB-3 is frozen, the
+next gate is the F8 design/contract gate, before HB-4 (Phase 1,
+above).
 
 ## Phase 3 --- Market feature foundation
 

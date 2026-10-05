@@ -177,9 +177,10 @@ def test_u15_the_current_plan_is_the_window_months_and_the_verified_securities()
 def test_u16_planning_claiming_and_closure_take_membership_only_from_the_plan():
     """The closure universe cannot differ from the planning and claiming universe: outside plan.py, no HB-3 module
     enumerates W's months or reads a security master's symbols; each builds plan.Plan.of from the arming in force
-    and the verified security master (create_plan_items via current_plan, the discovery slice, the closure pass)."""
+    and the verified security master (create_plan_items via current_plan, the discovery slice, the closure pass and
+    the late pass)."""
     import ast
-    for name, builds in (("discovery.py", 2), ("identity.py", 1)):
+    for name, builds in (("discovery.py", 2), ("identity.py", 2)):
         with open(os.path.join(preflight.PACKAGE_DIR, name), encoding="utf-8") as f:
             src = f.read()
         tree = ast.parse(src)
@@ -193,6 +194,40 @@ def test_u16_planning_claiming_and_closure_take_membership_only_from_the_plan():
     assert "plan.Plan.of(" in inspect.getsource(discovery.current_plan)
     assert "self.plan.contains(item)" in inspect.getsource(discovery.DiscoverySlice.in_plan)
     assert "plan_.contains(" in inspect.getsource(discovery.closure)
+
+
+PLAN_IDENTITY = {"rule": "hb.plan.1", "window": ["2021-04-01", "2026-09-30"], "securities": ["COMB.N0000", "HNB.N0000"]}
+# SHA-256 of b'{"rule":"hb.plan.1","securities":["COMB.N0000","HNB.N0000"],"window":["2021-04-01","2026-09-30"]}',
+# the identity's canonical bytes; measured identically by Python 3.12 (Linux) and 3.14 (Windows)
+PLAN_FINGERPRINT = "6979526cc8b103fd2883c185b686cb9d5dae294cce5eaa6f6200615c7c33d23f"
+
+
+def master_with(symbols, run="r1", observed="2026-10-01T10:00:00+00:00", sha="a" * 64):
+    return SimpleNamespace(symbols=tuple(symbols), provenance=lambda: {
+        "p2_run_id": run, "all_security_code_response_id": run + "-resp", "all_security_code_observed_at": observed,
+        "body_sha256": sha, "max_age_days": 7, "securities": len(symbols)})
+
+
+def test_u17_the_plan_fingerprint_is_canonical_and_depends_only_on_the_plan():
+    """Owner decision (plan-versioned IE-4): one deterministic fingerprint per distinct plan. Canonical: the same
+    content in any dict insertion order or container type gives the same hash, pinned across processes. Content
+    only: a new arming row or a fresh capture of the same universe (other ids, timestamps, body hash) is the same
+    plan; a different window or a different verified universe is a different plan."""
+    reordered = {"securities": ("COMB.N0000", "HNB.N0000"), "window": ["2021-04-01", "2026-09-30"], "rule": "hb.plan.1"}
+    assert plan.fingerprint_of(PLAN_IDENTITY) == plan.fingerprint_of(reordered) == PLAN_FINGERPRINT
+    p = plan.Plan.of(arming(id=7), master_with(["HNB.N0000", "COMB.N0000"]))
+    assert p.identity() == PLAN_IDENTITY and p.fingerprint() == PLAN_FINGERPRINT
+    assert set(p.identity()) == {"rule", "window", "securities"}             # no id, timestamp or provenance
+    same = plan.Plan.of(arming(id=99), master_with(["COMB.N0000", "HNB.N0000"], run="r2",
+                                                   observed="2026-10-02T10:00:00+00:00", sha="b" * 64))
+    assert same.basis() != p.basis() and same.fingerprint() == p.fingerprint()
+    narrower = plan.Plan.of(arming(window_first_date=date(2021, 5, 1)), master_with(["COMB.N0000", "HNB.N0000"]))
+    wider = plan.Plan.of(arming(window_last_date=date(2026, 10, 31)), master_with(["COMB.N0000", "HNB.N0000"]))
+    fewer = plan.Plan.of(arming(), master_with(["COMB.N0000"]))
+    more = plan.Plan.of(arming(), master_with(["COMB.N0000", "HNB.N0000", "JKH.N0000"]))
+    other = plan.Plan.of(arming(), master_with(["COMB.N0000", "JKH.N0000"]))
+    prints = [x.fingerprint() for x in (p, narrower, wider, fewer, more, other)]
+    assert len(set(prints)) == 6 and all(len(f) == 64 and int(f, 16) >= 0 for f in prints)
 
 
 # ------------------------------------------------------------------------------------------------ HB-P1

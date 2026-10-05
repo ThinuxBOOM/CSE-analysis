@@ -9,8 +9,11 @@ no network.
     Plan          the current discovery plan: those feed months and listings, built ONLY by Plan.of(arming in force,
                   verified security master). Planning (create_plan_items), claiming (DiscoverySlice.in_plan) and
                   closure (discovery.closure) all take plan membership from it, so they cannot use different universes
+    fingerprint   the plan's identity hash (owner decision: plan-versioned IE-4): one IE-4 pass per distinct plan
     requests      the exact form fields F1 and HB-2 both receive: one dict, used for the F1 run and the request
 """
+import hashlib
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -54,6 +57,15 @@ def listing_subject(symbol):
 
 OUTSIDE_WINDOW = "outside_armed_window"
 OUTSIDE_SECURITY_MASTER = "not_in_verified_security_master"
+PLAN_IDENTITY_RULE = "hb.plan.1"
+
+
+def fingerprint_of(identity):
+    """THE plan-identity hash: SHA-256 of the identity's canonical JSON (keys sorted at every level, no whitespace,
+    ASCII only, no NaN). It depends only on the identity's content: not on dict insertion order, not on the Python
+    types that hold it (a tuple serialises as a list), and not on the process."""
+    canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    return hashlib.sha256(canonical.encode("ascii")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -91,6 +103,19 @@ class Plan:
         """What the plan was derived from: the arming decision, its window and the verified security master."""
         return {"arming_id": self.arming_id, "window": [self.window[0].isoformat(), self.window[1].isoformat()],
                 "security_master": self.security_master}
+
+    def identity(self):
+        """What makes two current plans the same plan: the armed window W and the planned universe, which together
+        determine exactly the plan's natural keys. It holds no timestamp, no random or database-generated id and no
+        evidence provenance (the arming row, the capture run, its observed_at or body hash): those change with every
+        re-arming and every fresh capture HB-P1 requires while the plan stays the same. basis() records them."""
+        return {"rule": PLAN_IDENTITY_RULE, "window": [self.window[0].isoformat(), self.window[1].isoformat()],
+                "securities": list(self.symbols)}
+
+    def fingerprint(self):
+        """The plan's fingerprint: fingerprint_of(identity()). Equal for the same plan, different for any change of
+        W or of the verified universe (owner decision: plan-versioned IE-4)."""
+        return fingerprint_of(self.identity())
 
 
 def request_for(item):
