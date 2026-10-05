@@ -24,6 +24,11 @@ outcome, is made final in ONE transaction with HB-1's public append_event_in and
 of the same request that succeeded or partially succeeded makes it succeeded / partial), otherwise 'failed' with the
 reason, naming the last F1 run only when that run itself failed (a 'running' run is never named). From pending this is
 HB-1's tested B-1 path: a terminal claim under the live lease, then the record.
+
+Discovery closure (HB-U5; owner decision: current-plan closure): closed iff every item of the current plan (plan.Plan.of
+the armed whole-month window W and the verified security master) exists and is final. Discovery items outside that
+plan never block closure and are never changed for it; the closure pass records each as an out-of-plan anomaly
+(audit_out_of_plan). An item that re-enters a later plan is the same ledger item, with its history and evidence.
 """
 from dataclasses import dataclass, field
 
@@ -190,6 +195,7 @@ class DiscoverySlice:
     preflight: object = None                     # conn -> [problems]; default: HB-3's own preflight
     sl: object = None
     master: object = None
+    plan: object = None                          # plan.Plan of the slice's arming and the verified security master
     stop: object = None
     closed: bool = False
     lease_kept: bool = False
@@ -214,6 +220,7 @@ class DiscoverySlice:
             if again:
                 self.stop = Refused(again)
                 raise self.stop
+            self.plan = plan.Plan.of(self.sl.arming, self.master)
             self.reconciled = reconcile(self)
         except BaseException as exc:
             self.close(exc)
@@ -227,12 +234,7 @@ class DiscoverySlice:
     # -------------------------------------------------------------------------------------------- plan membership
 
     def in_plan(self, item):
-        if item["item_kind"] == "listing":
-            return item["query_symbol"] in self.master.symbols
-        if item["item_kind"] == "feed_window":
-            months = plan.feed_months(self.sl.arming["window_first_date"], self.sl.arming["window_last_date"])
-            return item["window_month"] in months
-        return False
+        return self.plan.contains(item)
 
     def eligible(self):
         """Plan items that may be claimed now: pending or retry_wait, below the maximum, not yet tried in this slice;
@@ -477,9 +479,20 @@ def terminalise(ds, item):
 
 # ------------------------------------------------------------------------------------------------ planning
 
+def current_plan(conn, wall, arming=None):
+    """The current discovery plan: the armed whole-month window W of the arming in force and the VERIFIED security
+    master (HB-P1). The same plan.Plan.of that the discovery slice and the closure pass build."""
+    arming = arming if arming is not None else transport_ledger.arming_in_force(conn)
+    refusals = config_refusals(arming)
+    if refusals:
+        raise DiscoveryRefused(refusals)
+    return plan.Plan.of(arming, security_master.require(conn, wall, arming))
+
+
 def create_plan_items(conn, *, wall, arming=None, wakeup_id=None, preflight=None):
-    """Create (idempotently) the feed-month items of W and the listing items of the VERIFIED security master. Listing
-    planning requires HB-P1; no symbol comes from anywhere else (HB-Q5, HB-Q13)."""
+    """Create (idempotently) the items of the current plan: the feed months of W and the listings of the VERIFIED
+    security master. Listing planning requires HB-P1; no symbol comes from anywhere else (HB-Q5, HB-Q13). An item
+    that already exists (an earlier plan, a re-entry) is returned as it is, with its history: never duplicated."""
     arming = arming if arming is not None else transport_ledger.arming_in_force(conn)
     refusals = config_refusals(arming)
     if refusals:
@@ -488,20 +501,74 @@ def create_plan_items(conn, *, wall, arming=None, wakeup_id=None, preflight=None
     problems = (preflight or hb3_preflight.problems)(conn)
     if problems:
         raise DiscoveryRefused([("preflight", p) for p in problems])
-    master = security_master.require(conn, wall, arming)
-    out = {"feed_window": 0, "listing": 0, "existing": 0, "security_master": master.provenance()}
-    for m in plan.feed_months(arming["window_first_date"], arming["window_last_date"]):
-        _, created = store.ensure_item(conn, plan.feed_subject(m), details={"rule": RULE_VERSION}, wakeup_id=wakeup_id)
-        out["feed_window" if created else "existing"] += 1
-    for sym in master.symbols:
-        _, created = store.ensure_item(conn, plan.listing_subject(sym),
-                                       details={"rule": RULE_VERSION, "security_master": master.provenance()},
+    p = current_plan(conn, wall, arming)
+    out = {"feed_window": 0, "listing": 0, "existing": 0, "security_master": p.security_master, "plan": p.basis()}
+    for subject in p.subjects():
+        _, created = store.ensure_item(conn, subject, details={"rule": RULE_VERSION, "plan": p.basis()},
                                        wakeup_id=wakeup_id)
-        out["listing" if created else "existing"] += 1
+        out[subject["item_kind"] if created else "existing"] += 1
     return out
 
 
-def closed(conn):
-    """Discovery closure (HB-U5): every discovery item is in a final state."""
+# ------------------------------------------------------------------------------------------------ closure (HB-U5)
+
+@dataclass(frozen=True)
+class Closure:
+    """Current-plan closure (owner decision on HB-U5). The plan is closed iff every one of its items exists in the
+    ledger and is final. Discovery items outside the plan are reported, never counted, changed or cancelled."""
+    plan: object
+    final: tuple                      # natural keys of plan items in a final state
+    non_final: tuple                  # (natural_key, state) of plan items not final yet
+    missing: tuple                    # plan natural keys with no ledger item yet (create_plan_items has not run)
+    out_of_plan: tuple                # one dict per discovery item outside the plan, whatever its state
+
+    @property
+    def closed(self):
+        return bool(self.plan.natural_keys) and not self.non_final and not self.missing
+
+    def summary(self):
+        return {"closed": self.closed, "plan": self.plan.basis(), "plan_items": len(self.plan.natural_keys),
+                "final": len(self.final), "non_final": [list(x) for x in self.non_final],
+                "missing": list(self.missing),
+                "out_of_plan": [{k: o[k] for k in ("item", "natural_key", "state", "reason")} for o in self.out_of_plan]}
+
+
+def closure(conn, plan_):
+    """The closure of the current plan, from the ledger's current item states. Read-only."""
     rows = item_rows(conn)
-    return bool(rows) and all(r["state"] in FINAL for r in rows)
+    inside = {r["natural_key"]: r for r in rows if plan_.contains(r)}
+    return Closure(
+        plan=plan_,
+        final=tuple(k for k in sorted(inside) if inside[k]["state"] in FINAL),
+        non_final=tuple((k, inside[k]["state"]) for k in sorted(inside) if inside[k]["state"] not in FINAL),
+        missing=tuple(sorted(plan_.natural_keys - set(inside))),
+        out_of_plan=tuple({"item": r["id"], "natural_key": r["natural_key"], "item_kind": r["item_kind"],
+                           "state": r["state"], "final": r["state"] in FINAL, "reason": plan_.outside_reason(r),
+                           "planned_under": r["details"]} for r in rows if not plan_.contains(r)))
+
+
+def closed(conn, plan_):
+    """Discovery closure (HB-U5): every item of the current plan is final. Items outside it never block it."""
+    return closure(conn, plan_).closed
+
+
+OUT_OF_PLAN_DETECTOR = "discovery_item_out_of_plan"
+ANOMALY_VERSION = "hb.anomaly.1"
+
+
+def audit_out_of_plan(conn, status, *, wakeup_id=None):
+    """One immutable class-3 anomaly (design section 19.1: an operational / data-coverage condition) per discovery
+    item outside the current plan, naming the item, the plan basis it was created under, the current plan basis,
+    the reason and its state. Nothing about the item changes. Recording the same item under the same plan basis and
+    state again adds nothing (HB-1 hashes the record); a changed state or plan basis is a new record. Returns the
+    anomaly ids, in the order of status.out_of_plan."""
+    ids = []
+    for o in status.out_of_plan:
+        subject = {"item": o["item"], "natural_key": o["natural_key"], "item_kind": o["item_kind"],
+                   "state": o["state"], "reason": o["reason"], "planned_under": o["planned_under"],
+                   "current_plan": status.plan.basis()}
+        aid, _ = store.record_anomaly(conn, detector_id=OUT_OF_PLAN_DETECTOR, detector_version=ANOMALY_VERSION,
+                                      anomaly_class=3, subject_ids=subject, counts=accounting.counts(conn, o["item"]),
+                                      status="recorded" if o["final"] else "open", wakeup_id=wakeup_id)
+        ids.append(aid)
+    return ids

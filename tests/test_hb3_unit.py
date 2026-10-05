@@ -152,6 +152,49 @@ def test_u6_admissible_links_need_listing_evidence():
     assert identity.ADMISSIBLE_BASES == admission.ADMISSIBLE_ISSUER_BASES
 
 
+# ------------------------------------------------------------------------------------------------ the current plan
+
+def test_u15_the_current_plan_is_the_window_months_and_the_verified_securities():
+    """Owner decision on HB-U5: the current plan is every feed month of the armed W and one listing per security of
+    the verified security master, by natural key; an item outside it says why."""
+    master = SimpleNamespace(symbols=("HNB.N0000", "COMB.N0000"), provenance=lambda: {"p2_run_id": "r", "securities": 2})
+    p = plan.Plan.of(arming(id=7), master)
+    months = plan.feed_months(*W)
+    assert p.months == tuple(months) and len(months) == 66 and p.symbols == ("COMB.N0000", "HNB.N0000")
+    assert p.natural_keys == {f"feed_window:{m:%Y-%m}" for m in months} | {"listing:COMB.N0000", "listing:HNB.N0000"}
+    assert [s["natural_key"] for s in p.subjects()] == [f"feed_window:{m:%Y-%m}" for m in months] + [
+        "listing:COMB.N0000", "listing:HNB.N0000"]
+    assert p.contains({"natural_key": "listing:COMB.N0000"}) and not p.contains({"natural_key": "listing:ABSB.N0000"})
+    assert not p.contains({"natural_key": "feed_window:2021-03"})
+    assert p.outside_reason({"item_kind": "feed_window"}) == "outside_armed_window"
+    assert p.outside_reason({"item_kind": "listing"}) == "not_in_verified_security_master"
+    assert p.basis() == {"arming_id": 7, "window": ["2021-04-01", "2026-09-30"],
+                         "security_master": {"p2_run_id": "r", "securities": 2}}
+    with pytest.raises(errors.DiscoveryRefused):
+        plan.Plan.of(arming(window_last_date=date(2026, 9, 15)), master)
+
+
+def test_u16_planning_claiming_and_closure_take_membership_only_from_the_plan():
+    """The closure universe cannot differ from the planning and claiming universe: outside plan.py, no HB-3 module
+    enumerates W's months or reads a security master's symbols; each builds plan.Plan.of from the arming in force
+    and the verified security master (create_plan_items via current_plan, the discovery slice, the closure pass)."""
+    import ast
+    for name, builds in (("discovery.py", 2), ("identity.py", 1)):
+        with open(os.path.join(preflight.PACKAGE_DIR, name), encoding="utf-8") as f:
+            src = f.read()
+        tree = ast.parse(src)
+        called = {n.func.attr if isinstance(n.func, ast.Attribute) else getattr(n.func, "id", None)
+                  for n in ast.walk(tree) if isinstance(n, ast.Call)}
+        assert "feed_months" not in called, name
+        assert "symbols" not in {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}, name
+        assert src.count("plan.Plan.of(") == builds, name
+    import inspect
+    assert "current_plan(" in inspect.getsource(discovery.create_plan_items)
+    assert "plan.Plan.of(" in inspect.getsource(discovery.current_plan)
+    assert "self.plan.contains(item)" in inspect.getsource(discovery.DiscoverySlice.in_plan)
+    assert "plan_.contains(" in inspect.getsource(discovery.closure)
+
+
 # ------------------------------------------------------------------------------------------------ HB-P1
 
 def test_u7_the_freshness_bound_may_only_be_tightened():

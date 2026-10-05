@@ -2098,7 +2098,11 @@ discovery runs only under an arming with `attempts_per_json_request =
 governed request with its own F1 run), D-HB3-2 / G2 (a discovery slice
 never releases its lease while an item claimed under it is in
 flight), G10 (an item at its claim maximum is made final atomically,
-evidence first, with no request), HB-Q5 and HB-Q6. It adds no
+evidence first, with no request), HB-Q5 and HB-Q6, and the HB-U5
+closure decision (current-plan closure: discovery is closed when every
+item of the currently armed window and verified security master is
+final; items outside that plan are kept unchanged, recorded as
+anomalies and never block closure). It adds no
 migration, grant, role, row-level security, `SECURITY DEFINER`, lock
 key or entry point, and changes no frozen file.
 

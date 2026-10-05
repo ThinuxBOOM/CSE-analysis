@@ -1092,11 +1092,11 @@ def _close_discovery(env, clock, bodies, feed_months=None):
         return ok(feed_months.get(params["fromDate"][:7], FEED_EMPTY))
     w = env.conn()
     for _ in range(10):
-        if discovery.closed(w):
+        if discovery.closed(w, discovery.current_plan(w, clock.wall())):
             break
         with DiscoverySlice(env.conn(), runtime=runtime(env, clock, route)) as ds:
             ds.run()
-    assert discovery.closed(w)
+    assert discovery.closed(w, discovery.current_plan(w, clock.wall()))
 
 
 def test_ie2_path_b_equals_the_frozen_path_a(env, cluster, tmp_path):
@@ -1239,6 +1239,228 @@ def test_link_passes_refuse_while_a_slice_is_active(env):
         assert ei.value.codes == ["lease"]
     finally:
         ds.close()
+
+
+# ================================================================================================ current-plan closure
+# Owner decision on HB-U5 (Option A): discovery closure is defined against the currently armed plan (the whole-month
+# window W and the verified security master); discovery items outside it are kept unchanged, never block closure, and
+# are recorded as out-of-plan anomalies.
+
+def capture_master_on(env, days, universe=None):
+    """A derived P2 market capture `days` from P2_START (the same post-close time), through P2's own frozen code;
+    optionally with another allSecurityCode universe. The latest derived capture is the verified security master."""
+    start = P2_START + timedelta(days=days)
+    fake = {"shift_days": P2_SHIFT + days}
+    if universe is not None:
+        fake["universe"] = universe
+    state_, rep = env.p2(start, p2config.daily_policy("post_close"), start.astimezone(p2config.COLOMBO).date(), **fake)
+    assert state_ == "succeeded"
+    return rep["run_id"]
+
+
+WITHOUT_ABSB = [u for u in P.universe_body() if u["symbol"] != "ABSB.N0000"]
+EMPTY_LISTINGS = {s: listing_body() for s in P.TRADED + P.ABSENT}
+
+
+def snapshot(w, it):
+    """Everything the ledger holds about one item: its row and its whole event history."""
+    return (q(w, "select * from backfill_work_items where id = %s", (it["id"],)), store.events(w, it["id"]))
+
+
+def out_of_plan_anomalies(w):
+    return q(w, "select subject_ids, counts, status, anomaly_class, detector_version from backfill_anomalies where "
+                "detector_id = 'discovery_item_out_of_plan' order by id")
+
+
+def test_closure_a_feed_month_outside_the_armed_window_never_blocks_it(env):
+    """Test A: a stale feed month (an earlier, wider window) stays non-final and unchanged, the current plan closes
+    without it, and the closure pass records it as an out-of-plan anomaly naming both plan bases."""
+    clock, _ = ready(env)                                    # W = 2021-04 .. 2026-09
+    w = env.conn()
+    stale = item(w, "feed_window:2021-04")
+    before = snapshot(w, stale)
+    old_arming = tledger.arming_in_force(w)["id"]
+    arm(env, window_first_date=date(2021, 5, 1))             # the current arming: W = 2021-05 .. 2026-09
+    p = discovery.current_plan(w, clock.wall())
+    assert len(p.months) == 65 and not p.contains(stale)
+    _close_discovery(env, clock, EMPTY_LISTINGS)
+    assert discovery.closed(w, p) and state(w, stale) == "pending" and snapshot(w, stale) == before
+    status = discovery.closure(w, p)
+    assert [(o["natural_key"], o["state"], o["reason"]) for o in status.out_of_plan] == [
+        ("feed_window:2021-04", "pending", "outside_armed_window")]
+    env.sweep()
+    identity.identity_pass(w, wall=clock.wall())
+    out = identity.closure_pass(w, wall=clock.wall())
+    assert out["closure"]["closed"] and out["closure"]["out_of_plan"] == [
+        {"item": stale["id"], "natural_key": "feed_window:2021-04", "state": "pending",
+         "reason": "outside_armed_window"}]
+    [(subject, counts, status_, klass, version)] = out_of_plan_anomalies(w)
+    assert (status_, klass, version, counts) == ("open", 3, "hb.anomaly.1", {"claims": 0, "http_attempts": 0})
+    assert subject["item"] == stale["id"] and subject["reason"] == "outside_armed_window"
+    assert subject["planned_under"]["plan"]["arming_id"] == old_arming
+    assert subject["planned_under"]["plan"]["window"] == ["2021-04-01", "2026-09-30"]
+    assert subject["current_plan"]["window"] == ["2021-05-01", "2026-09-30"]
+    assert subject["current_plan"]["arming_id"] != old_arming
+    assert out["out_of_plan_anomalies"] == [r[0] for r in q(w, "select id from backfill_anomalies where detector_id = "
+                                                               "'discovery_item_out_of_plan'")]
+    assert identity.closure_pass(w, wall=clock.wall())["already"]
+    assert len(out_of_plan_anomalies(w)) == 1 and snapshot(w, stale) == before     # recorded once; item untouched
+
+
+def test_closure_a_listing_outside_the_verified_master_never_blocks_it(env):
+    """Test B: a listing planned under an earlier security master, whose security is not in the current verified
+    master, stays non-final and unchanged, never blocks closure and is recorded as an out-of-plan anomaly."""
+    capture_master_on(env, -1)                               # Thursday: all seven securities
+    arm(env)
+    clock = F.FakeClock()
+    w = env.conn()
+    create_plan_items(w, wall=clock.wall())
+    stale = item(w, "listing:ABSB.N0000")
+    before = snapshot(w, stale)
+    capture_master_on(env, 0, universe=WITHOUT_ABSB)         # Friday: the newer verified master, without ABSB
+    p = discovery.current_plan(w, clock.wall())
+    assert len(p.symbols) == 6 and not p.contains(stale)
+    _close_discovery(env, clock, {s: b for s, b in EMPTY_LISTINGS.items() if s != "ABSB.N0000"})
+    assert discovery.closed(w, p) and state(w, stale) == "pending" and snapshot(w, stale) == before
+    env.sweep()
+    identity.identity_pass(w, wall=clock.wall())
+    out = identity.closure_pass(w, wall=clock.wall())
+    assert [o["natural_key"] for o in out["closure"]["out_of_plan"]] == ["listing:ABSB.N0000"]
+    [(subject, counts, status_, klass, _v)] = out_of_plan_anomalies(w)
+    assert (status_, klass, subject["item"], subject["reason"]) == ("open", 3, stale["id"],
+                                                                     "not_in_verified_security_master")
+    assert subject["planned_under"]["plan"]["security_master"]["securities"] == 7
+    assert subject["current_plan"]["security_master"]["securities"] == 6
+    assert subject["planned_under"]["plan"]["security_master"]["p2_run_id"] != \
+        subject["current_plan"]["security_master"]["p2_run_id"]
+    assert snapshot(w, stale) == before
+
+
+def test_closure_re_entry_reuses_the_item_and_its_evidence(env):
+    """Test C: an item that leaves the plan and re-enters a later one is the same ledger item, with its history: no
+    duplicate, its claims since its last re-queue still count, its F1 evidence still stands, and a final item stays
+    final without a new request."""
+    clock, _ = ready(env)
+    w = env.conn()
+    a, b = item(w, "feed_window:2021-04"), item(w, "feed_window:2021-05")
+    one_slice(env, clock, a, script=[dict(status=503, body=b"busy")])        # one failed claim: retry_wait
+    one_slice(env, clock, b, script=[ok(FEED_EMPTY)])                        # succeeded
+    assert (state(w, a), state(w, b), accounting.claims(w, a["id"])) == ("retry_wait", "succeeded", 1)
+    history_a, history_b = store.events(w, a["id"]), store.events(w, b["id"])
+    arm(env, window_first_date=date(2021, 6, 1))             # both leave the plan
+    with DiscoverySlice(env.conn(), runtime=runtime(env, clock, script=[])) as ds:
+        assert not ds.in_plan(a) and not ds.in_plan(b) and a["id"] not in {r["id"] for r in ds.eligible()}
+    assert (store.events(w, a["id"]), store.events(w, b["id"])) == (history_a, history_b)
+    outside = discovery.closure(w, discovery.current_plan(w, clock.wall()))
+    ids = discovery.audit_out_of_plan(w, outside)            # both audited: open while not final, else recorded
+    assert {r[0]["natural_key"]: (r[2], r[1]) for r in out_of_plan_anomalies(w)} == {
+        "feed_window:2021-04": ("open", {"claims": 1, "http_attempts": 1}),
+        "feed_window:2021-05": ("recorded", {"claims": 1, "http_attempts": 1})}
+    assert discovery.audit_out_of_plan(w, outside) == ids and len(out_of_plan_anomalies(w)) == 2
+    arm(env, window_first_date=date(2021, 4, 1))             # a later arming: both re-enter
+    again = create_plan_items(w, wall=clock.wall())
+    assert (again["feed_window"], again["listing"], again["existing"]) == (0, 0, 73)
+    assert q(w, "select natural_key, count(*) from backfill_work_items where natural_key in ('feed_window:2021-04', "
+                "'feed_window:2021-05') group by 1 order by 1") == [("feed_window:2021-04", 1), ("feed_window:2021-05", 1)]
+    status = discovery.closure(w, discovery.current_plan(w, clock.wall()))
+    assert ("feed_window:2021-04", "retry_wait") in status.non_final and "feed_window:2021-05" in status.final
+    assert status.out_of_plan == ()
+    rt = runtime(env, clock, script=[ok(FEED_EMPTY)])
+    with DiscoverySlice(env.conn(), runtime=rt) as ds:
+        assert b["id"] not in {r["id"] for r in ds.eligible()}              # final: no new request
+        ds.discover_one(a)                                                   # its second claim, a new F1 run
+    assert len(rt.transport_double.calls) == 1 and state(w, a) == "succeeded" and state(w, b) == "succeeded"
+    evs = store.events(w, a["id"])
+    assert evs[:len(history_a)] == history_a and [(e["state"], e["action"]) for e in evs[len(history_a):]] == [
+        ("requesting", "claim"), ("succeeded", "record")]
+    assert accounting.counts(w, a["id"]) == {"claims": 2, "http_attempts": 2}
+    assert [r[0] for r in q(w, "select status from report_discovery_runs where source_endpoint = "
+                               "'getFinancialAnnouncement' and request_params ->> 'fromDate' = '2021-04-01' "
+                               "order by started_at")] == ["failed", "succeeded"]
+    assert store.events(w, b["id"]) == history_b
+
+
+def test_closure_recovery_still_applies_to_an_item_outside_the_plan(env, monkeypatch):
+    """Recovery is unchanged: an item left in flight by a dead slice is expired and promoted from its evidence by the
+    next slice even when it is no longer in the plan; that is HB-1 / HB-2 recovery, not a plan rule."""
+    clock, _ = ready(env)
+    w = env.conn()
+    it = item(w, "feed_window:2021-04")
+    _crash_before_f1(env, clock, it, monkeypatch, 1)        # in flight; the lease is left for recovery
+    arm(env, window_first_date=date(2021, 5, 1))
+    with DiscoverySlice(env.conn(), runtime=runtime(env, clock, script=[])) as ds:
+        assert not ds.in_plan(it)
+    assert [(e["state"], e["action"]) for e in store.events(w, it["id"])[-2:]] == [("abandoned", "expire"),
+                                                                                 ("pending", "promote")]
+
+
+def test_closure_pass_ie4_waits_for_the_current_plan_only(env):
+    """Test D: IE-4 (the closure pass) refuses while a current-plan item is not final or not yet planned, and proceeds
+    once every current-plan item is final, though a stale item outside the plan is still not final."""
+    clock, _ = ready(env)
+    env.sweep()
+    w = env.conn()
+    identity.identity_pass(w, wall=clock.wall())
+    with pytest.raises(DiscoveryRefused) as ei:
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"]
+    stale = item(w, "feed_window:2021-04")
+    arm(env, window_first_date=date(2021, 5, 1))
+    _close_discovery(env, clock, EMPTY_LISTINGS)
+    comb = item(w, "listing:COMB.N0000")
+    store.append_event(w, comb["id"], "pending", "requeue", reason="operator re-queue in an HB-3 test")
+    with pytest.raises(DiscoveryRefused) as ei:              # one current-plan item is not final
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and "1 of its items not final" in str(ei.value)
+    assert [r[0]["natural_key"] for r in out_of_plan_anomalies(w)] == ["feed_window:2021-04"]   # audited on refusal too
+    one_slice(env, clock, comb, script=[ok(listing_body([COMB_SEC]))])
+    arm(env, window_first_date=date(2021, 5, 1), window_last_date=date(2026, 10, 31))
+    status = discovery.closure(w, discovery.current_plan(w, clock.wall()))
+    assert status.missing == ("feed_window:2026-10",) and not status.non_final and not status.closed
+    with pytest.raises(DiscoveryRefused) as ei:              # a current-plan item not planned yet
+        identity.closure_pass(w, wall=clock.wall())
+    assert ei.value.codes == ["closure"] and "1 not planned yet" in str(ei.value)
+    assert q(w, "select count(*) from backfill_work_items where natural_key = 'link_pass:2'") == [(0,)]
+    arm(env, window_first_date=date(2021, 5, 1))
+    out = identity.closure_pass(w, wall=clock.wall())        # the current plan is closed; the stale item is not final
+    assert out["closure"]["closed"] and state(w, stale) == "pending"
+    assert [o["natural_key"] for o in out["closure"]["out_of_plan"]] == ["feed_window:2021-04"]
+    assert out["observations"] == 1 and out["held"] == []    # IE-4 ran: COMB's secId sighting
+    assert state(w, item(w, "link_pass:2")) == "succeeded"
+
+
+def test_plan_one_universe_for_planning_claiming_and_closure(env):
+    """Test E: planning, claiming and closure take plan membership from the same plan.Plan of the same authoritative
+    inputs (the arming in force and the verified security master), before and after both inputs change."""
+    capture_master_on(env, -1)
+    arm(env)
+    clock = F.FakeClock()
+    w = env.conn()
+
+    def check(p, created):
+        assert created["plan"] == p.basis()
+        with DiscoverySlice(env.conn(), runtime=runtime(env, clock, script=[])) as ds:
+            assert ds.plan == p
+            assert all(ds.in_plan(r) == p.contains(r) for r in discovery.item_rows(w))
+            assert {r["natural_key"] for r in ds.eligible()} <= p.natural_keys
+        st = discovery.closure(w, p)
+        assert set(st.final) | {k for k, _ in st.non_final} | set(st.missing) == p.natural_keys
+        assert {o["natural_key"] for o in st.out_of_plan} == {r["natural_key"] for r in discovery.item_rows(w)} - \
+            p.natural_keys
+        return st
+
+    p = discovery.current_plan(w, clock.wall())
+    created = create_plan_items(w, wall=clock.wall())
+    assert {r["natural_key"] for r in discovery.item_rows(w)} == p.natural_keys and len(p.natural_keys) == 73
+    assert check(p, created).out_of_plan == ()
+    capture_master_on(env, 0, universe=WITHOUT_ABSB)         # both authoritative inputs change
+    arm(env, window_first_date=date(2021, 5, 1))
+    p2 = discovery.current_plan(w, clock.wall())
+    assert p2.natural_keys == p.natural_keys - {"listing:ABSB.N0000", "feed_window:2021-04"}
+    created = create_plan_items(w, wall=clock.wall())
+    assert (created["feed_window"], created["listing"], created["existing"]) == (0, 0, 71)
+    st = check(p2, created)
+    assert {o["natural_key"] for o in st.out_of_plan} == {"listing:ABSB.N0000", "feed_window:2021-04"}
 
 
 def test_hb3_preflight_passes_on_the_frozen_baseline(env):

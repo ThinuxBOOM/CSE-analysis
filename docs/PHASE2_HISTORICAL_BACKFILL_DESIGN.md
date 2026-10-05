@@ -65,6 +65,27 @@ HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request
   itself failed.
 - HB-Q5 and HB-Q6 as approved: listings only for the verified security master, no delisted-security discovery, no
   write to `companies`; the hold rule (HB-I-HOLD) applied to the IE-2 and IE-4 batches, holds recorded as L7 rows.
+- **HB-U5 discovery closure (owner decision, 2026-10-05, Option A: current-plan closure).** This resolves the
+  closure-semantics issue found in the HB-3 audit. **Discovery closure is current-plan closure. Historical/out-of-plan
+  discovery items remain preserved and auditable but do not block closure of the currently armed plan.**
+  - **The current plan** is every feed month of the currently armed whole-month window W, plus exactly one listing
+    per security of the currently verified security master (HB-P1). One constructor (`plan.Plan.of`, from the arming
+    in force and the verified security master) supplies plan membership to planning (`create_plan_items`), claiming
+    (the discovery slice) and closure, so they cannot use different universes.
+  - **Closed** means that every current-plan item exists in the ledger and is final. A plan item that has not been
+    created yet (for example a month added by a wider W) keeps discovery open.
+  - **Out-of-plan items** (outside the armed window, or no longer in the verified security master) are never
+    deleted, cancelled or rewritten to a final state because they are out of plan. Their append-only history is
+    unchanged; recovery and G10 apply to them as to any item.
+  - **Anomaly behaviour.** The closure pass records each out-of-plan item as an immutable class-3 anomaly
+    (`discovery_item_out_of_plan`, §19.1): the item, the plan basis it was created under, the current plan basis
+    (arming, window, security master), the reason and its state. It is `open` while the item is not final. Recording
+    the same item under the same basis and state again adds nothing; a new state or plan basis is a new record.
+  - **Re-entry.** An item that becomes part of a later plan is the same ledger item (its natural key): never
+    duplicated. Its claims since its last re-queue still count, its F1 evidence still takes part in evidence-wins
+    and G10, and a final item stays final without a new request.
+  - **IE-4** (the closure pass) runs only once the current plan is closed. It never runs merely because every ledger
+    row is final, and stale out-of-plan items never block it.
 
 It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
 changes no frozen file. The §23.3 discovery replay is `tests/test_hb3_replay_postgres.py`: it needs the RDV evidence
@@ -365,7 +386,8 @@ Two observations seen in F0 are not a Phase 2 source unless the owner approves o
   These helpers are module-level functions of the frozen `report_discovery`. Calling them, rather than rebuilding the
   run summary, is what keeps a single interpretation of F1. F1 persists only part of the summary (`_finish`'s
   `details`). The rest (duplicate ids, missing-path ids) is recomputed by the audit from the archived response (L5).
-- **HB-U5. Discovery closure.** Discovery is closed when:
+- **HB-U5. Discovery closure.** (Owner decision, 2026-10-05: closure is current-plan closure. See "HB-3
+  implementation status" above.) Discovery is closed when:
   - every feed month of W and every listing of the plan has reached a terminal state (succeeded, or failed after its
     bounded attempts, §14);
   - the issuer-evidence stage (§7) has run.

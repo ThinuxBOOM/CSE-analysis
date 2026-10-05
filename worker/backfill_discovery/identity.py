@@ -355,21 +355,29 @@ def identity_pass(conn, *, wall, wakeup_id=None, preflight=None):
 
 
 def closure_pass(conn, *, wall, wakeup_id=None, preflight=None):
-    """link_pass:2 (HB-S2, after discovery closure): the IE-4 batch with the hold rule, resolve, and the link pass."""
+    """link_pass:2 (HB-S2, after discovery closure): the IE-4 batch with the hold rule, resolve, and the link pass.
+    Closure is current-plan closure (owner decision on HB-U5): every item of the current plan (the armed window W and
+    the verified security master, plan.Plan.of) must exist and be final; discovery items outside the plan never
+    block it, are never changed, and are recorded as out-of-plan anomalies (discovery.audit_out_of_plan)."""
     arming, master = _gates(conn, wall, STAGE, preflight)
     first = store.item_by_key(conn, keys.link_pass(LINK_PASS_IDENTITY)["natural_key"])
     if first is None or store.current_state(conn, first["id"])["state"] != "succeeded":
         raise DiscoveryRefused([("order", "the IE-2 identity import (link_pass:1) has not succeeded (hb.acquire.1)")])
-    if not discovery.closed(conn):
-        raise DiscoveryRefused([("closure", "discovery is not closed: every feed month and listing must be final "
-                                            "(HB-U5)")])
+    status = discovery.closure(conn, plan.Plan.of(arming, master))
+    anomalies = discovery.audit_out_of_plan(conn, status, wakeup_id=wakeup_id)
+    if not status.closed:
+        raise DiscoveryRefused([("closure", f"the current discovery plan is not closed (HB-U5): "
+                                            f"{len(status.non_final)} of its items not final, {len(status.missing)} "
+                                            f"not planned yet (create_plan_items); {len(status.out_of_plan)} items "
+                                            f"outside the plan do not count")])
     item, state = _pass_item(conn, LINK_PASS_CLOSURE, wakeup_id)
     if state == "succeeded":
         return {"item": item["id"], "already": True}
     batch, without = ie4_batch(conn)
     out = record_batch(conn, batch, wakeup_id=wakeup_id)
-    links = link_window(conn, arming["window_first_date"], arming["window_last_date"])
+    links = link_window(conn, *status.plan.window)
     details = {"listings_without_phase2_response": without, "security_master": master.provenance(),
+               "closure": status.summary(), "out_of_plan_anomalies": anomalies,
                "observations": out["observations"], "recorded_new": out["recorded_new"], "held": out["held"],
                "securities": out["securities"], "links": links}
     _done(conn, item["id"], details, wakeup_id)
