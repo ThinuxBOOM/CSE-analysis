@@ -2110,7 +2110,9 @@ anomalies and never block closure) and plan-versioned IE-4 (one IE-4
 pass per distinct current plan, identified by a deterministic plan
 fingerprint of the armed window and the verified universe: the same
 plan is idempotent, a changed plan needs its own closure and pass, and
-earlier passes stay as immutable history). It adds no
+earlier passes stay as immutable history; closed owner decision: plan
+identity, not evidence provenance, determines the plan version). It
+adds no
 migration, grant, role, row-level security, `SECURITY DEFINER`, lock
 key or entry point, and changes no frozen file.
 

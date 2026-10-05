@@ -96,6 +96,15 @@ HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request
     - Any change of W, or of the verified universe (a security leaving or joining), is a different plan.
     - The provenance (arming id, capture run, `allSecurityCode` response, its time and body hash) is recorded beside
       the fingerprint in the pass's details.
+    - **Closed owner decision (2026-10-05): plan identity, not evidence provenance, determines the plan version.**
+      The identity is the armed whole-month window W and the verified security-master universe. Excluded on purpose:
+      arming database ids, P2 capture run ids, `observed_at`, body hashes and every other capture or provenance
+      identifier. Reasons:
+      1. the plan's natural work universe is what decides whether the plan changed;
+      2. fresh HB-P1 captures can carry different provenance while producing the same verified universe;
+      3. the 7-day freshness rule would otherwise create artificial plan versions;
+      4. P1 → P2 → P1 re-entry must be able to reuse the original plan's successful IE-4 pass;
+      5. the provenance is recorded beside the fingerprint, not discarded.
   - **One successful IE-4 pass satisfies exactly one fingerprint.** HB-1 fixes a link pass's natural key to
     `link_pass:<n>`, so a plan's IE-4 pass takes the next free number and carries the fingerprint in its immutable
     details. The plan's pass is the lowest-numbered one carrying its fingerprint.
