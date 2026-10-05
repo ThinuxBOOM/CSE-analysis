@@ -1816,7 +1816,9 @@ Frozen/accepted:
 -   P2;
 -   P3;
 -   Phase 2 HB-1 (governed backfill ledger);
--   Phase 2 HB-2 (governed CSE transport).
+-   Phase 2 HB-2 (governed CSE transport);
+-   Phase 2 HB-3 (discovery and issuer evidence; frozen on the branch
+    `claude/hb3-discovery`, merge to `main` pending).
 
 F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 §10--§11) are implemented by F6.4 (migration 0015).
@@ -1940,13 +1942,12 @@ Still open after real-data validation:
     final acceptance. F8 is not implemented (no code, no migration
     0017);
 -   Phase 2 --- historical financial backfill --- remains the major
-    architectural phase in progress. Only its first two implementation
-    steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
-    CSE transport), both below, are implemented and frozen; HB-3
-    (discovery and issuer evidence) is implemented, tested offline
-    and semantically closed, but its freeze is pending (below); HB-4
-    to HB-6 are not implemented, and Phase 2 as a whole is not
-    implemented.
+    architectural phase in progress. Only its first three
+    implementation steps, HB-1 (the governed backfill ledger), HB-2
+    (the governed CSE transport) and HB-3 (discovery and issuer
+    evidence), all below, are implemented and frozen (HB-3 on its
+    branch; its merge to `main` is pending); HB-4 to HB-6 are not
+    implemented, and Phase 2 as a whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2098,9 +2099,11 @@ HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
 
-Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented,
-tested offline and semantically closed; its freeze is pending**. It is
-the library package `worker/backfill_discovery/`, built under the HB-3 design
+Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented and
+frozen** (final freeze audit 2026-10-05; code as of `60d004d` on the
+branch `claude/hb3-discovery`; the merge to `main` follows the owner's
+acceptance of F8 revision 3). It is the library package
+`worker/backfill_discovery/`, built under the HB-3 design
 gate's owner decisions: D-HB3-1 (one F1 run per actual HTTP attempt:
 discovery runs only under an arming with `attempts_per_json_request =
 1` and an item maximum of at most 3, each claim being one separately
@@ -2120,6 +2123,25 @@ identity, not evidence provenance, determines the plan version). It
 adds no
 migration, grant, role, row-level security, `SECURITY DEFINER`, lock
 key or entry point, and changes no frozen file.
+
+The final HB-3 freeze audit (2026-10-05) checked the code, the tests
+and this documentation against D-HB3-1, G2, G10, current-plan closure,
+plan-versioned IE-4, HB-Q5/HB-Q6, HB-P1 and the recovery state
+machine. It found no failing rule.
+
+-   **Offline Linux run** (Python 3.12, PostgreSQL 17, with the RDV
+    evidence mounted): 1553 passed, 46 skipped and 2 expected failures.
+    One test failed: the known frozen HB-2 clock test, which is under
+    owner change control.
+-   **HB-3 tests:** all 101 passed, including the six-test F0/RDV
+    replay.
+-   **Mutation testing:** all 58 deliberately planted HB-3 faults were
+    caught.
+-   **Frozen boundary:** against `main`, no frozen file, migration,
+    grant, role, row-level security, `SECURITY DEFINER` or lock key
+    changed.
+
+The Phase 2 design (HB-3 implementation status) records the details.
 
 HB-P1 is a **deployment / runtime prerequisite, not an implementation
 prerequisite**. HB-3 may be implemented and tested offline before any
@@ -2389,11 +2411,10 @@ architecture should be implemented in dependency order.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
-two steps, HB-1 and HB-2 (HB-3 is implemented offline and
-semantically closed; its freeze is pending). Phase 2 --- historical
-financial backfill --- remains the major architectural phase in
-progress; its design decides real-data validation Q1 (issuer evidence;
-§52).
+three steps, HB-1, HB-2 and HB-3 (HB-3 frozen on its branch; its merge
+to `main` is pending). Phase 2 --- historical financial backfill ---
+remains the major architectural phase in progress; its design decides
+real-data validation Q1 (issuer evidence; §52).
 
 Sequencing (owner decision, 2026-10-05):
 
@@ -2409,8 +2430,13 @@ financial-truth layer. F8's design passed the design/contract gate at
 revision 2 (READY, 2026-10-05). Revision 3 adds the independent leakage
 review and is FROZEN / ACCEPTANCE READY; the F8 design freeze is
 pending the owner's final acceptance (`docs/F8_DESIGN.md`). F8 is not
-implemented. HB-4 implementation starts only after the HB-3 freeze and
-the F8 design freeze.
+implemented. HB-3 is frozen (2026-10-05). HB-4 implementation starts
+only after all of the following:
+
+-   the F8 design freeze;
+-   the merge of `claude/hb3-discovery` into `main`;
+-   the independent verification of the merged `main`;
+-   the new frozen baseline.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2425,14 +2451,15 @@ HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
 is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
-evidence (`worker/backfill_discovery/`), is implemented, tested offline
-and semantically closed; its freeze is pending. Live discovery waits
-for HB-P1, a deployment prerequisite (§52), and follows the release
-sequence of §43.1. HB-4 to HB-6 (document worker; F6 orchestration and
-audit; operations and pilot) are not implemented. The F8
-design/contract gate has been passed (READY at revision 2; revision 3
-is FROZEN / ACCEPTANCE READY). HB-4 implementation starts only after
-the HB-3 freeze and the F8 design freeze (Phase 1, above).
+evidence (`worker/backfill_discovery/`), is implemented and frozen
+(2026-10-05; on its branch, merge to `main` pending). Live discovery
+waits for HB-P1, a deployment prerequisite (§52), and follows the
+release sequence of §43.1. HB-4 to HB-6 (document worker; F6
+orchestration and audit; operations and pilot) are not implemented. The
+F8 design/contract gate has been passed (READY at revision 2; revision
+3 is FROZEN / ACCEPTANCE READY). HB-4 implementation starts only after
+the F8 design freeze, the merge into `main`, its verification and the
+new frozen baseline (Phase 1, above).
 
 ## Phase 3 --- Market feature foundation
 

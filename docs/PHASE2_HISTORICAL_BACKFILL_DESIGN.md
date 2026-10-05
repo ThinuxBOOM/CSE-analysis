@@ -3,8 +3,9 @@
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
-issuer evidence) is implemented, tested offline and semantically closed; its freeze is pending** (see below). HB-4 to
-HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
+issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
+`claude/hb3-discovery`, merge to `main` pending (see below). HB-4 to HB-6 are not implemented, **Phase 2 as a whole is
+not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -48,7 +49,7 @@ without another request; otherwise `unrecorded`), not by HB-1's `store.expire_de
 
 HB-X2 and prerequisite HB-P1 remain open and still gate any live Phase 2 request.
 
-**HB-3 implementation status** (offline implementation; the design text is unchanged). HB-3 is the library package
+**HB-3 implementation status** (implemented and frozen, 2026-10-05; the design text is unchanged). HB-3 is the library package
 `worker/backfill_discovery/`, built under the HB-3 design gate's owner decisions:
 - **D-HB3-1 (Option B):** discovery runs only under an arming with `attempts_per_json_request = 1` and
   `item_max_attempts` at most 3. Each claim begins one F1 run (F1's own `begin_run`, before the request intent), makes
@@ -122,6 +123,39 @@ It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock 
 changes no frozen file. The §23.3 discovery replay is `tests/test_hb3_replay_postgres.py`: it needs the RDV evidence
 outside Git (`CSE_F6_CORPUS_DIR`, `CSE_F0_CAPTURE_DIR`) and `P1_PG_BINDIR`, and it skips without them; a skip is an
 environment limitation, not evidence of equivalence.
+
+**HB-3 freeze (2026-10-05).** HB-3 is implemented and frozen. Its code is as of `60d004d` on `claude/hb3-discovery`,
+unchanged at the audited HEAD `30bba72`. The merge into `main` and the new frozen baseline follow the owner's
+acceptance of F8 revision 3 (MA §55).
+
+The final freeze audit checked the code, the tests and this documentation against each settled decision above:
+D-HB3-1, G2, G10, current-plan closure, plan-versioned IE-4, HB-Q5/HB-Q6, HB-P1 and the recovery state machine. It
+found no failing rule.
+
+- **Offline Linux run.** The `cse-p1-test` container (Python 3.12, PostgreSQL 17, no network), with the RDV evidence
+  mounted:
+  - 1553 passed, 46 skipped (pinned Poppler absent, network tests off, no `DATABASE_URL`; none is an HB test) and 2
+    expected failures;
+  - 1 failure: `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, the known frozen HB-2 fake clock,
+    under owner change control and left unchanged.
+- **Per suite:**
+  - HB-3: 101 of 101 passed (38 unit, 57 PostgreSQL, and the 6 tests of the §23.3 F0/RDV replay);
+  - HB-1: 47 of 47 passed;
+  - HB-2: 57 passed, plus the known failure.
+- **Windows** (Python 3.14): 1225 passed, 377 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Mutation testing:** all 58 deliberately planted HB-3 faults were caught, each by the test aimed at its rule. They
+  cover D-HB3-1, G2, G10, accounting, HB-P1, the hold rule, closure and plan-versioned IE-4.
+- **Frozen boundary.** Against `main` (`e3214537`), only the documentation, the README, the three HB-3 test files and
+  `worker/backfill_discovery/` changed:
+  - migration 0016 is unchanged (SHA-256 `f27c34a1…`), and there is no migration 0017;
+  - no grant, role, row-level security, `SECURITY DEFINER`, lock key, entry point or timer was added;
+  - HB-1's, HB-2's and HB-3's pins and static checks pass.
+- **Observation (not a failing rule).** In G10's evidence-wins terminalisation, and in a live failure at the claim
+  maximum, the event records C and A and names its evidence. The armed maximum M is reached through the event's lease,
+  whose details hold the arming. Only the start-of-slice `failed` terminalisation states C, A and M in its reason.
+- **Known limits, unchanged:**
+  - the replay needs the out-of-Git RDV evidence;
+  - HB-P1 is not satisfied, so no live HB-3 discovery has run.
 
 **HB-P1 is a deployment / runtime prerequisite, not an implementation prerequisite.** HB-3 may be implemented and
 tested offline before any production security-master capture exists. Live HB-3 discovery remains forbidden until HB-P1
@@ -1713,7 +1747,11 @@ hard-code assumptions about the canonical financial-truth layer.
 - F8's design (`docs/F8_DESIGN.md`) passed the design/contract gate at revision 2 (READY, 2026-10-05).
 - Revision 3 adds the independent leakage review and is FROZEN / ACCEPTANCE READY. The F8 design freeze is pending the
   owner's final acceptance.
-- F8 is not implemented. HB-4 implementation starts only after the HB-3 freeze and the F8 design freeze.
+- HB-3 is frozen (2026-10-05). F8 is not implemented. HB-4 implementation starts only after all of these:
+  - the F8 design freeze;
+  - the merge into `main`;
+  - its verification;
+  - the new frozen baseline.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|

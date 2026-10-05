@@ -18,11 +18,11 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1 and HB-2. F6.2 is an accepted design; its storage amendments are
-implemented by F6.4.
+validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1, HB-2 and HB-3. HB-3 (discovery and issuer evidence) is frozen on
+the branch `claude/hb3-discovery`, and its merge to `main` is pending. F6.2 is an accepted design; its storage
+amendments are implemented by F6.4.
 
-**Implemented offline and semantically closed, freeze pending:** Phase 2 HB-3 (discovery and issuer evidence); live
-discovery waits for the deployment prerequisite HB-P1.
+**Live HB-3 discovery** waits for the deployment prerequisite HB-P1.
 
 **Not implemented:** F8 (availability, supersession, as-of), Phase 2 HB-4 to HB-6, and every later roadmap phase
 (Master Architecture §55).
@@ -78,8 +78,7 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **only the first two steps are done** (frozen); the third is implemented offline and semantically closed, and its
-freeze is pending:
+and **only the first three steps are done** (frozen; HB-3 is on its branch, and its merge to `main` is pending):
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -95,8 +94,8 @@ freeze is pending:
   package `worker/backfill_transport/`, through which every Phase 2 CSE request must go: owner arming, blocks, budgets,
   P3's quiet window, at least 1.5 s spacing under P2's exclusive lock, each request recorded in the HB-1 ledger before it
   is sent, and spool-first crash recovery (including the B-HB2-1 correction). It has no command or timer (HB-6).
-- **HB-3 — Discovery and Issuer Evidence: implemented, tested offline and semantically closed; its freeze is
-  pending.** It is the library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per
+- **HB-3 — Discovery and Issuer Evidence: implemented and frozen** (final freeze audit 2026-10-05; merge to `main`
+  pending). It is the library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per
   security of the verified
   security master, each request one F1 run and one governed HB-2 attempt (`attempts_per_json_request = 1`), the G2
   in-flight lease guard, G10 terminalisation, the issuer-evidence import with the hold rule, and the link passes.
