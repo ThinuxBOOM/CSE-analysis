@@ -1930,18 +1930,23 @@ Still open after real-data validation:
 
 -   F8 availability/supersession: errata, amendment and restatement
     supersession, the choice of availability time, and commit-time
-    as-of. Owner decision (2026-10-05): F8 is brought forward. Its
-    design/contract gate is the next architecture gate after HB-3 is
-    frozen and comes before HB-4 (HB-3 freeze → F8 design/contract
-    gate → subsequent backfill phases). F8 is not designed or
-    implemented yet;
+    as-of. Owner decision (2026-10-05): F8 is brought forward, ahead
+    of HB-4 (HB-3 freeze → F8 design freeze → HB-4 implementation).
+    Its design, `docs/F8_DESIGN.md`, passed the design/contract gate
+    at revision 2 (READY: owner decisions OD-1 `f8.availability.1`,
+    OD-2 `f8.supersession.1` and OD-3 `f8.knowledge.1`, 2026-10-05).
+    Revision 3 adds the independent leakage review and is FROZEN /
+    ACCEPTANCE READY: the F8 design freeze is pending the owner's
+    final acceptance. F8 is not implemented (no code, no migration
+    0017);
 -   Phase 2 --- historical financial backfill --- remains the major
     architectural phase in progress. Only its first two implementation
     steps, HB-1 (the governed backfill ledger) and HB-2 (the governed
     CSE transport), both below, are implemented and frozen; HB-3
-    (discovery and issuer evidence) is implemented and tested
-    offline but not yet reviewed or frozen (below); HB-4 to HB-6 are
-    not implemented, and Phase 2 as a whole is not implemented.
+    (discovery and issuer evidence) is implemented, tested offline
+    and semantically closed, but its freeze is pending (below); HB-4
+    to HB-6 are not implemented, and Phase 2 as a whole is not
+    implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2093,9 +2098,9 @@ HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
 
-Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented
-and tested offline, not yet reviewed or frozen**. It is the library
-package `worker/backfill_discovery/`, built under the HB-3 design
+Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented,
+tested offline and semantically closed; its freeze is pending**. It is
+the library package `worker/backfill_discovery/`, built under the HB-3 design
 gate's owner decisions: D-HB3-1 (one F1 run per actual HTTP attempt:
 discovery runs only under an arming with `attempts_per_json_request =
 1` and an item maximum of at most 3, each claim being one separately
@@ -2379,14 +2384,16 @@ architecture should be implemented in dependency order.
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
 -   availability/supersession (F8; explicitly deferred by F6.4;
-    brought forward, see below).
+    brought forward, see below) --- designed (`docs/F8_DESIGN.md`,
+    revision 3: FROZEN / ACCEPTANCE READY), not implemented.
 
 The remaining Phase 1 item (F8 availability/supersession) and every
 later phase below are not yet implemented, apart from Phase 2's first
-two steps, HB-1 and HB-2 (HB-3 is implemented offline and awaiting
-review). Phase 2 --- historical financial backfill --- remains the
-major architectural phase in progress; its design decides real-data
-validation Q1 (issuer evidence; §52).
+two steps, HB-1 and HB-2 (HB-3 is implemented offline and
+semantically closed; its freeze is pending). Phase 2 --- historical
+financial backfill --- remains the major architectural phase in
+progress; its design decides real-data validation Q1 (issuer evidence;
+§52).
 
 Sequencing (owner decision, 2026-10-05):
 
@@ -2398,8 +2405,12 @@ HB-3 freeze
 
 F8 is brought forward so that the document worker and F6 orchestration
 (HB-4, HB-5) do not hard-code assumptions about the canonical
-financial-truth layer. This is a gate order only: F8 is not designed or
-implemented yet.
+financial-truth layer. F8's design passed the design/contract gate at
+revision 2 (READY, 2026-10-05). Revision 3 adds the independent leakage
+review and is FROZEN / ACCEPTANCE READY; the F8 design freeze is
+pending the owner's final acceptance (`docs/F8_DESIGN.md`). F8 is not
+implemented. HB-4 implementation starts only after the HB-3 freeze and
+the F8 design freeze.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2414,13 +2425,14 @@ HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
 is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
-evidence (`worker/backfill_discovery/`), is implemented and tested
-offline, not yet reviewed or frozen; live discovery waits for HB-P1, a
-deployment prerequisite (§52), and follows the release sequence of
-§43.1. HB-4 to HB-6 (document worker; F6 orchestration and audit;
-operations and pilot) are not implemented. After HB-3 is frozen, the
-next gate is the F8 design/contract gate, before HB-4 (Phase 1,
-above).
+evidence (`worker/backfill_discovery/`), is implemented, tested offline
+and semantically closed; its freeze is pending. Live discovery waits
+for HB-P1, a deployment prerequisite (§52), and follows the release
+sequence of §43.1. HB-4 to HB-6 (document worker; F6 orchestration and
+audit; operations and pilot) are not implemented. The F8
+design/contract gate has been passed (READY at revision 2; revision 3
+is FROZEN / ACCEPTANCE READY). HB-4 implementation starts only after
+the HB-3 freeze and the F8 design freeze (Phase 1, above).
 
 ## Phase 3 --- Market feature foundation
 

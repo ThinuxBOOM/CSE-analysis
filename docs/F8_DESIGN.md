@@ -1,23 +1,32 @@
 # F8: Availability, supersession and point-in-time financial views (design gate report)
 
-**Status:** design gate report, revision 2 (2026-10-05). The owner approved OD-1, OD-2 and OD-3 on 2026-10-05 (§17).
-**Design only:** nothing in it is implemented, no migration is written, and no frozen layer is changed.
+**Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTANCE READY:** the design text is frozen and
+awaits the owner's final acceptance, which is the F8 design freeze. **F8 is not implemented:** no code exists, no
+migration is written, and no frozen layer is changed.
 
-**Baseline:** branch `claude/hb3-discovery` at `7fe5a77` (revision 1 of this document; the HB-3 code is as of
-`60d004d`); `main` at `e3214537` (the HB-2 freeze). F1–F6.4, P1–P3, HB-1 and HB-2 are frozen. HB-3 is closed
-semantically and awaits its freeze. The sequencing is the owner's decision of 2026-10-05:
+**History:**
+- Revision 1 was the design gate report (BLOCKED on OD-1 to OD-3).
+- Revision 2 recorded the owner's approval of OD-1, OD-2 and OD-3 and passed the design/contract gate (READY).
+- Revision 3 adds the independent leakage review that §20 criterion 6 requires (Appendix B), with the corrections it
+  required (F-1 to F-5), and a final consistency audit (§16).
+
+**Baseline:** branch `claude/hb3-discovery` at `e8a0605` (revision 2 of this document; the HB-3 code is as of
+`60d004d`); `main` at `e3214537` (the HB-2 freeze). F1–F6.4, P1–P3, HB-1 and HB-2 are frozen. HB-3 is implemented and
+semantically closed; its freeze is pending. HB-4 onwards is not implemented. The sequencing is the owner's decision of
+2026-10-05:
 
 ```text
-HB-3 freeze → F8 design/contract gate (this document) → HB-4 onwards
+HB-3 freeze → F8 design freeze (the acceptance of this document) → HB-4 implementation
 ```
 
-**Gate result: F8 DESIGN READY.** The three blocking owner decisions are approved (2026-10-05, §17):
+**Owner decisions (2026-10-05, §17):**
 - **OD-1:** the availability policy `f8.availability.1` (§5.2);
 - **OD-2:** the supersession rule `f8.supersession.1` (§6.3), with no owner-asserted supersession at this stage;
 - **OD-3:** system-knowledge time from immutable recorded times, with the documented skew: `f8.knowledge.1` (§4.4).
 
 No design blocker remains (§18). OD-5 (the mode names) is open and does not block. The producer contract that HB-4/HB-5
-implement against (§3.4) is unchanged. Appendix A lists what revision 2 changed.
+implement against (§3.4) is unchanged. HB-P1 remains a deployment/runtime prerequisite for live Phase 2 execution only
+(§19). Appendices A and C list what revisions 2 and 3 changed.
 
 ---
 
@@ -73,6 +82,13 @@ implement against (§3.4) is unchanged. Appendix A lists what revision 2 changed
      (§4.4). F6.4's suggested `track_commit_timestamp` is not durable on its own and is not a prerequisite.
 
    The rejected alternatives and their reasons are kept with each rule (§4.4, §5.2, §6.3).
+8. **Independent leakage review (revision 3, Appendix B).** I-1 and I-2 were re-derived from the rules of §§4–8, and
+   ten adversarial cases were tested against them.
+   - The derivation did not go through on revision 2: it found five defects (F-1 to F-5).
+   - The most important, F-1 and F-2, let a point-in-time result mention rows from after its cutoff: as exclusions
+     or counts, or through F6.3's one-run-per-document choice.
+   - Revision 3 corrects all five. Each correction only removes information from a result or makes a promise exact.
+     None reopens an owner decision.
 
 ---
 
@@ -89,7 +105,7 @@ implement against (§3.4) is unchanged. Appendix A lists what revision 2 changed
 | Every feature has an availability rule and a version | MA §39 | F8 supplies the financial availability rule and its version to F7 (§14) |
 | A forecast stores its information cutoff, input record ids and dataset hashes; historical results are immutable | MA §23, §38 | Consumers pin query, configuration and `result_hash` (§11). An already-produced forecast is reproduced from its stored inputs, never by reconstructing commit visibility (§4.4) |
 | Provenance from forecast → feature → economic fact → source observation → filing → CSE | MA §42 | §11: every F8 result explains itself down to the CSE evidence |
-| Automated leakage tests (a future filing, a later revised value, a backward-moved publication timestamp, today's universe) | MA §11, §57 | Test matrix §15 (T-5 to T-7, T-15, T-16, T-23, T-26 to T-35) |
+| Automated leakage tests (a future filing, a later revised value, a backward-moved publication timestamp, today's universe) | MA §11, §57 | Test matrix §15 (T-5 to T-7, T-15, T-16, T-23, T-26 to T-40); derivation and adversarial cases, Appendix B |
 | Never casually add arbitrary financial-fact precedence or mutable latest-value tables | MA §59 | No recency rule (§7.4); supersession only on source-declared evidence (§6.3); no "latest" tables (P-6); F8's own tables are append-only (§13) |
 | A valid backtest needs correct point-in-time reconstruction and financial availability, no leakage, fixed versions and reproducible results | MA §62 | Modes and labels (§7.3, §8); versioned rules in a content-addressed configuration (§11, §13); deterministic results (§7.5) |
 | F8 owns errata/amendment/restatement supersession, the choice of availability time and commit-time as-of | MA §52 | §5 (OD-1), §6 (OD-2), §4.4 (OD-3); all approved |
@@ -138,6 +154,8 @@ implement against (§3.4) is unchanged. Appendix A lists what revision 2 changed
   through an explicit supersession record (§6).
 - Treat `first_seen_at`, `observed_at`, retrieval, classification, processing or `recorded_at` as source availability
   (F6.2 §9.1).
+- Put anything from outside a result's information set into that result, even as an exclusion, a count or a fact key
+  (§7.7).
 
 ### 3.4 Producer contract for HB-4 and HB-5 (what they implement against)
 
@@ -148,7 +166,7 @@ precedence.**
 |---|---|
 | P-1 | Write F1–F6.4 rows only through the frozen stores and jobs (unchanged), so every availability and knowledge field of §3.1 is populated exactly as F5's own `run()` and F6.4's jobs populate it |
 | P-2 | HB-4 passes F2's retrieval record (with `last_modified` and `retrieved_at`) to F5's `attach_timestamps` for every processed document. The governed fetcher already returns the real response headers. A run without its retrieval record is a defect |
-| P-3 | Never set, backdate or copy a system time. `recorded_at`, `decided_at` and `classified_at` stay database defaults set in the writing transaction. Keep the frozen transaction units (one filing per transaction, Phase 2 §10.1; F6.4's own units, F6.4 §18.1) and never wrap several of them in one longer transaction: those units bound the knowledge-time skew of `f8.knowledge.1` (§4.4) |
+| P-3 | Never set, backdate or invent a knowledge time.<br>• `recorded_at`, `decided_at` and `classified_at` stay database defaults set in the writing transaction.<br>• F1's `observed_at` is only the receipt time that F1's own code records.<br>• Times that frozen code copies into its own records stay exactly as that code writes them, such as F5's timestamp snapshot written through `attach_timestamps` (P-2).<br>• Revision 2 said "never copy a system time", which conflicted with P-2; revision 3 says exactly what is forbidden.<br>Keep the frozen transaction units (one filing per transaction, Phase 2 §10.1; F6.4's own units, F6.4 §18.1), and never wrap several of them in one longer transaction. Those units bound the knowledge-time skew of `f8.knowledge.1` (§4.4) |
 | P-4 | One document version is one document SHA-256. Bytes are never overwritten. A re-retrieval with identical bytes is the same document. Different bytes under the same filing are a new version (HB-1 `document:<id>:<path_sha>` items record the path history) |
 | P-5 | Never filter, rank or choose filings, documents or observations by availability, recency, audit label, document type or restatement. HB-5's reconciliation is F6.4's (all canonical observations of a fact, no precedence) |
 | P-6 | Never materialise a "latest", "current value" or "as-of" table, view or column. The coverage audit may count; it may not define availability or supersession |
@@ -510,11 +528,18 @@ strictly increases.
 ### 7.4 Selection, and the definition of "latest"
 
 For each fact, at the governing horizon G (T for `KNOWN`; H for `AVAILABLE` and `CURRENT`):
-1. **Runs.** Every F5 run of the documents concerned that is known at G (`recorded_at ≤ G`) goes to F6.3's own D-6
-   selection (`select_runs`). That gives one run per document: the most recently recorded of our own processing runs of
-   those bytes.
+1. **Runs.** The candidates are the F5 runs known at G (`recorded_at ≤ G`) whose document version (`cse_filing_id`,
+   `document_sha256`) is visible in the mode. This is checked **before** D-6 (revision 3, F-2):
+   - `KNOWN`: available by T, or of unknown availability, as known at T;
+   - `AVAILABLE`: available by T, as known at H;
+   - `CURRENT`: no availability condition.
+
+   The candidates go to F6.3's own D-6 selection (`select_runs`). That gives one run per document: the most recently
+   recorded of our own processing runs of those bytes.
    - As F6.3's `reconcile` requires, a newer run known at G never falls back to an older run's observations.
    - A run recorded after G does not exist for the query.
+   - A run of a filing that is not visible in the mode is never a candidate. This covers the same bytes under a later
+     filing (A-6): that filing can neither represent the document nor hide it.
 2. **Validation.** Each selected run contributes the validation run canonical at G (F6.4 M4, with the issuer decision
    and the F1 metadata known at G).
 3. **Visibility.** Take the visible set V (§7.3).
@@ -539,15 +564,40 @@ representative, reasons and annotations. F8 adds its own states and flags (§12)
 
 - `KNOWN`, `AVAILABLE` and `CURRENT` recompute with F6.3's pure functions over stored observations, loaded with F6.4's
   frozen loader and its rendering rules.
-- The result is a pure function of (mode, T, H, configuration, F8 rule versions, issuer, filter) and of append-only rows
-  that cannot change for any H already past. So it is reproducible (§11).
+- The result is a pure function of (mode, T, H, configuration, F8 rule versions, issuer, filter) and of the rows of its
+  information set (§7.7). Those rows are append-only and cannot change once the governing time is settled (§11, F-4).
+  So the result is reproducible from then on.
 
 ### 7.6 Missing data
 
-- **No visible observation:** state `none`, with the reason counts (`not_yet_available`, `not_yet_known`,
-  `availability_unknown_excluded`, `metadata_version_tie`).
+- **No visible observation:** state `none`, with counts of in-set reasons only (§7.7): `not_yet_available` (`KNOWN`
+  only) and `metadata_version_tie`.
+  - Revision 2 also counted `not_yet_known` and `availability_unknown_excluded`. Both describe rows outside the
+    result's information set, so revision 3 removes them (F-1).
 - **F8 never fills a gap:** no carry-forward, no derived Q4, no interpolation. A consumer that wants a "last known
   value" carries it forward explicitly and records that it did (MA §39).
+
+### 7.7 The information set of a result (revision 3, F-1)
+
+Every part of a result is computed from its **information set Ω**, and from nothing else (Appendix B, L6):
+
+| Mode | Information set Ω |
+|---|---|
+| `KNOWN_RECORDED` (T) | The batches in force at T and the rows they reference. Each of those rows was known before its batch was recorded (Appendix B, L7) |
+| `KNOWN` (T) | The rows whose knowledge time is at or before T, with the F1 metadata observed by T |
+| `AVAILABLE` (T, H) | The rows known by H that belong to document versions available by T (as known at H), with their availability evidence observed by H |
+| `CURRENT` (H) | The rows known by H |
+
+- **In-set exclusions only.** A result may list an excluded observation only if it is inside Ω. The reasons are:
+  - `not_yet_available` (`KNOWN` only): the system held the document at T, but its policy time is later than T;
+  - `metadata_version_tie`;
+  - `superseded_by`.
+- **Nothing from outside Ω, in any form.**
+  - No `not_yet_known` entry or count ever appears.
+  - In `AVAILABLE`, no document that is unavailable by T, or of unknown availability, appears.
+  - A fact appears only if it has an observation in Ω, or if it was requested by its exact `ef_key` (then as `none`).
+- **Audits are kept apart.** `explain` may report rows outside Ω for an audit (§13.2). That section is labelled
+  `audit`, lies outside `result_hash`, and is never a point-in-time input.
 
 ---
 
@@ -565,7 +615,7 @@ They are never mixed.
 - A dataset built from mixed modes is refused by the F8 interface. Consumers record their mode (F6.2 §9.1: the
   consumer run record carries `cutoff_at`, knowledge mode, availability-policy version and F6 configuration).
 
-### 8.2 Which mode for which consumer (recommendations, except the live rule; consumer layers decide)
+### 8.2 Which mode for which consumer (recommendations, except two rules; consumer layers decide)
 
 | Use | Recommended mode | Who decides |
 |---|---|---|
@@ -576,8 +626,17 @@ They are never mixed.
 | Evaluation of past forecasts | The inputs the forecast stored (MA §23) | Evaluation layer |
 | Historical analytics and research reports | `CURRENT` or `AVAILABLE`, labelled | Report author |
 
-The live row is a rule, not a recommendation. F6.2 §9.2 forbids the source-availability view for any live analysis or
-prediction (§7.3). The other rows are recommendations.
+Two entries are rules, not recommendations:
+- **Live use is `KNOWN` or `KNOWN_RECORDED` only.** F6.2 §9.2 forbids the source-availability view for any live
+  analysis or prediction (§7.3).
+- **No point-in-time use ever takes a `CURRENT` result** (revision 3, F-5). This covers live prediction, backtests, ML
+  training and validation, and the evaluation of past forecasts. `CURRENT` admits later restatements as though they
+  were known (MA §11, §32, §33; Appendix B, case 10).
+  - Every F8 interface that serves point-in-time use (timelines, feature builds) accepts only `KNOWN_RECORDED`, `KNOWN`
+    or `AVAILABLE`.
+  - A `CURRENT` result carries `retrospective_current` inside its hashed envelope (§11).
+
+The other entries are recommendations.
 
 F8 defines the primitives and enforces the labels. Choosing training, validation and live cutoffs belongs to the
 consumer layers (§14).
@@ -605,7 +664,8 @@ Phase 2 writes its evidence at backfill time (2026 or later):
 **Reproducibility of the distinction:**
 - Every observation exposes `known_at`, with the row that set it, and `available_at`, with its evidence and policy.
 - Every result records its mode, T and H.
-- The 2026 backfill can never alter a `KNOWN` result for T < 2026: rows written in 2026 have `known_at` in 2026.
+- The 2026 backfill can never alter a `KNOWN` result for T < 2026. Rows written in 2026 have `known_at` in 2026, so
+  they lie outside that result's information set and do not appear in it at all (§7.7).
 
 ---
 
@@ -655,8 +715,8 @@ analytical query (mode, T, H, issuer, filter)
 → per fact: visible observations (so_key, document_sha256, cse_filing_id, f5_run_id, validation_run_key)
       each with available_at (basis, precision, evidence: F1 observation ids, metadata_hash, F5 run snapshot)
            and known_at (the row and time that set it)
-  excluded observations, each with its reason (not_yet_available | not_yet_known | availability_unknown |
-      metadata_version_tie | superseded_by)
+  excluded observations inside the information set only (§7.7), each with its reason
+      (not_yet_available [KNOWN only] | metadata_version_tie | superseded_by)
   supersession records (rule, basis S-1, S-2 or S-3, evidence references)
 → the F6.3 reconciliation result (input_hash, output_hash, envelope)
 → down through F6.4 provenance (V6) to the filing, the document and the CSE responses (HB-1 attempts and archived bodies)
@@ -668,7 +728,13 @@ analytical query (mode, T, H, issuer, filter)
 
 **Selections need no immutable records for correctness.** Every input is append-only with a durable `known_at`
 (OD-3, approved: `f8.knowledge.1`), and the rules are pure and versioned. So a result is reproducible from (query,
-configuration, rule versions).
+configuration, rule versions) once its governing time is settled (revision 3, F-4):
+- "Settled" means that every writing transaction that began at or before the governing time has ended. For F1
+  metadata under HB-3, it also means that any interrupted run has been recovered (§4.4).
+- Before then, a replay can include a row with an earlier knowledge time that committed later: OD-3's documented
+  skew.
+- A live result computed at its own governing time is therefore reproduced from its stored inputs (MA §23), not by
+  replay.
 
 **Consumers that must pin a result** (a training set, a backtest, a forecast) store their query, configuration and
 `result_hash`. A stored hash re-proves itself on recomputation.
@@ -727,7 +793,8 @@ f8.as_of(conn, *, issuer_id, facts, mode, information_cutoff=None, knowledge_hor
                   facts=[FactView(ef_key, state, value_kind, interval, representative, f6_result, visible, excluded,
                                   superseded, flags)],
                   result_hash)
-f8.explain(conn, result_hash | AsOfResult) -> the provenance chain of §11
+f8.explain(conn, result_hash | AsOfResult, *, audit=False) -> the provenance chain of §11
+    (audit=True adds rows outside the information set, labelled audit, outside result_hash; §7.7)
 f8.availability(conn, cse_filing_id, document_sha256, *, horizon, policy) -> Availability(...)
 ```
 
@@ -773,8 +840,9 @@ adopted) and touches no frozen table. It is not written: F8 implementation has n
 | Research reports | `CURRENT` or `AVAILABLE`, labelled | The report author |
 
 F8 owns the primitives (visibility, supersession, the label). Policies (cutoffs, lags, era boundaries, conflict
-handling in features) belong to the consumers. One rule binds every consumer: a live analysis or prediction uses
-`KNOWN` or `KNOWN_RECORDED` only (F6.2 §9.2; §7.3).
+handling in features) belong to the consumers. Two rules bind every consumer (§8.2):
+- a live analysis or prediction uses `KNOWN` or `KNOWN_RECORDED` only (F6.2 §9.2; §7.3);
+- no point-in-time use takes a `CURRENT` result.
 
 ---
 
@@ -800,15 +868,15 @@ handling in features) belong to the consumers. One rule binds every consumer: a 
 | T-16 | Time-zone boundary | Colombo midnight; date-only times count as the end of day; a naive timestamp is refused |
 | T-17 | `CURRENT` | Uses later restatements; refuses an information cutoff |
 | T-18 | Historical-information modes | Never use a version unavailable or unknown at T |
-| T-19 | Deterministic replay | The same query, configuration and versions give a byte-identical `result_hash`, also after later rows are added for the same past H |
-| T-20 | Provenance explanation | `explain` reaches the CSE evidence for every visible and excluded observation |
+| T-19 | Deterministic replay | For a settled governing time (§11, F-4), the same query, configuration and versions give a byte-identical `result_hash`, also after later rows are added |
+| T-20 | Provenance explanation | `explain` reaches the CSE evidence for every visible observation and every in-set exclusion. Its optional audit section is labelled `audit` and lies outside `result_hash` (§7.7) |
 | T-21 | Append-only enforcement | F8 tables refuse UPDATE, DELETE and TRUNCATE; owner-only inserts are enforced |
 | T-22 | Rule-version reproducibility | A result under `f8.*.1` stays reproducible after a `.2` is added |
 | T-23 | Publication time moved backward later (MA §57) | Under A-2 nothing becomes visible earlier |
 | T-24 | Mutable F1 row edited | F8 history is unchanged (it reads observations only) |
 | T-25 | No F6.4 or upstream row is written by any F8 code path | Static and database checks |
 | T-26 | Authorization later than upload (OD-1, semantics 3) | `available_at` is the authorization instant, never the earlier upload instant |
-| T-27 | Horizon monotonicity (OD-1, semantics 4) | For H1 ≤ H2, each version's `available_at` at H2 ≥ at H1; an observation moving U or A earlier changes nothing |
+| T-27 | Horizon monotonicity (OD-1, semantics 4) | For H1 ≤ H2, each version's `available_at` at H2 ≥ at H1 (it may also become unknown, never earlier); an observation moving U or A earlier changes nothing |
 | T-28 | No usable evidence (OD-1, semantics 6) | `availability_unknown`; excluded from `AVAILABLE`; no system time stands in |
 | T-29 | Contradictory evidence (OD-1, semantics 8) | Every value is kept and flagged; nothing is repaired; the result is a pure function of all the evidence known by H |
 | T-30 | Supersession never-list (OD-2) | No supersession for a later filing, interim against annual, unaudited against audited, an unrestated differing comparative, path or filename similarity, symbol similarity, arrival order, or a "latest filing" heuristic. Each stays corroborated, `conflicting` or ambiguous |
@@ -817,19 +885,32 @@ handling in features) belong to the consumers. One rule binds every consumer: a 
 | T-33 | D-6 at the horizon (F6.3 delegation) | A re-processing run recorded after T is invisible at T and the earlier run is used. A newer run known at T that lacks the fact never falls back to the older run's observation |
 | T-34 | Context from the visible set | In `AVAILABLE` at T, `same_document_multiple_filings` is absent when the second filing carrying the document is not available by T |
 | T-35 | `available_after_known` and `metadata_version_tie` | At `instant` precision the first flag marks a contradiction, at `day` precision the A-3 effect. The observation is hidden in `KNOWN` until `available_at` either way. A metadata tie hides the dependent observations and is never broken by an arbitrary order |
+| T-36 | Payload closure (F-1) | Adding rows with a knowledge time after T leaves a `KNOWN` (T) result byte-identical: no `not_yet_known` entry or count, and no fact first known after T. An `AVAILABLE` (T, H) result never mentions a document unavailable by T or of unknown availability, even as an exclusion or a count |
+| T-37 | Version visibility before D-6 (F-2) | The same bytes under filing F1 (available in 2023) and F2 (available in 2025), F2's run recorded later: `AVAILABLE` (T = 2024) uses F1's run, the document is visible, and F2 appears nowhere in the result |
+| T-38 | `KNOWN_RECORDED` and availability (F-3) | A stored batch containing a date-only document processed on its own publication day is returned unchanged, with `available_after_known` (day precision) on that observation |
+| T-39 | Settled-horizon reproducibility (F-4) | A row with `recorded_at` ≤ T that commits after a live query appears on replay. Once T is settled, replays are byte-identical. A live result is reproduced from its stored inputs |
+| T-40 | `CURRENT` never point-in-time (F-5) | F8's point-in-time interfaces refuse a `CURRENT` result. A `CURRENT` envelope relabelled as historical fails `result_hash` re-proof |
 
 **Invariants:**
 - I-1: no F8 result is labelled `known` or `known_recorded` with an observation whose `known_at > T`.
-- I-2: no historical-information result contains an observation with `available_at > T`, or with availability unknown
-  in `AVAILABLE` mode.
+- I-2 (scope corrected in revision 3, F-3): no `KNOWN` or `AVAILABLE` result contains an observation whose
+  `available_at`, as known at the result's evidence horizon (T for `KNOWN`, H for `AVAILABLE`), is later than T. No
+  `AVAILABLE` result contains one of unknown availability.
+- I-2r: a `KNOWN_RECORDED` result is F6.4's stored record, returned unchanged (F6.2 Q1). It is bound by I-1, and every
+  document in it was publicly listed and retrieved before T (Appendix B, L7, L8). Any of its observations whose policy
+  `available_at`, as known at T, is later than T is flagged `available_after_known`.
 - I-3: supersession only on S-1, S-2 or S-3. There is no owner assertion (OD-4 not adopted).
 - I-4: `conflicting` never carries a value.
-- I-5: results are a pure function of (query, configuration, rules) and the rows known by the governing horizon.
+- I-5: results are a pure function of (query, configuration, rules) and the rows of the result's information set
+  (§7.7). A replay is byte-identical once the governing time is settled (§11, F-4).
 - I-6: no read of `report_filings`, `report_discovery_runs` or `companies` for history.
 - I-7: each document version's `available_at` never decreases as the horizon grows (OD-1, semantics 4).
 - I-8: `known_at` is computed only from the recorded times of §4.2 (`f8.knowledge.1`).
 - I-9: no supersession's direction depends on retrieval, discovery or processing order.
 - I-10: no F6.3 context or annotation is computed from an observation outside the visible set.
+- I-11: no element of a result depends on a row outside its information set (§7.7). Audit output is labelled and lies
+  outside `result_hash`.
+- I-12: D-6 never receives a run whose document version is not visible in the mode (§7.4 step 1).
 
 **Mutation targets for the implementation:**
 - `≤` turned into `<` on either cutoff;
@@ -856,11 +937,19 @@ handling in features) belong to the consumers. One rule binds every consumer: a 
   marker;
 - D-6 applied to every run instead of the runs known at the horizon;
 - the F6.3 context computed from every filing instead of the visible set;
-- a metadata tie broken by an arbitrary order.
+- a metadata tie broken by an arbitrary order;
+- a `not_yet_known` exclusion or count emitted, or a fact first known after the cutoff listed (F-1);
+- D-6 run before the version-visibility filter (F-2);
+- a `KNOWN_RECORDED` record filtered or altered by availability instead of flagged (F-3);
+- a `CURRENT` result accepted by a point-in-time interface (F-5).
 
 ---
 
 ## 16. Architecture compatibility audit
+
+**This section is the author's audit.** Revisions 1 to 3 wrote it, and it is not the independent review. The
+independent leakage review that §20 criterion 6 requires is Appendix B, kept separate on purpose. Appendix B found five
+defects (F-1 to F-5) that this audit had missed.
 
 **Already satisfied by the frozen architecture:**
 - the two clocks (MA §10);
@@ -928,7 +1017,8 @@ itself, not against this document's summary of it.
 | Phase 2 late discovery | Phase 2 §13.1, §13.2, §6.3, §9 (HB-R4), §10.3 | **Consistent.** Backfill times are the backfill's own (2026 or later), so nothing backfilled is known earlier (§9). Versions replaced before the first retrieval are gone, and A-5's resulting limit is recorded (§5.2). Revisions are separate filings, ordered only by source-declared supersession |
 | HB-3 plan and plan-versioned IE-4 | Phase 2, HB-3 status (HB-U5; plan-versioned IE-4) | **Consistent.** Plan fingerprints, IE-4 passes, arming ids and HB-1 items are never F8 inputs for time, identity or selection. Their effect reaches F8 only as issuer decisions with `decided_at` (§10, point 8) |
 
-**The five things F8 must never do, verified:**
+**The five things F8 must never do, verified (the author's check at revision 2; Appendix B re-derives the leakage
+cases independently):**
 
 | F8 never… | Why it cannot happen | Enforced by |
 |---|---|---|
@@ -951,6 +1041,31 @@ decision.
 | AC-6 | F6.2's prohibition of live use is restated as a rule: live use is `KNOWN` or `KNOWN_RECORDED` only (§7.3, §8.2, §14) | F6.2 §9.2: the source-availability view is never used for a live analysis or prediction |
 | AC-7 | P-3 keeps the frozen transaction units. P-7 calls the HB-1 history provenance, not knowledge time (§3.4) | OD-3: those units bound the skew, and `known_at` comes from the recorded times |
 
+### Final consistency audit (revision 3, 2026-10-05)
+
+This is the author's final check of revision 3 (corrections F-1 to F-5 included) against the sources the owner named
+for the freeze. Each check was made against the source text, not against this document's summary of it.
+
+| Source | Requirement | Result |
+|---|---|---|
+| MA §9 | Errata and amendments through version/supersession logic; conflicts preserved; no arbitrary winner | **Consistent.** `f8.supersession.1`, source-declared only (§6.3); conflicts stay `conflicting` with no value (§12) |
+| MA §10 | Two clocks: publication/availability time and system-knowledge time | **Consistent.** `available_at` and `known_at` (§4); commit visibility kept as a third, distinct notion (§4.4) |
+| MA §11 | Only information at or before the cutoff; no later revised fact as though known; automated leakage tests | **Consistent.** Inclusive cutoffs (§7.2); I-1 and I-2 derived independently (Appendix B). F-1 closes the payload channel revision 2 left open |
+| MA §23, §38 | A forecast stores its cutoff, inputs and hashes; historical results are immutable | **Consistent.** Consumers pin the query, the configuration and `result_hash` (§11). An already-produced forecast is reproduced from its stored inputs (§4.4); replay is exact from a settled horizon (F-4) |
+| MA §29–§35 | Backtests use only information available then, both clocks and historical versions; never today's "latest"; no survivorship or selection bias | **Consistent.** `KNOWN` for the live era and `AVAILABLE` (`reconstructed`, H stated) for backfilled eras (§8.2). `CURRENT` is never point-in-time (F-5). The historical universe stays HB-Q5's and is never fabricated (§10) |
+| MA §39 | Every feature has an availability rule and a version | **Consistent.** Versioned rules in a content-addressed configuration (§11, §13) |
+| MA §42 | Provenance from forecast to the CSE source | **Consistent.** `explain` (§11); its audit section is kept apart from point-in-time results (§7.7) |
+| MA §52 | F8 owns supersession, the choice of availability time and commit-time as-of | **Consistent** (§5, §6, §4.4). MA §52's own status text said F8 was "not designed"; revision 3 corrects it, with MA §55 and the Phase 2 design |
+| MA §57 | Leakage test examples: a future filing, a later revised value, a backward-moved timestamp, today's universe | **Consistent.** T-4 to T-7, T-23, T-26 to T-40; Appendix B cases 1, 5 and 7 |
+| MA §59 | No casual arbitrary financial-fact precedence; no mutable latest-value tables | **Consistent** (§6.3, §7.4, P-6, §13) |
+| MA §62 | A valid backtest: point-in-time reconstruction, correct financial availability, no leakage, fixed versions, reproducible results | **Consistent** (§7, Appendix B, §11) |
+| F6.2 temporal model | Five times kept apart; Q1, Q2, Q3; Q3 labelled and never live | **Consistent.** A-1; the modes map to Q1/Q2/Q3 (§7.3); I-2r keeps Q1 "as recorded"; Q3's label is `reconstructed` (C-1) |
+| F6.3 reconciliation | Pure; one run per document (D-6); no fallback; one observation per document | **Consistent.** F8 delegates through `select_runs` and `reconcile_fact`, with inputs restricted to the information set (§7.4, F-2, AC-3) |
+| F6.4 boundary | Immutable evidence; F8 read-only; no precedence (C4); M4; lock discipline | **Consistent, unchanged.** Appendix B's L7 relies on F6.4's frozen lock discipline (F6.4 §9.4, §15.7) |
+| Phase 2 late discovery | Backfill times are the backfill's own; earlier document versions are gone; revisions are separate filings | **Consistent** (§9, §5.2; Appendix B case 1) |
+| HB-3 plan-versioned IE-4 | One IE-4 pass per plan fingerprint; plan identity, not provenance | **Consistent.** Plan records are bookkeeping; their effect reaches F8 only as issuer decisions with `decided_at` (§10, point 8) |
+| HB-P1 | A deployment/runtime prerequisite for live Phase 2 execution | **Consistent.** F8's design freeze and its offline implementation need no server, capture or live data (§19) |
+
 ---
 
 ## 17. Owner decisions
@@ -961,7 +1076,7 @@ decision.
 | **OD-2** | Supersession rule `f8.supersession.1` (§6.3) | (a) source-declared S-1, S-2 and S-3 only | (b) none: every conflict exposed; (c) (a) plus OD-4 | **Approved** as (a), with the owner's four conditions and never-list. No owner-asserted machinery at this stage. Alternatives rejected, with reasons (§6.3) | Nothing now |
 | **OD-3** | System-knowledge precision (§4.4) | (a) `recorded_at` (transaction start) with the documented bounded skew | (b) knowledge watermark (changes writers); (c) `track_commit_timestamp` plus a capture job (P1 change) | **Approved** as (a), versioned `f8.knowledge.1`. No frozen writer changes, no watermark, `track_commit_timestamp` not a prerequisite. Alternatives rejected, with reasons (§4.4) | Nothing now |
 | OD-4 | Owner-asserted supersession records | Allow: owner-only, append-only, with a note | Disallow | **Not adopted at this stage** (part of OD-2). The would-be design is kept in §6.4 for a later rule version | No |
-| OD-5 | Mode names, and the consumer defaults of §8.2 | As written | Other names | **Open.** The names are used as written. The §8.2 defaults are recommendations, except the live rule, which is F6.2's | No |
+| OD-5 | Mode names, and the consumer defaults of §8.2 | As written | Other names | **Open.** The names are used as written; only the words are open, because no semantics depends on them. The §8.2 entries are recommendations except two rules, which follow from F6.2 §9.2 and MA §11: live use and no `CURRENT` for point-in-time use | No |
 | OD-6 | Interim against annual, and unaudited against audited, are never supersession | Confirm | Make audited supersede unaudited | **Confirmed** (part of OD-2's never-list) | No |
 
 No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
@@ -981,26 +1096,44 @@ No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
    `Last-Modified` alone for replaced documents, and so does S-3's source ordering (AC-1). Two versions with no comparable
    document time are `ambiguous_supersession`. A fix is a separate F5 change-control phase.
 4. **Open and non-blocking:** OD-5, the choice of mode names and label words (§17).
-5. **Before the F8 design freeze (process, not design):** the owner's acceptance of revision 2, and §20's criteria 2, 4
-   and 6. The HB-3 freeze still comes first in the owner's sequencing.
+5. **Resolved in revision 3:** §20 criterion 6, the independent leakage review (Appendix B), with the corrections F-1
+   to F-5 it required.
+6. **Before the F8 design freeze (process, not design):**
+   - the owner's final acceptance of revision 3, including F-1 to F-5;
+   - the formal acceptance of §20's criteria 2 and 4.
+
+   The HB-3 freeze comes first in the owner's sequencing.
 
 ---
 
 ## 19. Implementation sequencing
 
-1. **Done (2026-10-05):** the owner approved OD-1 to OD-3, did not adopt OD-4 and confirmed OD-6. Revision 2 records
-   these decisions. The **F8 design freeze** follows the owner's acceptance of this revision (§20).
-2. HB-3 freeze, independent of this. HB-4 may start after the F8 design freeze, implementing §3.4.
+1. **Done (2026-10-05):**
+   - the owner approved OD-1 to OD-3, did not adopt OD-4 and confirmed OD-6 (revision 2);
+   - the independent leakage review and its corrections were added (revision 3), and the document is **FROZEN /
+     ACCEPTANCE READY**.
+
+   The **F8 design freeze** is the owner's final acceptance of revision 3 (§20).
+2. **The order of the freezes and of HB-4.** The owner's sequence is HB-3 freeze → F8 design freeze → HB-4
+   implementation. HB-4 implements §3.4 and does not start before both freezes.
 3. **F8-1:** a pure library (a new package, for example `worker/financial_asof/`) containing:
    - the availability and knowledge functions;
    - supersession derivation;
    - selection through F6.3 `select_runs` and `reconcile_fact` and F6.4's loader (§7.4);
-   - unit tests T-1 to T-35 on synthetic fixtures, plus the RDV corpus for availability.
+   - unit tests T-1 to T-40 on synthetic fixtures, plus the RDV corpus for availability.
 4. **F8-2:** migration 0017 (owner-approved): F8 configurations and designations only. There is no assertion table,
    because OD-4 is not adopted. Then the PostgreSQL tests: append-only, owner path, as-of designations.
 5. **F8-3:** the `as_of` and `explain` interfaces with result hashes; the leakage tests of MA §57 against them.
 6. **F8-4 (optional):** materialised availability and timelines, after HB-5 measures scale.
 7. F7 (features) consumes F8 only after F8-3 is frozen.
+
+**Operational boundary (unchanged).** HB-P1 remains a deployment/runtime prerequisite for live Phase 2 execution, not
+a design or implementation prerequisite (MA §43.1, §52).
+- F8's design freeze and its offline implementation (F8-1 to F8-3, on synthetic fixtures and the RDV corpus) need
+  none of the following, and none of them happens now: server provisioning, the CSE contact e-mail, a production P2
+  capture, a security-master capture, live HB-3 work, live F8 work.
+- They belong to the later deployment/integration phase (MA §43.1).
+- Docker staging never satisfies HB-P1.
 
 ---
 
@@ -1014,27 +1147,30 @@ No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
 5. The compatibility audit (§16) is accepted: C-1 and C-2 are resolved by OD-5 and OD-3, and nothing frozen changes.
 6. An independent review re-derives the leakage guarantees I-1 and I-2 from §7.3.
 
-**Status at revision 2:**
+**Status at revision 3** (the criteria above are unchanged):
 
 | # | Status |
 |---|---|
 | 1 | **Met.** The owner decided OD-1 to OD-3 on 2026-10-05 (§17) |
-| 2 | Unchanged by revision 2; the owner directed that both be preserved. Formal acceptance is part of the freeze |
-| 3 | **Met** (re-audit, §16) |
-| 4 | Extended to T-35 and I-10 for the approved rules. Acceptance is part of the freeze |
-| 5 | C-2 is resolved (OD-3). C-1 is resolved in substance (§16); OD-5 is only the choice of words. Nothing frozen changes |
-| 6 | **Not done yet.** §16 contains the author's own derivation, which is not an independent review |
+| 2 | **Ready for acceptance.** Both are unchanged since revision 2. The owner reviewed revision 2 against the frozen F6.2, F6.3 and F6.4 boundaries; formal acceptance is part of the freeze |
+| 3 | **Met** (§16, including the final consistency audit of revision 3) |
+| 4 | **Ready for acceptance.** Extended to T-40 and I-12, including the tests for F-1 to F-5. Acceptance is part of the freeze |
+| 5 | **Met.** C-2 is resolved (OD-3). C-1 is resolved in substance (§16); OD-5 is only the choice of words. Nothing frozen changes |
+| 6 | **Met, by Appendix B and only by it.** Appendix B re-derives I-1 and I-2 from §7.3 and the rules it rests on (§§4–8), and tests ten adversarial cases. §16's author audit does not count toward this criterion. The derivation goes through only with corrections F-1 to F-5, which revision 3 makes. Appendix B states who performed it |
 
 ---
 
-**Final status: F8 DESIGN READY.**
+**Final status: F8 DESIGN FROZEN / ACCEPTANCE READY.**
 - **Approved by the owner (2026-10-05):** OD-1 `f8.availability.1`, OD-2 `f8.supersession.1` and OD-3
   `f8.knowledge.1`. OD-4 is not adopted, and OD-6 is confirmed.
+- **Independent leakage review:** done (Appendix B). I-1 and I-2 hold for the corrected design, with I-2 scoped to
+  `KNOWN` and `AVAILABLE` and I-2r covering `KNOWN_RECORDED`.
 - **No design blocker remains.** OD-5 (the names) is open and does not block.
-- **Before the F8 design freeze:** the owner's acceptance of revision 2, and §20's criteria 2, 4 and 6. HB-4 follows the
-  HB-3 freeze and the F8 design freeze (§19).
-- **Nothing is implemented,** no migration is written, and no frozen layer changes. The HB-4/HB-5 producer contract
-  (§3.4) is unchanged.
+- **The F8 design freeze is the owner's final acceptance** of revision 3, including F-1 to F-5 and criteria 2 and 4.
+  It follows the HB-3 freeze. HB-4 follows both (§19).
+- **The implementation is not frozen:** it does not exist. No code, no migration (0017 included), and no frozen layer
+  changes. The HB-4/HB-5 producer contract (§3.4) is unchanged.
+- **HB-P1** remains a deployment/runtime prerequisite for live Phase 2 execution only (§19).
 
 ---
 
@@ -1056,3 +1192,246 @@ No decision here reopens HB-Q5, changes F6.4, or changes HB-1, HB-2 or HB-3.
 
 **Nothing removed.** Revision 1's rules, modes, labels, tests, criteria and alternatives are all kept. The
 owner-assertion design is now marked "not adopted". The baseline is updated to `7fe5a77`.
+
+---
+
+## Appendix B. Independent leakage review (revision 3, 2026-10-05)
+
+**What this is.** The independent review that §20 criterion 6 requires.
+- It re-derives I-1 and I-2 from the rules of §§4–8 rather than restating them.
+- It tests ten adversarial cases against those rules.
+- No step relies on §16, which is the author's audit and stays separate from this review.
+
+**Who performed it, stated plainly.**
+- It was performed on 2026-10-05, at the owner's request, as a separate review pass by the assistant that drafted
+  revisions 1 and 2.
+- It is independent of §16 in method, not in authorship. Every step below is derived from the rules as written and
+  cites them; §16 is treated as untrusted.
+- The owner's own review of revision 2 is the separate, human review.
+
+**Outcome.**
+- The derivation did not go through on revision 2. It found five defects (B.6).
+- Revision 3 corrects them, and B.1 to B.5 are the derivation for the corrected text.
+- With those corrections, I-1 holds as stated, and I-2 holds for the modes F8 computes (B.4).
+
+### B.1 Definitions used
+
+- **Knowledge time τ(x)** of a stored row x (§4.4, `f8.knowledge.1`):
+  - `recorded_at`, `classified_at` and `decided_at` are set by the database to the start of the writing transaction.
+    No writer sets them (P-3). The F3, F5, issuer-link and F6.4 writers leave them to the column default.
+  - F1's `observed_at` is set by the F1 run to the receipt time of the CSE response, before the row is written (AC-4).
+  - All of these are immutable: the tables are append-only (0010, 0015).
+- **known_at(o)** is the maximum τ over o's chain (§4.2):
+  - the first F1 observation of o's filing;
+  - o's F3 classification;
+  - the issuer decision o's validation run used;
+  - o's F5 run;
+  - o's validation run;
+  - o itself.
+- **av(v, E)**, the availability of a document version v = (`cse_filing_id`, `document_sha256`) at an evidence horizon
+  E, is `f8.availability.1` evaluated on two kinds of evidence (§4.3, §5.2):
+  - the F1 observations with `observed_at` ≤ E;
+  - the F5 snapshots of runs with `recorded_at` ≤ E.
+
+  The result is an instant or `unknown`.
+- **Horizons (§7.3, §7.4):**
+  - The governing horizon G is T for `KNOWN` and `KNOWN_RECORDED`, and H for `AVAILABLE` and `CURRENT`.
+  - The evidence horizon E is T for `KNOWN` and H for `AVAILABLE`.
+  - `AVAILABLE` requires H ≥ T (§7.1).
+- **Exact, inclusive cutoffs.** A time x passes a cutoff C when x ≤ C. Both are aware `timestamptz` instants at
+  microsecond resolution, and a naive timestamp is refused (§7.2).
+- **Ω(q)** is the information set of a query q (§7.7).
+
+### B.2 Lemmas
+
+- **L1. A knowledge time is never earlier than the information it records, and never later than its commit.** For every
+  row x, the system obtained the CSE information x is derived from no later than τ(x), and τ(x) ≤ commit(x).
+  - *Database times.* The information precedes the writing transaction: F2 retrieves and F5 builds before F5's
+    persisting transaction begins (Phase 2 §10.1), and F6.4 validates from persisted F5 runs (F6.4 B3). `now()` is that
+    transaction's start, which precedes its commit.
+  - *F1's `observed_at`.* It is the receipt time itself, and the row is written afterwards. Under HB-3 it is the HB-2
+    outcome's receipt time (AC-4).
+  - *Consequence.* No writer may set, backdate or invent a knowledge time (P-3). A row written by a 2026 backfill
+    therefore has its τ in 2026.
+- **L2. A backfilled observation is known no earlier than its backfill.** If o's F5 run was written at backfill time
+  t_b, then known_at(o) ≥ τ(F5 run) ≥ t_b (L1 and §4.2's maximum). This rests on a database time alone, so a wrong
+  application clock in F1 could not lower it.
+- **L3. Availability uses CSE evidence only, and never moves earlier as the evidence grows.**
+  - av(v, E) reads only CSE's upload and authorization instants (A-1). For a version after A-5's base, it also reads
+    that version's own CDN `Last-Modified` and path epoch, as lower bounds (A-5). No τ ever enters it, and missing
+    evidence gives `unknown`, never a substitute (A-4).
+  - F1 observations are append-only, so the set observed by E1 is contained in the set observed by E2 for E1 ≤ E2.
+    A-2's maximum over a growing set never decreases. A-3 maps a date-only value to a later instant, never an earlier
+    one. A-5's document terms are fixed per version.
+  - So av(v, ·) never moves earlier. It may move later, or become `unknown` when A-5's base changes.
+  - A later observation that moves a timestamp backward adds a smaller value, so the maximum is unchanged (OD-1,
+    semantics 4).
+- **L4. Supersession only removes, and only on evidence inside V.**
+  - §7.4 step 5 removes o only while a superseding s is in V.
+  - Condition 3 compares av(s, E) with av(o, E).
+  - S-1, S-2 and S-3 read only s's classification, s's members and the two versions' F5 snapshots, all in the chains
+    of s and o.
+  - So supersession adds nothing to a result, and nothing outside V can remove anything.
+- **L5. Reconciliation sees only the information set.** F6.3 is pure: no clock, database or network (F6.4 §4, B1–B2).
+  Its output is a function of its inputs, and §7.4 restricts those inputs:
+  - the runs given to D-6 are the runs with τ ≤ G whose document version is visible in the mode (step 1, after F-2);
+  - the observations given to `reconcile_fact` come from each selected run's canonical validation run at G, filtered
+    by V (steps 2–3);
+  - the context is computed from V (step 4, AC-3).
+
+  So every F6.3 result in a payload is a function of Ω(q).
+- **L6. Payload closure (§7.7, after F-1).** Every element of a result is computed from Ω(q):
+  - the facts listed, their states, values, intervals, representatives and annotations;
+  - the context and the flags;
+  - the visible observations and the supersession records;
+  - the in-set exclusions and the `none` counts;
+  - the availability and knowledge evidence of the visible observations.
+
+  Rows outside Ω(q) appear only in `explain`'s audit section. That section lies outside `result_hash` and is never a
+  point-in-time input.
+- **L7. A recorded batch's inputs were all known before the batch was recorded.** For every observation o referenced by
+  a stored batch b (T12, with its T16 and T13 rows), known_at(o) < `recorded_at`(b).
+  - *The lock.* F6.4's reconcile job holds `F6_LOCK_KEY` exclusively, and a validate job needs it shared. The reconcile
+    job runs every missing validation itself, in its own session, before its partition transactions (F6.4 §9.4
+    steps 1–2, §15.7; `jobs.reconcile`). So every validation run (T1, T5) that b uses committed before b's transaction
+    began.
+  - *The rest of the chain.* The other rows in o's chain had committed before that validation run did:
+    - the F5 run and its F3 classification, written together, and the issuer decision, were committed before o's
+      validation run read them;
+    - the filing's first F1 observation was committed before the F5 run read the filing's row.
+  - *Late writers.* Another process may commit a row after b began: a new F5 run, issuer decision or `uploaded_at`. That
+    row either belongs to a document outside b's partition, or leaves a selected run without its canonical validation
+    run in b's snapshot. In the second case the partition is rolled back as `inputs_changed` (F6.4 §9.4 step 4.1;
+    `plan_partition`), so the row never enters a written batch.
+  - *Conclusion.* With L1 (τ ≤ commit), every τ in o's chain is earlier than the start of b's transaction, which is
+    `recorded_at`(b).
+- **L8. A processed document was published before the system knew it.** F2 retrieves a document only from the path of
+  a filing that F1 found in CSE's public feed or listing (F5 `load_filings_from_db`; Phase 2 §10.1). So the document was
+  publicly listed before it was retrieved, and retrieval precedes τ(F5 run) ≤ known_at(o).
+
+### B.3 I-1, derived
+
+*I-1: no result labelled `known` or `known_recorded` contains an observation o with known_at(o) > T.*
+
+- **`KNOWN` (T).** Ω is the set of rows with τ ≤ T, with F1 metadata observed by T (§7.7).
+  - A result's observation is either visible or an in-set exclusion. A visible one needs known_at(o) ≤ T (§7.3); an
+    in-set exclusion is inside Ω by L6.
+  - Every observation shown comes from a run with τ ≤ T (step 1). Its validation run is the one canonical at T and is
+    known by T (steps 2–3). Supersession and reconciliation stay inside Ω (L4, L5).
+  - A run or validation run recorded after T cannot contribute. Suppose a document's newest run known at T has no
+    validation run known at T. F6.3 never falls back, so the document contributes nothing, never an older run's value
+    (§7.4 step 1). ∎
+- **`KNOWN_RECORDED` (T).** F8 returns the batches with `recorded_at` ≤ T, under the designation in force at T (§7.3).
+  - By L7, every observation those batches reference has known_at < `recorded_at`(b) ≤ T.
+  - F8 adds only flags, computed from evidence observed by T. ∎
+- **Relation to commit visibility.** I-1 is stated on known_at as `f8.knowledge.1` defines it.
+  - A replay whose T falls inside a writing transaction may include a row that a reader at T could not yet see.
+  - That is OD-3's documented, bounded skew (§4.4), not an exception to I-1.
+  - Live use is unaffected: a live query reads only what has been committed.
+
+### B.4 I-2, derived
+
+*I-2 (scope corrected by F-3): no `KNOWN` or `AVAILABLE` result contains an observation whose availability, as known
+at the result's evidence horizon, is later than T. No `AVAILABLE` result contains one of unknown availability.*
+
+- **`KNOWN` (T).**
+  - Step 1 admits only runs whose version has av(v, T) ≤ T or `unknown`, and V repeats the test for each observation
+    (§7.3).
+  - An observation with av > T may appear only as an in-set `not_yet_available` exclusion: the system held it at T, and
+    it is not among the result's facts.
+  - Unknown availability is allowed, because the system held the document at T, and L8 shows it was listed before
+    then. ∎
+- **`AVAILABLE` (T, H).**
+  - Ω contains only the versions with av(v, H) known and ≤ T (§7.7). Step 1 admits only their runs, and V repeats the
+    test (§7.3).
+  - L6 keeps every other document out of the result, including documents of unknown availability.
+  - A superseding observation must itself be in V (L4), so it was available by T. ∎
+- **`KNOWN_RECORDED` (T): why I-2 is not required of it, and what holds instead (I-2r).**
+  - F8 does not compute this result. It returns F6.4's stored record (F6.2 Q1, "as recorded"), which applies no
+    availability policy (F6.4 B5, C4). Filtering it would make it something other than Q1.
+  - **What holds instead:**
+    - by L7 and L8, every document in it was publicly listed and retrieved before T, so it carries no unpublished
+      information;
+    - the policy time can still be later than T in two cases: A-3's end of day, for a document processed during its
+      own publication day, and U or A evidence later than the system's own sighting.
+  - F8 flags those observations `available_after_known` and leaves the stored result unchanged.
+  - Revision 2's I-2 named every historical-information mode, which `KNOWN_RECORDED` could never satisfy (F-3).
+- **`CURRENT`** is not a historical-information mode. Neither invariant applies to it, and case 10 shows it cannot pass
+  as one.
+
+### B.5 The ten adversarial cases
+
+| # | Case | Trace through the rules | Outcome |
+|---|---|---|---|
+| 1 | Available in 2023, first discovered and backfilled in 2026 | Its F1 rows carry the 2026 HB-2 receipt time; its F3, F5, decision, T1 and T5 rows carry 2026 database times (L1). So known_at ≥ 2026 (L2). `KNOWN` (T < 2026): outside Ω, so absent, not even as an exclusion (L6). `KNOWN_RECORDED` (T < 2026): no batch before 2026 references it (L7). `AVAILABLE` (T = 2023-12-31, H in 2026): av from CSE's 2023 instants ≤ T, so visible, labelled `reconstructed` with H stated. `CURRENT`: visible, labelled `retrospective_current` | Never labelled `known` before 2026 |
+| 2 | Discovered before T, source availability after T | Possible only when av > known_at (L8): A-3 on the publication day, or U or A evidence later than the system's own sighting. `KNOWN`: hidden; at most an in-set `not_yet_available` exclusion. `AVAILABLE`: outside Ω, so absent. `KNOWN_RECORDED`: kept as recorded, flagged `available_after_known` (I-2r). `CURRENT`: visible | No recomputed historical result shows it before its policy time |
+| 3 | Available exactly at T | ≤ is inclusive on both clocks (§7.2). av = T with known_at ≤ T passes in `KNOWN`; av = T passes in `AVAILABLE` | Visible |
+| 4 | Available at T + 1 µs | av ≤ T fails, at microsecond resolution. A naive or zone-less value is refused, so no rounding or zone error can move it across T | Not visible in `KNOWN` or `AVAILABLE` |
+| 5 | A later superseding document, discovered after the cutoff | Removal needs the superseding s in V (L4). `KNOWN` (T): s is known after T, so it is outside Ω; o stays, and s is not mentioned. `AVAILABLE`: if s was published after T, it is outside Ω and o stays. If s was published by T and only discovered later, it is in V and supersedes o, which is what an always-on reader would have had at T; the result is labelled `reconstructed`. `CURRENT`: s supersedes | A later correction never reaches back into a point-in-time result |
+| 6 | A future F6.3 validation or reconciliation run, recorded after T (or H) | A run with τ > G is not a candidate (step 1). A validation run with τ > G puts its observations' known_at past G, and F6.3 does not fall back. `KNOWN_RECORDED` reads only batches with `recorded_at` ≤ T, and L7 bounds their inputs. Designations count only from their `recorded_at`. In `AVAILABLE`, runs recorded between T and H are its intended processing of documents available by T | Later computation never enters |
+| 7 | A publication timestamp later changed backward | A-2 takes the maximum over a growing set, so the earlier value cannot lower it (L3). This holds at every horizon | Never visible earlier (MA §57; I-7) |
+| 8 | A date-only source timestamp | A-3: the next 00:00 Asia/Colombo (UTC+05:30, no daylight saving). `colombo_end_of_day(D)` = D+1 00:00 passes; any T inside day D does not. In `KNOWN`, a sighting on the same day is held back to the end of the day and flagged at `day` precision | Visible only from the end of its day |
+| 9 | Availability unknown | A-4: no instant is invented, and no system time stands in. `AVAILABLE`: outside Ω, so absent. `KNOWN`: visible once known, since the system held it (L8), with the flag. `CURRENT`: visible. No supersession involves it (condition 3) | Never placed in time by assumption |
+| 10 | A `CURRENT` query presented as historical information | `CURRENT` takes no T (§7.3), so it cannot be asked "as of T". Its H only bounds knowledge: it applies no availability cutoff and admits every later restatement known by H. Its label sits inside the envelope that `result_hash` covers (§11), so relabelling breaks re-proof. F8 refuses mixed-mode datasets (§8.1), and no point-in-time use may take a `CURRENT` result (§8.2, F-5) | It cannot become point-in-time truth through F8, and any pinned use carries its label |
+
+### B.6 Defects found in revision 2 and corrected in revision 3
+
+| # | Defect in revision 2 | What it allowed | Correction (revision 3) |
+|---|---|---|---|
+| F-1 | §11 and §7.6 put rows outside the result's information set into the result: `not_yet_known` exclusions and counts; in `AVAILABLE`, `not_yet_available` and `availability_unknown` exclusions and counts. A fact first known later could also be listed as `none` | A `KNOWN` (T) result named rows recorded after T, against I-1 and I-5 as written. An `AVAILABLE` (T) result revealed documents published after T | §7.7 defines the information set. §7.6 and §11 keep only in-set exclusions; rows outside it appear only in `explain`'s audit section (I-11) |
+| F-2 | §7.4 ran D-6 before filtering by availability | With the same bytes under two filings (A-6), D-6 could pick the run of the filing not yet available. Either that filing and its metadata leaked into the result, or, with no fallback, a document available through the other filing was dropped | §7.4 step 1 filters document versions by the mode before D-6 (I-12) |
+| F-3 | I-2 named every historical-information mode | `KNOWN_RECORDED`, F6.4's immutable record (F6.2 Q1), could never satisfy it | I-2 covers `KNOWN` and `AVAILABLE`; I-2r covers `KNOWN_RECORDED` (a flag; the record is unchanged) |
+| F-4 | I-5 and T-19 promised byte-identical replays for any past horizon | Under OD-3's skew, a row with τ ≤ G that commits after a live query appears on replay | Replays are exact from a settled horizon, and a live result is reproduced from its stored inputs (§11, §4.4) |
+| F-5 | Excluding `CURRENT` from point-in-time use was only a recommendation (§8.2) | A backtest or a training set could take `CURRENT` results | It is a rule (§8.2, §14) |
+
+None of these corrections touches:
+- OD-1, OD-2, OD-3 or OD-6;
+- AC-1, AC-3 or AC-4;
+- HB-3's plan-versioned IE-4;
+- F6.4.
+
+Each correction only removes information from a result or makes a promise exact.
+
+---
+
+## Appendix C. Revision 3 (2026-10-05)
+
+**Added:**
+- **The independent leakage review.** Appendix B: the derivation of I-1 and I-2, ten adversarial cases, and the defects
+  F-1 to F-5.
+- **The information set of a result.** §7.7 (F-1).
+- **The final consistency audit.** §16, made against the Master Architecture, F6.2, F6.3, F6.4, Phase 2, HB-3 and HB-P1.
+
+**Corrected (F-1 to F-5):**
+- the result's exclusions and counts (§7.6, §11, §13.2);
+- version visibility before D-6 (§7.4 step 1);
+- the scope of I-2, with I-2r added (§15);
+- settled-horizon reproducibility (§7.5, §11, I-5, T-19);
+- the `CURRENT` point-in-time rule (§8.2, §14).
+
+**Tests and invariants:** T-36 to T-40, I-11 and I-12, and the matching mutation targets (§15). T-19, T-20 and T-27
+were made exact.
+
+**Wording made exact (no change in meaning):** P-3 now says precisely what is forbidden: setting, backdating or
+inventing a knowledge time. Revision 2's "never copy a system time" conflicted with P-2, under which frozen F5 code
+copies the retrieval and first-seen times into its own snapshot.
+
+**Status:**
+- **Document:** FROZEN / ACCEPTANCE READY. §20 now shows the status at revision 3, with criterion 6 met by Appendix B
+  only.
+- **Baseline:** `e8a0605`.
+- **Operational boundary:** stated explicitly (§19).
+
+**Settled decisions unchanged:**
+- OD-1 to OD-3 and OD-6; the non-adoption of OD-4;
+- AC-1 to AC-7;
+- the modes and their labels;
+- the producer contract;
+- F6.4's boundary.
+
+**Also corrected (outside this document):**
+- the stale F8 status statements in MA §52 and MA §55, and in the Phase 2 design;
+- the stale HB-3 wording "not yet reviewed" in those documents and in the README. HB-3 is now described as
+  implemented and semantically closed, with its freeze pending.
+
+**Nothing removed.**

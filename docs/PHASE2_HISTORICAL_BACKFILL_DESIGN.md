@@ -3,8 +3,8 @@
 **Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
-issuer evidence) is implemented and tested offline, not yet reviewed or frozen** (see below). HB-4 to HB-6 are not
-implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
+issuer evidence) is implemented, tested offline and semantically closed; its freeze is pending** (see below). HB-4 to
+HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -196,8 +196,9 @@ The only new elements are infrastructure:
 - an issuer-evidence acquisition procedure around the frozen F5 rule;
 - a read-only coverage audit and anomaly catalogue.
 
-**Not implemented here and not started:** F8 (availability, supersession, as-of), the full F4 structure persistence
-phase, continuous collection after the backfill, forecasting and everything after it in MA §55.
+**Not implemented here and not started:** the full F4 structure persistence phase, continuous collection after the
+backfill, forecasting and everything after it in MA §55. **Not implemented here:** F8 (availability, supersession,
+as-of). Its design is `docs/F8_DESIGN.md` (FROZEN / ACCEPTANCE READY), and its implementation has not started.
 
 **Design blockers** (detail in §26):
 - **HB-X1.** A durable, append-only backfill ledger in PostgreSQL needs new tables. No existing table can hold it
@@ -1708,7 +1709,11 @@ proceeds past a gate without the owner.
 **Sequencing (owner decision, 2026-10-05): HB-3 freeze → F8 design/contract gate → subsequent backfill phases
 (HB-4 onwards).** F8 (availability, supersession, as-of; Master Architecture §55 Phase 1) is brought forward as the
 next architecture gate after HB-3 is frozen, so that the document worker and F6 orchestration (HB-4, HB-5) do not
-hard-code assumptions about the canonical financial-truth layer. F8 is not designed or implemented yet.
+hard-code assumptions about the canonical financial-truth layer.
+- F8's design (`docs/F8_DESIGN.md`) passed the design/contract gate at revision 2 (READY, 2026-10-05).
+- Revision 3 adds the independent leakage review and is FROZEN / ACCEPTANCE READY. The F8 design freeze is pending the
+  owner's final acceptance.
+- F8 is not implemented. HB-4 implementation starts only after the HB-3 freeze and the F8 design freeze.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
