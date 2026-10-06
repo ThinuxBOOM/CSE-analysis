@@ -1817,8 +1817,13 @@ Frozen/accepted:
 -   P3;
 -   Phase 2 HB-1 (governed backfill ledger);
 -   Phase 2 HB-2 (governed CSE transport);
--   Phase 2 HB-3 (discovery and issuer evidence; frozen on the branch
-    `claude/hb3-discovery`, merge to `main` pending).
+-   Phase 2 HB-3 (discovery and issuer evidence; merged into `main` at
+    the frozen baseline `8e2a3c37`);
+-   F8 (availability, supersession and point-in-time financial
+    views): the design, revision 3, and the implementation (F8
+    IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-06; commits `6e7df6d`
+    and `f73e506` on `claude/f8-implementation`, on the frozen
+    baseline `8e2a3c37`).
 
 F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 §10--§11) are implemented by F6.4 (migration 0015).
@@ -1939,16 +1944,26 @@ Still open after real-data validation:
     OD-2 `f8.supersession.1` and OD-3 `f8.knowledge.1`, 2026-10-05).
     Revision 3 adds the independent leakage review; the owner's
     acceptance gate accepted it on 2026-10-05: **F8 DESIGN FROZEN /
-    ACCEPTED --- REVISION 3**. F8 is not implemented (no code, no
-    migration 0017); its implementation begins only after the merge of
-    `claude/hb3-discovery` into `main`, the verification of the merged
-    `main` and the new frozen baseline;
+    ACCEPTED --- REVISION 3**. `claude/hb3-discovery` was merged into
+    `main` and verified by the owner; the new frozen baseline is
+    `8e2a3c37`. F8 is **implemented** on that baseline (branch
+    `claude/f8-implementation`): the read-only
+    package `worker/financial_asof/` and migration
+    `0017_f8_asof_configuration.sql` (F8's own configuration and
+    owner-only designation tables only; no frozen table changed). Notes,
+    implementation choices and test evidence: `docs/F8_IMPLEMENTATION.md`.
+    F8-Q1 is resolved (owner-approved, 2026-10-06): the one frozen
+    HB-1 migration test that pinned 0016 as the last migration now
+    applies 0016 with `target=16` and checks the later migrations
+    separately; every other frozen HB-1 assertion is unchanged. This
+    item is now **closed: F8 IMPLEMENTATION FROZEN / ACCEPTED**
+    (2026-10-06; see the F8 freeze record below);
 -   Phase 2 --- historical financial backfill --- remains the major
     architectural phase in progress. Only its first three
     implementation steps, HB-1 (the governed backfill ledger), HB-2
     (the governed CSE transport) and HB-3 (discovery and issuer
-    evidence), all below, are implemented and frozen (HB-3 on its
-    branch; its merge to `main` is pending); HB-4 to HB-6 are not
+    evidence), all below, are implemented and frozen (all three merged
+    into `main`; frozen baseline `8e2a3c37`); HB-4 to HB-6 are not
     implemented, and Phase 2 as a whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
@@ -2102,9 +2117,9 @@ extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
 
 Phase 2 HB-3 --- discovery and issuer evidence --- is **implemented and
-frozen** (final freeze audit 2026-10-05; code as of `60d004d` on the
-branch `claude/hb3-discovery`; the merge to `main` follows the owner's
-acceptance of F8 revision 3). It is the library package
+frozen** (final freeze audit 2026-10-05; code as of `60d004d`; merged
+into `main` after the owner's acceptance of F8 revision 3, and verified
+by the owner: frozen baseline `8e2a3c37`). It is the library package
 `worker/backfill_discovery/`, built under the HB-3 design
 gate's owner decisions: D-HB3-1 (one F1 run per actual HTTP attempt:
 discovery runs only under an arming with `attempts_per_json_request =
@@ -2163,6 +2178,39 @@ rehearsal (§43.1) → server setup → HB-X2(b) →
 satisfied → live HB-3. Docker staging validates the software and the
 deployment behaviour; it cannot satisfy HB-P1 (§43.1).
 
+F8 --- availability, supersession and point-in-time financial views
+--- is **implemented and frozen/accepted: F8 IMPLEMENTATION FROZEN /
+ACCEPTED** (owner, 2026-10-06, after independent owner and repository
+verification). It was built from the frozen design
+`docs/F8_DESIGN.md` (revision 3) on the frozen baseline `8e2a3c37`, in
+two commits on `claude/f8-implementation` (2 ahead of `main`):
+`6e7df6d` (the read-only package `worker/financial_asof/`, migration
+`0017_f8_asof_configuration.sql` with F8's own configuration and
+owner-only designation tables only, the F8 tests and
+`docs/F8_IMPLEMENTATION.md`) and `f73e506` (the F8-Q1 resolution and
+freeze gate). F8-Q1 is resolved: the owner approved the one edit of a
+frozen HB-1 migration test that 0017 required. Final verification of
+the frozen code, migrations and tests:
+
+-   F8 suites: 394 passed on Linux (`--network none`, RDV evidence
+    mounted); 378 passed and 16 skipped on Windows;
+-   mutation testing: 60 of 60 planted F8 faults caught;
+-   RDV replay: 4 of 4 passed;
+-   full repository on Linux: 1947 passed, 1 failed, 46 skipped and 2
+    expected failures. The one failure is the known frozen HB-2 clock
+    test (`test_l4_seeding_reads_both_archives`), which failed in the
+    same way at the baseline; it is retained unchanged, under owner
+    change control, and is not an F8 blocker;
+-   frozen boundary: migration 0016 is unchanged and matches its pin;
+    no F1--F6.4, HB-1, HB-2, HB-3, P2 or P3 implementation file, no
+    grant outside 0017's own tables, and no role, row-level security,
+    `SECURITY DEFINER` or lock key changed; no CSE request was made.
+
+No F8 blocker remains. F8 is ready for downstream work: HB-4 and HB-5
+implement against its producer contract (F8 design §3.4). HB-4 has not
+started. HB-P1 stays a deployment prerequisite for live Phase 2 only.
+The freeze record is `docs/F8_IMPLEMENTATION.md` §9.
+
 Important accepted commits:
 
 ``` text
@@ -2210,6 +2258,15 @@ Phase 2 HB-2 (implementation):
 
 Phase 2 HB-2 B-HB2-1 correction (frozen baseline):
 189628057c77b4211170b855df665ac05e041412
+
+Frozen baseline main (merge of claude/hb3-discovery; F8 implementation baseline):
+8e2a3c3769511d711a4502bcad0c30acf64e0d79
+
+F8 implementation:
+6e7df6d831a6bb4e80104f9ee2fc6f2a40b77e5c
+
+F8 F8-Q1 resolution and freeze gate (F8 frozen):
+f73e506778d75b7da151e66f84d5b6dcbff45b85
 ```
 
 Migration 0015 (F6.4), as the migration ledger records it (LF-normalised
@@ -2225,6 +2282,13 @@ in `worker/financial_backfill/__init__.py`):
 
 ``` text
 f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7
+```
+
+Migration 0017 (F8), as the migration ledger records it
+(LF-normalised SHA-256; unchanged since `6e7df6d`):
+
+``` text
+04c5da923747a066b5cab0900ba7e0ffa0ebf76250aeca72d64c94468df6cfa9
 ```
 
 P3 reported tests included:
@@ -2409,13 +2473,14 @@ architecture should be implemented in dependency order.
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
 -   availability/supersession (F8; explicitly deferred by F6.4;
     brought forward, see below) --- designed and accepted
-    (`docs/F8_DESIGN.md`, revision 3: FROZEN / ACCEPTED), not
-    implemented.
+    (`docs/F8_DESIGN.md`, revision 3: FROZEN / ACCEPTED); implemented
+    on the frozen baseline (`worker/financial_asof/`, migration 0017;
+    `docs/F8_IMPLEMENTATION.md`) and frozen: F8 IMPLEMENTATION FROZEN /
+    ACCEPTED (2026-10-06; `6e7df6d`, `f73e506`).
 
-The remaining Phase 1 item (F8 availability/supersession) and every
-later phase below are not yet implemented, apart from Phase 2's first
-three steps, HB-1, HB-2 and HB-3 (HB-3 frozen on its branch; its merge
-to `main` is pending). Phase 2 --- historical financial backfill ---
+Every later phase below is not yet implemented, apart from Phase 2's
+first three steps, HB-1, HB-2 and HB-3 (all frozen and merged into
+`main`; frozen baseline `8e2a3c37`). Phase 2 --- historical financial backfill ---
 remains the major architectural phase in progress; its design decides
 real-data validation Q1 (issuer evidence; §52).
 
@@ -2432,13 +2497,18 @@ F8 is brought forward so that the document worker and F6 orchestration
 financial-truth layer. F8's design passed the design/contract gate at
 revision 2 (READY, 2026-10-05). Revision 3 adds the independent leakage
 review and was accepted on 2026-10-05: F8 DESIGN FROZEN / ACCEPTED ---
-REVISION 3 (`docs/F8_DESIGN.md`). F8 is not implemented. HB-3 is
-frozen (2026-10-05). F8 implementation, and HB-4 implementation, start
-only after all of the following:
+REVISION 3 (`docs/F8_DESIGN.md`). HB-3 is frozen (2026-10-05). The
+conditions the owner set for starting implementation are met:
 
--   the merge of `claude/hb3-discovery` into `main`;
--   the independent verification of the merged `main`;
--   the new frozen baseline.
+-   the merge of `claude/hb3-discovery` into `main` (`8e2a3c37`);
+-   the independent verification of the merged `main` (by the owner);
+-   the new frozen baseline (`8e2a3c37`).
+
+F8 has since been implemented on that baseline (branch
+`claude/f8-implementation`; `docs/F8_IMPLEMENTATION.md`) and frozen:
+F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06; §52). It is ready for
+downstream work. HB-4 has not started; when it starts is the owner's
+decision.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2454,13 +2524,13 @@ HB-1, the governed backfill ledger (migration 0016,
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
 is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
 evidence (`worker/backfill_discovery/`), is implemented and frozen
-(2026-10-05; on its branch, merge to `main` pending). Live discovery
+(2026-10-05; merged into `main`, frozen baseline `8e2a3c37`). Live discovery
 waits for HB-P1, a deployment prerequisite (§52), and follows the
 release sequence of §43.1. HB-4 to HB-6 (document worker; F6
 orchestration and audit; operations and pilot) are not implemented. The
-F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05).
-HB-4 implementation starts only after the merge into `main`, its
-verification and the new frozen baseline (Phase 1, above).
+F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
+F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
+2026-10-06; Phase 1, above). HB-4 has not started.
 
 ## Phase 3 --- Market feature foundation
 

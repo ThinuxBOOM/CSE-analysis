@@ -18,14 +18,17 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1, HB-2 and HB-3. HB-3 (discovery and issuer evidence) is frozen on
-the branch `claude/hb3-discovery`, and its merge to `main` is pending. F6.2 is an accepted design; its storage
-amendments are implemented by F6.4.
+validation, P0.5, G-1, P1, P2, P3, Phase 2 HB-1, HB-2 and HB-3, and F8. HB-3 (discovery and issuer evidence) is merged
+into `main` (frozen baseline `8e2a3c37`). F6.2 is an accepted design; its storage amendments are implemented by F6.4.
+F8 is frozen/accepted as a design (revision 3, `docs/F8_DESIGN.md`) and as an implementation (below).
 
 **Live HB-3 discovery** waits for the deployment prerequisite HB-P1.
 
-**Not implemented:** F8 (availability, supersession, as-of), Phase 2 HB-4 to HB-6, and every later roadmap phase
-(Master Architecture §55).
+**F8 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-06): F8 (availability, supersession, as-of) is the read-only package
+`worker/financial_asof/` and migration `0017_f8_asof_configuration.sql`, committed as `6e7df6d` and `f73e506` on the
+frozen baseline `8e2a3c37` (`docs/F8_IMPLEMENTATION.md`, freeze record §9). It is ready for downstream work.
+
+**Not implemented:** Phase 2 HB-4 to HB-6, and every later roadmap phase (Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
 parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
@@ -73,6 +76,25 @@ Rules kept by every layer (Master Architecture §7.3, §8, §9): PDFs are tempor
 archive in PostgreSQL; no silent sign, scale or currency transformation and no silent FX conversion; printed nil is
 never zero; conflicts are preserved and no arbitrary winner is chosen; Group/Company/Bank values are never silently merged; no
 issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics are not changed casually (§8).
+
+# Point-in-time financial views (F8; implemented and frozen)
+
+    F6.4 immutable financial truth -> F8 availability / supersession / as-of -> point-in-time datasets -> F7 / ML
+
+- Design: `docs/F8_DESIGN.md` (revision 3, FROZEN / ACCEPTED). Implementation: FROZEN / ACCEPTED (2026-10-06); notes,
+  choices, evidence and the freeze record: `docs/F8_IMPLEMENTATION.md`. Package `worker/financial_asof/`; migration
+  `0017_f8_asof_configuration.sql` adds only F8's own configuration and owner-only designation tables.
+- F8 is read-only above F6.4. It reads append-only evidence only, never the mutable `report_filings`, and writes no F1 to
+  F6.4 row.
+- **Four modes**, each labelled inside a hashed result envelope:
+  - `KNOWN_RECORDED`: F6.4's stored record as of T.
+  - `KNOWN`: what the system could have concluded with what it held at T.
+  - `AVAILABLE`: published by CSE by T, using the evidence known at H; labelled `reconstructed`.
+  - `CURRENT`: everything known by H; labelled `retrospective_current`, and never point-in-time.
+- **Rules.** Availability is CSE's own upload and authorization instants (the latest; a date-only value counts at the
+  end of its Colombo day; unknown stays unknown). Knowledge time comes from immutable recorded times. Supersession
+  needs source-declared evidence; conflicts stay `conflicting`.
+- **No CSE request, no network.** The owner designates the canonical F8 configuration through the owner path.
 
 # Phase 2 — Historical backfill (staged implementation in progress)
 
@@ -346,8 +368,7 @@ Migrations `0007_issuers.sql` and `0008_financial_candidates.sql`, applied throu
 P1 migration runner. (Historical: a security migration once planned as 0006 was
 resolved by P1's 0009–0011; `0006` stays unused.)
 Candidates are **not facts**: validation, economic-fact identity and reconciliation are
-F6 (F6.1, F6.3, persisted by F6.4), and availability/supersession is F8, which is not
-implemented.
+F6 (F6.1, F6.3, persisted by F6.4), and availability/supersession is F8 (below).
 
 - `worker/issuer_identity.py` + `issuer_store.py` + CLI `link_issuers.py` — an
   internal, immutable `issuer_id`; CSE's issuer-level `secId` (shared by an issuer's
