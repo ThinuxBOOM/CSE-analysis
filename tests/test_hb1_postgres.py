@@ -218,8 +218,11 @@ def test_m1_a_clean_database_at_0015_takes_0016_exactly_once(cluster):
     try:
         first = mig.apply(m, found, target=15, log=lambda x: None)
         assert first["applied"] == names[:14] and names[13] == "0015_financial_truth_persistence.sql"
-        second = mig.apply(m, found, log=lambda x: None)
+        second = mig.apply(m, found, target=16, log=lambda x: None)
         assert second["applied"] == [LEDGER_MIGRATION]
+
+        later = mig.apply(m, found, log=lambda x: None)
+        assert later["applied"] == names[15:]
         third = mig.apply(m, found, log=lambda x: None)
         assert third["applied"] == [] and third["already_applied"] == names
         st = mig.status(m, found)

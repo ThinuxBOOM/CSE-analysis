@@ -1942,14 +1942,16 @@ Still open after real-data validation:
     ACCEPTED --- REVISION 3**. `claude/hb3-discovery` was merged into
     `main` and verified by the owner; the new frozen baseline is
     `8e2a3c37`. F8 is **implemented** on that baseline (branch
-    `claude/f8-implementation`; not yet committed): the read-only
+    `claude/f8-implementation`): the read-only
     package `worker/financial_asof/` and migration
     `0017_f8_asof_configuration.sql` (F8's own configuration and
     owner-only designation tables only; no frozen table changed). Notes,
     implementation choices and test evidence: `docs/F8_IMPLEMENTATION.md`.
-    It awaits the owner's review and freeze, and the owner decision
-    F8-Q1: one frozen HB-1 test pins 0016 as the last migration and
-    fails once 0017 exists; the minimal edit is proposed, not made;
+    F8-Q1 is resolved (owner-approved, 2026-10-06): the one frozen
+    HB-1 migration test that pinned 0016 as the last migration now
+    applies 0016 with `target=16` and checks the later migrations
+    separately; every other frozen HB-1 assertion is unchanged. F8
+    awaits the owner's freeze;
 -   Phase 2 --- historical financial backfill --- remains the major
     architectural phase in progress. Only its first three
     implementation steps, HB-1 (the governed backfill ledger), HB-2
@@ -2418,8 +2420,7 @@ architecture should be implemented in dependency order.
     brought forward, see below) --- designed and accepted
     (`docs/F8_DESIGN.md`, revision 3: FROZEN / ACCEPTED); implemented
     on the frozen baseline (`worker/financial_asof/`, migration 0017;
-    `docs/F8_IMPLEMENTATION.md`), not yet committed, awaiting the
-    owner's review and freeze.
+    `docs/F8_IMPLEMENTATION.md`), awaiting the owner's freeze.
 
 Every later phase below is not yet implemented, apart from Phase 2's
 first three steps, HB-1, HB-2 and HB-3 (all frozen and merged into
@@ -2448,8 +2449,8 @@ conditions the owner set for starting implementation are met:
 -   the new frozen baseline (`8e2a3c37`).
 
 F8 has since been implemented on that baseline (branch
-`claude/f8-implementation`, not yet committed; `docs/F8_IMPLEMENTATION.md`)
-and awaits the owner's review and freeze. HB-4 has not started; when it
+`claude/f8-implementation`; `docs/F8_IMPLEMENTATION.md`) and awaits
+the owner's freeze. HB-4 has not started; when it
 starts is the owner's decision.
 
 ## Phase 2 --- Historical financial backfill

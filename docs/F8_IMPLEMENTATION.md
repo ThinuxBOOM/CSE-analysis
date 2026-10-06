@@ -1,8 +1,9 @@
 # F8: Availability, supersession and point-in-time financial views (implementation)
 
-**Status:** implemented offline on the frozen baseline, on branch `claude/f8-implementation`. **Not committed, not
-frozen:** it awaits the owner's review, commit and freeze, and one owner decision, F8-Q1 (§8): migration 0017 makes one
-frozen HB-1 test fail, because that test pins 0016 as the last migration.
+**Status:** implemented offline on the frozen baseline, on branch `claude/f8-implementation`; the owner committed and
+pushed the implementation as `6e7df6d`. **Not frozen:** it awaits the owner's freeze. F8-Q1 (§8) is **resolved**: the
+owner approved the minimal edit of the one frozen HB-1 migration test that migration 0017 broke. It was made and
+verified on 2026-10-06 (§5).
 
 **Baseline:** frozen `main` at `8e2a3c3769511d711a4502bcad0c30acf64e0d79`. That is the merge of `claude/hb3-discovery`:
 HB-3 frozen, and F8 revision 3 DESIGN FROZEN / ACCEPTED. The owner verified it.
@@ -66,7 +67,8 @@ Designations go only through the owner path (`cse_migrator` acting as `cse_owner
   `F6_DECIMAL_CONTEXT`;
 - from F1: `normalize_filing`, `parse_listing_item`, `source_key` and `metadata_hash`.
 
-No frozen file was edited.
+No frozen implementation file or migration was edited. One frozen test was edited, with the owner's approval: the HB-1
+migration test that pinned 0016 as the last migration (F8-Q1, §8).
 
 ## 2. Requirement → implementation → tests
 
@@ -223,23 +225,23 @@ The leakage suite covers:
 - Appendix B's cases 1–10;
 - the point-in-time interfaces.
 
-**Runs on the final code (2026-10-06):**
+**Final verification (2026-10-06).** It ran on the corrected tree: the owner's commit `6e7df6d` plus the F8-Q1 edit
+(§8).
 
 | Platform | Suites | Result |
 |---|---|---|
 | Linux: Docker `cse-p1-test`, `--network none`, Python 3.12.3, PostgreSQL 17.11, RDV evidence mounted | all five F8 suites | **394 passed**, 0 skipped, 0 failed |
-| Windows 11, Python 3.14.6 | all five F8 suites | 378 passed, 16 skipped (the PostgreSQL and RDV suites need Linux) |
-| Linux, same image, RDV evidence mounted | the whole repository (`tests/`): regression | 1946 passed, 2 failed, 46 skipped, 2 xfailed (see below) |
+| Windows 11, Python 3.14.6 | all five F8 suites | **378 passed**, 16 skipped (the PostgreSQL and RDV suites need Linux) |
+| Linux, same image, RDV evidence mounted | the whole repository (`tests/`): regression | **1947 passed**, 1 failed, 46 skipped, 2 xfailed |
+| Linux, same image | the HB-1 migration and lineage tests (`test_m1`, `test_m2`, `test_u9`, `test_u10`) | 4 passed |
 
 **The regression in detail.**
-- Baseline before F8 (the HB-3 freeze run): 1553 passed, 1 failed, 46 skipped, 2 xfailed.
-- With F8: 1996 tests = 1602 + the 394 F8 tests. Every F8 test passes, and every pre-existing test behaves as at the
-  baseline, except one. The two failures are:
-  - `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`: the known, unrelated, clock-dependent HB-2
-    failure. It is unchanged and was not touched.
-  - `tests/test_hb1_postgres.py::test_m1_a_clean_database_at_0015_takes_0016_exactly_once`: a frozen HB-1 test. It
-    asserts that the runner, after 0015, applies exactly `[0016]`, so it fails as soon as any later migration exists.
-    It was not edited: this is the owner decision F8-Q1 (§8).
+- The baseline before F8 (the HB-3 freeze run) had 1553 passed, 1 failed, 46 skipped and 2 xfailed. Now
+  1947 = 1553 + the 394 F8 tests, and every pre-existing test behaves as at the baseline.
+- The one failure is the known, unrelated, clock-dependent HB-2 test,
+  `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`. It fails on the same assertion as at the baseline
+  (`since < 60`), and it is not touched.
+- The frozen HB-1 migration test that 0017 had broken now passes (F8-Q1, §8).
 
 **Coverage of the random histories.** Across the 40 seeds the random histories reach:
 - every supersession basis (S-1, S-2, S-3);
@@ -255,6 +257,7 @@ PostgreSQL.
 |---|---|---|
 | First run | 58 | 56. Two survived (M6: step 3's `known_at ≤ G` filter dropped; M33: rows known after G emitted as exclusions). Both are reachable only when the F3 classification link is recorded after G while every other link is known. `test_visibility_requires_known_at_even_when_every_other_filter_passes` was added |
 | Final run, on the final code | 60 | **60 of 60** (57 in the unit/static stage, 2 in the leakage stage, 1 in the PostgreSQL stage) |
+| Final verification, on the corrected tree (with F8-Q1) | 60 | **60 of 60** (57 / 2 / 1, as above) |
 
 Thirty-five of the mutants cover all 28 mutation targets of the design's §15. The other 25 cover further rules, among
 them:
@@ -310,33 +313,34 @@ store.designate(migrator_conn, f8_configuration_id, "reason for the designation"
 api.as_of(conn, issuer_id=..., mode="KNOWN", information_cutoff=...)        # an AsOfResult with result_hash
 ```
 
-## 8. Owner decision needed: F8-Q1, one frozen-test edit caused by migration 0017
+## 8. F8-Q1 (resolved 2026-10-06): one frozen-test edit caused by migration 0017
 
-**What happens.** Migration 0017 is required by the frozen design (§13.1, §13.4, §19 F8-2), and it makes exactly one
-frozen HB-1 test fail: `tests/test_hb1_postgres.py::test_m1_a_clean_database_at_0015_takes_0016_exactly_once`. The test
-applies the migrations up to 0015, then runs the runner again. It asserts that this applies exactly `[0016]`. With 0017
-present, the runner applies `[0016, 0017]`, as it should.
+**The issue.** Migration 0017 is required by the frozen design (§13.1, §13.4, §19 F8-2). It made exactly one frozen
+HB-1 test fail: `tests/test_hb1_postgres.py::test_m1_a_clean_database_at_0015_takes_0016_exactly_once`. The test applied
+the migrations up to 0015, then ran the runner again and asserted that this applied exactly `[0016]`. With 0017 present,
+the runner applies `[0016, 0017]`, as it should.
 
-**Precedent.** This is the same situation as F6.4 §16.6 (a frozen P3 test pinned the last migration when 0015 arrived)
-and HB-1's own HB-Q3 (two frozen-test edits for 0016). Both needed the owner's approval. So the test is **not** edited
-here.
-
-**Proposed minimal, durable edit (owner approval required).** It keeps the test's intent (0016 applies exactly once on
-top of the frozen 0001–0015 state, and a rerun is a no-op) without constraining later migrations:
+**The owner's decision (2026-10-06).** The owner approved the minimal edit, as with F6.4 §16.6 and HB-1's HB-Q3. Exactly
+this, and nothing else in the test or in HB-1, was changed:
 
 ```python
         second = mig.apply(m, found, target=16, log=lambda x: None)
         assert second["applied"] == [LEDGER_MIGRATION]
+
         later = mig.apply(m, found, log=lambda x: None)
         assert later["applied"] == names[15:]
 ```
 
-**Trial.** The edit was trialled on a throwaway copy inside the test container only; the repository file is unchanged.
-There the test passes with 0017 present.
+**What the test still proves.** Every other assertion is unchanged:
+- 0001 to 0015 apply in the frozen order, and 0015 stays at position 14 with its frozen hash;
+- 0006 stays unused;
+- 0016 applies exactly once, immediately after 0015;
+- re-running the current migration set applies only the migrations after 0016;
+- a further run is a no-op;
+- the runner's status reports no problems and nothing pending;
+- 0016's ledger row has the expected hash, actor (`cse_migrator`) and role (`cse_owner`);
+- HB-1's frozen lineage check passes.
 
-**Options:**
-1. **Approve the edit.** Then the whole suite matches the baseline, apart from the known HB-2 clock test.
-2. **Keep the test as frozen.** Then 0017, and with it F8's designations, cannot merge without a red HB-1 test.
+**What was not changed.** Migration 0016, HB-1's code, and every other HB-1 assertion.
 
-The implementation itself does not depend on this choice. The tests that run without the migration runner (the unit,
-leakage and static suites) are unaffected.
+**Verification.** The test passes, and so do the whole repository and the F8 suites (§5).

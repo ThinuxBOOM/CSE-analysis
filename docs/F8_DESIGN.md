@@ -2,8 +2,8 @@
 
 **Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTED — REVISION 3:** the owner's acceptance gate
 (2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **Implementation (status only):** F8 is
-implemented on the frozen baseline `8e2a3c37` (branch `claude/f8-implementation`, not yet committed) and awaits the
-owner's review and freeze. See `docs/F8_IMPLEMENTATION.md`. The implementation changes nothing in this design.
+implemented on the frozen baseline `8e2a3c37` (branch `claude/f8-implementation`) and awaits the owner's
+freeze. See `docs/F8_IMPLEMENTATION.md`. The implementation changes nothing in this design.
 
 **History:**
 - Revision 1 was the design gate report (BLOCKED on OD-1 to OD-3).
