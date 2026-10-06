@@ -1,9 +1,10 @@
 # F8: Availability, supersession and point-in-time financial views (implementation)
 
-**Status:** implemented offline on the frozen baseline, on branch `claude/f8-implementation`; the owner committed and
-pushed the implementation as `6e7df6d`. **Not frozen:** it awaits the owner's freeze. F8-Q1 (§8) is **resolved**: the
+**Status: F8 IMPLEMENTATION FROZEN / ACCEPTED** (the owner, 2026-10-06; freeze record §9). F8 was implemented offline
+on the frozen baseline, on branch `claude/f8-implementation`, in two commits that the owner committed and pushed:
+`6e7df6d` (the implementation) and `f73e506` (the F8-Q1 resolution and freeze gate). F8-Q1 (§8) is **resolved**: the
 owner approved the minimal edit of the one frozen HB-1 migration test that migration 0017 broke. It was made and
-verified on 2026-10-06 (§5).
+verified on 2026-10-06 (§5). No F8 blocker remains.
 
 **Baseline:** frozen `main` at `8e2a3c3769511d711a4502bcad0c30acf64e0d79`. That is the merge of `claude/hb3-discovery`:
 HB-3 frozen, and F8 revision 3 DESIGN FROZEN / ACCEPTED. The owner verified it.
@@ -226,7 +227,8 @@ The leakage suite covers:
 - the point-in-time interfaces.
 
 **Final verification (2026-10-06).** It ran on the corrected tree: the owner's commit `6e7df6d` plus the F8-Q1 edit
-(§8).
+(§8). The owner then committed that tree as `f73e506`, which adds only the F8-Q1 edit and documentation to `6e7df6d`,
+so the frozen code, migration and tests are exactly the ones verified here.
 
 | Platform | Suites | Result |
 |---|---|---|
@@ -344,3 +346,61 @@ this, and nothing else in the test or in HB-1, was changed:
 **What was not changed.** Migration 0016, HB-1's code, and every other HB-1 assertion.
 
 **Verification.** The test passes, and so do the whole repository and the F8 suites (§5).
+
+## 9. Freeze record (2026-10-06)
+
+**F8 IMPLEMENTATION FROZEN / ACCEPTED.** The owner verified F8 independently, against this repository and GitHub, and
+accepted it as implementation-complete on 2026-10-06. This record is documentation only: no code, migration or test
+changed for the freeze.
+
+| Item | Value |
+|---|---|
+| Implementation baseline | Frozen `main` at `8e2a3c3769511d711a4502bcad0c30acf64e0d79` (the merge of `claude/hb3-discovery`: HB-3 frozen, F8 revision 3 DESIGN FROZEN / ACCEPTED) |
+| Implementation commit | `6e7df6d831a6bb4e80104f9ee2fc6f2a40b77e5c`: `worker/financial_asof/`, migration 0017, the six F8 test files and this note |
+| F8-Q1 resolution and freeze gate | `f73e506778d75b7da151e66f84d5b6dcbff45b85`: the owner-approved HB-1 test edit (§8) and status/evidence documentation |
+| Branch | `claude/f8-implementation`: 2 commits ahead of `main`, 0 behind; pushed by the owner |
+| Migration 0017 | `0017_f8_asof_configuration.sql`, unchanged since `6e7df6d`. SHA-256 of the LF-normalised file, as the P1 runner and the migration ledger compute it: `04c5da923747a066b5cab0900ba7e0ffa0ebf76250aeca72d64c94468df6cfa9` |
+| Migration 0016 | Unchanged since the baseline. Its SHA-256 equals the frozen pin `LEDGER_MIGRATION_SHA256`: `f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7` |
+
+**What is frozen.** The package `worker/financial_asof/` (18 modules), migration 0017, the F8 tests
+(`tests/f8_factories.py`, `test_f8_unit.py`, `test_f8_leakage.py`, `test_f8_static.py`, `test_f8_postgres.py`,
+`test_f8_rdv_postgres.py`) and the approved HB-1 test edit (§8). As for every frozen layer, any change now needs the
+owner's change control. `docs/F8_DESIGN.md` (revision 3) remains the contract.
+
+**Final verification** (§5), on the code, migrations and tests that the owner committed as `f73e506`:
+
+| Run | Result |
+|---|---|
+| F8 suites, Linux (`--network none`, RDV evidence mounted) | 394 passed |
+| F8 suites, Windows | 378 passed, 16 skipped (the PostgreSQL and RDV suites need Linux) |
+| Mutation testing | 60 of 60 killed |
+| RDV replay | 4 of 4 passed |
+| Full repository, Linux | 1947 passed, 1 failed, 46 skipped, 2 xfailed |
+
+**The one known failure is retained, not hidden.** `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`
+is a frozen HB-2 test that depends on the wall clock. It failed on the same assertion (`since < 60`) at the baseline,
+before F8, and it is unrelated to F8. It stays as a pre-existing baseline failure: it is not edited, skipped or marked
+xfail, and it is not an F8 blocker. Changing it is HB-2 change control, for the owner.
+
+**Freeze audit** (read-only, 2026-10-06, at `f73e506`; the working tree was clean and equal to GitHub):
+
+| # | Check | Result |
+|---|---|---|
+| 1 | No unexpected change | Against `8e2a3c3`, the tree adds F8's files (the package, 0017, the six test files, this note), the approved HB-1 test edit, and status lines in `README.md`, `docs/MASTER_ARCHITECTURE.md`, `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` and `docs/F8_DESIGN.md`. Nothing else |
+| 2 | Migration 0016 | The same blob as at the baseline; its hash equals the frozen pin |
+| 3 | Migration 0017 | The same blob as in the approved `6e7df6d`; its hash is above |
+| 4 | F8 design, revision 3 | Unchanged in substance: only its status lines differ from the baseline |
+| 5 | Frozen implementation | No F1–F6.4, HB-1, HB-2 or HB-3 implementation file changed. HB-1's lineage and frozen-file check (51 files), HB-2's and HB-3's pin checks (11 and 14 files) and their static checks report no problem. The F8 static suite passes (28 tests) |
+| 6 | Roles, RLS, `SECURITY DEFINER`, locks, P2, P3, other migrations | None introduced. 0017 creates F8's two tables, their guard functions and triggers, and grants only on those tables, to `cse_worker` and `cse_reader`. Designations use the existing owner path (`cse_migrator` acting as `cse_owner`). No P2 or P3 file changed, and 0017 is the only new migration |
+| 7 | No live CSE or network acquisition | The package imports no network library. Every Linux run used `--network none`, and a test runs F8 with every network path made to fail. The audit itself only read GitHub's branch heads |
+| 8 | HB-4 and later phases | Not started: no file, migration or branch for them |
+| 9 | The HB-2 clock failure | Retained as a pre-existing baseline failure (above); the test file is unchanged |
+| 10 | Documentation and GitHub | At the audit, GitHub had `main` at `8e2a3c3` and `claude/f8-implementation` at `f73e506`, as recorded here |
+
+**No F8 blocker remains.** These are not blockers, and the freeze does not change them (§6): F8-4 (materialised
+availability and timelines) waits for HB-5 to measure scale; performance at Phase 2 scale is unmeasured; OD-5 (the mode
+names) is open; HB-P1 stays a deployment and runtime prerequisite for live Phase 2 only.
+
+**F8 is frozen and ready for downstream work.** HB-4 and HB-5 implement against the producer contract of the design's
+§3.4, and consumers read F8 through its point-in-time interfaces (§1). HB-4 has not started; when it starts is the
+owner's decision.

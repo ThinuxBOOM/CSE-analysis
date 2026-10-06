@@ -1,9 +1,10 @@
 # F8: Availability, supersession and point-in-time financial views (design gate report)
 
 **Status:** design, revision 3 (2026-10-05). **F8 DESIGN FROZEN / ACCEPTED — REVISION 3:** the owner's acceptance gate
-(2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **Implementation (status only):** F8 is
-implemented on the frozen baseline `8e2a3c37` (branch `claude/f8-implementation`) and awaits the owner's
-freeze. See `docs/F8_IMPLEMENTATION.md`. The implementation changes nothing in this design.
+(2026-10-05) accepted this revision. It is the frozen F8 design (Appendix D). **Implementation (status only): F8
+IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-06): implemented on the frozen baseline `8e2a3c37` as `6e7df6d` and
+`f73e506` (branch `claude/f8-implementation`). See `docs/F8_IMPLEMENTATION.md`. The implementation changes nothing in
+this design.
 
 **History:**
 - Revision 1 was the design gate report (BLOCKED on OD-1 to OD-3).
@@ -1179,9 +1180,10 @@ a design or implementation prerequisite (MA §43.1, §52).
   followed the HB-3 freeze.
 - **Done since:** the merge, its verification and the new baseline (`8e2a3c37`), then F8's implementation (F8-1 to F8-3
   of §19). HB-4 has not started.
-- **The implementation is not frozen.** It exists on the frozen baseline (`docs/F8_IMPLEMENTATION.md`: the package
-  `worker/financial_asof/` and migration 0017, which holds F8's own tables only) and awaits the owner's review and
-  freeze. No frozen layer changes. The HB-4/HB-5 producer contract (§3.4) is unchanged.
+- **The implementation is frozen: F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06).** It is on the frozen baseline
+  (`docs/F8_IMPLEMENTATION.md`: the package `worker/financial_asof/` and migration 0017, which holds F8's own tables
+  only; commits `6e7df6d` and `f73e506`). No frozen layer changes. The HB-4/HB-5 producer contract (§3.4) is
+  unchanged.
 - **HB-P1** remains a deployment/runtime prerequisite for live Phase 2 execution only (§19).
 
 ---

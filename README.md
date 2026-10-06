@@ -18,14 +18,15 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3 and Phase 2 HB-1, HB-2 and HB-3. HB-3 (discovery and issuer evidence) is merged into
-`main` (frozen baseline `8e2a3c37`). F6.2 is an accepted design; its storage amendments are implemented by F6.4. The F8
-design is FROZEN / ACCEPTED (revision 3, `docs/F8_DESIGN.md`).
+validation, P0.5, G-1, P1, P2, P3, Phase 2 HB-1, HB-2 and HB-3, and F8. HB-3 (discovery and issuer evidence) is merged
+into `main` (frozen baseline `8e2a3c37`). F6.2 is an accepted design; its storage amendments are implemented by F6.4.
+F8 is frozen/accepted as a design (revision 3, `docs/F8_DESIGN.md`) and as an implementation (below).
 
 **Live HB-3 discovery** waits for the deployment prerequisite HB-P1.
 
-**Implemented, awaiting the owner's review and freeze:** F8 (availability, supersession, as-of): the read-only package
-`worker/financial_asof/` and migration `0017_f8_asof_configuration.sql` (`docs/F8_IMPLEMENTATION.md`).
+**F8 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-06): F8 (availability, supersession, as-of) is the read-only package
+`worker/financial_asof/` and migration `0017_f8_asof_configuration.sql`, committed as `6e7df6d` and `f73e506` on the
+frozen baseline `8e2a3c37` (`docs/F8_IMPLEMENTATION.md`, freeze record §9). It is ready for downstream work.
 
 **Not implemented:** Phase 2 HB-4 to HB-6, and every later roadmap phase (Master Architecture §55).
 
@@ -76,13 +77,13 @@ archive in PostgreSQL; no silent sign, scale or currency transformation and no s
 never zero; conflicts are preserved and no arbitrary winner is chosen; Group/Company/Bank values are never silently merged; no
 issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics are not changed casually (§8).
 
-# Point-in-time financial views (F8; implemented, awaiting freeze)
+# Point-in-time financial views (F8; implemented and frozen)
 
     F6.4 immutable financial truth -> F8 availability / supersession / as-of -> point-in-time datasets -> F7 / ML
 
-- Design: `docs/F8_DESIGN.md` (revision 3, FROZEN / ACCEPTED). Implementation notes, choices and evidence:
-  `docs/F8_IMPLEMENTATION.md`. Package `worker/financial_asof/`; migration `0017_f8_asof_configuration.sql` adds only
-  F8's own configuration and owner-only designation tables.
+- Design: `docs/F8_DESIGN.md` (revision 3, FROZEN / ACCEPTED). Implementation: FROZEN / ACCEPTED (2026-10-06); notes,
+  choices, evidence and the freeze record: `docs/F8_IMPLEMENTATION.md`. Package `worker/financial_asof/`; migration
+  `0017_f8_asof_configuration.sql` adds only F8's own configuration and owner-only designation tables.
 - F8 is read-only above F6.4. It reads append-only evidence only, never the mutable `report_filings`, and writes no F1 to
   F6.4 row.
 - **Four modes**, each labelled inside a hashed result envelope:
