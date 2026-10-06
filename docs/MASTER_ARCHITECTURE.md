@@ -2308,8 +2308,9 @@ The freeze record is `docs/F8_IMPLEMENTATION.md` §9.
 
 Phase 2 HB-4 --- the document worker --- is **implemented and frozen**:
 HB-4 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-07;
-implementation `a62a3a7` on `claude/hb4-document-worker`, from the
-F8-frozen `ef11a76`, with the correction its freeze audit required).
+code `c717059` on `claude/hb4-document-worker`: the implementation
+`a62a3a7`, from the F8-frozen `ef11a76`, plus the correction its
+freeze audit required).
 It is the library package `worker/backfill_documents/`. One filing at
 a time goes
 through exactly the calls F5's `run()` composes

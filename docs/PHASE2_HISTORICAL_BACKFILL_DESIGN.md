@@ -6,8 +6,8 @@ implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Im
 issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
 `claude/hb3-discovery`, merged into `main` (frozen baseline `8e2a3c37`). **Implementation step HB-4 (the document
 worker) is implemented and frozen**: HB-4 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-07; code
-`a62a3a7` on `claude/hb4-document-worker` with its freeze-audit correction, see below). HB-5 and HB-6 are not
-implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
+`c717059` on `claude/hb4-document-worker`: the implementation `a62a3a7` plus its freeze-audit correction, see below).
+HB-5 and HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -297,7 +297,7 @@ composition itself present.
   pass, and migrations 0016 and 0017 are unchanged.
 
 **HB-4 freeze (2026-10-07).** HB-4 is implemented and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED**. Its code is
-`a62a3a7` (the implementation) with the correction its freeze audit required, committed with this record:
+`c717059`: the implementation `a62a3a7` plus the correction its freeze audit required, committed with this record:
 - **B-HB4-1 (code).** HB-2's `claim()` does not check the slice's document cap, and HB-4 claimed before
   `begin_document()` refused. The item after a full slice was charged a claim without a request, so three full slices
   let G10 end a never-requested document as `failed`. HB-4 now checks the cap before the claim (above).
