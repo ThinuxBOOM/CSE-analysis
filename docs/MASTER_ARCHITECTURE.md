@@ -7,7 +7,8 @@
 **Database:** Local PostgreSQL\
 **Source control:** GitHub only\
 **Primary external sources:** Colombo Stock Exchange (CSE), approved
-financial/news sources, Gemini API
+financial/news sources, and the configured AI analyst provider's API
+(initially Gemini; the provider is configuration, §16)
 
 ------------------------------------------------------------------------
 
@@ -40,7 +41,7 @@ CSE daily market data ───────┤
                  + ML                    │
                   │                      │
                   ▼                      ▼
-          Quantitative prediction     Gemini API
+          Quantitative prediction     AI analyst
                   │                      │
                   │                      ▼
                   │                 AI prediction
@@ -74,7 +75,7 @@ CSE daily market data ───────┤
                    New model versions
 ```
 
-The project is **not** merely an ML model and is **not** merely a Gemini
+The project is **not** merely an ML model and is **not** merely an LLM
 wrapper. The data, provenance, deterministic analysis, ML, sentiment,
 AI, evaluation and backtesting layers are all first-class components.
 
@@ -93,6 +94,13 @@ The canonical requirement is:
 > predictions and a statement describing their degree of
 > agreement/disagreement. Each route is independently retained and
 > evaluated against eventual outcomes.**
+
+**Provider note (owner decision, 2026-10-06).** Route 2's AI analyst is
+provider-agnostic. "Gemini" in the requirement above means Route 2's
+initial/default provider configuration, not an architectural
+dependency: the route, its inputs, the analyst capability and its
+outputs are unchanged, while the provider and model are validated,
+replaceable configuration behind a provider adapter (§16).
 
 The routes must never be collapsed into a single unexplained prediction.
 
@@ -117,7 +125,7 @@ The finished platform must:
 9.  ingest relevant market/company/economic news;
 10. extract entities, relevance and events;
 11. calculate time-decayed sentiment;
-12. provide quantitative inputs + sentiment to Gemini;
+12. provide quantitative inputs + sentiment to the AI analyst (§16);
 13. produce Route 2 predictions;
 14. explain both predictions using their actual inputs;
 15. show agreement/disagreement;
@@ -656,7 +664,7 @@ The exact formula is a later controlled implementation decision.
 
 ------------------------------------------------------------------------
 
-# 16. Route 2 --- Gemini
+# 16. Route 2 --- AI Analyst
 
 Route 2 receives:
 
@@ -673,38 +681,120 @@ Then:
 
 ``` text
 structured inputs
-→ Gemini
+→ AI analyst (through its provider boundary, below)
 → AI prediction
 → reasoning
 ```
 
-Gemini is an interpretation/prediction layer, not the financial truth
-authority.
+The AI analyst is an interpretation/prediction layer, not the financial
+truth authority, whichever provider and model serve it.
 
-Gemini must never be allowed to silently create canonical financial
+No AI analyst provider may ever silently create canonical financial
 facts.
+
+## Provider boundary (owner decision, 2026-10-06)
+
+The AI Analyst Route is **provider-agnostic**. The route, its inputs,
+the analyst capability and its outputs are architecture. The provider
+and model that serve the analyst are **configuration**: Gemini may be
+the initial/default provider configuration, but it is not an
+architectural dependency.
+
+1.  **Configuration, not architecture.** The provider and model used
+    for Route 2 are selected by configuration. Additional approved
+    providers and models, free or paid, are added as further
+    configurations of the same route, without changing the route or
+    the core prediction logic. Free and paid offerings are not separate
+    pathways: each is a provider configuration that must satisfy the
+    same capability contract (below).
+2.  **Provider adapter.** Provider-specific API, authentication,
+    request, response, error and rate-limit semantics live behind a
+    provider adapter interface. The core analyst logic (evidence
+    assembly, the analyst specification, output validation, storage
+    and evaluation) never calls a provider's API or SDK directly.
+3.  **Explicit, validated selection.** A prediction uses one provider
+    configuration, selected explicitly from a registry of approved
+    configurations and validated against the capability contract
+    before use. An unregistered, unvalidated or insufficient
+    configuration is refused, never used.
+4.  **No silent switching.** A prediction never falls back to another
+    provider or model. Fallback is permitted only under an explicit
+    policy designed and approved later, and its use is then recorded in
+    that prediction's provenance (§17).
+5.  **Secrets are operational configuration.** Provider API keys,
+    tokens and other credentials are server configuration only, as
+    P1's settings and P2's contact e-mail are. They are never stored in
+    the financial-data database, in forecast or provenance records, or
+    in Git.
+6.  **Auditable provenance.** Every AI prediction records the provider,
+    model, analyst specification version and provider configuration
+    version that produced it, with the identity of its inputs and of
+    its output (§17), so that it stays auditable after any provider,
+    model or configuration change.
+7.  **Controlled change.** A new or changed provider configuration
+    enters service like a model version (§27, §28): validated against
+    the capability contract, evaluated, then deployed explicitly.
+    Route 2 results are evaluated per provider configuration (§26).
+
+This document defines the abstraction and its rules; it does not
+catalogue providers or models. Which configurations are approved is an
+owner decision, recorded with each configuration's capability
+validation.
+
+## Provider capability contract
+
+An LLM is not automatically eligible. A provider/model configuration
+is an **eligible** AI analyst only when it has been validated to
+provide, for the analyst specification in force:
+
+-   reasoning sufficient for the prediction task, shown on the
+    analyst's evaluation set rather than assumed;
+-   a context window that holds a prediction's complete structured
+    input without silent truncation;
+-   reliable structured output that validates against the required
+    prediction schema; an invalid response is a failed run, never
+    repaired by guessing;
+-   request/response semantics the adapter can control and record: the
+    model identifier, generation parameters (including deterministic
+    settings where offered), timeouts and rate limits;
+-   failure reporting precise enough for the audit (refusal,
+    truncation, rate limiting, timeout, malformed output), each
+    recorded as a failed run, never as a prediction.
+
+A change of provider, model, analyst specification or
+capability-relevant parameter is a new configuration version that needs
+its own validation.
 
 ------------------------------------------------------------------------
 
-# 17. Gemini Request/Response Provenance
+# 17. AI Analyst Request/Response Provenance
 
-Each Gemini run must retain:
+Each Route 2 (AI analyst) run must retain:
 
 -   provider;
--   model identifier;
--   timestamp;
--   prompt version;
+-   model identifier, as the provider reports it;
+-   analyst specification (prompt) version;
+-   provider configuration version (the approved registry entry and
+    its capability validation, §16);
+-   execution timestamps (request sent, response received);
 -   input record IDs;
--   input hash;
+-   input hash (the identity of the complete evidence supplied);
 -   raw response;
 -   parsed output;
+-   response hash and parsed-output hash;
 -   usage/cost data where available;
 -   error state;
--   response hash.
+-   the fallback policy applied, if any (none unless an explicit policy
+    exists, §16).
 
-Prompt changes create new prompt versions.
+It never retains an API key, token or other provider secret.
 
-Historical forecasts retain the original prompt/model metadata.
+Analyst specification (prompt) changes create new specification
+versions; provider, model or parameter changes create new provider
+configuration versions.
+
+Historical forecasts retain the original provider, model, specification
+and configuration metadata.
 
 ------------------------------------------------------------------------
 
@@ -822,8 +912,9 @@ Possible outputs:
 -   calibrated confidence;
 -   historical error band.
 
-Gemini must not invent a statistically meaningful confidence score
-without a defined methodology.
+The AI analyst, whichever provider serves it, must not invent a
+statistically meaningful confidence score without a defined
+methodology.
 
 ------------------------------------------------------------------------
 
@@ -884,8 +975,8 @@ Each forecast retains:
 
 ### Route 2
 
--   Gemini model;
--   prompt version;
+-   AI analyst provider, model and provider configuration version;
+-   analyst specification (prompt) version;
 -   news/sentiment snapshot;
 -   prediction;
 -   reasoning;
@@ -1205,13 +1296,14 @@ This helps determine when each route is useful.
 
 # 38. Historical AI Backtesting
 
-Gemini introduces an additional reproducibility issue because provider
-behavior can change.
+The AI analyst introduces an additional reproducibility issue because
+provider behavior can change, and the provider itself is replaceable
+configuration (§16).
 
 For historical Route 2 results, store:
 
--   model;
--   prompt;
+-   provider, model and provider configuration version;
+-   prompt (the analyst specification) and its version;
 -   exact input;
 -   input hash;
 -   raw response;
@@ -1219,7 +1311,7 @@ For historical Route 2 results, store:
 -   timestamp.
 
 Historical AI results are immutable records even if the provider later
-changes its model.
+changes its model, or another provider configuration replaces it.
 
 ------------------------------------------------------------------------
 
@@ -1959,14 +2051,14 @@ Still open after real-data validation:
     item is now **closed: F8 IMPLEMENTATION FROZEN / ACCEPTED**
     (2026-10-06; see the F8 freeze record below);
 -   Phase 2 --- historical financial backfill --- remains the major
-    architectural phase in progress. Only its first three
-    implementation steps, HB-1 (the governed backfill ledger), HB-2
-    (the governed CSE transport) and HB-3 (discovery and issuer
-    evidence), all below, are implemented and frozen (all three merged
-    into `main`; frozen baseline `8e2a3c37`); HB-4 (the document
-    worker) is implemented and awaits the owner's review and freeze
-    (below); HB-5 and HB-6 are not implemented, and Phase 2 as a
-    whole is not implemented.
+    architectural phase in progress. Its first four implementation
+    steps are implemented and frozen: HB-1 (the governed backfill
+    ledger), HB-2 (the governed CSE transport) and HB-3 (discovery and
+    issuer evidence), all below and merged into `main` (frozen
+    baseline `8e2a3c37`), and HB-4 (the document worker; HB-4
+    IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; below). HB-5 and
+    HB-6 are not implemented, and Phase 2 as a whole is not
+    implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2209,14 +2301,17 @@ the frozen code, migrations and tests:
     `SECURITY DEFINER` or lock key changed; no CSE request was made.
 
 No F8 blocker remains. F8 is ready for downstream work: HB-4 and HB-5
-implement against its producer contract (F8 design §3.4). HB-4 has not
-started. HB-P1 stays a deployment prerequisite for live Phase 2 only.
+implement against its producer contract (F8 design §3.4). At the F8
+freeze, HB-4 had not started. HB-P1 stays a deployment prerequisite for
+live Phase 2 only.
 The freeze record is `docs/F8_IMPLEMENTATION.md` §9.
 
-Phase 2 HB-4 --- the document worker --- is **implemented** (2026-10-06,
-on the branch `claude/hb4-document-worker` from the F8-frozen
-`ef11a76`) and awaits the owner's review and freeze. It is the library
-package `worker/backfill_documents/`. One filing at a time goes
+Phase 2 HB-4 --- the document worker --- is **implemented and frozen**:
+HB-4 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-07;
+implementation `a62a3a7` on `claude/hb4-document-worker`, from the
+F8-frozen `ef11a76`, with the correction its freeze audit required).
+It is the library package `worker/backfill_documents/`. One filing at
+a time goes
 through exactly the calls F5's `run()` composes
 (`load_filings_from_db`, `process_batch([filing])` with HB-2's
 governed fetcher and a dedicated temporary root, F5's `make_consumer`,
@@ -2230,14 +2325,18 @@ in F5's persistence transaction. It enforces:
 -   the orphan sweep inside locked slices;
 -   SIGTERM handling, so F2's cleanup unwinds;
 -   HB-3's G2 and G10 rules applied to documents;
+-   the slice's document cap before any claim (correction B-HB4-1),
+    so a full slice is never charged to an item;
 -   recovery from evidence, and a stopped stage after a cleanup
     failure, until an operator re-queues the item.
 
 It adds no migration, grant, role or lock key and changes no frozen
-file. Tests: 79 unit and 45 PostgreSQL tests, including
-row equivalence with F5's `run()` and the crash matrix;
-60 of 60 planted faults caught. The Phase 2 design (HB-4
-implementation status) records the details.
+file. Verification: 80 unit and 48 PostgreSQL tests, including row
+equivalence with F5's `run()`, the crash matrix and the document cap;
+all 60 planted faults caught, plus three for the correction; the full
+repository on Linux 2075 passed, with only the known, unrelated HB-2
+clock test failing; Windows 1681 passed, 0 failed. The Phase 2 design
+(HB-4 implementation status and HB-4 freeze) records the details.
 
 Important accepted commits:
 
@@ -2535,8 +2634,8 @@ conditions the owner set for starting implementation are met:
 F8 has since been implemented on that baseline (branch
 `claude/f8-implementation`; `docs/F8_IMPLEMENTATION.md`) and frozen:
 F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06; §52). It is ready for
-downstream work. HB-4 has since been implemented and awaits the owner's
-review and freeze (Phase 2, below).
+downstream work. HB-4 has since been implemented and frozen (HB-4
+IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; Phase 2, below).
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2555,9 +2654,10 @@ evidence (`worker/backfill_discovery/`), is implemented and frozen
 (2026-10-05; merged into `main`, frozen baseline `8e2a3c37`). Live discovery
 waits for HB-P1, a deployment prerequisite (§52), and follows the
 release sequence of §43.1. HB-4, the document worker
-(`worker/backfill_documents/`), is implemented and awaits the owner's
-review and freeze (§52). HB-5 and HB-6 (F6 orchestration and audit;
-operations and pilot) are not implemented. The
+(`worker/backfill_documents/`), is implemented and frozen (HB-4
+IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; §52). HB-5 and HB-6
+(F6 orchestration and audit; operations and pilot) are not
+implemented. The
 F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
 F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
 2026-10-06; Phase 1, above).
@@ -2601,9 +2701,11 @@ F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
 -   decay;
 -   historical sentiment snapshots.
 
-## Phase 7 --- Gemini
+## Phase 7 --- AI analyst (Route 2)
 
--   Gemini abstraction;
+-   provider abstraction: adapter interface, registry of approved
+    provider configurations and capability validation (§16), with
+    Gemini as the initial provider configuration;
 -   prompt registry;
 -   structured input;
 -   response parser;
@@ -2682,13 +2784,16 @@ Testing must cover:
 -   ML;
 -   agreement.
 
-## Gemini
+## AI analyst (Route 2)
 
 -   schema;
 -   grounding;
 -   failure;
 -   rate limiting;
--   version tracking.
+-   version tracking;
+-   provider selection and capability validation;
+-   the provider boundary: no provider API or SDK outside the adapter;
+-   provenance naming the provider and model, with no secret.
 
 ## Backtesting
 
@@ -2756,7 +2861,8 @@ Do not casually add:
 -   permanent PDFs in PostgreSQL;
 -   arbitrary financial-fact precedence;
 -   mutable latest-value tables;
--   unversioned Gemini prompts;
+-   unversioned AI analyst prompts or provider configurations;
+-   silent switching of the AI analyst's provider or model;
 -   unversioned model changes;
 -   future data into historical forecasts;
 -   automatic model mutation after one bad forecast;
@@ -2852,7 +2958,8 @@ The architecture should eventually support empirical research such as:
 -   Which ML features matter?
 -   Does sentiment matter more in high-volatility periods?
 -   Which companies/horizons are most predictable?
--   Does Gemini add predictive value?
+-   Does the AI analyst route add predictive value, and with which
+    provider configuration?
 -   How does model performance change after retraining?
 
 The system should answer these through stored evidence and evaluation
@@ -2873,7 +2980,7 @@ The core project is substantially complete when:
 7.  ML runs;
 8.  Route 1 is produced;
 9.  news/sentiment runs;
-10. Gemini Route 2 is produced;
+10. the AI analyst's Route 2 is produced;
 11. both routes are shown;
 12. both routes have grounded reasoning;
 13. agreement/disagreement is shown;
@@ -2916,7 +3023,7 @@ The core project is substantially complete when:
      deterministic + ML   quantitative + sentiment
              │                   │
              ▼                   ▼
-       prediction            Gemini
+       prediction           AI analyst
              │                   │
              │                   ▼
              │              prediction
@@ -2953,7 +3060,8 @@ market data, constructs validated point-in-time financial and market
 datasets, and uses deterministic financial/data-analysis engines
 together with ML models to produce a quantitative prediction. That
 quantitative information is then combined with independently generated
-market news and sentiment and supplied to Gemini to produce a second AI
+market news and sentiment and supplied to the AI analyst (a validated,
+configurable provider; initially Gemini) to produce a second AI
 prediction. Both prediction routes are retained and independently
 evaluated. The user is shown both predictions, their evidence-grounded
 reasoning, their uncertainty and their degree of agreement/disagreement.

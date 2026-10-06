@@ -5,9 +5,9 @@ implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
 issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
 `claude/hb3-discovery`, merged into `main` (frozen baseline `8e2a3c37`). **Implementation step HB-4 (the document
-worker) is implemented** (2026-10-06, branch `claude/hb4-document-worker`) and awaits the owner's review and freeze
-(see below). HB-5 and HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request
-has been made.
+worker) is implemented and frozen**: HB-4 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-07; code
+`a62a3a7` on `claude/hb4-document-worker` with its freeze-audit correction, see below). HB-5 and HB-6 are not
+implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -172,7 +172,8 @@ transport; that never satisfies production HB-P1. The deployment sequence is:
 derived security master → HB-P1 satisfied → live HB-3`
 
 **HB-4 implementation status** (implemented 2026-10-06 on the branch `claude/hb4-document-worker`, cut from the
-F8-frozen `ef11a76`; **awaiting the owner's review and freeze**; the design text is unchanged). HB-4 is the library
+F8-frozen `ef11a76`; **frozen / accepted 2026-10-07** after its final freeze audit, below; the design text is
+unchanged). HB-4 is the library
 package `worker/backfill_documents/`: orchestration around the frozen producers, with no command, entry point or timer
 (HB-6). For one filing at a time it makes exactly the calls F5's `run()` composes (HB-R1, HB-B1, D6), minus the CLI cap
 and plus the ledger:
@@ -218,6 +219,10 @@ F5 load_filings_from_db -> F2 process_batch([filing], F5 make_consumer(...), rol
   - An item whose claims reached the armed maximum is made final at the slice start, with no request (G10): evidence
     wins, otherwise `failed` with the counts. From `pending` this goes through a terminal claim, because HB-1 has no
     `requesting -> failed`.
+  - **The slice's document cap (correction B-HB4-1).** A slice claims an item only while it can still start a
+    document (owner decision A9). HB-2's `claim()` admits on the budgets and the time bound only, so HB-4 checks
+    `slice_max_documents` before the claim: a full slice stops (`slice_documents`) with nothing claimed. A full
+    slice is never charged to an item, so it can never bring one to the claim maximum.
 - **Cleanup failures** (`cleanup_failed`) and F2 leftover entries stop the slice. The document stage stays stopped until
   an operator re-queues the item (an existing HB-1 operator action).
 
@@ -260,9 +265,9 @@ composition itself present.
 
 **Verification (offline, no network; no CSE request was made):**
 - **HB-4 tests.**
-  - `tests/test_hb4_unit.py`: 79 passed on Linux; 77 passed and
+  - `tests/test_hb4_unit.py`: 80 passed on Linux; 78 passed and
     2 skipped on Windows (the POSIX SIGTERM tests).
-  - `tests/test_hb4_postgres.py`: 45 passed on Linux.
+  - `tests/test_hb4_postgres.py`: 48 passed on Linux.
 
   Together they cover:
   - the gate, the planning and its exclusions;
@@ -270,25 +275,48 @@ composition itself present.
   - the ledger event in F5's transaction, shown by one top-level transaction id;
   - row equivalence with F5's own `run()` on the same document;
   - consumer failures, retries within and across slices, CDN 403/404, blocks, 429 and the circuit breaker;
+  - the slice's document cap (B-HB4-1): with a cap of 1 and with the proposed default of 10, a full slice claims and
+    requests nothing more, and repeated full slices never bring an item to G10;
   - the crash matrix: session death mid-request, SIGKILL and SIGTERM mid-consumer in a real child process (with and
     without the handler), deletion verified but not committed, database errors inside `_persist`, an outcome that
     cannot be committed, G10, and evidence after an abandon;
-  - cleanup stops, G2, the busy lock, the sweep's scope, idempotency and the preflight.
-- **Mutation testing:** 60 of 60 planted HB-4 faults caught. They include section 23.4's
-  "persisting before the deletion is verified", "re-requesting a successful item", "a block treated as retryable" and
-  "skipping discovery closure". 57 were caught on the first pass. The three survivors exposed tests that were too weak,
-  so those tests were strengthened (no code changed) and the three re-run, all caught:
-  - the G2 guard had only been exercised through exits where HB-2 also keeps the lease;
-  - the sweep's symbolic-link check had only been tested with a link to a directory;
-  - the restore of the SIGTERM handler could be satisfied by CPython finalising the context manager.
+  - cleanup stops, G2, the busy lock, the sweep's scope, idempotency and the preflight; `run()` on a slice that is
+    not open fails at once.
+- **Mutation testing:** all 60 planted HB-4 faults caught, re-run on the corrected tree, plus three for the
+  correction: the cap check removed (the audited defect), the cap check off by one, and `run()`'s fail-fast removed.
+  They include section 23.4's "persisting before the deletion is verified", "re-requesting a successful item", "a
+  block treated as retryable" and "skipping discovery closure". The SIGTERM restore (fault M38, and its sibling
+  "close() never restores the handler") is killed whatever the test order and with the garbage collector off.
 - **Full repository on Linux** (the `cse-p1-test` container, PostgreSQL 17.11, Python 3.12.3, `--network none`):
-  2071 passed, 1 failed, 46 skipped, 2 xfailed. That is
+  2075 passed, 1 failed, 46 skipped, 2 xfailed. That is
   the F8-frozen baseline (1947 passed) plus the HB-4 tests. The one failure is the known, unrelated, frozen
   HB-2 clock test `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, unchanged.
-- **Windows:** 1680 passed, 440 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Windows:** 1681 passed, 443 skipped (the PostgreSQL suites need Linux), 0 failed.
 - **Frozen boundary:** against `ef11a76`, the package and three test files are new. The only other changes are status
   text in `README.md`, `docs/MASTER_ARCHITECTURE.md` and this document. HB-1's, HB-2's and HB-3's pins and static checks
   pass, and migrations 0016 and 0017 are unchanged.
+
+**HB-4 freeze (2026-10-07).** HB-4 is implemented and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED**. Its code is
+`a62a3a7` (the implementation) with the correction its freeze audit required, committed with this record:
+- **B-HB4-1 (code).** HB-2's `claim()` does not check the slice's document cap, and HB-4 claimed before
+  `begin_document()` refused. The item after a full slice was charged a claim without a request, so three full slices
+  let G10 end a never-requested document as `failed`. HB-4 now checks the cap before the claim (above).
+- **B-HB4-2 (tests).** `test_c1` left HB-4's SIGTERM handler installed in the test process until the garbage collector
+  ran, so a later test failed and the restore check could pass vacuously. `test_c1` now restores it, and the SIGTERM
+  tests install a sentinel handler of their own.
+- `run()` on a slice that is not open fails at once instead of offering the same item again.
+
+The final freeze audit checked the corrected tree against every HB-4 requirement and found no failing rule. These
+observations are carried forward; none is a blocker:
+- G2's branch for a failed in-flight query (the lease is kept) is not exercised by a test;
+- a pending item whose path was superseded, or whose filing left W, never becomes final: HB-5's per-issuer reconcile
+  (section 10.3) must allow for it;
+- an excluded item whose filing later enters W records no anomaly (an operator re-queue recovers it);
+- a blocked item needs an operator `resume` once the owner has acknowledged the block (HB-6);
+- G10 from `pending` leaves the claim count one above the maximum (its reason states the count before);
+- HB-4's static write guard does not list F8's `f8_*` tables (HB-4 has no SQL write of its own);
+- a 200 with a truncated body is HTTP "ok" for HB-2's circuit breaker; the item maximum bounds it;
+- items are ordered by upload timestamp, then filing id (outcomes do not depend on the order).
 
 HB-5 and HB-6 are not implemented. No Phase 2 CSE request has been made.
 
@@ -1876,7 +1904,9 @@ hard-code assumptions about the canonical financial-truth layer.
   (`8e2a3c37`), its verification by the owner, and the new frozen baseline (`8e2a3c37`).
 - F8 is implemented on that baseline and frozen: **F8 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-06; commits
   `6e7df6d` and `f73e506`; `docs/F8_IMPLEMENTATION.md` §9). It is ready for downstream work: HB-4 and HB-5 implement
-  against its producer contract (F8 design §3.4). HB-4 has not started; when it starts is the owner's decision.
+  against its producer contract (F8 design §3.4).
+- HB-4 is implemented on that baseline and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-07). HB-5 has
+  not started; when it starts is the owner's decision.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|

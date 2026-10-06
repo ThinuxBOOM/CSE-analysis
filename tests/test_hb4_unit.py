@@ -256,24 +256,33 @@ def test_u10_the_sweep_stops_for_an_operator_rather_than_guessing(systmp):
 # ------------------------------------------------------------------------------------------------ SIGTERM
 
 def test_u11_the_sigterm_handler_raises_system_exit_and_is_restored():
-    before = signal.getsignal(signal.SIGTERM)
-    with signals.sigterm_unwinds() as installed:
-        assert installed is True
-        handler = signal.getsignal(signal.SIGTERM)
-        assert handler is not before
-        with pytest.raises(SystemExit) as ei:
-            handler(signal.SIGTERM, None)
-        assert ei.value.code == 128 + signal.SIGTERM == signals.EXIT_STATUS
-    assert signal.getsignal(signal.SIGTERM) is before
-    got = {}
+    """The test installs a sentinel handler of its own first, so 'restored' means exactly that handler, whatever ran
+    before in this process and whenever the garbage collector runs (freeze audit B-2)."""
+    original = signal.getsignal(signal.SIGTERM)
 
-    def elsewhere():
-        with signals.sigterm_unwinds() as installed2:
-            got["installed"] = installed2
-    t = threading.Thread(target=elsewhere)
-    t.start()
-    t.join()
-    assert got == {"installed": False} and signal.getsignal(signal.SIGTERM) is before
+    def sentinel(signum, frame):                                 # never delivered: this test signals no process
+        raise AssertionError("the test's sentinel SIGTERM handler was called")
+    signal.signal(signal.SIGTERM, sentinel)
+    try:
+        with signals.sigterm_unwinds() as installed:
+            assert installed is True
+            handler = signal.getsignal(signal.SIGTERM)
+            assert handler is signals._raise_system_exit
+            with pytest.raises(SystemExit) as ei:
+                handler(signal.SIGTERM, None)
+            assert ei.value.code == 128 + signal.SIGTERM == signals.EXIT_STATUS
+        assert signal.getsignal(signal.SIGTERM) is sentinel
+        got = {}
+
+        def elsewhere():
+            with signals.sigterm_unwinds() as installed2:
+                got["installed"] = installed2
+        t = threading.Thread(target=elsewhere)
+        t.start()
+        t.join()
+        assert got == {"installed": False} and signal.getsignal(signal.SIGTERM) is sentinel
+    finally:
+        signal.signal(signal.SIGTERM, original)
 
 
 SIGTERM_CHILD = textwrap.dedent("""
@@ -443,3 +452,12 @@ def test_u19_hb4_never_imports_a_network_module_and_has_no_entry_point():
     for f in files:
         src = open(os.path.join(pkg, f), encoding="utf-8").read()
         assert not re.search(r"^\s*(import|from)\s+(requests|urllib|socket|http|httpx|aiohttp|ssl)\b", src, re.M), f
+
+
+def test_u20_run_fails_at_once_on_a_slice_that_is_not_open():
+    """run() on a closed (or never entered) slice is an invalid caller state: it fails at once, with no database read,
+    instead of offering the same item again and again."""
+    for ds in (worker.DocumentSlice(conn=None), worker.DocumentSlice(conn=None, sl=object(), closed=True)):
+        with pytest.raises(errors.DocumentRefused) as ei:
+            ds.run()
+        assert ei.value.codes == ["closed"]

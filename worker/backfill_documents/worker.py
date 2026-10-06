@@ -12,10 +12,11 @@ Opening (DocumentSlice.__enter__), in this order:
     document planning (planning.py)
 
 One document (process_one), at most one claim per item per slice; exactly the calls F5's run() makes (HB-R1, D6):
-    F5 load_filings_from_db -> eligibility (W, the item's path version is F1's current path) -> free space -> claim
-    (HB-2) -> per F2 pass (attempts_per_document): the governed fetcher (HB-2) -> F2 process_batch([filing],
-    F5 make_consumer(...), role='primary', fetcher, temp_root=<dedicated root>, request_delay_seconds=0)
-    -> the pass's F2 record into L6 -> its disposition (outcomes.py):
+    the slice's document cap (A9, checked here because HB-2's claim() does not: a full slice stops with nothing
+    claimed, so it is never charged to an item) -> F5 load_filings_from_db -> eligibility (W, the item's path version
+    is F1's current path) -> free space -> claim (HB-2) -> per F2 pass (attempts_per_document): the governed fetcher
+    (HB-2) -> F2 process_batch([filing], F5 make_consumer(...), role='primary', fetcher, temp_root=<dedicated root>,
+    request_delay_seconds=0) -> the pass's F2 record into L6 -> its disposition (outcomes.py):
         persist     L6 + 'processing' (one transaction); F5 attach_timestamps; then ONE transaction: F5 _persist +
                     the ledger event 'persisted' (F5 run, classification, issuer link, retrieval). A database error
                     inside it rolls back everything and is recorded in a transaction of its own (retry_wait / failed)
@@ -357,6 +358,14 @@ class DocumentSlice:
         if item_id in self.attempted:
             raise DocumentRefused([("one_claim_per_slice", f"{item['natural_key']} was already claimed in this "
                                                            f"slice: a retry is a later claim")])
+        cap = int(self.sl.arming["slice_max_documents"])
+        if self.sl.documents >= cap:
+            # A9's slice cap, checked BEFORE the claim: HB-2's claim() admits on the budgets and the time bound only
+            # (begin_document checks the cap), so claiming first would charge a full slice to the item, and three full
+            # slices would let G10 end an item that was never requested
+            self.stop = Refused([("slice_documents", f"the slice started its {self.sl.documents} documents (cap "
+                                                     f"{cap}): {item['natural_key']} is not claimed")])
+            raise self.stop
         [filing] = f5cli.load_filings_from_db(self.conn, [fid])          # the row F3 and F5 read (HB-R1)
         self.conn.commit()
         if not planning.in_window(filing["uploaded_at"], self.gate.window) or \
@@ -509,6 +518,8 @@ class DocumentSlice:
 
     def run(self, max_items=None, filing_ids=None):
         """Claim eligible document items one by one until none is left, a bound is hit or a stop ends the slice."""
+        if self.closed or self.sl is None:               # an invalid caller state fails at once, never a loop
+            raise DocumentRefused([("closed", "the document slice is closed")])
         n = 0
         while max_items is None or n < max_items:
             item = self.next_item(filing_ids)

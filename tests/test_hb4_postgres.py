@@ -545,22 +545,88 @@ def test_d10_a_request_refused_inside_f2_is_not_the_documents_failure(env):
     assert H.lease_row(w, ds.sl.lease_id) == ("released", "refused")
 
 
+def test_d11_a_full_slice_claims_no_further_item_and_the_next_slice_claims_it(env):
+    """Owner decision A9 bounds the documents a slice starts, but HB-2's claim() admits on the budgets and the time
+    bound only. HB-4 checks the slice's document cap BEFORE claiming (freeze audit B-1): a full slice stops with
+    nothing claimed, so the next item is never charged a claim it could not use."""
+    w = open_gate(env, (A, B), slice_max_documents=1, attempts_per_document=1)
+    cdn = cdn_for(env, A, B)
+    ds, err = run_slice(env, cdn)
+    a, b = H.item_of(w, A), H.item_of(w, B)
+    assert err is None and isinstance(ds.stop, Refused) and ds.stop.codes == ["slice_documents"]
+    assert ds.sl.documents == 1 and H.lease_row(w, ds.sl.lease_id) == ("released", "refused")
+    assert H.state(w, a) == "persisted" and accounting.counts(w, a["id"]) == {"claims": 1, "http_attempts": 1}
+    assert H.states_of(w, b) == ["discovered", "pending"]                             # not claimed
+    assert accounting.counts(w, b["id"]) == {"claims": 0, "http_attempts": 0}
+    assert cdn.urls() == [H.url_of(H.path_of(A))]                                     # nor requested
+    ds2, err = run_slice(env, cdn)                                                   # the next slice claims it
+    assert err is None and ds2.stop is None and H.state(w, b) == "persisted"
+    assert H.states_of(w, b) == ["discovered", "pending", "requesting", "processing", "persisted"]
+    assert accounting.counts(w, b["id"]) == {"claims": 1, "http_attempts": 1} and len(cdn.calls) == 2
+
+
+def test_d12_repeated_full_slices_never_spend_an_items_claims_so_g10_cannot_end_it(env):
+    """Three slices whose single document goes to an earlier item that keeps failing: the next item is never claimed,
+    so it reaches no claim maximum, G10 never touches it, and the fourth slice processes it normally."""
+    w = open_gate(env, (A, B), slice_max_documents=1, attempts_per_document=1, item_max_attempts=3)
+    cdn = H.ScriptedCDN(env.clock, {H.url_of(H.path_of(A)): (503, {}, b"busy"), H.url_of(H.path_of(B)): H.ok_doc(B)})
+    planning.plan_documents(w, gate.document_gate(w, env.clock.wall(), store.arming_in_force(w)))
+    a, b = H.item_of(w, A), H.item_of(w, B)
+    for n in (1, 2, 3):
+        ds, err = run_slice(env, cdn)
+        assert err is None and ds.stop.codes == ["slice_documents"], n
+        assert accounting.counts(w, a["id"]) == {"claims": n, "http_attempts": n}
+        assert H.states_of(w, b) == ["discovered", "pending"]
+        assert accounting.counts(w, b["id"]) == {"claims": 0, "http_attempts": 0}
+    assert H.state(w, a) == "retrieval_failed"                                       # A's own claims ran out
+    ds, err = run_slice(env, cdn)
+    assert err is None and ds.reconciled["terminalised"] == [] and H.state(w, b) == "persisted"
+    assert H.states_of(w, b) == ["discovered", "pending", "requesting", "processing", "persisted"]
+    assert sum(1 for u in cdn.urls() if u == H.url_of(H.path_of(B))) == 1
+
+
+DEFAULT_CAP_FIDS = tuple(range(900401, 900412))                  # one filing more than a slice of ten documents
+
+
+def test_d13_the_proposed_default_of_ten_documents_per_slice(env):
+    """HB-Q8's proposed default slice (ten documents; the tests' arming too): the eleventh eligible item is not
+    claimed by the first slice, and the next slice claims it normally."""
+    w = open_gate(env, DEFAULT_CAP_FIDS)
+    assert int(store.arming_in_force(w)["slice_max_documents"]) == 10
+    cdn = cdn_for(env, *DEFAULT_CAP_FIDS)
+    ds, err = run_slice(env, cdn)
+    items = [H.item_of(w, f) for f in DEFAULT_CAP_FIDS]
+    assert err is None and ds.stop.codes == ["slice_documents"] and ds.sl.documents == 10 and len(cdn.calls) == 10
+    assert [H.state(w, it) for it in items[:10]] == ["persisted"] * 10
+    assert H.states_of(w, items[10]) == ["discovered", "pending"]
+    assert accounting.counts(w, items[10]["id"]) == {"claims": 0, "http_attempts": 0}
+    ds2, err = run_slice(env, cdn)
+    assert err is None and ds2.stop is None and H.state(w, items[10]) == "persisted" and len(cdn.calls) == 11
+    assert accounting.counts(w, items[10]["id"]) == {"claims": 1, "http_attempts": 1}
+
+
 # ================================================================================================ crash matrix (15.3)
 
 def test_c1_an_intent_without_a_response_session_death(env):
     """The process dies while the request is in flight: the intent is committed, no outcome. The next slice (another
     session) closes the attempt 'unrecorded', the item becomes abandoned, then pending (no F5 run): the retrieval
-    repeats once, recorded."""
+    repeats once, recorded. A dead process keeps no SIGTERM handler, so the test restores the one the slice installed
+    before it returns: no later test inherits it (freeze audit B-2)."""
     w = open_gate(env)
     url = H.url_of(H.path_of(A))
     a = env.conn()
     cdn = H.ScriptedCDN(env.clock, {url: [KeyboardInterrupt("killed mid-request"), H.ok_doc(A)]})
     ds = env.slice(cdn, conn=a)
-    ds.__enter__()
-    with pytest.raises(KeyboardInterrupt):
-        ds.run()
-    assert H.temp_entries(env) == []                                     # F2's workspace unwound
-    a.close()                                                            # no close: the session dies
+    with H.sentinel_sigterm() as sentinel:
+        ds.__enter__()
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                ds.run()
+            assert H.temp_entries(env) == []                             # F2's workspace unwound
+            a.close()                                                    # no close: the session dies
+        finally:
+            ds._restore_sigterm()
+        assert signal.getsignal(signal.SIGTERM) is sentinel              # nothing is left installed
     b = env.conn()
     H.wait_lock_free(b)
     ds2, err = run_slice(env, cdn, conn=b)
@@ -897,15 +963,18 @@ def test_l2_a_busy_lock_takes_nothing_over_and_sweeps_nothing(env):
 
 
 def test_l3_a_normal_close_releases_and_keeps_the_connection(env):
+    """A normal close releases the lease, keeps the connection and restores exactly the SIGTERM handler that was in
+    place before the slice: a sentinel the test installs itself, so the check depends neither on earlier tests nor on
+    the garbage collector (freeze audit B-2)."""
     w = open_gate(env)
     a = env.conn()
-    before = signal.getsignal(signal.SIGTERM)
     ds = env.slice(cdn_for(env, A), conn=a)
-    with ds:
-        held = ds._sigterm               # held here: only close() itself can restore the handler, never the GC
-        assert ds.sigterm_installed and signal.getsignal(signal.SIGTERM) is hb4.signals._raise_system_exit
-        ds.run()
-    assert held is not None and signal.getsignal(signal.SIGTERM) is before
+    with H.sentinel_sigterm() as sentinel:
+        with ds:
+            held = ds._sigterm           # held here: only close() itself can restore the handler, never the GC
+            assert ds.sigterm_installed and signal.getsignal(signal.SIGTERM) is hb4.signals._raise_system_exit
+            ds.run()
+        assert held is not None and signal.getsignal(signal.SIGTERM) is sentinel
     assert not ds.lease_kept and not a.closed
     assert H.lease_row(w, ds.sl.lease_id) == ("released", "completed")
 

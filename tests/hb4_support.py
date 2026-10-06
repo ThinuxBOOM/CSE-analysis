@@ -15,8 +15,10 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import tempfile
 import time
+from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from urllib.parse import quote
 
@@ -321,3 +323,18 @@ def temp_entries(env):
 
 def remove_tree(path):
     shutil.rmtree(path, ignore_errors=True)
+
+
+@contextmanager
+def sentinel_sigterm():
+    """A SIGTERM handler of the test's own for the block: what a test asserts about HB-4's restore then depends neither
+    on what earlier tests left installed nor on when the garbage collector runs. The original is reinstated after."""
+    original = signal.getsignal(signal.SIGTERM)
+
+    def sentinel(signum, frame):                                 # never delivered: these tests signal no process here
+        raise AssertionError("the test's sentinel SIGTERM handler was called")
+    signal.signal(signal.SIGTERM, sentinel)
+    try:
+        yield sentinel
+    finally:
+        signal.signal(signal.SIGTERM, original)
