@@ -1963,8 +1963,10 @@ Still open after real-data validation:
     implementation steps, HB-1 (the governed backfill ledger), HB-2
     (the governed CSE transport) and HB-3 (discovery and issuer
     evidence), all below, are implemented and frozen (all three merged
-    into `main`; frozen baseline `8e2a3c37`); HB-4 to HB-6 are not
-    implemented, and Phase 2 as a whole is not implemented.
+    into `main`; frozen baseline `8e2a3c37`); HB-4 (the document
+    worker) is implemented and awaits the owner's review and freeze
+    (below); HB-5 and HB-6 are not implemented, and Phase 2 as a
+    whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2210,6 +2212,32 @@ No F8 blocker remains. F8 is ready for downstream work: HB-4 and HB-5
 implement against its producer contract (F8 design §3.4). HB-4 has not
 started. HB-P1 stays a deployment prerequisite for live Phase 2 only.
 The freeze record is `docs/F8_IMPLEMENTATION.md` §9.
+
+Phase 2 HB-4 --- the document worker --- is **implemented** (2026-10-06,
+on the branch `claude/hb4-document-worker` from the F8-frozen
+`ef11a76`) and awaits the owner's review and freeze. It is the library
+package `worker/backfill_documents/`. One filing at a time goes
+through exactly the calls F5's `run()` composes
+(`load_filings_from_db`, `process_batch([filing])` with HB-2's
+governed fetcher and a dedicated temporary root, F5's `make_consumer`,
+`attach_timestamps` and `_persist`), with the ledger event `persisted`
+in F5's persistence transaction. It enforces:
+
+-   the document gate (current-plan closure and the plan's IE-4 pass,
+    with HB-P1 as their runtime gate);
+-   the Poppler 24.02.0 pin;
+-   a free-space check before every download;
+-   the orphan sweep inside locked slices;
+-   SIGTERM handling, so F2's cleanup unwinds;
+-   HB-3's G2 and G10 rules applied to documents;
+-   recovery from evidence, and a stopped stage after a cleanup
+    failure, until an operator re-queues the item.
+
+It adds no migration, grant, role or lock key and changes no frozen
+file. Tests: 79 unit and 45 PostgreSQL tests, including
+row equivalence with F5's `run()` and the crash matrix;
+60 of 60 planted faults caught. The Phase 2 design (HB-4
+implementation status) records the details.
 
 Important accepted commits:
 
@@ -2507,8 +2535,8 @@ conditions the owner set for starting implementation are met:
 F8 has since been implemented on that baseline (branch
 `claude/f8-implementation`; `docs/F8_IMPLEMENTATION.md`) and frozen:
 F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06; §52). It is ready for
-downstream work. HB-4 has not started; when it starts is the owner's
-decision.
+downstream work. HB-4 has since been implemented and awaits the owner's
+review and freeze (Phase 2, below).
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2526,11 +2554,13 @@ is implemented and frozen (`18962805`; §52). HB-3, discovery and issuer
 evidence (`worker/backfill_discovery/`), is implemented and frozen
 (2026-10-05; merged into `main`, frozen baseline `8e2a3c37`). Live discovery
 waits for HB-P1, a deployment prerequisite (§52), and follows the
-release sequence of §43.1. HB-4 to HB-6 (document worker; F6
-orchestration and audit; operations and pilot) are not implemented. The
+release sequence of §43.1. HB-4, the document worker
+(`worker/backfill_documents/`), is implemented and awaits the owner's
+review and freeze (§52). HB-5 and HB-6 (F6 orchestration and audit;
+operations and pilot) are not implemented. The
 F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
 F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
-2026-10-06; Phase 1, above). HB-4 has not started.
+2026-10-06; Phase 1, above).
 
 ## Phase 3 --- Market feature foundation
 

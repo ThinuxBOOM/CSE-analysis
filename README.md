@@ -28,7 +28,10 @@ F8 is frozen/accepted as a design (revision 3, `docs/F8_DESIGN.md`) and as an im
 `worker/financial_asof/` and migration `0017_f8_asof_configuration.sql`, committed as `6e7df6d` and `f73e506` on the
 frozen baseline `8e2a3c37` (`docs/F8_IMPLEMENTATION.md`, freeze record §9). It is ready for downstream work.
 
-**Not implemented:** Phase 2 HB-4 to HB-6, and every later roadmap phase (Master Architecture §55).
+**Implemented, awaiting the owner's review and freeze:** Phase 2 HB-4, the document worker
+(`worker/backfill_documents/`; Phase 2 design, "HB-4 implementation status").
+
+**Not implemented:** Phase 2 HB-5 and HB-6, and every later roadmap phase (Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
 parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
@@ -100,7 +103,8 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **only the first three steps are done** (frozen; HB-3 is on its branch, and its merge to `main` is pending):
+and **four steps are done**: HB-1 to HB-3 are frozen and merged into `main`, and HB-4 is implemented and awaits the
+owner's review and freeze:
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -116,9 +120,9 @@ and **only the first three steps are done** (frozen; HB-3 is on its branch, and 
   package `worker/backfill_transport/`, through which every Phase 2 CSE request must go: owner arming, blocks, budgets,
   P3's quiet window, at least 1.5 s spacing under P2's exclusive lock, each request recorded in the HB-1 ledger before it
   is sent, and spool-first crash recovery (including the B-HB2-1 correction). It has no command or timer (HB-6).
-- **HB-3 — Discovery and Issuer Evidence: implemented and frozen** (final freeze audit 2026-10-05; merge to `main`
-  pending). It is the library package `worker/backfill_discovery/`: the 66 monthly feed windows and one listing per
-  security of the verified
+- **HB-3 — Discovery and Issuer Evidence: implemented and frozen** (final freeze audit 2026-10-05; merged into
+  `main`, frozen baseline `8e2a3c37`). It is the library package `worker/backfill_discovery/`: the 66 monthly feed
+  windows and one listing per security of the verified
   security master, each request one F1 run and one governed HB-2 attempt (`attempts_per_json_request = 1`), the G2
   in-flight lease guard, G10 terminalisation, the issuer-evidence import with the hold rule, and the link passes.
 - **HB-P1 is a deployment prerequisite, not an implementation prerequisite, and it is not satisfied:** HB-3 refuses
@@ -126,7 +130,13 @@ and **only the first three steps are done** (frozen; HB-3 is on its branch, and 
   (`allSecurityCode`), produced after the software freeze by the first governed P2 capture (software freeze → server
   setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → `allSecurityCode` verification → derived security
   master → HB-P1 satisfied → live HB-3).
-- **HB-4 to HB-6 are not implemented:** document worker; F6 orchestration and audit; operations and pilot.
+- **HB-4 — Document Worker: implemented, awaiting the owner's review and freeze.** It is the library package
+  `worker/backfill_documents/`. One filing at a time goes through F5's own composition (`load_filings_from_db`,
+  `process_batch` with HB-2's governed fetcher, `make_consumer`, `attach_timestamps`, `_persist`), with the ledger
+  event in F5's persistence transaction. It also covers the document gate (discovery closure and IE-4), the Poppler
+  24.02.0 pin, a dedicated temporary root with a free-space check, the orphan sweep inside locked slices, SIGTERM
+  handling, HB-3's G2 and G10 rules, and recovery from evidence. It has no command or timer (HB-6).
+- **HB-5 and HB-6 are not implemented:** F6 orchestration and audit; operations and pilot.
 - **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
   arming decision. Any live Phase 2 request still needs owner
   decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent

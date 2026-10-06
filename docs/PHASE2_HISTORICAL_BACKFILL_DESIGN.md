@@ -4,8 +4,10 @@
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
 issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
-`claude/hb3-discovery`, merge to `main` pending (see below). HB-4 to HB-6 are not implemented, **Phase 2 as a whole is
-not implemented**, and no Phase 2 CSE request has been made.
+`claude/hb3-discovery`, merged into `main` (frozen baseline `8e2a3c37`). **Implementation step HB-4 (the document
+worker) is implemented** (2026-10-06, branch `claude/hb4-document-worker`) and awaits the owner's review and freeze
+(see below). HB-5 and HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request
+has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -168,6 +170,127 @@ transport; that never satisfies production HB-P1. The deployment sequence is:
 
 `software freeze → server setup → HB-X2(b) → CSE_CAPTURE_CONTACT_EMAIL → P2 capture → allSecurityCode verification →
 derived security master → HB-P1 satisfied → live HB-3`
+
+**HB-4 implementation status** (implemented 2026-10-06 on the branch `claude/hb4-document-worker`, cut from the
+F8-frozen `ef11a76`; **awaiting the owner's review and freeze**; the design text is unchanged). HB-4 is the library
+package `worker/backfill_documents/`: orchestration around the frozen producers, with no command, entry point or timer
+(HB-6). For one filing at a time it makes exactly the calls F5's `run()` composes (HB-R1, HB-B1, D6), minus the CLI cap
+and plus the ledger:
+
+```text
+F5 load_filings_from_db -> F2 process_batch([filing], F5 make_consumer(...), role="primary",
+    fetcher=<HB-2's governed fetcher>, temp_root=<dedicated root>, request_delay_seconds=0)
+-> the pass's F2 RetrievalRecord into L6 -> F5 attach_timestamps
+-> ONE transaction: F5's own _persist + the ledger event 'persisted' (F5 run, classification, issuer link, L6 record)
+```
+
+- **The transaction (section 10.1).** A database error inside it rolls everything back, F5's rows included, and is
+  recorded in a transaction of its own (`retry_wait`, or `failed` at the item maximum).
+- **Item states (section 14.2)** go through HB-1's own transitions and guards. `processing` is recorded once F2
+  returns a validated, hashed document. A consumer failure is terminal for the version tuple.
+  - Terminal: CDN 403/404, a body that is too large or not a PDF, a disallowed redirect, another 4xx.
+  - Retried: 5xx, timeouts, network errors, interrupted streams, a 429, and truncated, mismatched or empty bodies. A
+    retry is another F2 pass in the same claim after P2's backoff (`attempts_per_document`), or `retry_wait` for a later
+    claim. At the item maximum the item ends `retrieval_failed`.
+  - A block (CDN 401/407/451, or a 429 beyond its bounds) is HB-2's L9 block: every stage stops until the owner
+    acknowledges it.
+- **The document gate (HB-U5, HB-R3).** The current plan (HB-3's `Plan.of` over the arming in force and the verified
+  security master, so HB-P1 is its runtime gate) is closed, and its IE-4 pass succeeded. HB-3's discovery-only arming
+  checks (D-HB3-1, HB-S2 armed) are not applied to documents.
+- **Document items.** Each filing whose upload date lies in W gets an item: `discovered`, or `excluded` (`no_document`,
+  `invalid_path`); an undated filing is `excluded` (`window_undetermined`). A filing outside W gets no item (HB-W5).
+  Items are promoted to `pending`, or to `persisted` when evidence exists; a discovered item whose filing left W is
+  excluded (`out_of_window`).
+- **Tools, temporary root, SIGTERM.**
+  - The tool pin (section 10.2): exactly Poppler 24.02.0, checked before any download.
+  - The dedicated temporary root: F2's own rule plus dedication (never the system temp directory itself, and on POSIX
+    owned by the worker and writable by no one else).
+  - A free-space precheck before every download: twice F2's 200 MB maximum, plus 64 MB.
+  - The orphan sweep (section 17): inside the slice, after HB-2's dead-lease expiry and before any download, with F2's
+    own verified deletion. It records counts only, never names. A symbolic link stops it for an operator.
+  - SIGTERM raises `SystemExit` while a slice runs, so F2's own cleanup unwinds.
+- **The crash matrix (section 15.3), with HB-3's G2 and G10 applied to documents.**
+  - A lease is released only when no item claimed under it is still in flight. HB-2's own close would release it
+    whenever every attempt has an outcome, even with an item in flight.
+  - Otherwise the lease is kept and the connection closed. The next slice (another session) expires it, closes its open
+    attempts `unrecorded` (HB-2), and reconciles each abandoned item from evidence: an F5 run of the document makes it
+    `persisted`; otherwise it returns to `pending`, and the retrieval repeats (one extra request, recorded).
+  - An item whose claims reached the armed maximum is made final at the slice start, with no request (G10): evidence
+    wins, otherwise `failed` with the counts. From `pending` this goes through a terminal claim, because HB-1 has no
+    `requesting -> failed`.
+- **Cleanup failures** (`cleanup_failed`) and F2 leftover entries stop the slice. The document stage stays stopped until
+  an operator re-queues the item (an existing HB-1 operator action).
+
+**Implementation choices where the design is silent** (each the conservative one):
+1. **Evidence per path version.** An F5 run row records no path. A run is a document item's evidence only when it is
+   provably that item's document under the armed versions (section 10.2's F3, F4 and F5 versions and the pinned Poppler
+   identity), in one of two ways:
+   - its document SHA-256 is that of a succeeded retrieval of the item;
+   - or F1 has only ever seen one path for the filing, so any F5 run of it came from that path.
+
+   Otherwise the document is retrieved, and F5's own idempotency makes an identical document `already_present`.
+2. **Changed paths (section 6.3, HB-R4).** F5's composition retrieves F1's CURRENT path, so an item is claimed only
+   while its path version is the current one. A superseded version is left as it is, never claimed, and recorded as a
+   class-4 anomaly. A pending item whose filing left W stays pending (HB-1 has no `pending -> excluded`), is never
+   claimed, and is recorded as a class-3 anomaly.
+3. **`processing` is recorded after F2 returns.** The consumer stays exactly F5's `make_consumer`, and nothing is
+   written to the database while the document exists.
+4. **The free-space margin** is 64 MB.
+5. **Leftovers.** F2's batch check can find a temporary entry after a verified deletion only if something else writes
+   the dedicated root. That stops the stage like a cleanup failure: the item becomes `failed`, with a stop marker that
+   the operator's re-queue clears.
+6. **A request refused inside F2** (a disarm, a newer arming, the budgets or the slice's bounds, between two requests
+   of one document) is the transport's refusal, never the document's failure. The item waits (`retry_wait`) and the
+   slice stops.
+
+**Not HB-4 blockers.** These are deployment and owner prerequisites, unchanged: HB-P1 (a runtime gate, through HB-3's
+security master), HB-X2, the owner's arming of HB-S3 / HB-S4, HB-Q7 (whether R-F4 precedes bulk documents: HB-7) and
+HB-Q9 (backups before HB-S4). Before live HB-4 / HB-6 operation the server also needs, for this step:
+- a dedicated temporary root (`CSE_BACKFILL_TEMP_ROOT`) inside the system temp directory, ideally on tmpfs, owned by
+  the worker, with the free space above;
+- Poppler 24.02.0;
+- P1's PostgreSQL deployment and backups.
+
+The pilot's stratified sample (HB-S3) is HB-6's choice; a document slice accepts the filings to process.
+
+It adds no migration, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point or timer, and
+changes no frozen file. Its preflight pins HB-3's package (HB-1 pins F2-F5; HB-3 pins HB-2) and checks its own static
+boundaries. Among them: no network module; no direct F3, F4 or F5 call; no write to a frozen table; and the
+composition itself present.
+
+**Verification (offline, no network; no CSE request was made):**
+- **HB-4 tests.**
+  - `tests/test_hb4_unit.py`: 79 passed on Linux; 77 passed and
+    2 skipped on Windows (the POSIX SIGTERM tests).
+  - `tests/test_hb4_postgres.py`: 45 passed on Linux.
+
+  Together they cover:
+  - the gate, the planning and its exclusions;
+  - documents end to end, with F2's legacy fallback;
+  - the ledger event in F5's transaction, shown by one top-level transaction id;
+  - row equivalence with F5's own `run()` on the same document;
+  - consumer failures, retries within and across slices, CDN 403/404, blocks, 429 and the circuit breaker;
+  - the crash matrix: session death mid-request, SIGKILL and SIGTERM mid-consumer in a real child process (with and
+    without the handler), deletion verified but not committed, database errors inside `_persist`, an outcome that
+    cannot be committed, G10, and evidence after an abandon;
+  - cleanup stops, G2, the busy lock, the sweep's scope, idempotency and the preflight.
+- **Mutation testing:** 60 of 60 planted HB-4 faults caught. They include section 23.4's
+  "persisting before the deletion is verified", "re-requesting a successful item", "a block treated as retryable" and
+  "skipping discovery closure". 57 were caught on the first pass. The three survivors exposed tests that were too weak,
+  so those tests were strengthened (no code changed) and the three re-run, all caught:
+  - the G2 guard had only been exercised through exits where HB-2 also keeps the lease;
+  - the sweep's symbolic-link check had only been tested with a link to a directory;
+  - the restore of the SIGTERM handler could be satisfied by CPython finalising the context manager.
+- **Full repository on Linux** (the `cse-p1-test` container, PostgreSQL 17.11, Python 3.12.3, `--network none`):
+  2071 passed, 1 failed, 46 skipped, 2 xfailed. That is
+  the F8-frozen baseline (1947 passed) plus the HB-4 tests. The one failure is the known, unrelated, frozen
+  HB-2 clock test `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, unchanged.
+- **Windows:** 1680 passed, 440 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Frozen boundary:** against `ef11a76`, the package and three test files are new. The only other changes are status
+  text in `README.md`, `docs/MASTER_ARCHITECTURE.md` and this document. HB-1's, HB-2's and HB-3's pins and static checks
+  pass, and migrations 0016 and 0017 are unchanged.
+
+HB-5 and HB-6 are not implemented. No Phase 2 CSE request has been made.
 
 **Date:** 2026-10-01.
 
