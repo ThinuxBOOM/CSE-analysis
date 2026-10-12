@@ -413,19 +413,18 @@ def read(conn, cur, window, *, versions=None, vs=f6_versions.IMPLEMENTED, baseli
     if any(n > 1 for n in seen_runs.values()):        # impossible under uq_fvr_input_set; refuse rather than choose
         raise RuntimeError("an F5 run has more than one canonical validation run")
     vrks = sorted({r["validation_run_key"] for r in runs if r["validation_run_key"]})
-    per_vr, levels = _candidate_pass(conn, cur, vrks, runs, filings)
+    held_filings = {f["cse_filing_id"] for f in filings if set(f["listing_symbols"] or ()) & held_symbols}
+    per_vr, levels = _candidate_pass(conn, cur, vrks, runs, filings, held_filings)
     reconciled = set()
     if designated is not None and vrks:
         cur.execute("select distinct validation_run_key from financial_fact_provenance where configuration_id = %s "
                     "and validation_run_key = any(%s)", (designated, vrks))
         reconciled = {r[0] for r in cur.fetchall()}
     by_filing = {}
-    filing_symbols = {f["cse_filing_id"]: set(f["listing_symbols"] or ()) for f in filings}
     for r in runs:
-        held = bool(filing_symbols.get(r["cse_filing_id"], set()) & held_symbols)
         doc = dict(r, validation=per_vr.get(r["validation_run_key"]),
                    reconciled=r["validation_run_key"] in reconciled,
-                   link_category=link_category(r["link_status"], r["link_basis"], held))
+                   link_category=link_category(r["link_status"], r["link_basis"], r["cse_filing_id"] in held_filings))
         reached, stop = evaluate_run(doc, designated)
         by_filing.setdefault(r["cse_filing_id"], []).append(
             (reached, stop, {"key": "run:" + r["document_sha256"], "run": r}))
@@ -482,8 +481,9 @@ def _fetch(cur, sql, args=()):
     return cur.fetchall()
 
 
-def _candidate_pass(conn, cur, vrks, runs, filings):
-    """One pass over the population's T2 rows: the per-run aggregates of stages 7-8 and the candidate level."""
+def _candidate_pass(conn, cur, vrks, runs, filings, held_filings):
+    """One pass over the population's T2 rows: the per-run aggregates of stages 7-8 and the candidate level.
+    held_filings: the filings listed under a held symbol, shown as `held` (section 18.3), as at stage 8."""
     t1 = {r["validation_run_key"]: r for r in runs if r["validation_run_key"]}
     symbol = {f["cse_filing_id"]: f["source_symbol"] for f in filings}
     agg = {}
@@ -522,7 +522,8 @@ def _candidate_pass(conn, cur, vrks, runs, filings):
                 run = t1[r["validation_run_key"]]
                 c["issuer_only_link"][f"{run['link_status']}|{run['link_basis']}"] += 1
                 c["issuer_only_symbol"][str(symbol.get(run["cse_filing_id"]))] += 1
-                c["issuer_only_category"][link_category(run["link_status"], run["link_basis"])] += 1
+                c["issuer_only_category"][link_category(run["link_status"], run["link_basis"],
+                                                        run["cse_filing_id"] in held_filings)] += 1
     per_vr = {k: finish_aggregate(v) for k, v in agg.items()}
     for k in vrks:                                       # a validation run without candidates
         per_vr.setdefault(k, finish_aggregate({"eligible_issuer_aside": False, "admitted": False,

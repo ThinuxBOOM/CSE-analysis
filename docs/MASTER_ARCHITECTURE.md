@@ -2051,14 +2051,15 @@ Still open after real-data validation:
     item is now **closed: F8 IMPLEMENTATION FROZEN / ACCEPTED**
     (2026-10-06; see the F8 freeze record below);
 -   Phase 2 --- historical financial backfill --- remains the major
-    architectural phase in progress. Its first four implementation
+    architectural phase in progress. Its first five implementation
     steps are implemented and frozen: HB-1 (the governed backfill
     ledger), HB-2 (the governed CSE transport) and HB-3 (discovery and
     issuer evidence), all below and merged into `main` (frozen
-    baseline `8e2a3c37`), and HB-4 (the document worker; HB-4
-    IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; below). HB-5 and
-    HB-6 are not implemented, and Phase 2 as a whole is not
-    implemented.
+    baseline `8e2a3c37`), HB-4 (the document worker; HB-4
+    IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; below) and HB-5 (F6
+    orchestration and audit; HB-5 IMPLEMENTATION FROZEN / ACCEPTED,
+    2026-10-13; below). HB-6 is not implemented, and Phase 2 as a
+    whole is not implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2069,7 +2070,11 @@ operational requirements, not completed work:
 -   Q2: any change to F5 path parsing needs a separate F5
     version/change-control phase;
 -   Q3: the external F6 evidence corpus needs a private backup outside
-    Git.
+    Git. The corpus and the F0 captures were lost on 2026-10-10,
+    before any backup existed (their temporary directory was
+    cleared). Owner decision (2026-10-12): a new evidence baseline will
+    be collected later, the governed way, and backed up outside Git;
+    until then the real-data suites skip.
 
 Phase 2 HB-1 --- the governed backfill ledger --- is **implemented and
 frozen/accepted** on `main` at merge commit `40748c3c` (pull request
@@ -2338,6 +2343,52 @@ all 60 planted faults caught, plus three for the correction; the full
 repository on Linux 2075 passed, with only the known, unrelated HB-2
 clock test failing; Windows 1681 passed, 0 failed. The Phase 2 design
 (HB-4 implementation status and HB-4 freeze) records the details.
+
+Phase 2 HB-5 --- F6 orchestration and audit --- is **implemented and
+frozen**: HB-5 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit
+2026-10-13; code: the implementation `4d28663` on `main`, from the
+HB-4-frozen `ffc7e08`, plus the correction its freeze audit required,
+committed with the freeze record). It is the library package
+`worker/backfill_f6/`. It provides:
+
+-   bounded validate-pending batches through F6.4's own jobs, one
+    `validate:<F5 run>` ledger item each, recovered from F6.4's
+    evidence after a crash;
+-   registration of the backfill's single armed configuration, which
+    the owner designates;
+-   reconciliation per issuer once its in-window documents are final,
+    then a final full pass, through F6.4's own `--no-validate` and only
+    while no validation is pending;
+-   document promotion from F6 evidence;
+-   the coverage audit `hb.coverage.1`: the nine-stage funnel, the
+    levels, the review lists and an immutable L11 snapshot;
+-   the anomaly detectors `hb.anomaly.1`: RDV's P-1 to P-34 and the
+    Phase 2 class 3, 4 and 5 findings, as L10 records;
+-   the section 25 reports, written only outside the repository.
+
+Re-running finished work (late evidence, M4) is an explicit operator
+re-queue. HB-5 makes no CSE request and wraps no F6.4 transaction
+unit. It adds no migration, grant, role, lock key, command or timer.
+
+The freeze audit's correction has two parts. A new race test showed
+that a mutant (V9) taken for equivalent was not, and now kills it. The
+audit's candidate level now shows held issuer evidence, as stage 8
+does.
+
+Verification on the corrected tree:
+
+-   65 unit and 25 PostgreSQL tests pass, and 5 of 5 adversarial
+    probes;
+-   59 of 60 planted faults are caught. The survivor is caught only by
+    the real-data parity test, which passed at `4d28663` on 2026-10-07
+    and now skips;
+-   the full repository on Linux: 2135 passed. The only failure is the
+    known HB-2 clock test, and 39 real-data tests skip because the
+    out-of-Git RDV evidence was lost on 2026-10-10;
+-   Windows: 1750 passed, 0 failed.
+
+The Phase 2 design (HB-5 implementation status and HB-5 freeze) records
+the details.
 
 Important accepted commits:
 
@@ -2636,7 +2687,8 @@ F8 has since been implemented on that baseline (branch
 `claude/f8-implementation`; `docs/F8_IMPLEMENTATION.md`) and frozen:
 F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06; §52). It is ready for
 downstream work. HB-4 has since been implemented and frozen (HB-4
-IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; Phase 2, below).
+IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; Phase 2, below), and so
+has HB-5 (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13).
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2656,9 +2708,10 @@ evidence (`worker/backfill_discovery/`), is implemented and frozen
 waits for HB-P1, a deployment prerequisite (§52), and follows the
 release sequence of §43.1. HB-4, the document worker
 (`worker/backfill_documents/`), is implemented and frozen (HB-4
-IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; §52). HB-5 and HB-6
-(F6 orchestration and audit; operations and pilot) are not
-implemented. The
+IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; §52). HB-5, F6
+orchestration and audit (`worker/backfill_f6/`), is implemented and
+frozen (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13; §52). HB-6
+(operations and pilot) is not implemented. The
 F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
 F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
 2026-10-06; Phase 1, above).

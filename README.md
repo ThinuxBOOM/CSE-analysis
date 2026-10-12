@@ -18,7 +18,7 @@ Where this README and those documents differ, they win.
 ## Current state
 
 **Frozen/accepted** (Master Architecture §52): Stage E, F1, F2, F3, F4, F5, F6.0, F6.1, F6.3, F6.4, real-data
-validation, P0.5, G-1, P1, P2, P3, Phase 2 HB-1, HB-2 and HB-3, and F8. HB-3 (discovery and issuer evidence) is merged
+validation, P0.5, G-1, P1, P2, P3, Phase 2 HB-1 to HB-5, and F8. HB-3 (discovery and issuer evidence) is merged
 into `main` (frozen baseline `8e2a3c37`). F6.2 is an accepted design; its storage amendments are implemented by F6.4.
 F8 is frozen/accepted as a design (revision 3, `docs/F8_DESIGN.md`) and as an implementation (below).
 
@@ -31,7 +31,10 @@ frozen baseline `8e2a3c37` (`docs/F8_IMPLEMENTATION.md`, freeze record §9). It 
 **HB-4 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-07): Phase 2 HB-4, the document worker, is the library package
 `worker/backfill_documents/` (Phase 2 design, "HB-4 implementation status" and "HB-4 freeze").
 
-**Not implemented:** Phase 2 HB-5 and HB-6, and every later roadmap phase (Master Architecture §55).
+**HB-5 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-13): Phase 2 HB-5, F6 orchestration and audit, is the library
+package `worker/backfill_f6/` (Phase 2 design, "HB-5 implementation status" and "HB-5 freeze").
+
+**Not implemented:** Phase 2 HB-6, and every later roadmap phase (Master Architecture §55).
 
 **Open change-control findings** from real-data validation, recorded and **not fixed**: P-18 (F5 document-path
 parsing), P-23 (F5 v1 mapping) and P-1 (F3 period dating of DIAL 52713). See Master Architecture §52.
@@ -103,8 +106,8 @@ issuer is inferred from a document path prefix alone. Frozen F1–F6.4 semantics
 
 Phase 2 builds about five years of CSE financial filings through the frozen pipeline
 ([design](docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md), revision 3). It is implemented in reviewable steps (design §27),
-and **four steps are done**: HB-1 to HB-3 are frozen and merged into `main`, and HB-4 is frozen (HB-4 IMPLEMENTATION
-FROZEN / ACCEPTED, 2026-10-07):
+and **five steps are done**: HB-1 to HB-4 are frozen and merged into `main`, and HB-5 is frozen (HB-5 IMPLEMENTATION
+FROZEN / ACCEPTED, 2026-10-13):
 
 - **HB-1 — Governed Backfill Ledger: implemented and frozen** on `main` (Master Architecture §52). It is migration
   `0016_historical_backfill_ledger.sql` and the package `worker/financial_backfill/`: the durable, append-only PostgreSQL
@@ -137,7 +140,18 @@ FROZEN / ACCEPTED, 2026-10-07):
   24.02.0 pin, a dedicated temporary root with a free-space check, the orphan sweep inside locked slices, SIGTERM
   handling, HB-3's G2 and G10 rules, the slice's document cap before any claim, and recovery from evidence. It has no
   command or timer (HB-6).
-- **HB-5 and HB-6 are not implemented:** F6 orchestration and audit; operations and pilot.
+- **HB-5 — F6 Orchestration and Audit: implemented and frozen** (final freeze audit 2026-10-13). It is the library
+  package `worker/backfill_f6/`. It covers:
+  - bounded validate-pending batches through F6.4's own jobs, with recovery from F6.4's evidence;
+  - registration of the single armed configuration, which the owner designates;
+  - per-issuer reconciliation once an issuer's in-window documents are final, then a final full pass;
+  - document promotion from F6 evidence;
+  - the coverage audit: the nine-stage funnel, the levels, the review lists and immutable snapshots;
+  - the anomaly detectors: RDV's P-1 to P-34 and the Phase 2 findings;
+  - the reports, written only outside the repository.
+
+  Re-running finished work is an explicit operator re-queue. It makes no CSE request and has no command or timer (HB-6).
+- **HB-6 is not implemented:** operations and pilot.
 - **No Phase 2 CSE acquisition has started.** HB-1 contacts no network, and HB-2 makes no request without an owner
   arming decision. Any live Phase 2 request still needs owner
   decision HB-X2 (G-1's extension to bulk financial discovery and temporary document retrieval, and the User-Agent

@@ -4,7 +4,8 @@ jobs and the frozen HB-1 to HB-4 upstream (tests/hb5_support.py, on tests/hb4_su
 from a scripted transport or a scripted cdn.cse.lk: nothing contacts the network.
 
     validation     one validate:<run> item per pending run naming its F6.4 job and validation run; bounded batches;
-                   a busy F6.4 lock records nothing; a failed validation is final until an operator re-queue
+                   a busy F6.4 lock records nothing; a failed validation is final until an operator re-queue; a lost
+                   ledger event is recovered from F6.4's rows, and a run validated elsewhere mid-batch is recorded once
     configuration  registered only over the one armed version tuple; the designation is the owner's
     reconcile      deferred while F6.4 has a pending validation; per issuer once its in-window filings are final
                    (a superseded path or a filing that left W never holds it back); the final full pass once; a busy
@@ -12,7 +13,8 @@ from a scripted transport or a scripted cdn.cse.lk: nothing contacts the network
     promotion      persisted -> validated -> reconciled from F6 evidence only; late evidence (M4) through
                    needs_validation and operator re-queues, with nothing retrieved again
     audit          the funnel places every synthetic filing at the first stage it fails, at every phase; the snapshot
-                   digest, the L11 / L10 records, the reader, a failed audit; the Phase 2 detectors
+                   digest, the L11 / L10 records, the reader, a failed audit; the Phase 2 detectors; a hold shown
+                   as held at stage 8 and at the candidate level
     boundaries     no F6.4 unit is wrapped (F8 P-3); HB-5 writes no frozen table and no CSE ledger record; reports
                    only outside the repository; the preflight
 
@@ -24,7 +26,7 @@ import shutil
 import socket
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -220,6 +222,36 @@ def test_v5_a_job_whose_ledger_event_was_never_written_is_recovered_from_f64s_ro
     assert (ev[-1]["validation_run_key"], str(ev[-1]["f6_job_id"])) == (vrk, job_id)
     assert job(w, job_id) == ("validate", run, "succeeded")
     assert validation.validate_pending(w, preflight=NP)["recovered"] == []
+
+
+def test_v6_a_run_validated_elsewhere_after_the_batch_read_the_pending_set_is_recorded_once(env, monkeypatch):
+    X.world(env, [Filing(932001, "facts", listed=True)])
+    w, other = env.conn(), env.conn()
+    run = X.runs_of(w, 932001)[0]
+    assert jobs.lock_exclusive(other)                    # busy: the item is created and stays pending, as its run does
+    assert validation.validate_pending(w, preflight=NP)["refused"]["reason"] == "busy"
+    jobs.unlock(other, shared=False)
+    assert [e["state"] for e in events(w, keys.validate(run))] == ["pending"] and validation.pending_runs(w) == [run]
+    real = validation.item_states
+
+    def raced(conn, kind=validation.KIND):              # another session (an operator's F6.4 validate) validates the
+        assert jobs.validate(other, run)["state"] == "succeeded"     # run after the batch read F6.4's pending set and
+        return real(conn, kind)                                       # before its recovery read
+    monkeypatch.setattr(validation, "item_states", raced)
+    rep = validation.validate_pending(w, preflight=NP)
+    monkeypatch.setattr(validation, "item_states", real)
+    # the run was pending when the batch read the pending set, so it is the batch's own: recovery leaves it alone,
+    # F6.4 finds it validated (already_present) and the item records that ONCE (HB-1 refuses a second succeeded)
+    assert rep["recovered"] == [] and rep["attempted"] == 1 and rep["refused"] is None and rep["failed"] == []
+    assert [(s["f5_run_id"], s["job_state"]) for s in rep["succeeded"]] == [(run, "already_present")]
+    ev = events(w, keys.validate(run))
+    assert [(e["state"], e["action"]) for e in ev] == [("pending", "create"), ("succeeded", "record")]
+    assert job(w, ev[-1]["f6_job_id"]) == ("validate", run, "already_present")
+    assert q(w, "select validation_run_key from financial_validation_run_current where f5_run_id = %s", (run,)) == [
+        (ev[-1]["validation_run_key"],)]
+    assert validation.validate_pending(w, preflight=NP) == {"pending": 0, "attempted": 0, "succeeded": [],
+                                                            "failed": [], "refused": None, "awaiting_requeue": [],
+                                                            "recovered": []}
 
 
 # ================================================================================================ configuration
@@ -634,6 +666,37 @@ def test_a5_without_a_window_the_audit_refuses_after_a_disarm(env):
     assert ei.value.codes == ["window"]
     assert q(w, "select count(*) from backfill_work_items where item_kind = 'audit'") == [(0,)]
     assert audit.run(w, window=W, preflight=NP)["coverage"]["window"] == ["2025-03-01", "2025-04-30"]
+
+
+def test_a6_a_hold_on_a_filings_listing_symbol_shows_as_held_at_stage_8_and_at_the_candidate_level(env):
+    X.world(env, [Filing(934001, "facts", listed=True), Filing(934002, "facts", listed=True, sec=X.UNKNOWN_SEC_ID,
+                                                                day=3)])
+    w = env.conn()
+    assert q(w, "select status, basis from filing_issuer_links where cse_filing_id = %s order by id desc limit 1",
+             (934002,)) == [("conflict", "both")]               # COMB's listing (secId 369) against path prefix 999
+    designate_all(env, w)
+    reconcile.reconcile_ready(w, preflight=NP)
+    before = audit.run(w, preflight=NP)
+    issuer_only = before["coverage"]["levels"]["candidates"]["refused_only_for_issuer_evidence"]
+    n = issuer_only["candidates"]
+    assert placed(before)[934002] == (7, [8, "issuer_evidence:conflict/both"])
+    assert n > 0 and issuer_only["by_category"] == {"conflict/both": n}
+    attempt = q(w, "select min(a.id) from backfill_request_attempts a join backfill_work_items i on i.id = a.item_id "
+                   "where i.item_kind = 'listing' and i.query_symbol = %s", (X.COMB,))[0][0]
+    store.record_hold(w, {"source_endpoint": "financials", "source_field": "reqFinancial.secId", "query_symbol": X.COMB,
+                          "symbol": X.COMB, "cse_security_id": None, "cse_sec_id": 777, "isin": None, "name": None,
+                          "active": None, "payload_sha256": "ab" * 32,
+                          "observed_at": datetime(2025, 3, 2, 4, 30, tzinfo=timezone.utc),
+                          "source_ref": f"backfill_request_attempts:{attempt}"},
+                      dispute={"sec_id": 777, "reasons": ["identity_evidence_insufficient"]},
+                      rule_version="hb.acquire.1", attempt_id=attempt)
+    after = audit.run(w, preflight=NP)
+    # section 18.2 (stage 8, shown by link status and basis, and holds) and 18.3 (the candidates refused only for
+    # issuer evidence, by link: ... conflict, held)
+    assert placed(after)[934002] == (7, [8, "issuer_evidence:held"])
+    assert after["coverage"]["levels"]["candidates"]["refused_only_for_issuer_evidence"]["by_category"] == {"held": n}
+    assert placed(after)[934001] == placed(before)[934001]             # a hold changes no other filing's placement
+    assert {r["detector_id"]: r["count"] for r in after["anomalies"]}["issuer_evidence_held"] == 1
 
 
 # ================================================================================================ boundaries

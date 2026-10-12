@@ -7,7 +7,10 @@ issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, cod
 `claude/hb3-discovery`, merged into `main` (frozen baseline `8e2a3c37`). **Implementation step HB-4 (the document
 worker) is implemented and frozen**: HB-4 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-07; code
 `c717059` on `claude/hb4-document-worker`: the implementation `a62a3a7` plus its freeze-audit correction, see below).
-HB-5 and HB-6 are not implemented, **Phase 2 as a whole is not implemented**, and no Phase 2 CSE request has been made.
+**Implementation step HB-5 (F6 orchestration and audit) is implemented and frozen**: HB-5 IMPLEMENTATION FROZEN /
+ACCEPTED (final freeze audit 2026-10-13; code: the implementation `4d28663` on `main` plus its freeze-audit correction,
+committed with the HB-5 freeze record, see below). HB-6 is not implemented, **Phase 2 as a whole is not implemented**,
+and no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -318,7 +321,187 @@ observations are carried forward; none is a blocker:
 - a 200 with a truncated body is HTTP "ok" for HB-2's circuit breaker; the item maximum bounds it;
 - items are ordered by upload timestamp, then filing id (outcomes do not depend on the order).
 
-HB-5 and HB-6 are not implemented. No Phase 2 CSE request has been made.
+**HB-5 implementation status** (implemented 2026-10-07 and committed to `main` as `4d28663`, on the HB-4-frozen
+`ffc7e08`; **frozen / accepted 2026-10-13** after its final freeze audit, below; the design text is unchanged). HB-5 is
+the library package `worker/backfill_f6/`: orchestration around F6.4's frozen jobs, and the coverage audit. It has no
+command, entry point or timer (HB-6). It makes no CSE request, takes no lock of its own and opens no CSE slice. F6 rows
+are written only by F6.4's own jobs, in F6.4's own transaction units and under F6.4's own lock `…313`, never wrapped in
+a longer transaction (F8 P-3). Ledger rows go only through HB-1's store; everything else is read.
+
+- **Validation (section 10.3).** Bounded batches (50 jobs) over F6.4's own pending set (`pending_runs`: every F5 run
+  lacking its canonical validation run, M4). Each run is one `validate:<F5 run>` item. Its event names the F6.4 job
+  and, on success, the validation run; HB-1's guard checks both. A busy F6.4 lock records nothing and stops the batch.
+  A failed validation is final, never retried in a loop (section 11.3); an operator re-queue retries it.
+- **Recovery from evidence (section 15.3).** A pending item whose run is no longer pending had its F6.4 job commit while
+  its ledger event was never written. It records `succeeded` from F6.4's own rows (the canonical validation run and the
+  job that wrote it), and no new job runs. Only runs that were not pending when the batch read the pending set are
+  recovered this way. A run validated by another session after that read is the batch's own, and is recorded once.
+- **Configuration.** `register_configuration(configuration_from_present_runs)` runs only while the persisted F5 runs
+  carry exactly one version tuple and it is the armed one (section 10.2). Anything else is refused as the owner's
+  decision. HB-5 never designates; the owner designates through F6.4's owner path.
+- **Reconciliation (sections 10.3, 14.1).** F6.4's reconcile is global before it is per issuer, so a pass starts only
+  while F6.4 has no pending validation, and it runs with `--no-validate`.
+  - Each issuer of W's canonical validation runs gets `reconcile:<issuer>` once every in-window filing whose current
+    issuer decision names it has a final document item for its current path version.
+  - `reconcile:all_issuers`, the final full pass, follows once every in-window filing is final and every issuer's own
+    pass succeeded.
+  - Each call is bounded (5 passes). A busy lock records nothing; a failed pass is final until an operator re-queue.
+- **Re-running finished work.** Late evidence (M4, section 7.4 step 5) re-runs finished work only through an explicit
+  operator re-queue of the affected `validate` and `reconcile` items (HB-1's rule, never automatic). HB-5 lists them
+  (`awaiting_requeue`), and no document is retrieved again.
+- **Document promotion (sections 14.2, 15.3)**, from F6 evidence only:
+  - `persisted → validated`: the run has its canonical validation run;
+  - `validated → reconciled`: that run is in a current record of the designated configuration (the funnel's stage 9
+    test);
+  - `persisted | validated | reconciled → needs_validation`: the run lost its canonical validation run (M4).
+
+  HB-1's guard re-checks each one against F6.4's views.
+- **The coverage audit (`hb.coverage.1`, section 18)** reads one read-only `REPEATABLE READ` snapshot, as the worker
+  or as `cse_reader`.
+  - The nine-stage funnel counts one unit per filing of W at the first stage it fails, with one reason. Each filing is
+    placed at its furthest document. Only F5 runs of the armed tuple and canonical validation runs count.
+  - Beside the funnel: the dimensions; the candidate, SO and fact levels (RDV's measures, including the candidates
+    refused only for issuer evidence by link category and holds); the expectation checks; and the labelled review
+    lists.
+  - L11 stores the counts and the SHA-256 of the per-filing table, digested with the rule, W, the designated
+    configuration and the armed versions. The table itself is exported outside Git.
+- **Anomalies (`hb.anomaly.1`, section 19).**
+  - RDV's catalogue P-1 … P-34, re-implemented, with classes A→1, B→2, C→5, D→4 and E→6.
+  - Phase 2's class 3 findings: `listing_only`, `feed_only`, `disappeared_since_f0` (with a baseline),
+    `window_undetermined`, `excluded_item_entered_window`, `retrieval_and_consumer_failures`,
+    `securities_not_queryable` and `listing_withdrawn`.
+  - Its class 4 availability evidence (F8 P-8): `upload_time_missing`, `upload_time_date_only`,
+    `last_modified_after_upload`, `path_epoch_missing` and `multiple_documents_per_filing`.
+  - Its class 5 finding: `issuer_evidence_held`.
+  - Each detector gives one immutable L10 record naming the audit's L11 snapshot. Re-auditing an unchanged database
+    adds only the new audit item.
+- **Reports (section 25):** the universe, issuer evidence, coverage, anomalies and requests. They are refused inside the
+  repository and written only to a new file, never overwritten, and none repeats the User-Agent.
+
+Its preflight adds to HB-1's and F6.4's checks:
+- the pins of HB-4's package;
+- its own static boundary: no network module, CSE client, transport, slice, lease, owner path, entry point or F8; F6.4
+  only through its jobs and selection, without `designate`; no SQL write; no RDV harness, lock literal or advisory lock;
+  and the composition itself present;
+- the frozen interfaces it relies on.
+
+It adds no migration, schema object, grant, role, row-level security, `SECURITY DEFINER`, lock key, command, entry point,
+timer or `ops/` file, and changes no frozen file.
+
+**Implementation choices where the design is silent** (each the conservative one):
+1. **W** is the arming in force's. After a disarm it must be given explicitly; it is never invented.
+2. **Readiness** judges only each in-window filing's current path version, which settles HB-4's carried observation. A
+   superseded path, or a filing that left W, never holds an issuer back. A filing without an issuer holds back only the
+   final pass.
+3. **Funnel stage 3** means F2 ran its consumer, since F2 consumes only validated, hashed bytes. An F3 row without an F5
+   run of the armed tuple reaches stage 4 (`no_f5_run`).
+4. **An undated filing is recorded twice, on purpose:** class 3 `window_undetermined` and class 4
+   `upload_time_missing` (F8 P-8).
+5. **L10 statuses** follow 0016's `chk_bfan_status` (letters and underscores), so class 4's status is `asof_input`.
+
+**Not HB-5 blockers.** These are deployment and owner prerequisites, unchanged:
+- P1's PostgreSQL 17 deployment with migrations 0001–0017 and its roles;
+- the owner's designation of the registered configuration, once the pilot's first F5 runs exist (HB-S3);
+- the documents themselves (HB-4, behind HB-P1, HB-X2 and the owner's arming);
+- a report directory outside the repository on the server;
+- the F0 captures, for E1;
+- P1's backups and the owner's checkpoints (section 21).
+
+**Verification (offline, no network; no CSE request was made), on the corrected tree:**
+- **HB-5 tests.**
+  - `tests/test_hb5_unit.py`: 65 passed on Linux and on Windows.
+  - `tests/test_hb5_postgres.py`: 25 passed on Linux: the 23 of `4d28663`, plus the correction's `test_v6` and
+    `test_a6`.
+  - `tests/test_hb5_rdv_postgres.py` (section 23.3): 5 of 5 passed at `4d28663` on 2026-10-07, with the RDV evidence
+    mounted. They reproduced 2,248 candidates, 440 + 8 admitted, 1,378 refused only for issuer evidence, 404 SOs and
+    321 facts, and detector parity for all 34 of RDV's detectors (count, class, filings and examples).
+    - The correction cannot change those results: it acts only on filings under a held symbol, and the RDV database
+      holds no hold.
+    - On the corrected tree the suite skips, because the evidence was lost (below).
+
+  Together they cover:
+  - each pending run as one item naming its F6.4 job and validation run; bounded batches; a busy lock; and a failed
+    validation that stays final and defers every reconcile until an operator re-queue;
+  - recovery from F6.4's rows after a lost ledger event, with no new job; and a run validated elsewhere between the
+    batch's two reads, recorded once;
+  - registration over exactly the armed tuple, never a designation;
+  - readiness by the current path version; the per-issuer and final passes; their bounds, busy locks and failed passes;
+  - promotion from F6 evidence, and late evidence through `needs_validation` and operator re-queues, with nothing
+    retrieved again;
+  - the funnel's exactness at every phase, on synthetic filings that stop at each stage;
+  - the Phase 2 detectors; the audit as `cse_reader`; a failed audit; no window after a disarm; and a hold shown as
+    `held` at stage 8 and at the candidate level;
+  - no F6.4 unit wrapped (one top-level transaction id per unit); no frozen table or CSE ledger record written; reports
+    only outside the repository; and the preflight.
+- **Adversarial probes** (5 of 5):
+  - two concurrent validate batches fail closed, and a rerun converges;
+  - of two concurrent reconciles, F6.4's lock refuses one;
+  - a reconcile job that dies is recovered and recorded on the next call;
+  - F6 work and the audit never take P2's lock `…312` or touch a live lease;
+  - two databases built from identical evidence give the identical snapshot digest.
+- **Mutation testing:** 60 planted HB-5 faults; 59 were caught on the corrected tree, each by the test aimed at its
+  rule.
+  - They include: re-running a final item without a re-queue; reconciling while a validation is pending; validating
+    inside a reconcile; the final pass before every issuer's own pass; promotion without evidence; counting outside W
+    or another version tuple; a digest that ignores W; and a report written inside the repository or overwritten.
+  - V9 is now caught by `test_v6`, and the correction's own two faults (holds ignored at the candidate level, and at
+    stage 8) by `test_a6`.
+  - The one survivor, AN2 (P-18 counting the parsed paths), is caught only by the real-data detector-parity test. It
+    was caught on 2026-10-07, and survives now only because that suite skips.
+- **Full repository on Linux** (the `cse-p1-test` container, PostgreSQL 17.11, Python 3.12.3, `--network none`, run in
+  16 clusters for the host's memory, each test file once): 2135 passed, 1 failed, 85 skipped and 2 xfailed, 2223 tests
+  in all.
+  - The one failure is the known, unrelated, frozen HB-2 clock test
+    `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, at the same assertion as at every earlier
+    freeze.
+  - 46 of the skips are the environment skips of every earlier baseline: the pinned Poppler, the network tests and
+    `DATABASE_URL`.
+  - The other 39 are the real-data suites that need the lost evidence: HB-3 replay 6, HB-5 5, F6.3 corpus 4, F6.4
+    corpus 3, F8 4 and RDV 17. All of them passed before the loss.
+- **Windows:** 1750 passed, 473 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Frozen boundary:** against `ffc7e08`, the only changes are `worker/backfill_f6/`, the four HB-5 test files and this
+  record's status text. The pins, static checks and compatibility checks of HB-1, HB-2, HB-3, HB-4 and HB-5 all pass.
+  Migrations 0016 and 0017 are unchanged, and there is no later migration.
+
+**The RDV evidence outside Git was lost.**
+- The F6 corpus and the F0 captures lived only in a temporary directory, which was cleared on 2026-10-10 before any
+  backup existed (real-data validation Q3).
+- No copy was found, and a capture from CSE today would not reproduce their pinned bytes.
+- **Owner decision (2026-10-12):** accept the loss. A new evidence baseline will be collected later, the governed way,
+  and backed up outside Git.
+- Until then every real-data suite skips. A skip is an environment limitation, not evidence of parity.
+
+**HB-5 freeze (2026-10-13).** HB-5 is implemented and frozen: **HB-5 IMPLEMENTATION FROZEN / ACCEPTED**. Its code is the
+implementation `4d28663` plus the correction its freeze audit required, committed with this record:
+- **B-HB5-1 (tests).** Mutant V9 drops recovery's pre-filter (runs still pending are not recovered from evidence). It
+  had been reported as equivalent, but it is equivalent only while nothing else validates.
+  - The batch reads F6.4's pending set and recovery's evidence in two transactions.
+  - Under V9, a run validated by another session between those reads was recorded `succeeded` from evidence, then
+    reached F6.4 again in the same batch, whose second `succeeded` HB-1 refuses.
+  - `test_v6` injects that race. The code was right; V9 is now killed.
+- **B-HB5-2 (code).** Section 18.3 lists `held` among the link categories of the candidates refused only for issuer
+  evidence. The candidate level ignored holds (stage 8 already showed them), so it never reported `held`. It now uses
+  the same held filings as stage 8. `test_a6` checks both levels with a real L7 hold.
+
+The final freeze audit checked the corrected tree against every HB-5 requirement (sections 10.3, 11, 14, 15.3, 18, 19,
+22, 25 and 27, and F8 section 3.4) and found no failing rule. These observations are carried forward; none is a blocker:
+- **A process ending after a failed F6.4 job is not tested.** If a process ends after F6.4 commits a failed validate
+  job, but before its ledger event, the item stays pending. The next batch runs F6.4 once more (section 15.3, "F6
+  job": reruns) and records that outcome. The first failed job stays in T10/T11. No test exercises this case.
+- **One failed validation defers every reconcile pass** until an operator re-queue, because F6.4's reconcile is global
+  before it is per issuer.
+- **Late evidence needs explicit operator re-queues** of the affected `validate` and `reconcile` items (HB-6's
+  runbook).
+- **Concurrent HB-5 calls are not serialised**, because there is no new lock key. They fail closed on HB-1's event key,
+  and a rerun converges. HB-6 should run F6 work from one runner.
+- **An audit process that ends early leaves its audit item pending.** Snapshots are content-addressed, so nothing is
+  lost.
+- **E1 (`disappeared_since_f0`) is not measurable** until a new baseline exists: it needs the F0 captures as a baseline,
+  and they are lost.
+- **Budget exhaustion and downtime** (section 19.2, class 3) appear as stage 3 `not_attempted` and in the requests
+  report, not as L10 records.
+
+HB-6 is not implemented. No Phase 2 CSE request has been made.
 
 **Date:** 2026-10-01.
 
@@ -1905,8 +2088,9 @@ hard-code assumptions about the canonical financial-truth layer.
 - F8 is implemented on that baseline and frozen: **F8 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-06; commits
   `6e7df6d` and `f73e506`; `docs/F8_IMPLEMENTATION.md` §9). It is ready for downstream work: HB-4 and HB-5 implement
   against its producer contract (F8 design §3.4).
-- HB-4 is implemented on that baseline and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-07). HB-5 has
-  not started; when it starts is the owner's decision.
+- HB-4 is implemented on that baseline and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-07).
+- HB-5 is implemented on HB-4's frozen baseline (`4d28663`, from `ffc7e08`) and frozen: **HB-5 IMPLEMENTATION FROZEN /
+  ACCEPTED** (2026-10-13). HB-6 has not started; when it starts is the owner's decision.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
