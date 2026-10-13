@@ -2438,8 +2438,12 @@ Verification (2026-10-13):
     network tests and 11 for Poppler or a database URL;
 -   Windows: 1785 passed, 0 failed;
 -   the clean-server systemd test
-    (`ops/tests/provision_backfill_in_docker.sh`) has not been run: it
-    needs network access for apt.
+    (`ops/tests/provision_backfill_in_docker.sh`) passed, 23 of 23
+    probes: P1 and HB-6 provisioning in a fresh Ubuntu 24.04 container
+    with systemd; then, offline, the units verify, the timer fires by
+    itself, the runner stays disarmed and idle, nothing is armed or
+    requested, and the owner-only boundaries hold. Its first run found
+    a false negative in one of HB-6's own probes, which was fixed.
 
 Live acquisition still waits for the deployment prerequisites in the
 runbook, including the server, HB-X2, HB-P1, the owner's arming

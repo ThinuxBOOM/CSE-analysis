@@ -25,13 +25,15 @@ nprobe "offline: no TCP route out"                          "timeout 5 bash -c '
 nprobe "offline: www.cse.lk does not resolve"               "timeout 5 getent hosts www.cse.lk"
 probe  "units pass systemd-analyze verify"                  "systemd-analyze verify $U/cse-backfill.service $U/cse-backfill.timer"
 probe  "backfill timer enabled and active"                  "systemctl is-enabled cse-backfill.timer && systemctl is-active cse-backfill.timer"
-probe  "backfill timer listed with a next elapse"           "systemctl list-timers --all --no-pager | grep -q cse-backfill.timer"
+# a pipe into `grep -q` is never used under pipefail: grep exits at the first match, a longer writer then dies of SIGPIPE
+# (141) and the probe would fail although the text is there; `grep -c` reads all of its input
+probe  "backfill timer listed with a next elapse"           "[ \"\$(systemctl list-timers --all --no-pager | grep -c cse-backfill.timer)\" -ge 1 ]"
 probe  "the timer fired by itself and woke the runner"      "fired"
 probe  "service runs as cse-worker, never root"             "[ \"\$(systemctl show -p User --value cse-backfill.service)\" = cse-worker ]"
 probe  "systemctl start of a wake-up succeeds"              "systemctl start cse-backfill.service && [ \"\$(systemctl show -p Result --value cse-backfill.service)\" = success ]"
 probe  "every runner wake-up released, none refused"        "[ \"\$(q \"select count(*) from backfill_wakeups where $RUNNER and not (state = 'released' and result in ('idle', 'worked'))\")\" = 0 ] && [ \"\$(q \"select count(*) from backfill_wakeups where $RUNNER\")\" -ge 2 ]"
 probe  "no arming, no lease, no CSE request, no response"   "[ \"\$(q 'select (select count(*) from backfill_arming_decisions) + (select count(*) from backfill_leases) + (select count(*) from backfill_request_attempts) + (select count(*) from backfill_response_bodies)')\" = 0 ]"
-probe  "journal: disarmed, no Phase 2 CSE request"          "journalctl -u cse-backfill.service --no-pager | grep -q 'disarmed: no Phase 2 CSE request'"
+probe  "journal: disarmed, no Phase 2 CSE request"          "[ \"\$(journalctl -u cse-backfill.service --no-pager | grep -c 'disarmed: no Phase 2 CSE request')\" -ge 1 ]"
 probe  "status (empty, disarmed) as the worker exits 0 or 2" "(cd / && $W status); st=\$?; [ \$st -eq 0 ] || [ \$st -eq 2 ]"
 probe  "plan (no CSE contact) as the worker exits 0"        "(cd / && $W plan)"
 probe  "HB-6 preflight and F6.4 verify (verify) pass"       "(cd / && $W verify)"

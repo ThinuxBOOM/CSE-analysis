@@ -186,7 +186,8 @@ Verification at implementation (2026-10-13):
   non-blocked item as HB-6's own check does;
 - the full repository: Linux 2188 passed, with only the known HB-2 clock test failing and 85 environment-only skips;
   Windows 1785 passed, 0 failed;
-- the clean-server test above has not been run yet: it needs network access for apt.
+- the clean-server test above passed, 23 of 23 probes. Its first run failed one probe falsely: a pipe into `grep -q`
+  under `pipefail`, where the longer journal output then died of SIGPIPE. The probe was fixed.
 
 ## 12. Deployment prerequisites (owner-run; none is an implementation prerequisite)
 
