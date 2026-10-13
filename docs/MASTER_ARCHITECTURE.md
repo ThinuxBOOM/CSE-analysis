@@ -2051,17 +2051,21 @@ Still open after real-data validation:
     item is now **closed: F8 IMPLEMENTATION FROZEN / ACCEPTED**
     (2026-10-06; see the F8 freeze record below);
 -   Phase 2 --- historical financial backfill --- remains the major
-    architectural phase in progress. Its first five implementation
-    steps are implemented and frozen: HB-1 (the governed backfill
-    ledger), HB-2 (the governed CSE transport) and HB-3 (discovery and
-    issuer evidence), all below and merged into `main` (frozen
-    baseline `8e2a3c37`), HB-4 (the document worker; HB-4
-    IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; below) and HB-5 (F6
-    orchestration and audit; HB-5 IMPLEMENTATION FROZEN / ACCEPTED,
-    2026-10-13; below). HB-6 (operations and pilot) is implemented
-    and ready for its formal acceptance / freeze audit; it is **not
-    frozen** (below). No Phase 2 acquisition has run, and Phase 2 as
-    a whole is not complete.
+    architectural phase in progress. Its first six implementation
+    steps are implemented and frozen:
+    -   HB-1 (the governed backfill ledger), HB-2 (the governed CSE
+        transport) and HB-3 (discovery and issuer evidence), all below
+        and merged into `main` (frozen baseline `8e2a3c37`);
+    -   HB-4 (the document worker; HB-4 IMPLEMENTATION FROZEN /
+        ACCEPTED, 2026-10-07; below);
+    -   HB-5 (F6 orchestration and audit; HB-5 IMPLEMENTATION FROZEN /
+        ACCEPTED, 2026-10-13; below);
+    -   HB-6 (operations and pilot; HB-6 IMPLEMENTATION FROZEN /
+        ACCEPTED, 2026-10-13; below).
+
+    No Phase 2 acquisition has run: HB-6's live pilot is owner-run,
+    after the deployment prerequisites. Phase 2 as a whole is not
+    complete.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2392,9 +2396,11 @@ Verification on the corrected tree:
 The Phase 2 design (HB-5 implementation status and HB-5 freeze) records
 the details.
 
-Phase 2 HB-6 --- operations and pilot --- is **implemented and ready
-for its formal acceptance / freeze audit; it is not frozen** (branch
-`claude/hb6-operations-pilot`, from the HB-5-frozen `88b29dd`). It is
+Phase 2 HB-6 --- operations and pilot --- is **implemented and
+frozen**: HB-6 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit
+2026-10-13). Its code is `9f05041` on `claude/hb6-operations-pilot`,
+from the HB-5-frozen `88b29dd`: the implementation `76350e3` and
+`0c6d9cc`, plus the corrections its freeze audit required. It is
 the package `worker/backfill_ops/` (`python -m worker.backfill_ops`,
 wrapped by `ops/bin/cse-backfill`), the systemd service and timer in
 `ops/backfill/`, the provisioning step
@@ -2403,13 +2409,15 @@ wrapped by `ops/bin/cse-backfill`), the systemd service and timer in
 
 -   the timer-driven wake-up: one runner at a time, claimed through
     HB-1's wake-up ledger in a serializable transaction (no new lock
-    key), with dead claims expired and the composite preflight (HB-3,
-    HB-4, HB-5 and HB-6's own pins and boundary) before any work;
+    key), with dead claims expired, the composite preflight (HB-3,
+    HB-4, HB-5 and HB-6's own pins and boundary) and the database-disk
+    check (under 20 GiB free refuses) before any work;
 -   the stage order: an unacknowledged block stops every stage; the
     clock gate applies while a stage is armed; HB-S1 and HB-S2
     bookkeeping; HB-5's F6 work; the daily coverage audit; then at
     most one CSE slice per wake-up, only through HB-3 and HB-4;
--   the HB-S3 pilot: a stratified, deterministic sample (`hb.pilot.1`)
+-   the HB-S3 pilot: a stratified, deterministic sample (`hb.pilot.1`;
+    year, document type, template hint, link basis, listed or not)
     that the owner reviews and records with the arming decision, and
     the pilot report (E1 is reported as not measurable);
 -   HB-S4 in owner-checkpointed blocks of at most 2,000 documents;
@@ -2426,24 +2434,49 @@ edit in each of three frozen unit tests (HB-1, HB-2 and HB-5): they
 asserted that `ops/backfill/` does not exist, and now accept exactly
 HB-6's two units there.
 
-Verification (2026-10-13):
+The freeze audit's corrections (owner-approved) close two gaps against
+the design:
 
--   35 unit and 18 PostgreSQL tests pass;
--   36 of 37 planted faults are caught. The survivor, HB-6's own check
-    that only a blocked item is resumed, is equivalent: HB-1's frozen
-    transition table refuses the same resume with the same result;
--   the full repository on Linux: 2188 passed. The only failure is the
+-   B-HB6-1: the pilot is stratified by a template hint (section 27).
+    The hint is taken from CSE's issuer name before retrieval; F4
+    chooses the real template from the document itself. The pilot
+    report compares the two;
+-   B-HB6-2: a database disk under 20 GiB free, or one that cannot be
+    checked, refuses every wake-up before any work (sections 20 and
+    24). Each wake-up records the free space of the database disk and
+    of P1's dump destination; the dump destination only alerts (§49).
+
+Verification on `9f05041`:
+
+-   36 unit and 19 PostgreSQL tests pass;
+-   51 of 52 planted faults are caught, including all 15 aimed at the
+    corrections. The survivor, HB-6's own check that only a blocked
+    item is resumed, is equivalent: HB-1's frozen transition table
+    refuses the same resume with the same result;
+-   the full repository on Linux: 2190 passed. The only failure is the
     known HB-2 clock test. The 85 skips are environment-only: 39
     real-data tests (the RDV evidence lost on 2026-10-10), 35 opt-in
     network tests and 11 for Poppler or a database URL;
--   Windows: 1785 passed, 0 failed;
+-   Windows: 1786 passed, 0 failed;
 -   the clean-server systemd test
-    (`ops/tests/provision_backfill_in_docker.sh`) passed, 23 of 23
-    probes: P1 and HB-6 provisioning in a fresh Ubuntu 24.04 container
-    with systemd; then, offline, the units verify, the timer fires by
-    itself, the runner stays disarmed and idle, nothing is armed or
-    requested, and the owner-only boundaries hold. Its first run found
-    a false negative in one of HB-6's own probes, which was fixed.
+    (`ops/tests/provision_backfill_in_docker.sh`) passed, 24 of 24
+    probes. It provisions P1 and HB-6 in a fresh Ubuntu 24.04 container
+    with systemd. Then, offline:
+    -   the units verify, and the timer fires by itself;
+    -   the runner stays disarmed and idle, and records both disks;
+    -   nothing is armed or requested;
+    -   the owner-only boundaries hold.
+
+    An earlier run found a false negative in one of HB-6's own probes,
+    which `0c6d9cc` fixed;
+-   the frozen boundary: the pins, static checks and compatibility of
+    HB-1 to HB-6 pass, and migrations 0016 and 0017 are unchanged.
+
+The Phase 2 design (HB-6 implementation status and HB-6 freeze)
+records the details and the observations carried forward. One of them
+concerns a frozen P3 probe: `ops/tests/p3_container_probes.sh` has the
+same latent `grep -q` / `pipefail` pattern. It is reported, not
+changed.
 
 Live acquisition still waits for the deployment prerequisites in the
 runbook, including the server, HB-X2, HB-P1, the owner's arming
@@ -2749,8 +2782,9 @@ F8 has since been implemented on that baseline (branch
 F8 IMPLEMENTATION FROZEN / ACCEPTED (2026-10-06; §52). It is ready for
 downstream work. HB-4 has since been implemented and frozen (HB-4
 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; Phase 2, below), and so
-has HB-5 (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13). HB-6 is
-implemented and awaits its acceptance / freeze audit (not frozen).
+have HB-5 (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13) and HB-6
+(HB-6 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13). HB-6's live pilot
+is owner-run.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2773,8 +2807,9 @@ release sequence of §43.1. HB-4, the document worker
 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-07; §52). HB-5, F6
 orchestration and audit (`worker/backfill_f6/`), is implemented and
 frozen (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13; §52). HB-6,
-operations and pilot (`worker/backfill_ops/`), is implemented and ready
-for its formal acceptance / freeze audit; it is not frozen (§52). The
+operations and pilot (`worker/backfill_ops/`), is implemented and frozen
+(HB-6 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13; §52); its live pilot
+is owner-run, after the deployment prerequisites. The
 F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
 F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
 2026-10-06; Phase 1, above).

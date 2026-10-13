@@ -85,9 +85,12 @@ def test_u2_the_operational_files_follow_p3s_conventions():
 
 def test_u3_the_runbook_and_owner_decision_hb6_1():
     book = read("docs", "ops", "PHASE2_BACKFILL.md")
-    for needed in ("ready for its acceptance / freeze", "Owner decision HB6-1", "E1 (disappeared since F0) is not "
-                   "measurable", "pilot-sample", "checkpoint", "requeue", "late-pass", "`busy`"):
+    for needed in ("HB-6 IMPLEMENTATION FROZEN / ACCEPTED", "Owner decision HB6-1", "E1 (disappeared since F0) is not "
+                   "measurable", "pilot-sample", "checkpoint", "requeue", "late-pass", "`busy`", "template hint",
+                   "Database disk under 20 GiB free"):
         assert needed in book, needed
+    design = read("docs", "PHASE2_HISTORICAL_BACKFILL_DESIGN.md")                   # the freeze record (B-HB6-3)
+    assert "**HB-6 freeze (2026-10-13).**" in design and "HB-6 is not implemented" not in design
     for f in ("test_hb1_unit.py", "test_hb2_unit.py", "test_hb5_unit.py"):
         src = read("tests", f)
         assert "owner decision HB6-1" in src and 'assert units in ([], ["cse-backfill.service", ' \

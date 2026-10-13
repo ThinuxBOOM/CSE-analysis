@@ -9,8 +9,11 @@ worker) is implemented and frozen**: HB-4 IMPLEMENTATION FROZEN / ACCEPTED (fina
 `c717059` on `claude/hb4-document-worker`: the implementation `a62a3a7` plus its freeze-audit correction, see below).
 **Implementation step HB-5 (F6 orchestration and audit) is implemented and frozen**: HB-5 IMPLEMENTATION FROZEN /
 ACCEPTED (final freeze audit 2026-10-13; code: the implementation `4d28663` on `main` plus its freeze-audit correction,
-committed with the HB-5 freeze record, see below). HB-6 is not implemented, **Phase 2 as a whole is not implemented**,
-and no Phase 2 CSE request has been made.
+committed with the HB-5 freeze record, see below). **Implementation step HB-6 (operations and pilot) is implemented and
+frozen**: HB-6 IMPLEMENTATION FROZEN / ACCEPTED (final freeze audit 2026-10-13; code `9f05041` on
+`claude/hb6-operations-pilot`: the implementation `76350e3` and `0c6d9cc` plus its freeze-audit corrections, see below).
+**Phase 2 as a whole is not complete**: the live pilot (HB-6's owner-run release gate) and HB-7 onward have not run, and
+no Phase 2 CSE request has been made.
 Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendix D. Awaiting owner decisions (§26):
 - HB-X1, with HB-X3, before implementation step HB-1;
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
@@ -501,7 +504,174 @@ The final freeze audit checked the corrected tree against every HB-5 requirement
 - **Budget exhaustion and downtime** (section 19.2, class 3) appear as stage 3 `not_attempted` and in the requests
   report, not as L10 records.
 
-HB-6 is not implemented. No Phase 2 CSE request has been made.
+**HB-6 implementation status** (implemented 2026-10-13 and committed as `76350e3` and `0c6d9cc` on
+`claude/hb6-operations-pilot`, from the HB-5-frozen `88b29dd`; **frozen / accepted 2026-10-13** after its final freeze
+audit, below; the design text is unchanged). HB-6 is:
+- the package `worker/backfill_ops/` (`python -m worker.backfill_ops`, through the operator wrapper `ops/bin/cse-backfill`);
+- the systemd units `ops/backfill/cse-backfill.service` and `cse-backfill.timer`;
+- the provisioning step `ops/provision/provision_backfill.sh`;
+- the clean-server test `ops/tests/provision_backfill_in_docker.sh`, with its probes;
+- the runbook `docs/ops/PHASE2_BACKFILL.md`.
+
+It composes the frozen HB-1 … HB-5 and makes no CSE request itself: every request is made inside an HB-3 or HB-4 slice,
+through HB-2.
+
+- **One wake-up (section 20).** The timer only wakes the runner: at boot, then every 15 minutes, with no `Persistent=`.
+  1. **The single-runner claim.** The runner's own HB-1 wake-up row is recorded only in a `SERIALIZABLE` transaction
+     that finds no other live runner. A second or racing runner records a `busy` wake-up instead. A dead runner's row is
+     expired by HB-1. No new lock key.
+  2. **The preflight:** HB-1, F6.4, HB-3, HB-4, HB-5, and HB-6's own pins and static boundary.
+  3. **The disk (sections 20 and 24).** A database disk under 20 GiB free, or one that cannot be checked, refuses before
+     any work.
+  4. **The gates.** An unacknowledged Phase 2 or P2 block stops every stage. While a stage is armed, P3's clock rule
+     applies.
+  5. **Non-CSE work**, never holding `…312`:
+     - the HB-S1 identity pass;
+     - the HB-S2 plan items and IE-4 closure pass;
+     - HB-5's F6 work;
+     - the coverage audit, at most once per Colombo day.
+  6. **At most one CSE slice**, in stage order: discovery while the current plan is open; otherwise documents. HB-S3
+     works over the owner's pilot sample; HB-S4 runs up to the armed checkpoint block.
+  7. **The wake-up record (L8)**, with the database size and the free space of the database disk and of P1's dump
+     destination.
+
+  Exit codes are those of P3 and F6.4.
+- **Failures are reported, never retried in a loop.** Each of these is an attention exit (2):
+  - a failed validation or reconcile pass;
+  - runs awaiting a re-queue after late evidence (M4);
+  - a cleanup failure;
+  - a missing designation;
+  - a due checkpoint;
+  - a finished pilot;
+  - a dump destination with less free space than the database.
+
+  `requeue` and `resume` are explicit operator actions with a reason, through HB-1's guarded transitions. SIGTERM
+  unwinds the current unit, and the wake-up is recorded `stopped`.
+- **The owner's decisions** go through HB-1's owner path: `arm`, `disarm`, `acknowledge-block` and `resolve-hold`.
+  Each is validated before the owner path opens:
+  - the stages and a whole-month W;
+  - the exact User-Agent P2 builds, this host, and the running version tuple (A3);
+  - HB-Q8's bounds, and D-HB3-1 for HB-S2;
+  - for HB-S3, the reviewed pilot sample (`expected_requests.pilot_filings`);
+  - for HB-S4, a recorded backup checkpoint (section 21), citing P1's backup-ledger run ids, with a block of at most
+    2,000 documents.
+- **The pilot (section 27).** A deterministic, stratified sample proposal (`hb.pilot.1`) that the owner reviews and
+  records. Its strata are the Colombo year, the document type, the template hint, the link status and basis, and
+  whether the security is listed. The pilot report covers:
+  - requests, time per document and failure rates;
+  - database growth;
+  - `companyInfoSummery` and listing completeness;
+  - the funnel;
+  - the template distribution, and the template hint against F4's template.
+
+  E1 is reported as not measurable.
+- **Operator commands:** `status` (with section 20's alerts), `plan`, `run`, `pilot-sample`, `pilot-report`, `report`,
+  `audit`, `anomalies`, `verify` (the composite preflight and F6.4's `verify`), `requeue`, `resume` and `late-pass`.
+
+It adds no migration, schema object, grant, role, row-level security, `SECURITY DEFINER` or lock key, and changes no
+frozen implementation file. **Owner decision HB6-1 (2026-10-13)** resolved the one conflict with frozen tests. Sections
+20 and 27 (HB-B8) place the units in `ops/backfill/`, but frozen HB-1, HB-2 and HB-5 unit tests asserted that the
+directory does not exist. Each of those tests now accepts exactly HB-6's two units there; one assertion each, every
+other assertion unchanged.
+
+**Implementation choices where the design is silent or names something a frozen layer forbids:**
+1. **The command line is `worker/backfill_ops/`.** Section 20 names `worker.financial_backfill`, whose package HB-1's
+   frozen tests pin (owner decision A1).
+2. **The single runner is HB-1's wake-up row**, claimed in a `SERIALIZABLE` transaction (HB-B8: no new lock key).
+3. **The pilot sample and the backup checkpoints are recorded in the owner's arming decision**, not in a new table.
+4. **The late-evidence pass is an operator command** (`late-pass`), followed by explicit re-queues (HB-1's rule).
+5. **The clock gate applies only while a stage is armed**, as P3's disarmed wake-up does.
+6. **`run` is always one wake-up.** Section 20 calls it `run --once`.
+7. **P1's dump destination is monitored but never gating** (MA §49).
+
+**Not HB-6 blockers.** These are deployment and owner prerequisites, tracked in the runbook:
+- the server, with P1 provisioning, migrations 0001–0017, NTP, and outbound access to CSE's API and CDN only;
+- the temporary root, Poppler 24.02.0, and at least 20 GiB free on the database disk;
+- HB-X2(a) and (b), the contact e-mail in `/etc/cse/capture.env`, then HB-P1 and IE-2;
+- the owner's arming decisions and the F6.4 designation;
+- the backup checkpoints, HB-Q9's capacity confirmation, and P1's alert channel;
+- the release sequence of MA §43.1;
+- a governed recollection of the RDV and F0 evidence.
+
+**Verification (offline, no network; no CSE request was made), on `9f05041`:**
+- **HB-6 tests.**
+  - `tests/test_hb6_unit.py`: 36 passed on Linux and on Windows.
+  - `tests/test_hb6_postgres.py`: 19 passed on Linux.
+
+  Together they cover:
+  - ordering; the single runner (busy, a race, a dead claim);
+  - resume and repeated runs; failure and re-queue; M4 with nothing downloaded again; SIGTERM;
+  - every gate: disarmed, a block until acknowledged and resumed, no HB-P1, the clock, the arming refusals, the real
+    preflight and a changed pin, and the database disk;
+  - the reports outside the repository; the HB-S4 checkpoint blocks;
+  - F6.4 units never wrapped, with no lock or lease during F6 work;
+  - the command line and the owner's arming through `cse-migrator`.
+- **Mutation testing:** 52 planted HB-6 faults; 51 were caught, each by the test aimed at its rule. These include all 15
+  aimed at the corrections.
+  - The survivor removes HB-6's own "only a blocked item is resumed" check. It is equivalent: HB-1's frozen transition
+    table refuses the same resume with the same refusal. `test_g2` covers that path.
+- **The clean-server systemd test (section 23.4): 24 of 24 probes.** It provisions P1 and HB-6 in a fresh Ubuntu 24.04
+  container with systemd, then disconnects the container from every network before the HB-6 units exist. The probes
+  then check:
+  - the units pass `systemd-analyze verify`;
+  - the timer fires by itself, and the runner runs as `cse-worker`, disarmed and idle;
+  - every wake-up records the database and dump disks;
+  - nothing is armed, leased, requested or received;
+  - the worker cannot arm, insert an arming, delete wake-up history or truncate items;
+  - `status`, `plan` and `verify` pass, and the provisioning is idempotent.
+
+  Its first run, at `76350e3`, found a false negative in one of HB-6's own probes: a pipe into `grep -q` under
+  `pipefail`. `0c6d9cc` fixed it.
+- **Full repository on Linux** (the `cse-p1-test` container, PostgreSQL 17.11, Python 3.12.3, `--network none`, 16
+  clusters, each test file once): 2190 passed, 1 failed, 85 skipped and 2 xfailed.
+  - The one failure is the known, unrelated, frozen HB-2 clock test
+    `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`.
+  - 46 skips are the environment skips of every earlier baseline: the pinned Poppler, the network tests and
+    `DATABASE_URL`.
+  - 39 are the real-data suites that need the lost evidence.
+- **Windows:** 1786 passed, 492 skipped (the PostgreSQL suites need Linux), 0 failed.
+- **Frozen boundary:** against `88b29dd`, the only changes are HB-6's files, the three HB6-1 test edits, and this
+  record's and the Master Architecture's status text. The pins, static checks and compatibility checks of HB-1 to
+  HB-6 all pass. Migrations 0016 and 0017 are unchanged, and there is no later migration.
+
+**HB-6 freeze (2026-10-13).** HB-6 is implemented and frozen: **HB-6 IMPLEMENTATION FROZEN / ACCEPTED**. Its code is
+`9f05041`: the implementation `76350e3` and `0c6d9cc`, plus the corrections its freeze audit required (owner-approved).
+This record is committed after it.
+- **B-HB6-1 (code). The template stratum.** Section 27 stratifies the pilot by template (bank / general), but the
+  sample left it out and only reported F4's template after processing. F4 chooses the template from the document's own
+  statements, so before retrieval HB-6 now uses a sampling label, as it already did for the document type:
+  - `bank_like` when CSE's issuer name on the filing (F1's `source_name`, else P2's company name) names a bank, finance,
+    leasing or credit company;
+  - `general` otherwise; `unknown` with no name.
+
+  It is never an input to F4. The pilot report compares it with F4's actual template.
+- **B-HB6-2 (code). The database disk.** Section 24 says a low database disk refuses at the preflight. Section 20 says
+  database growth is monitored at each wake-up against free space and the P1 dump destination. Before the correction
+  there was only an optional `status` alert. Now:
+  - every wake-up refuses (5) before any work while the database disk (`CSE_BACKFILL_DB_DISK_PATH`, default
+    `/var/lib/postgresql`) has less than 20 GiB free or cannot be checked;
+  - each wake-up records the database size and the free space of both disks;
+  - P1's dump destination (`CSE_BACKUP_ROOT`) is only an alert (MA §49).
+- **B-HB6-3 (documentation).** This record's status text still said HB-6 was not implemented. It is corrected here.
+
+The final freeze audit checked `9f05041` against every HB-6 requirement and found no failing rule. The requirements are
+sections 14.1, 16.3–16.6, 17, 20, 21, 23.4, 24, 25 and 27 (with HB-Q2, HB-Q4, HB-Q8 and HB-Q9), and the owner's HB-6
+rules. These observations are carried forward; none is a blocker:
+- **Pilot reconciliation follows HB-5's readiness rule.** An issuer is reconciled only once all its in-window filings
+  are final, so a pilot sample covering part of an issuer's filings does not reconcile that issuer during the pilot.
+- **The template hint is a heuristic on the issuer's name.** The pilot report measures its agreement with F4.
+- **E1 (`disappeared_since_f0`) is not measurable** until a new baseline exists. Without the lost RDV evidence, the
+  pilot claims no parity with the earlier real-data baseline. No substitute capture was made.
+- **HB-6's `requeue` (final items only) and `resume` (blocked items only) checks duplicate HB-1's transition table.**
+  They are kept for clearer operator messages.
+- **A latent pattern in a frozen P3 probe.** `ops/tests/p3_container_probes.sh:58` pipes into `grep -q` under
+  `pipefail`, the pattern HB-6's probe had. It passes only because P3's journal output is short. It is left unchanged,
+  under P3's change control.
+- **The `cse-p1-test` image was rebuilt during this verification** from its recovered 2026-09-28 recipe, after a scratch
+  script removed it. Its Python, PostgreSQL and psycopg2 versions match the earlier runs.
+
+The live pilot is HB-6's owner-run release gate. It follows the deployment prerequisites above and the owner's arming
+decisions. No Phase 2 CSE request has been made.
 
 **Date:** 2026-10-01.
 
@@ -2090,7 +2260,10 @@ hard-code assumptions about the canonical financial-truth layer.
   against its producer contract (F8 design §3.4).
 - HB-4 is implemented on that baseline and frozen: **HB-4 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-07).
 - HB-5 is implemented on HB-4's frozen baseline (`4d28663`, from `ffc7e08`) and frozen: **HB-5 IMPLEMENTATION FROZEN /
-  ACCEPTED** (2026-10-13). HB-6 has not started; when it starts is the owner's decision.
+  ACCEPTED** (2026-10-13).
+- HB-6 is implemented on HB-5's frozen baseline (`76350e3` and `0c6d9cc`, from `88b29dd`, with its freeze-audit
+  corrections at `9f05041`) and frozen: **HB-6 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-13). Its live pilot is
+  owner-run, after the deployment prerequisites; HB-7 has not started, and when it starts is the owner's decision.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|

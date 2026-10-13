@@ -1,7 +1,8 @@
 # Phase 2 backfill: operations and pilot (HB-6)
 
-**Status:** implemented on `claude/hb6-operations-pilot` (from `main` `88b29dd`); **ready for its acceptance / freeze
-audit, not frozen**. Nothing here has contacted CSE. The live pilot is an owner-run release event after Docker staging,
+**Status:** **HB-6 IMPLEMENTATION FROZEN / ACCEPTED** (final freeze audit 2026-10-13; code `9f05041` on
+`claude/hb6-operations-pilot`, from `main` `88b29dd`). The freeze record is in the Phase 2 design (HB-6 implementation
+status and HB-6 freeze). Nothing here has contacted CSE. The live pilot is an owner-run release event after Docker staging,
 server provisioning and the HB-P1 chain (Master Architecture §43.1). G-1 is an owner-accepted risk, **not** CSE
 authorization (`docs/governance/G-1_CSE_DATA_USE.md`).
 
@@ -188,14 +189,16 @@ privileges and guards. Machine-specific values and the contact e-mail live only 
   SIGTERM, the gates, the reports and checkpoints, and transaction and lock boundaries.
 - `ops/tests/provision_backfill_in_docker.sh` is the clean-server Docker test.
 
-Verification at implementation (2026-10-13):
-- the HB-6 suites: 35 unit and 18 PostgreSQL tests pass;
-- 36 of 37 planted faults are caught. The survivor is equivalent: HB-1's transition table refuses a resume of a
-  non-blocked item as HB-6's own check does;
-- the full repository: Linux 2188 passed, with only the known HB-2 clock test failing and 85 environment-only skips;
-  Windows 1785 passed, 0 failed;
-- the clean-server test above passed, 23 of 23 probes. Its first run failed one probe falsely: a pipe into `grep -q`
-  under `pipefail`, where the longer journal output then died of SIGPIPE. The probe was fixed.
+Verification at the freeze audit (2026-10-13, on `9f05041`):
+- the HB-6 suites: 36 unit and 19 PostgreSQL tests pass;
+- 51 of 52 planted faults are caught, including the 15 aimed at the audit's corrections (the template hint and the
+  database disk). The survivor is equivalent: HB-1's transition table refuses a resume of a non-blocked item exactly as
+  HB-6's own check does;
+- the full repository: Linux 2190 passed, with only the known HB-2 clock test failing and 85 environment-only skips;
+  Windows 1786 passed, 0 failed;
+- the clean-server test above passed, 24 of 24 probes, including the disk record of every wake-up. Its first run, at
+  `76350e3`, failed one probe falsely: a pipe into `grep -q` under `pipefail`, where the longer journal output then
+  died of SIGPIPE. The probe was fixed in `0c6d9cc`.
 
 ## 12. Deployment prerequisites (owner-run; none is an implementation prerequisite)
 
