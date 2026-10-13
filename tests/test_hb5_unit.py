@@ -44,7 +44,9 @@ def test_u1_the_package_is_a_library_with_its_versions_and_no_entry_point():
     assert (TOOL_VERSION, RULE_VERSION, COVERAGE_RULE, ANOMALY_RULE) == ("hb.f6.1", "hb.f6.1", "hb.coverage.1",
                                                                          "hb.anomaly.1")
     assert preflight.static_problems() == []
-    assert not os.path.exists(os.path.join(REPO, "ops", "backfill"))          # HB-6's, not HB-5's
+    backfill = os.path.join(REPO, "ops", "backfill")      # HB-6's units only, never HB-5's (owner decision HB6-1)
+    units = sorted(os.listdir(backfill)) if os.path.exists(backfill) else []
+    assert units in ([], ["cse-backfill.service", "cse-backfill.timer"])
     for f in files:
         src = open(os.path.join(PACKAGE, f), encoding="utf-8").read()
         assert "rdv" + "_" not in src, f                                        # RDV-B3, docstrings included

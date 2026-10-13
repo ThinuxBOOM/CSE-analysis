@@ -1,0 +1,16 @@
+# Wakes the Phase 2 backfill runner shortly after boot and every 15 minutes (design section 20). It carries NO business
+# schedule: what is due (stages, slices, budgets, P3's quiet window, validation, reconciliation, the daily audit) is
+# decided from PostgreSQL on every wake-up. A firing missed while the server was off is simply caught up by the next
+# wake-up; correctness never depends on Persistent= (not used). The minute is offset from P3's (:00/15) so the two
+# rarely meet at P2's lock; P3 has absolute priority anyway (the quiet window). Installing or enabling this timer
+# contacts nobody: Phase 2 stays disarmed until the owner records `arm`.
+[Unit]
+Description=CSE Phase 2 backfill wake-ups (boot + every 15 minutes)
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* *:07/15:00
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

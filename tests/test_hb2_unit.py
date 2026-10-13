@@ -692,7 +692,9 @@ def test_x1_the_package_boundary(tmp_path):
     assert "backfill_arming_decisions" not in writes and "backfill_block_acknowledgements" not in writes
     assert "backfill_hold_resolutions" not in writes                            # owner decisions stay owner-only
     assert not os.path.exists(os.path.join(PACKAGE, "__main__.py"))
-    assert not os.path.exists(os.path.join(REPO, "ops", "backfill"))          # HB-6, not HB-2
+    backfill = os.path.join(REPO, "ops", "backfill")      # HB-6's units only, never HB-2's (owner decision HB6-1)
+    units = sorted(os.listdir(backfill)) if os.path.exists(backfill) else []
+    assert units in ([], ["cse-backfill.service", "cse-backfill.timer"])
     hb1 = os.path.join(REPO, "worker", "financial_backfill")
     assert sorted(f for f in os.listdir(hb1) if f.endswith(".py")) == [
         "__init__.py", "keys.py", "owner.py", "preflight.py", "records.py", "states.py", "store.py"]

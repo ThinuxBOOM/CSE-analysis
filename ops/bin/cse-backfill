@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run the CSE Phase 2 backfill command line (HB-6) with the server configuration loaded. Never as root, never as
+# postgres. systemd runs `run` by itself (ops/backfill/cse-backfill.timer); this wrapper is for the operator and the
+# owner. G-1: owner-accepted risk, NOT CSE authorization - see docs/governance/G-1_CSE_DATA_USE.md and
+# docs/ops/PHASE2_BACKFILL.md.
+#
+# Who runs what (all reached only through sudo, i.e. by root/the owner):
+#   every backfill command           OS cse-worker   -> PostgreSQL cse_worker (peer) - the backfill worker
+#   arm / disarm / acknowledge-block / resolve-hold (owner decisions)
+#                                    OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner for ONE insert -
+#                                    the owner path; the worker can never arm itself or acknowledge its own blocks
+#
+#   sudo bash /opt/cse/app/ops/bin/cse-backfill status
+#   sudo bash /opt/cse/app/ops/bin/cse-backfill plan
+#   sudo bash /opt/cse/app/ops/bin/cse-backfill requeue --item validate:<run> --reason "input error fixed: validate"
+#   sudo bash /opt/cse/app/ops/bin/cse-backfill arm ...        (the release gate: docs/ops/PHASE2_BACKFILL.md)
+set -euo pipefail
+APP="${CSE_APP_DIR:-/opt/cse/app}"
+[[ $# -ge 1 ]] || { echo "usage: $0 <command> [args...]  (python -m worker.backfill_ops --help)" >&2; exit 2; }
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+user=cse-worker; role=cse_worker
+case "$1" in
+  arm|disarm|acknowledge-block|resolve-hold) user=cse-migrator; role=cse_migrator ;;
+esac
+# the worker's dedicated temporary root (HB-4): created here for a manual run, private to the worker; the systemd
+# service gets its own private /tmp (PrivateTmp=yes) and creates it there
+if [[ "$user" == cse-worker ]]; then install -d -o cse-worker -g cse-worker -m 0700 /tmp/cse-backfill; fi
+operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an owner decision
+exec runuser -u "$user" -- bash -c '
+  set -a
+  . /etc/cse/cse.env
+  if [ -r /etc/cse/capture.env ]; then . /etc/cse/capture.env; fi
+  if [ -r /etc/cse/backfill.env ]; then . /etc/cse/backfill.env; fi
+  set +a
+  export PYTHONPATH="$0" CSE_DB_USER="$1" CSE_OPERATOR="$2"
+  export CSE_BACKFILL_TEMP_ROOT="${CSE_BACKFILL_TEMP_ROOT:-/tmp/cse-backfill}"
+  shift 2
+  cd /
+  exec python3 -m worker.backfill_ops "$@"' "$APP" "$role" "$operator" "$@"

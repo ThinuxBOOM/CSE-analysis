@@ -1,0 +1,52 @@
+# CSE Phase 2 (HB-6): ONE backfill wake-up. systemd only wakes the runner; PostgreSQL (the HB-1 ledger) decides what is
+# due. Nothing contacts CSE unless the OWNER armed a stage for this host with the exact User-Agent (`arm`, owner path);
+# every CSE request is made inside an HB-3 / HB-4 slice through HB-2's governed transport (one at a time under P2's
+# lock, >= 1.5 s apart, budgets, P3's quiet window, stop on blocks). Installing or enabling this unit contacts nobody.
+# G-1: owner-accepted risk, NOT CSE authorization (docs/governance/G-1_CSE_DATA_USE.md; docs/ops/PHASE2_BACKFILL.md).
+[Unit]
+Description=CSE Phase 2 backfill wake-up (HB-6)
+Wants=postgresql.service network-online.target time-sync.target
+After=postgresql.service network-online.target time-sync.target local-fs.target
+RequiresMountsFor=/srv/cse-backup
+
+[Service]
+Type=oneshot
+User=cse-worker
+Group=cse-worker
+EnvironmentFile=/etc/cse/cse.env
+EnvironmentFile=-/etc/cse/capture.env
+EnvironmentFile=-/etc/cse/backfill.env
+Environment="PYTHONPATH=/opt/cse/app" "CSE_DB_USER=cse_worker" "CSE_BACKFILL_TEMP_ROOT=/tmp/cse-backfill"
+WorkingDirectory=/opt/cse/app
+# the dedicated temporary root (HB-4, section 17): inside this unit's private /tmp, owned by the worker, mode 0700
+ExecStartPre=/usr/bin/install -d -m 0700 /tmp/cse-backfill
+ExecStart=/usr/bin/python3 -m worker.backfill_ops run --trigger timer
+# Exit 2 (attention), 3 (block), 4 (PostgreSQL unavailable) and 5 (refused) leave the unit failed, so they show in
+# `systemctl --failed`. SIGTERM unwinds the current unit (F2 deletes and verifies the document; the slice keeps its
+# lease for recovery): the stop timeout gives it time. A hung wake-up is killed by TimeoutStartSec; PostgreSQL then
+# frees P2's lock, and the next wake-up expires the dead claim and lease and recovers from evidence.
+TimeoutStartSec=2h
+TimeoutStopSec=5min
+KillMode=mixed
+StateDirectory=cse-backfill
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/cse-backup/spool
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
