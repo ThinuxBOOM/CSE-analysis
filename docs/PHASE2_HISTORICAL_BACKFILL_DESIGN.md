@@ -1,6 +1,7 @@
 # Phase 2: Historical financial backfill (design)
 
-**Status:** design (revision 3; its design content is unchanged). **Implementation step HB-1 (the backfill ledger) is
+**Status:** design (revision 4, which records owner decision HB-Q7; the rest of its design content is unchanged).
+**Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
 issuer evidence) is implemented and frozen**: final freeze audit 2026-10-05, code as of `60d004d` on
@@ -19,6 +20,10 @@ Revision 2 (2026-10-01) applies the design-closure corrections listed in Appendi
 - HB-X2 and prerequisite HB-P1 before any live CSE request.
 
 Revision 3 (2026-10-02) corrects blocker HB-X3: HB-X1 needs two frozen-test edits, not one (§23.4; Appendix D, D14).
+
+Revision 4 (2026-10-13) records owner decision HB-Q7: Option A. Full F4 structure persistence (R-F4, §11.5) must be
+implemented, independently audited, accepted and frozen before HB-7 / HB-S4 bulk document retrieval (§14.1, §27;
+Appendix D, D15). This adds a gate and removes none. R-F4 has not been designed or implemented.
 
 **HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
 HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
@@ -1483,8 +1488,11 @@ blocker HB-X1** and **not** written. The requirements it must meet are below. Th
   every document **downloaded again**: about 8,750 more CSE requests. With the F4 layer persisted first, F5 re-maps from
   the database (F6.2 §10: "a new F5 mapper or vocabulary then needs no download").
   - F3 or F4 changes, such as a P-1 fix, always need the documents again, because document text is never kept.
-- **HB-Q7.** Should the F4 persistence phase precede Phase 2's bulk document stage? Recommended: yes. G-1's "minimum
-  request set" favours it.
+- **HB-Q7: decided (owner decision, 2026-10-13): Option A.** The F4 persistence phase (R-F4) precedes Phase 2's bulk
+  document stage: R-F4 must be implemented, independently audited, accepted and frozen before HB-7 / HB-S4 bulk
+  document retrieval (§14.1, §27). This was the recommendation: G-1's "minimum request set" favours it. The decision
+  adds a gate to HB-S4 and removes none. R-F4 has not been designed or implemented; its design and implementation
+  choices are open owner decisions.
 
 ## 12. Provenance
 
@@ -1567,7 +1575,7 @@ Phase 2 chooses nothing. It guarantees that every row of §13.1 exists for every
 | **HB-S1 Security and identity** | IE-1 freshness; a P2 sweep (IE-2, P2's own command); import (§7.4) | S0 armed; at least one derived P2 market capture (HB-P1); P2 sweep run on a non-trading day |
 | **HB-S2 Universe discovery** | 66 feed months; listings; IE-4 with holds; `resolve_securities`; link pass | S1 complete; S2 armed with budgets |
 | **HB-S3 Pilot** | Documents for a stratified sample (§27, HB-6). Then `register-configuration` over the present runs and the owner's designation (F6.4 owner path; §10.3). Then validate, reconcile and audit | S2 closed (HB-U5); owner arms S3 |
-| **HB-S4 Bulk documents** | Every eligible in-window document, in budgeted slices | **Owner review of the pilot report** |
+| **HB-S4 Bulk documents** | Every eligible in-window document, in budgeted slices | **Owner review of the pilot report**; R-F4 implemented, independently audited, accepted and frozen (HB-Q7, §11.5) |
 | **HB-S5 Validation and reconciliation** | F6.4 validate (pending), then reconcile per issuer under the configuration designated in HB-S3, then a final pass | Per filing after `persisted`; per issuer after its items are terminal |
 | **HB-S6 Audit** | Coverage snapshot, anomaly catalogue, final report | Any time (read-only); final after S5 |
 | Late evidence (loop) | Observations → resolve → link pass → validate pending → reconcile | Owner-approved evidence change |
@@ -2232,6 +2240,9 @@ archive-only `reprocess` of one.
 | HB-Q12 | Purge scope for F-stage data and archived listing responses (open since P2 §12 / F6.4 Q5) | Unchanged; open |
 | HB-Q13 | Delisted base symbols queried as `<base>.N0000` when no source gives the full symbol (a query-formation heuristic; CSE's response is the evidence) | Only with HB-Q5 (b) |
 
+**Decided:** HB-Q7, Option A (owner decision, 2026-10-13; §11.5, §27). Every other question above keeps its proposed
+default until the owner decides it.
+
 **Carried, not decided here:**
 - P-18, P-23 and P-1 change control (RDV Q2);
 - R-1 (LKR convenience translations, F6.2 §15.3);
@@ -2264,6 +2275,10 @@ hard-code assumptions about the canonical financial-truth layer.
 - HB-6 is implemented on HB-5's frozen baseline (`76350e3` and `0c6d9cc`, from `88b29dd`, with its freeze-audit
   corrections at `9f05041`) and frozen: **HB-6 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-13). Its live pilot is
   owner-run, after the deployment prerequisites; HB-7 has not started, and when it starts is the owner's decision.
+- HB-Q7 is decided (owner decision, 2026-10-13: Option A): R-F4, the full F4 structure persistence of F6.2 §10–§12
+  (§11.5), must be implemented, independently audited, accepted and frozen before HB-7. R-F4 has not been designed or
+  implemented. Its design and implementation, and its position relative to Docker staging and the live pilot, are
+  open owner decisions. HB-7's other gates are unchanged.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
@@ -2273,7 +2288,7 @@ hard-code assumptions about the canonical financial-truth layer.
 | **HB-4 Document worker** | `load_filings_from_db` + `process_batch([filing])` + F5's `make_consumer`, `attach_timestamps` and `_persist`, with the ledger event in the same transaction; dedicated temp root, SIGTERM handler, orphan sweep inside locked slices, free-space check, tool pins | HB-2, (HB-Q7) | Crash matrix; cleanup and lease-liveness tests; idempotency; row equivalence with F5's `run()` |
 | **HB-5 F6 orchestration and audit** | Validate-pending batches, configuration (owner designation), per-issuer reconcile; coverage audit (`hb.coverage.1`), anomaly detectors (`hb.anomaly.1`), reports | HB-4 | Funnel exactness (synthetic); RDV population numbers reproduced offline; detector parity |
 | **HB-6 Operations and pilot (release gate)** | CLI and wrapper, timer units in `ops/backfill/`, provisioning, runbook; then, **owner-run**, the first live work: IE-2 (a P2 sweep on a non-trading day, after HB-P1), discovery (HB-S2) and a **pilot of about 50 documents**, stratified by year, document type (annual, interim, errata), template (bank / general), link basis and listed/delisted | HB-1–HB-5, HB-X2 (its (b) before HB-P1), HB-P1, HB-Q2, HB-Q4, HB-Q8, HB-Q9 | Clean-server Docker test; pilot report: requests, time per document, failure rates, DB growth, `companyInfoSummery`/listing completeness, funnel |
-| **HB-7 Bulk documents** | HB-S4 under the owner's arming, in budgeted slices; checkpoints | Pilot accepted by the owner; HB-Q7 decided | Ledger and audit at every checkpoint; no stop condition unexplained |
+| **HB-7 Bulk documents** | HB-S4 under the owner's arming, in budgeted slices; checkpoints | Pilot accepted by the owner; HB-Q7 decided (Option A, 2026-10-13): R-F4 implemented, independently audited, accepted and frozen | Ledger and audit at every checkpoint; no stop condition unexplained |
 | **HB-8 Validation, reconciliation, final audit** | HB-S5 + HB-S6; the final reports; an implementation note | HB-7 | Funnel and anomaly catalogue complete; F6.4 `verify` clean; restore check of the final dump |
 | **HB-9 Freeze** | Independent cross-check → owner freeze → Master Architecture update | HB-8 | As RDV |
 
@@ -2342,13 +2357,16 @@ hard-code assumptions about the canonical financial-truth layer.
 | The Master Architecture not edited | Status; the proposed cross-reference is in the phase report only |
 | Design closure: every blocker and owner question re-checked against the repository; defects corrected in this document only | Appendix D |
 
-## Appendix D. Design corrections (revisions 2 and 3)
+## Appendix D. Design corrections (revisions 2, 3 and 4)
 
 D1–D13 (revision 2) were found by re-checking revision 1 against the repository at `59ac143`. D14 (revision 3) was found
-at `62a24f6`, before implementation step HB-1 wrote anything. Every correction is confined to this document.
+at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. Every
+correction is confined to this document.
 - D1–D13 change no frozen stage, blocker conclusion or owner default.
 - D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
   2026-10-02.
+- D15 records owner decision HB-Q7 (Option A, 2026-10-13). It changes no frozen stage and removes no gate: it adds
+  "R-F4 implemented, independently audited, accepted and frozen" to the gates of HB-S4 (§14.1) and HB-7 (§27).
 
 | # | Where | Defect in revision 1 | Correction | Repository evidence |
 |---|---|---|---|---|
@@ -2366,3 +2384,4 @@ at `62a24f6`, before implementation step HB-1 wrote anything. Every correction i
 | D12 | §15.2 | "A successful request is never repeated" contradicted §15.3: a document whose persistence did not commit is retrieved again | Stated per kind: persisted results are never re-requested; JSON is recovered from the spool; documents are re-retrieved once, recorded | `document_retrieval` (documents never spooled) |
 | D13 | Status, §1 | "One design blocker" beside three listed blockers and a prerequisite | Status lists exactly which decisions gate HB-1 and which gate live requests | §26 |
 | D14 | Status, §1, §23.4, §26 (HB-X3, HB-Q3), §27, Appendix A | Revision 2 named one frozen-test edit (RDV V9) and stated that no other frozen test pins the count or the last migration (D11). F6.4's migration-ledger/preflight regression test also re-applies the migrations and asserts that 0015 is the last applied one, so any 0016 fails it | HB-X3 is two narrow durable edits with the same invariants: 0015 present at position 14 with its exact frozen hash, `0006` unused, every later migration numbered after 0015, and re-application a no-op | `tests/test_f64_postgres.py:239-241` (`again["already_applied"][-1] == name`). The full offline suite, run with a no-op 0016 in a throwaway copy, failed exactly this test and RDV V9 |
+| D15 | Status, §11.5, §14.1, §26.2, §27, Appendix D | HB-Q7 was an open owner question, and HB-7's dependency "HB-Q7 decided" named the decision but not its consequence | Records owner decision HB-Q7 (Option A, 2026-10-13) and adds the gate "R-F4 implemented, independently audited, accepted and frozen" to HB-S4 (§14.1) and HB-7 (§27), keeping every existing gate | Owner decision HB-Q7, 2026-10-13 |

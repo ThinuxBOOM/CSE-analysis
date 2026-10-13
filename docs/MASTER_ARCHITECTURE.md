@@ -1859,7 +1859,8 @@ Worker code must not operate as the database owner.
 
 # 51. Migration Lineage Audit
 
-Current migration sequence reaches 0016 (Phase 2 HB-1's additive
+Current migration sequence reaches 0017 (F8's additive
+`0017_f8_asof_configuration.sql`, after Phase 2 HB-1's additive
 `0016_historical_backfill_ledger.sql`, after F6.4's additive
 `0015_financial_truth_persistence.sql`); `0006` remains unused.
 
@@ -2065,7 +2066,11 @@ Still open after real-data validation:
 
     No Phase 2 acquisition has run: HB-6's live pilot is owner-run,
     after the deployment prerequisites. Phase 2 as a whole is not
-    complete.
+    complete. Owner decision HB-Q7 (2026-10-13): Option A. Full F4
+    structure persistence (R-F4; Phase 2 design §11.5) must be
+    implemented, independently audited, accepted and frozen before
+    HB-7 / HB-S4 bulk document retrieval. This adds a gate to HB-7
+    and replaces none. R-F4 has not been designed or implemented.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2739,8 +2744,12 @@ architecture should be implemented in dependency order.
 
 ## Phase 1 --- Complete financial truth
 
--   formalize F6.2 storage changes --- done: implemented by F6.4
-    (migration 0015);
+-   formalize F6.2 storage changes --- done for F6 storage:
+    implemented by F6.4 (migration 0015). The full F4 structure
+    persistence of F6.2 §10--§11 is a separate phase (requirement
+    R-F4, Phase 2 design §11.5; F6.4 §23 Q3), not yet designed or
+    implemented; its sequencing is owner decision HB-Q7 (2026-10-13,
+    below);
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
@@ -2752,8 +2761,9 @@ architecture should be implemented in dependency order.
     ACCEPTED (2026-10-06; `6e7df6d`, `f73e506`).
 
 Every later phase below is not yet implemented, apart from Phase 2's
-first three steps, HB-1, HB-2 and HB-3 (all frozen and merged into
-`main`; frozen baseline `8e2a3c37`). Phase 2 --- historical financial backfill ---
+implementation steps HB-1 to HB-6 (all frozen and merged into
+`main`). HB-6's implementation is frozen; its live pilot is owner-run
+and has not run. Phase 2 --- historical financial backfill ---
 remains the major architectural phase in progress; its design decides
 real-data validation Q1 (issuer evidence; §52).
 
@@ -2786,6 +2796,22 @@ have HB-5 (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13) and HB-6
 (HB-6 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13). HB-6's live pilot
 is owner-run.
 
+Sequencing (owner decision HB-Q7, 2026-10-13; Option A):
+
+``` text
+R-F4 (full F4 structure persistence; F6.2 §10–§12) implemented,
+  independently audited, accepted and frozen
+→ HB-7 (bulk documents, HB-S4), still subject to all of its other gates
+```
+
+This adds a gate to HB-7 and waives none. HB-7 still requires the live
+pilot, the owner's review and acceptance of its report, HB-Q9, the
+backup checkpoints and the owner's arming decisions with their budgets
+(Phase 2 design §14.1, §21, §27). Like every implementation step, R-F4
+follows the release sequence of §43.1. R-F4 has not been designed or
+implemented; its design, its implementation and its position relative
+to Docker staging and the live pilot are open owner decisions.
+
 ## Phase 2 --- Historical financial backfill
 
 -   five-year filing universe;
@@ -2809,7 +2835,9 @@ orchestration and audit (`worker/backfill_f6/`), is implemented and
 frozen (HB-5 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13; §52). HB-6,
 operations and pilot (`worker/backfill_ops/`), is implemented and frozen
 (HB-6 IMPLEMENTATION FROZEN / ACCEPTED, 2026-10-13; §52); its live pilot
-is owner-run, after the deployment prerequisites. The
+is owner-run, after the deployment prerequisites. Owner decision HB-Q7
+(2026-10-13, Option A): R-F4 must be implemented, independently audited,
+accepted and frozen before HB-7 (Phase 1, above). The
 F8 design is accepted (revision 3: FROZEN / ACCEPTED, 2026-10-05), and
 F8's implementation is frozen (F8 IMPLEMENTATION FROZEN / ACCEPTED,
 2026-10-06; Phase 1, above).

@@ -104,7 +104,11 @@ stage on by itself.
    5. validation, reconciliation and the daily audit then follow automatically;
    6. when every pilot item is final the runner reports `pilot_complete`: `cse-backfill pilot-report --out-dir …`.
 4. **Owner review of the pilot report** (section 27's exit criteria) before any bulk arming.
-5. **HB-S4 (bulk documents, HB-7)** in checkpoint blocks: after a recorded backup checkpoint (section 6),
+5. **HB-S4 (bulk documents, HB-7)**, only after step 4's owner review of the pilot report and once R-F4 (full F4
+   structure persistence; owner decision HB-Q7, 2026-10-13, Option A) is implemented, independently audited,
+   accepted and frozen (Phase 2 design §14.1, §27). This adds to the requirements below and replaces none of them.
+   `arm` does not check R-F4: the owner confirms it before arming. Then in checkpoint blocks: after a recorded backup
+   checkpoint (section 6),
    `arm --stages HB-S4 --expected-documents ≤2000 --checkpoint-dump-run … --checkpoint-restore-check-run …
    --checkpoint-verified …`. At the block the runner stops HB-S4 slices and reports `checkpoint_due`.
 
