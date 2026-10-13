@@ -339,6 +339,8 @@ def test_u11_the_package_is_the_ledger_only_offline_and_inside_the_frozen_test_b
     for f in ("store.py", "owner.py"):
         targets = re.findall(r"(?:insert into|update)\s+(\w+)", sources[f])
         assert targets and all(t.startswith("backfill_") for t in targets), (f, targets)
-    assert not os.path.exists(os.path.join(REPO, "ops", "backfill"))         # HB-6, not HB-1
+    backfill = os.path.join(REPO, "ops", "backfill")      # HB-6's units only, never HB-1's (owner decision HB6-1)
+    units = sorted(os.listdir(backfill)) if os.path.exists(backfill) else []
+    assert units in ([], ["cse-backfill.service", "cse-backfill.timer"])
     assert sorted(os.listdir(os.path.join(REPO, "ops", "systemd"))) == sorted(
         n for n in os.listdir(os.path.join(REPO, "ops", "systemd")) if n.startswith("cse-backup-"))
