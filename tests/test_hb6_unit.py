@@ -5,9 +5,11 @@ Phase 2 HB-6 (operations and pilot), pure rules: no database, no network.
              test, the runbook); the frozen-test edit of owner decision HB6-1
     u4-u6    the static boundary (every planted violation found; the real package clean), the pins of HB-5 and the
              compatibility with HB-1 .. HB-5
-    u7-u9    the pilot sample: labels, strata, determinism, the sample file; the report's E1 statement
+    u7-u9    the pilot sample: labels (the template hint, B-HB6-1), strata, determinism, the sample file; the report's
+             E1 statement
     u10-u13  the owner's arming validation: every refusal, and the recorded decision (sample, checkpoint, versions)
     u14-u16  the runner's pure helpers (summary, results, waiting / hard refusals), the claim SQL, the CLI parser
+    u17      the disk check of sections 20 and 24 (B-HB6-2): the database disk's floor, the dump destination, defaults
 """
 import json
 import os
@@ -149,13 +151,14 @@ def test_u6_the_pins_of_hb5_and_the_compatibility_with_hb1_to_hb5(tmp_path):
 
 # ================================================================================================ the pilot sample
 
-def filing(fid, year=2023, buckets=(), title="", status="evidenced", basis="both", symbols=("COMB.N0000",)):
+def filing(fid, year=2023, buckets=(), title="", status="evidenced", basis="both", symbols=("COMB.N0000",),
+           name="COMMERCIAL BANK OF CEYLON PLC", company=None):
     return {"cse_filing_id": fid, "uploaded_at": datetime(year, 3, 2, 10, 0, tzinfo=COLOMBO), "source_buckets":
             list(buckets), "file_text": title, "link_status": status, "link_basis": basis,
-            "listing_symbols": list(symbols)}
+            "listing_symbols": list(symbols), "source_name": name, "company_name": company}
 
 
-def test_u7_document_type_and_link_labels_are_sampling_labels():
+def test_u7_document_type_template_hint_and_link_labels_are_sampling_labels():
     assert pilot.document_type(["annual"], "Annual Report 2023") == "annual"
     assert pilot.document_type(["quarterly"], "") == "interim"
     assert pilot.document_type([], "Interim Financial Statements - 31.12.2024") == "interim"
@@ -163,9 +166,18 @@ def test_u7_document_type_and_link_labels_are_sampling_labels():
     assert pilot.document_type(["other"], "Corrigendum to the interim statements") == "errata"
     assert pilot.document_type([], "Notice of AGM") == "other"
     assert pilot.link_label(None, None) == "no_decision" and pilot.link_label("conflict", "both") == "conflict/both"
+    for name in ("COMMERCIAL BANK OF CEYLON PLC", "LB FINANCE PLC", "PEOPLE'S LEASING & FINANCE PLC",
+                 "COMMERCIAL CREDIT AND FINANCE PLC", "PAN ASIA BANKING CORPORATION PLC"):
+        assert pilot.template_hint(name) == "bank_like", name
+    for name in ("JOHN KEELLS HOLDINGS PLC", "CEYLON TOBACCO COMPANY PLC", "BANKERS' CAKE PLC"):
+        assert pilot.template_hint(name) == "general", name
+    assert pilot.template_hint(None) == pilot.template_hint(" ") == "unknown"
     k = pilot.stratum(filing(1, title="Annual Report"), ["COMB.N0000"])
-    assert k == (2023, "annual", "evidenced/both", "listed")
-    assert pilot.stratum(filing(2, symbols=()), ["COMB.N0000"])[3] == "not_listed"
+    assert k == (2023, "annual", "bank_like", "evidenced/both", "listed")
+    assert pilot.stratum(filing(2, symbols=()), ["COMB.N0000"])[4] == "not_listed"
+    assert pilot.stratum(filing(3, name=None, company="AITKEN SPENCE PLC"), [])[2] == "general"   # P2's name
+    assert pilot.stratum(filing(4, name=None), [])[2] == "unknown"
+    assert "c.company_name" in pilot.CANDIDATES_SQL and "f.source_name" in pilot.CANDIDATES_SQL
 
 
 def test_u8_the_sample_is_round_robin_deterministic_and_bounded():
@@ -265,12 +277,14 @@ def test_u13_hb_s4_needs_a_recorded_checkpoint_and_a_bounded_block():
 
 def test_u14_the_runners_summary_results_and_refusal_classes():
     rep = {"trigger": "timer", "result": "worked", "arming": {"id": 3}, "db_bytes": 10, "attention": [["x", "y"]],
+           "disk": {"database_bytes": 10, "database_disk": {"path": "/d", "free_bytes": 5}},
            "slice": {"due": True, "kind": "documents", "stage": "HB-S3", "outcomes": {"persisted": 2}, "lease_id": 4},
            "f6": {"validation": {"attempted": 2}}, "audit": {"due": True, "snapshot_id": 9, "digest": "d"},
            "when": datetime(2026, 1, 1, tzinfo=timezone.utc)}
     s = runner.summary(rep)
     assert json.loads(json.dumps(s)) == s and s["slice"]["outcomes"] == {"persisted": 2}
     assert s["audit"] == {"due": True, "snapshot_id": 9, "digest": "d"} and "when" not in s
+    assert s["disk"]["database_disk"]["free_bytes"] == 5                       # every wake-up records the disks (L8)
     assert runner.worked(rep) and not runner.worked({"slice": {"due": False}, "f6": {"validation": {"attempted": 0},
                                                                                     "promotion": {}},
                                                      "audit": {"due": False}, "bookkeeping": {}})
@@ -307,3 +321,37 @@ def test_u16_the_command_line():
     for owner_cmd in cli.OWNER_COMMANDS:
         assert owner_cmd in read("ops", "bin", "cse-backfill")
     assert cli.main(["status"], env={"CSE_DB_PORT": "not-a-number"}) == EXIT_REFUSED     # a settings error refuses
+
+
+def test_u17_the_database_disk_refuses_below_its_floor_and_the_dump_destination_only_alerts():
+    from collections import namedtuple
+    from worker.backfill_ops import DB_DISK_MIN_FREE_BYTES, config as opsconfig
+    usage = namedtuple("usage", "total used free")
+    floor = DB_DISK_MIN_FREE_BYTES
+
+    def disks(db_free, dump_free):
+        return lambda p: usage(0, 0, db_free if p == "/db" else dump_free)
+
+    rec, refusal, alerts = runner.disk_check("/db", "/dump", 1000, disks(floor, 10 ** 12))
+    assert refusal is None and alerts == [] and rec == {"database_bytes": 1000,
+                                                        "database_disk": {"path": "/db", "free_bytes": floor},
+                                                        "dump_destination": {"path": "/dump", "free_bytes": 10 ** 12}}
+    rec, refusal, alerts = runner.disk_check("/db", "/dump", 1000, disks(floor - 1, 10 ** 12))
+    assert refusal[0] == "db_disk" and str(floor - 1) in refusal[1] and alerts == [refusal]
+    rec, refusal, alerts = runner.disk_check("/db", "/dump", 1000, disks(floor, 999))            # the dump: alert only
+    assert refusal is None and [a[0] for a in alerts] == ["dump_disk"]
+    assert runner.disk_check("/db", "/dump", 1000, disks(floor, 1000))[2] == []
+
+    def broken(p):
+        raise OSError(f"cannot stat {p}")
+    rec, refusal, alerts = runner.disk_check("/db", "/dump", 1000, broken)                       # fail closed
+    assert refusal[0] == "db_disk" and "cannot be checked" in refusal[1] and "error" in rec["database_disk"]
+    assert [a[0] for a in alerts] == ["db_disk", "dump_disk"]
+    assert runner.disk_check(None, None, 7, broken) == ({"database_bytes": 7}, None, [])        # not configured
+    cfg = opsconfig.load({})                                                    # P1's layout, so the check always runs
+    assert (cfg.db_disk_path, cfg.dump_path) == ("/var/lib/postgresql", "/srv/cse-backup")
+    cfg = opsconfig.load({"CSE_BACKFILL_DB_DISK_PATH": "/pg", "CSE_BACKUP_ROOT": "/b"})
+    assert (cfg.db_disk_path, cfg.dump_path) == ("/pg", "/b")
+    src = read("worker", "backfill_ops", "cli.py")
+    assert "db_disk_path=cfg.db_disk_path, dump_path=cfg.dump_path)" in src                    # the runner gets both
+    assert "CSE_BACKFILL_DB_DISK_PATH=/var/lib/postgresql" in read("ops", "config", "backfill.env.example")

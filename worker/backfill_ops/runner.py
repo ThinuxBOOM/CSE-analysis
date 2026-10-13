@@ -3,7 +3,11 @@ One wake-up of the Phase 2 runner (design section 20, "one wake-up, deterministi
 
     1. the claim         the single runner (claim.py): busy -> a 'busy' wake-up is recorded, nothing else happens;
                          then dead wake-ups are expired (HB-1: a live session is never taken over)
-    2. the preflight     HB-6's composite (HB-1, F6.4, HB-3, HB-4, HB-5 and its own): any problem -> refused (5)
+    2. the preflight     HB-6's composite (HB-1, F6.4, HB-3, HB-4, HB-5 and its own): any problem -> refused (5);
+                         then the disk (sections 20 and 24): the database disk under 20 GiB free, or unreadable ->
+                         refused (5) before any work; the database size and the free space of the database disk and
+                         of P1's dump destination are recorded with every wake-up (the dump destination is monitored
+                         only: backup state never gates work, MA section 49; freeze-audit correction B-HB6-2)
     3. the gates         an unacknowledged Phase 2 or P2 block stops EVERY stage (section 16.3) -> blocked (3);
                          while armed, a clock that is not NTP-synchronised or went backwards -> refused (5, P3's
                          rule; disarmed, only clock-independent F6 bookkeeping runs, as P3's disarmed wake-up)
@@ -31,6 +35,7 @@ the current unit unwinds: a slice keeps its lease for recovery (G2), an F6.4 job
 abandoned by F6.4's next reconcile and its run validated again, and the wake-up is recorded 'stopped'.
 """
 import os
+import shutil
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -48,8 +53,8 @@ from ..backfill_transport.errors import SliceBusy, SliceRefused
 from ..financial_backfill import keys, states, store
 from ..market_capture import runs as p2runs
 from ..ops import settings as ops_settings
-from . import (BULK_STAGE, EXIT_ATTENTION, EXIT_BLOCKED, EXIT_OK, EXIT_REFUSED, PILOT_STAGE, RULE_VERSION,
-               TOOL_VERSION, claim, preflight as checks, reports)
+from . import (BULK_STAGE, DB_DISK_MIN_FREE_BYTES, EXIT_ATTENTION, EXIT_BLOCKED, EXIT_OK, EXIT_REFUSED, PILOT_STAGE,
+               RULE_VERSION, TOOL_VERSION, claim, preflight as checks, reports)
 from .util import jsonable, one
 
 # Slice refusals that only mean "not now" (the next wake-up tries again); every other refusal needs the operator.
@@ -68,6 +73,36 @@ def read_boot_id():
 
 def database_bytes(conn):
     return one(conn, "select pg_database_size(current_database())")
+
+
+def disk_check(db_disk_path, dump_path, db_bytes, disk_usage=shutil.disk_usage):
+    """Sections 20 and 24: (record, refusal, alerts). The database disk under DB_DISK_MIN_FREE_BYTES free, or
+    unreadable, is a refusal; P1's dump destination with less free space than the database's size, or unreadable, is
+    only an alert (backup state never gates work, MA section 49). A path of None is not checked."""
+    record, refusal, alerts = {"database_bytes": db_bytes}, None, []
+    if db_disk_path:
+        try:
+            free = int(disk_usage(db_disk_path).free)
+            record["database_disk"] = {"path": db_disk_path, "free_bytes": free}
+            if free < DB_DISK_MIN_FREE_BYTES:
+                refusal = ("db_disk", f"{free} bytes free on the database disk ({db_disk_path}), under "
+                                      f"{DB_DISK_MIN_FREE_BYTES}: free space or decide capacity (section 24)")
+        except OSError as exc:
+            record["database_disk"] = {"path": db_disk_path, "error": str(exc)[:200]}
+            refusal = ("db_disk", f"the database disk ({db_disk_path}) cannot be checked: {exc}"[:500])
+        if refusal:
+            alerts.append(refusal)
+    if dump_path:
+        try:
+            free = int(disk_usage(dump_path).free)
+            record["dump_destination"] = {"path": dump_path, "free_bytes": free}
+            if db_bytes is not None and free < db_bytes:
+                alerts.append(("dump_disk", f"{free} bytes free at P1's dump destination ({dump_path}), less than "
+                                            f"the database's {db_bytes}: the next dump may not fit (HB-Q9)"))
+        except OSError as exc:
+            record["dump_destination"] = {"path": dump_path, "error": str(exc)[:200]}
+            alerts.append(("dump_disk", f"P1's dump destination ({dump_path}) cannot be checked: {exc}"[:500]))
+    return record, refusal, alerts
 
 
 def audit_done_today(conn, now):
@@ -126,6 +161,9 @@ class Runner:
     code_revision: Optional[str] = None
     preflight: Optional[Callable] = None         # conn -> [problems]; default: HB-6's composite (preflight.py)
     stage_preflight: Optional[Callable] = None   # passed to HB-3 / HB-4 / HB-5 (None: each runs its own)
+    db_disk_path: Optional[str] = None           # the CLI always passes config's (default P1's); None: not checked
+    dump_path: Optional[str] = None              # P1's dump destination (CSE_BACKUP_ROOT): monitored only
+    disk_usage: Callable = shutil.disk_usage
 
     # -------------------------------------------------------------------------------------------- identity
     def _ident(self, arming):
@@ -194,11 +232,18 @@ class Runner:
 
     def _run(self, ctl, work, wid, now, rep):
         rt = self.runtime
+        self.attention, self.hard = [], []
         rep["expired_wakeups"] = store.expire_dead_wakeups(ctl, wid)
         problems = (self.preflight or checks.problems)(work)
         if problems:
             rep.update(result="refused", refused=[["preflight", p] for p in problems])
             return EXIT_REFUSED
+        rep["db_bytes"] = database_bytes(work)
+        rep["disk"], refusal, alerts = disk_check(self.db_disk_path, self.dump_path, rep["db_bytes"], self.disk_usage)
+        if refusal:
+            rep.update(result="refused", refused=[list(refusal)])
+            return EXIT_REFUSED
+        self.attention += [a for a in alerts if a[0] == "dump_disk"]
         blocks = blocks_of(work)
         if blocks:
             rep.update(result="blocked", blocks=blocks)
@@ -212,8 +257,6 @@ class Runner:
                 return EXIT_REFUSED
         rep["arming"] = {"id": (arming or {}).get("id"), "armed": bool(arming and arming.get("armed")),
                          "armed_stages": stages}
-        rep["db_bytes"] = database_bytes(work)
-        self.attention, self.hard = [], []
         rep["bookkeeping"] = self._bookkeeping(work, wid, arming, stages)
         self._beat(ctl, wid)
         rep["f6"] = self._f6(work, wid, arming)
@@ -481,7 +524,7 @@ def worked(rep):
 
 def summary(rep):
     """The wake-up's details (L8): JSON-safe and small."""
-    keep = ("trigger", "result", "arming", "db_bytes", "attention", "refused", "blocks", "expired_wakeups")
+    keep = ("trigger", "result", "arming", "db_bytes", "disk", "attention", "refused", "blocks", "expired_wakeups")
     out = {k: rep[k] for k in keep if k in rep}
     sl = rep.get("slice") or {}
     out["slice"] = {k: sl.get(k) for k in ("due", "kind", "stage", "result", "outcomes", "lease_id", "wakeup_id")

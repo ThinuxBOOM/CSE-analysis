@@ -42,5 +42,8 @@ CHECKPOINT_DOCUMENTS = 2000               # section 21: a backup checkpoint afte
 NOTE_MIN = 10                             # a reason or note: at least 10 characters (HB-1's owner rule)
 
 REPORT_DIR_ENV = "CSE_BACKFILL_REPORT_DIR"     # the report directory: outside the repository (G-1 controls 7-8)
-DB_DISK_ENV = "CSE_BACKFILL_DB_DISK_PATH"      # optional: a path on the database's filesystem, for its free space
-DB_DISK_MIN_FREE_BYTES = 20 * 1024 ** 3        # section 20: database disk under threshold -> alert
+DB_DISK_ENV = "CSE_BACKFILL_DB_DISK_PATH"      # a path on the database's filesystem, for its free space
+DB_DISK_DEFAULT = "/var/lib/postgresql"        # P1's PostgreSQL 17 data disk
+DB_DISK_MIN_FREE_BYTES = 20 * 1024 ** 3        # sections 20 and 24: under it every wake-up refuses (5) before any work
+BACKUP_ROOT_ENV = "CSE_BACKUP_ROOT"            # P1's dump destination (/etc/cse/cse.env): monitored, never gating
+BACKUP_ROOT_DEFAULT = "/srv/cse-backup"

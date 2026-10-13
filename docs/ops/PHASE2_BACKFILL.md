@@ -42,6 +42,10 @@ no frozen file. Its only frozen-test change is owner decision HB6-1 (section 13)
    nothing; two racing runners cannot both commit (PostgreSQL aborts one). No new lock key. A dead runner's row is
    expired by the next runner (HB-1: a live session is never taken over).
 2. **The preflight:** HB-1, F6.4, HB-3, HB-4, HB-5 and HB-6 (pins, static boundaries, privileges). A problem refuses (5).
+   Then **the disk** (design sections 20 and 24): under 20 GiB free on the database disk (`CSE_BACKFILL_DB_DISK_PATH`,
+   default `/var/lib/postgresql`), or a disk that cannot be checked, refuses (5) before any work. Every wake-up records
+   the database size and the free space of the database disk and of P1's dump destination (`CSE_BACKUP_ROOT`). The dump
+   destination is monitored only: less free space than the database's size is an alert (2), never a refusal (MA §49).
 3. **The gates:** an unacknowledged Phase 2 or P2 block stops **every** stage (3). While armed, the clock must be
    NTP-synchronised and must not have gone backwards (5, P3's rule).
 4. **Non-CSE work** (never holding P2's lock `…312`):
@@ -121,12 +125,14 @@ worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only thro
 known **before** any retrieval:
 - the Colombo upload year;
 - the document type F1's listing bucket or the CSE title states (annual, interim, errata, other);
+- the template hint: `bank_like` when CSE's issuer name on the filing (else P2's company name) names a bank, finance,
+  leasing or credit company, `general` otherwise, `unknown` with no name;
 - the issuer link's status and basis;
 - listed in the verified security master or not.
 
 Strata are taken round-robin, each in a fixed SHA-256 order, so the same universe gives the same proposal. These are
-sampling labels only (never F3's document type, a period, or an input to anything). The template (bank / general) is
-F4/F5's finding, so the report shows it instead of the sample choosing it.
+sampling labels only (never F3's document type, F4's template, a period, or an input to anything). F4 chooses the
+template from the document's own statements, so before retrieval only the hint exists; the report compares the two.
 
 **The report** covers section 27's exit criteria over the pilot filings:
 - the requests by class and outcome;
@@ -135,7 +141,7 @@ F4/F5's finding, so the report shows it instead of the sample choosing it.
 - the database growth (from the runner's wake-ups, plus the current sizes of the relations);
 - `companyInfoSummery` and listing completeness;
 - the funnel (HB-5's coverage restricted to the pilot);
-- the template distribution.
+- the template distribution, and the template hint against F4's actual template.
 
 **E1 (disappeared since F0) is not measurable.** The F0 captures were lost on 2026-10-10. The owner decided on
 2026-10-12 to collect a new evidence baseline the governed way later. No pilot acceptance criterion depends on the
@@ -154,6 +160,8 @@ lost RDV corpus, and the pilot never substitutes a new capture for it.
 | Interrupted wake-up (crash, kill, power) | the next runner expires the dead claim; slices expire dead leases and recover from evidence; F6.4 abandons a stale job at its next reconcile and HB-5 re-validates | none |
 | SIGTERM (`systemctl stop`) | the current unit unwinds (F2 deletes and verifies the document; the slice keeps its lease); the wake-up is recorded `stopped` | none |
 | PostgreSQL unavailable | exit 4 before any request | P1 runbook |
+| Database disk under 20 GiB free, or not checkable | `db_disk` refused (5) before any work, every wake-up | free space, or a capacity decision (design section 24) |
+| P1's dump destination with less free space than the database | `dump_disk` (2); work continues | free space before the next dump (HB-Q9) |
 | Another runner active | `busy` (0) | none (manual commands that need the claim refuse with 5: retry) |
 
 ## 9. systemd
@@ -194,7 +202,8 @@ Verification at implementation (2026-10-13):
 - The local Ubuntu 24.04 server; native PostgreSQL 17; P1 provisioning (roles, peer authentication, backups and the
   off-site destination); migrations 0001–0017 through P1's runner.
 - NTP time synchronisation, and approved outbound network access to CSE's API and CDN only.
-- P1's private spool and backup root; the dedicated temporary root with at least 464 MB free; Poppler 24.02.0.
+- P1's private spool and backup root; the dedicated temporary root with at least 464 MB free; Poppler 24.02.0; at least
+  20 GiB free on the database disk (the runner refuses below it), and room at the dump destination for the growing dumps.
 - `/etc/cse/capture.env` with the owner's contact e-mail (HB-X2(b), G-1 control 4), and `/etc/cse/backfill.env`.
 - HB-X2(a) (G-1's extension to bulk discovery and temporary document retrieval).
 - HB-P1: a fresh derived P2 security master (allSecurityCode verified, within 7 days), then IE-2 (a P2 sweep on a

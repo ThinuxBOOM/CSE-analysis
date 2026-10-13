@@ -192,7 +192,8 @@ def single_runner(cfg, rt, what):
 def _worker(args, cfg, env, rt):
     now = rt.wall()
     if args.command == "run":
-        runner = Runner(connect=cfg.connect, runtime=rt, trigger=args.trigger, report_dir=cfg.report_dir)
+        runner = Runner(connect=cfg.connect, runtime=rt, trigger=args.trigger, report_dir=cfg.report_dir,
+                        db_disk_path=cfg.db_disk_path, dump_path=cfg.dump_path)
         return runner.wake()
     if args.command == "audit":
         window = (args.window_first, args.window_last) if args.window_first or args.window_last else None
@@ -209,7 +210,8 @@ def _worker(args, cfg, env, rt):
     conn = cfg.connect()
     try:
         if args.command == "status":
-            return opsstatus.status(conn, now, temp_root=cfg.temp_root, db_disk_path=cfg.db_disk_path)
+            return opsstatus.status(conn, now, temp_root=cfg.temp_root, db_disk_path=cfg.db_disk_path,
+                                    dump_path=cfg.dump_path)
         if args.command == "plan":
             return EXIT_OK, opsstatus.plan(conn, now)
         if args.command in ("requeue", "resume"):

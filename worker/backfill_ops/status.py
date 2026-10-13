@@ -5,7 +5,9 @@ CSE contact"). Read-only; JSON suitable for P1's status pattern. The User-Agent 
 contact e-mail).
 
 Alerts (section 20): a block; a stopped stage (its last slices stopped on the circuit breaker, owner decision A5); a
-cleanup failure; today's budget exhausted; the temporary root or the database disk under its threshold; a stale lease
+cleanup failure; today's budget exhausted; the temporary root or the database disk under its threshold (the runner
+refuses below the database disk's, sections 20 and 24); P1's dump destination with less free space than the database's
+size (monitored only, MA section 49); a stale lease
 (an active lease whose holder session is gone); a runner wake-up still active although its session is gone; items
 awaiting an operator re-queue; a registered configuration not yet designated; a due backup checkpoint.
 """
@@ -19,9 +21,9 @@ from ..backfill_documents.errors import DocumentRefused
 from ..backfill_f6 import configuration as hb5_configuration, readiness as hb5_readiness, validation as hb5_validation
 from ..backfill_transport import STOPPED_STAGE_SLICES, gates as hb2_gates, ledger as hb2_ledger
 from ..financial_backfill import keys, store
-from . import (BULK_STAGE, DB_DISK_MIN_FREE_BYTES, DOCUMENT_STAGES, EXIT_ATTENTION, EXIT_BLOCKED, EXIT_OK,
-               PILOT_STAGE, TOOL_VERSION, claim)
-from .runner import audit_done_today, blocks_of, database_bytes, document_work, documents_under_arming, pilot_filings
+from . import BULK_STAGE, DOCUMENT_STAGES, EXIT_ATTENTION, EXIT_BLOCKED, EXIT_OK, PILOT_STAGE, TOOL_VERSION, claim
+from .runner import (audit_done_today, blocks_of, database_bytes, disk_check, document_work, documents_under_arming,
+                     pilot_filings)
 from .util import jsonable, one, rows
 
 PUBLIC_ARMING = ("id", "armed", "armed_stages", "window_first_date", "window_last_date", "daily_request_budget",
@@ -56,9 +58,10 @@ def dead_runner_wakeups(conn):
                                   (TOOL_VERSION,))]
 
 
-def disk(cfg_temp_root, db_disk_path, conn):
-    out = {"database_bytes": database_bytes(conn), "temp_root": cfg_temp_root}
-    alerts = []
+def disk(cfg_temp_root, db_disk_path, conn, dump_path=None, disk_usage=shutil.disk_usage):
+    """The runner's own disk check (sections 20 and 24), as alerts, plus HB-4's temporary root."""
+    record, _, alerts = disk_check(db_disk_path, dump_path, database_bytes(conn), disk_usage)
+    out = dict(record, temp_root=cfg_temp_root)
     if cfg_temp_root:
         problems = temproot.root_problems(cfg_temp_root)
         if problems:
@@ -69,19 +72,10 @@ def disk(cfg_temp_root, db_disk_path, conn):
             space = temproot.free_space_problem(cfg_temp_root)
             if space:
                 alerts.append(("temp_space", space))
-    if db_disk_path:
-        try:
-            free = shutil.disk_usage(db_disk_path).free
-            out["database_disk_free_bytes"] = free
-            if free < DB_DISK_MIN_FREE_BYTES:
-                alerts.append(("db_disk", f"{free} bytes free on the database disk ({db_disk_path}), under "
-                                          f"{DB_DISK_MIN_FREE_BYTES}"))
-        except OSError as exc:
-            out["database_disk"] = f"unreadable: {exc}"
     return out, alerts
 
 
-def status(conn, wall, *, temp_root=None, db_disk_path=None):
+def status(conn, wall, *, temp_root=None, db_disk_path=None, dump_path=None):
     """(exit status, report)."""
     arming = store.arming_in_force(conn)
     stages = _stages(arming)
@@ -117,7 +111,7 @@ def status(conn, wall, *, temp_root=None, db_disk_path=None):
     if stale:
         alerts.append(("stale_lease", f"lease {stale['id']} is active but its holder session is gone: the next CSE "
                                       f"slice expires it and recovers its items from evidence"))
-    rep["disk"], disk_alerts = disk(temp_root, db_disk_path, conn)
+    rep["disk"], disk_alerts = disk(temp_root, db_disk_path, conn, dump_path)
     alerts += disk_alerts
     docs = rep["items"].get("document", {})
     if docs.get("cleanup_failed"):

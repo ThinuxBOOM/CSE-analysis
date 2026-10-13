@@ -6,17 +6,21 @@ errata), template (bank / general), link basis and listed/delisted"; section 14.
              strata by what is known before any retrieval:
                - the Colombo upload year;
                - the document type F1's listing bucket or the CSE title states (annual, interim, errata, other);
+               - the template hint: bank_like when CSE's issuer name on the filing (F1's source_name, else P2's
+                 company name) names a bank, finance, leasing or credit company, general otherwise, unknown with
+                 no name. F4 chooses the template from the document's own statements, so before retrieval only
+                 this hint exists (freeze-audit correction B-HB6-1);
                - the issuer link's status and basis (F5's current decision);
                - listed in the verified security master (HB-P1), or not.
              The strata are taken round-robin, each in a fixed pseudo-random order (the SHA-256 of the rule and the
              filing id), so the same universe always gives the same sample. These are sampling labels only: never a
-             period, a document type F3 decides, or an input to anything. The template (bank / general) is F4/F5's
-             finding and exists only after processing, so the pilot report shows it instead.
+             period, a document type F3 decides, a template F4 decides, or an input to anything. The pilot report
+             compares the hint with F4's actual template.
              The owner reviews the proposal (and may change it) and records it with the HB-S3 arming decision
              (`arm --pilot-sample`, expected_requests.pilot_filings): the runner's pilot slices touch only those.
     report   section 27's exit criteria, read-only, over the pilot filings: requests, time per document, failure
-             rates, database growth, companyInfoSummery / listing completeness, the funnel (HB-5's coverage) and the
-             template distribution. E1 (disappeared since F0) is not measurable: the F0 captures were lost on
+             rates, database growth, companyInfoSummery / listing completeness, the funnel (HB-5's coverage), the
+             template distribution and the template hint against F4's actual template. E1 (disappeared since F0) is not measurable: the F0 captures were lost on
              2026-10-10, and the owner decided on 2026-10-12 to collect a new evidence baseline the governed way later.
 """
 import hashlib
@@ -34,6 +38,7 @@ from .util import rows
 ERRATA = re.compile(r"errat|corrigend|re-?issue|revised|amended|amendment", re.I)
 INTERIM = re.compile(r"interim|quarter|\bq[1-4]\b|half[- ]?year|six months|nine months|three months", re.I)
 ANNUAL = re.compile(r"\bannual\b", re.I)
+BANK_LIKE = re.compile(r"\bbank(?:ing)?\b|\bfinance\b|\bleasing\b|\bcredit\b", re.I)
 FINAL = {"persisted", "validated", "reconciled", "needs_validation", "excluded", "retrieval_failed", "consumer_failed",
          "cleanup_failed", "failed"}
 E1_NOT_MEASURED = ("not measurable: the F0 captures (the E1 baseline) were lost on 2026-10-10; owner decision "
@@ -55,6 +60,18 @@ def document_type(buckets, title):
     return "other"
 
 
+def template_hint(name):
+    """A sampling label from the issuer's name: bank_like / general / unknown (never F4's template, which F4 chooses
+    from the document's own statements)."""
+    if not (name or "").strip():
+        return "unknown"
+    return "bank_like" if BANK_LIKE.search(name) else "general"
+
+
+def issuer_name(f):
+    return f.get("source_name") or f.get("company_name")
+
+
 def link_label(status, basis):
     return "no_decision" if status is None else f"{status}/{basis}"
 
@@ -62,7 +79,7 @@ def link_label(status, basis):
 def stratum(f, master_symbols):
     year = keys.colombo_date(f["uploaded_at"]).year
     listed = "listed" if set(f.get("listing_symbols") or ()) & set(master_symbols) else "not_listed"
-    return (year, document_type(f.get("source_buckets"), f.get("file_text")),
+    return (year, document_type(f.get("source_buckets"), f.get("file_text")), template_hint(issuer_name(f)),
             link_label(f.get("link_status"), f.get("link_basis")), listed)
 
 
@@ -89,9 +106,10 @@ def select(candidates, master_symbols, size=PILOT_SIZE, rule=PILOT_RULE):
 # ------------------------------------------------------------------------------------------------ the sample (reads)
 
 CANDIDATES_SQL = """
-    select f.cse_filing_id, f.path, f.uploaded_at, f.file_text, f.source_buckets, f.listing_symbols,
-           l.status as link_status, l.basis as link_basis
+    select f.cse_filing_id, f.path, f.uploaded_at, f.file_text, f.source_buckets, f.listing_symbols, f.source_name,
+           c.company_name, l.status as link_status, l.basis as link_basis
       from report_filings f
+      left join companies c on c.id = f.company_id
       left join lateral (select x.status, x.basis from filing_issuer_links x where x.cse_filing_id = f.cse_filing_id
                           order by x.id desc limit 1) l on true
      where f.uploaded_at >= %s and f.uploaded_at < %s and f.path is not null
@@ -127,7 +145,8 @@ def propose(conn, window, wall, arming, size=PILOT_SIZE):
                          for f, k in sorted(picked, key=lambda p: p[0]["cse_filing_id"])],
             "strata": dict(sorted(strata.items())),
             "note": "a proposal: the owner reviews it and records the chosen filings with the HB-S3 arming decision; "
-                    "the template (bank / general) is reported after processing, not sampled"}
+                    "the template is sampled by a hint from the issuer's name (bank_like / general / unknown) and "
+                    "the pilot report compares it with F4's actual template"}
 
 
 def sample_filing_ids(doc):
@@ -194,6 +213,15 @@ def report(conn, arming, filing_ids, wall):
     templates = rows(conn, """
         select coalesce(template, '-') as template, count(*) as runs from financial_extraction_runs
          where cse_filing_id = any(%s) group by 1 order by 1""", (ids,))
+    hint_vs_actual = {}                            # the sampling hint against F4's template of the latest run
+    for h in rows(conn, """
+        select f.cse_filing_id, f.source_name, c.company_name,
+               (select r.template from financial_extraction_runs r where r.cse_filing_id = f.cse_filing_id
+                 order by r.id desc limit 1) as template
+          from report_filings f left join companies c on c.id = f.company_id
+         where f.cse_filing_id = any(%s) order by f.cse_filing_id""", (ids,)):
+        cell = hint_vs_actual.setdefault(template_hint(issuer_name(h)), {})
+        cell[h["template"] or "-"] = cell.get(h["template"] or "-", 0) + 1
     sm, refusals = security_master.status(conn, wall, arming)
     completeness = {"security_master": sm.provenance() if sm is not None else {"unavailable": refusals}}
     if sm is not None:
@@ -221,6 +249,7 @@ def report(conn, arming, filing_ids, wall):
                             "first_wakeup_at": growth["first_at"], "last_wakeup_at": growth["last_at"],
                             "relations": sizes},
         "completeness": completeness, "templates": templates,
+        "template_hint_vs_actual": {k: dict(sorted(v.items())) for k, v in sorted(hint_vs_actual.items())},
         "funnel": hb5_coverage.funnel_counts(pilot_rows), "coverage_digest_of_w": cov["digest"],
         "missing_from_w": sorted(set(ids) - {r["cse_filing_id"] for r in cov["table"]}),
         "e1_disappeared_since_f0": E1_NOT_MEASURED,

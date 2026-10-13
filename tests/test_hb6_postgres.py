@@ -12,7 +12,8 @@ scripted cdn.cse.lk (tests/hb6_support.py): nothing contacts the network.
     late evidence  m1 M4 through the late pass, promotion and explicit re-queues, with nothing downloaded again
     stop signal    t1 SIGTERM unwinds the wake-up, which is recorded stopped; the previous handler is restored
     gates          g1 disarmed: F6 bookkeeping only; g2 a block stops every stage until acknowledged and resumed;
-                   g3 no HB-P1; g4 the clock; g5 HB-S3 without a sample, a wrong User-Agent; g6 the real preflight
+                   g3 no HB-P1; g4 the clock; g5 HB-S3 without a sample, a wrong User-Agent; g6 the real preflight;
+                   g7 the database disk refuses below its floor, the dump destination only alerts (B-HB6-2)
     reports        a1 the pilot report and the reports, outside the repository, once; c1 HB-S4 in checkpoint blocks
     boundaries     b1 F6.4 units never wrapped, no lock or lease during F6 work; b2 the runner writes only its wake-ups
     command line   c2 status, plan, requeue, run and the owner's arming through cse-migrator
@@ -424,6 +425,41 @@ def test_g6_the_real_preflight_passes_as_the_worker_and_a_changed_pin_refuses_be
     assert code == EXIT_REFUSED and any("backfill_documents/worker.py changed" in p for _, p in rep["refused"])
 
 
+def test_g7_a_low_or_unreadable_database_disk_refuses_before_any_work_and_the_dump_destination_only_alerts(env,
+                                                                                                          tmp_path):
+    from collections import namedtuple
+    from worker.backfill_ops import DB_DISK_MIN_FREE_BYTES, status
+    usage_of = namedtuple("usage", "total used free")
+    db_path, dump_path = str(tmp_path / "pgdata"), str(tmp_path / "dumps")
+    free = {"db": DB_DISK_MIN_FREE_BYTES - 1, "dump": 10 ** 15}
+
+    def usage(path):
+        return usage_of(0, 0, free["db"] if path == db_path else free["dump"])
+
+    def broken(path):
+        if path == db_path:
+            raise OSError("no such device")
+        return usage(path)
+    wd = World(env, [Filing(951001, "facts", listed=True)], tmp_path, armed_stages=("HB-S1", "HB-S2"))
+    w = env.conn()
+    before = counts(w)
+    code, rep = wd.wake(db_disk_path=db_path, dump_path=dump_path, disk_usage=usage)   # one byte under the floor
+    assert code == EXIT_REFUSED and rep["refused"][0][0] == "db_disk" and "bookkeeping" not in rep
+    assert counts(w) == before and rep["disk"]["database_disk"]["free_bytes"] == DB_DISK_MIN_FREE_BYTES - 1
+    last = runner_wakeups(w)[-1]
+    assert last[3] == "refused" and last[4]["disk"]["database_disk"]["free_bytes"] == DB_DISK_MIN_FREE_BYTES - 1
+    code, rep = wd.wake(db_disk_path=db_path, dump_path=dump_path, disk_usage=broken)  # unreadable: fail closed
+    assert code == EXIT_REFUSED and "cannot be checked" in rep["refused"][0][1] and counts(w) == before
+    free.update(db=DB_DISK_MIN_FREE_BYTES, dump=1)          # at the floor: work runs; a full dump disk only alerts
+    code, rep = wd.wake(db_disk_path=db_path, dump_path=dump_path, disk_usage=usage)
+    assert code == EXIT_ATTENTION and "dump_disk" in attention(rep) and "bookkeeping" in rep
+    assert rep["disk"]["dump_destination"]["free_bytes"] == 1 and rep["disk"]["database_bytes"] == rep["db_bytes"]
+    assert runner_wakeups(w)[-1][4]["disk"]["dump_destination"]["free_bytes"] == 1      # recorded with the wake-up
+    code, st = status.status(w, env.clock.wall(), db_disk_path=str(tmp_path / "missing"),
+                             dump_path=str(tmp_path / "missing-too"))
+    assert code == EXIT_ATTENTION and {"db_disk", "dump_disk"} <= {a[0] for a in st["alerts"]}
+
+
 # ================================================================================================ reports and checkpoints
 
 def test_a1_the_pilot_report_and_the_reports_are_written_outside_the_repository_once(env, tmp_path):
@@ -440,6 +476,9 @@ def test_a1_the_pilot_report_and_the_reports_are_written_outside_the_repository_
     assert rep["time_per_document_seconds"]["documents"] == 2 and rep["funnel"]["filings"] == 2
     assert rep["e1_disappeared_since_f0"] == pilot.E1_NOT_MEASURED
     assert rep["database_growth"]["bytes_at_first_pilot_wakeup"] and rep["templates"]
+    hints = rep["template_hint_vs_actual"]                  # the feed names COMMERCIAL BANK: both hinted bank_like
+    assert list(hints) == ["bank_like"] and sum(hints["bank_like"].values()) == 2
+    assert set(hints["bank_like"]) <= {t["template"] for t in rep["templates"]}         # F4's own template, per filing
     out = tmp_path / "out"
     out.mkdir()
     written = reports.write_all(w, str(out), (arming["window_first_date"], arming["window_last_date"]),
