@@ -23,7 +23,8 @@ Revision 3 (2026-10-02) corrects blocker HB-X3: HB-X1 needs two frozen-test edit
 
 Revision 4 (2026-10-13) records owner decision HB-Q7: Option A. Full F4 structure persistence (R-F4, §11.5) must be
 implemented, independently audited, accepted and frozen before HB-7 / HB-S4 bulk document retrieval (§14.1, §27;
-Appendix D, D15). This adds a gate and removes none. R-F4 has not been designed or implemented.
+Appendix D, D15). This adds a gate and removes none. R-F4 has not been designed or implemented. D16 removes a stale
+HB-Q7 dependency from HB-4's row in §27, where HB-Q7 was never a blocker, and brings Appendix C up to date.
 
 **HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
 HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
@@ -2285,7 +2286,7 @@ hard-code assumptions about the canonical financial-truth layer.
 | **HB-1 Ledger** | Migration `0016` (only if HB-Q1 approved), the store, the preflight; the two HB-X3 frozen-test edits (RDV V9, F6.4's migration-ledger/preflight test) | HB-Q1, HB-Q3 | §23.2 ledger tests; frozen pins unchanged; full regression |
 | **HB-2 Governed transport** | The JSON requester and the F2 fetcher (§16.2), throttle seeding from both archives, budgets, quiet window, blocks, arming checks | HB-1 | P2-rule parity; fake-clock spacing; block, budget and quiet-window tests; static checks |
 | **HB-3 Discovery and issuer evidence** | Feed and listing steps calling F1's own run helpers (HB-U4); the IE-2 import adapter (equivalence with `export-company-info` + `link_issuers` on bodies meeting §7.4(a)); IE-4 with the hold rule; the link pass | HB-2, HB-Q5, HB-Q6 | F1 equivalence; reproduces RDV's F1 and issuer results from the F0 evidence offline; hold-rule tests |
-| **HB-4 Document worker** | `load_filings_from_db` + `process_batch([filing])` + F5's `make_consumer`, `attach_timestamps` and `_persist`, with the ledger event in the same transaction; dedicated temp root, SIGTERM handler, orphan sweep inside locked slices, free-space check, tool pins | HB-2, (HB-Q7) | Crash matrix; cleanup and lease-liveness tests; idempotency; row equivalence with F5's `run()` |
+| **HB-4 Document worker** | `load_filings_from_db` + `process_batch([filing])` + F5's `make_consumer`, `attach_timestamps` and `_persist`, with the ledger event in the same transaction; dedicated temp root, SIGTERM handler, orphan sweep inside locked slices, free-space check, tool pins | HB-2 | Crash matrix; cleanup and lease-liveness tests; idempotency; row equivalence with F5's `run()` |
 | **HB-5 F6 orchestration and audit** | Validate-pending batches, configuration (owner designation), per-issuer reconcile; coverage audit (`hb.coverage.1`), anomaly detectors (`hb.anomaly.1`), reports | HB-4 | Funnel exactness (synthetic); RDV population numbers reproduced offline; detector parity |
 | **HB-6 Operations and pilot (release gate)** | CLI and wrapper, timer units in `ops/backfill/`, provisioning, runbook; then, **owner-run**, the first live work: IE-2 (a P2 sweep on a non-trading day, after HB-P1), discovery (HB-S2) and a **pilot of about 50 documents**, stratified by year, document type (annual, interim, errata), template (bank / general), link basis and listed/delisted | HB-1–HB-5, HB-X2 (its (b) before HB-P1), HB-P1, HB-Q2, HB-Q4, HB-Q8, HB-Q9 | Clean-server Docker test; pilot report: requests, time per document, failure rates, DB growth, `companyInfoSummery`/listing completeness, funnel |
 | **HB-7 Bulk documents** | HB-S4 under the owner's arming, in budgeted slices; checkpoints | Pilot accepted by the owner; HB-Q7 decided (Option A, 2026-10-13): R-F4 implemented, independently audited, accepted and frozen | Ledger and audit at every checkpoint; no stop condition unexplained |
@@ -2354,19 +2355,23 @@ hard-code assumptions about the canonical financial-truth layer.
 | A schema need found → documented blocker, not invented | HB-X1 (§11.4, §26) |
 | PostgreSQL authority; no 24/7 assumption | §14, §15, §20 |
 | G-1 controls | §16.1 |
-| The Master Architecture not edited | Status; the proposed cross-reference is in the phase report only |
+| The Master Architecture not edited | Met when the design was written and closed (revisions 1–3, which did not edit it): the proposed cross-reference was then in the phase report only. Later updates have edited it, among them the HB-1 freeze record, which added the cross-reference (`54bce75`, 2026-10-02; Master Architecture §52, §55), and the owner-approved documentation update that records owner decision HB-Q7 (revision 4; Appendix D, D15), which edited §51, §52 and §55 |
 | Design closure: every blocker and owner question re-checked against the repository; defects corrected in this document only | Appendix D |
 
 ## Appendix D. Design corrections (revisions 2, 3 and 4)
 
 D1–D13 (revision 2) were found by re-checking revision 1 against the repository at `59ac143`. D14 (revision 3) was found
-at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. Every
-correction is confined to this document.
+at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. D16
+(revision 4) corrects two stale statements found on the owner's review of revision 4. Every correction is confined
+to this document.
 - D1–D13 change no frozen stage, blocker conclusion or owner default.
 - D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
   2026-10-02.
 - D15 records owner decision HB-Q7 (Option A, 2026-10-13). It changes no frozen stage and removes no gate: it adds
   "R-F4 implemented, independently audited, accepted and frozen" to the gates of HB-S4 (§14.1) and HB-7 (§27).
+- D16 removes HB-4's stale "(HB-Q7)" dependency (§27), which was never an HB-4 blocker, and makes Appendix C's
+  Master Architecture row historically accurate. It changes no frozen stage, gate or owner decision, and nothing of
+  HB-4's implementation, tests, pins or freeze status.
 
 | # | Where | Defect in revision 1 | Correction | Repository evidence |
 |---|---|---|---|---|
@@ -2385,3 +2390,4 @@ correction is confined to this document.
 | D13 | Status, §1 | "One design blocker" beside three listed blockers and a prerequisite | Status lists exactly which decisions gate HB-1 and which gate live requests | §26 |
 | D14 | Status, §1, §23.4, §26 (HB-X3, HB-Q3), §27, Appendix A | Revision 2 named one frozen-test edit (RDV V9) and stated that no other frozen test pins the count or the last migration (D11). F6.4's migration-ledger/preflight regression test also re-applies the migrations and asserts that 0015 is the last applied one, so any 0016 fails it | HB-X3 is two narrow durable edits with the same invariants: 0015 present at position 14 with its exact frozen hash, `0006` unused, every later migration numbered after 0015, and re-application a no-op | `tests/test_f64_postgres.py:239-241` (`again["already_applied"][-1] == name`). The full offline suite, run with a no-op 0016 in a throwaway copy, failed exactly this test and RDV V9 |
 | D15 | Status, §11.5, §14.1, §26.2, §27, Appendix D | HB-Q7 was an open owner question, and HB-7's dependency "HB-Q7 decided" named the decision but not its consequence | Records owner decision HB-Q7 (Option A, 2026-10-13) and adds the gate "R-F4 implemented, independently audited, accepted and frozen" to HB-S4 (§14.1) and HB-7 (§27), keeping every existing gate | Owner decision HB-Q7, 2026-10-13 |
+| D16 | Status, §27, Appendix C, Appendix D | §27's HB-4 row still listed "(HB-Q7)" as a dependency, although HB-Q7 gates only HB-7 / HB-S4 (§11.5) and HB-4's implementation status (Status) lists it among the "Not HB-4 blockers". Appendix C still said that the Master Architecture was not edited and that the proposed cross-reference was in the phase report only | HB-4 depends on HB-2; its scope and exit criteria are unchanged. Appendix C separates the design work (revisions 1–3 did not edit the Master Architecture) from the later updates that did, including the owner-approved update that records HB-Q7 | `git log -- docs/MASTER_ARCHITECTURE.md`: no change in revisions 1–3 (`59ac143`, `62a24f6`, `75fd835`); the cross-reference first appears in the HB-1 freeze record `54bce75`. Owner review of revision 4, 2026-10-14 |
