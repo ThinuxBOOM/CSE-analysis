@@ -1,20 +1,31 @@
 # R-F4: full F4 structure persistence (design record)
 
-**Status:** PROPOSED. This is a design record for owner review (2026-10-14). Nothing in it is approved for
-implementation, implemented, independently audited, accepted or frozen, and it changes no code, migration, test, pin
-or other document.
+**Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). Implementation is **not yet authorized**. Nothing is
+implemented, independently audited, accepted as a component or frozen. Staging, the pilot, production deployment and
+live operation are separate, later milestones (§10). This record changes no code, migration, test, pin or other
+document.
 
-**Owner decisions already in force.** This record does not reopen them:
-- **HB-Q7, Option A (2026-10-13).** R-F4 must be implemented, independently audited, accepted and frozen before HB-7 /
-  HB-S4 bulk document retrieval (Phase 2 design §11.5, §14.1, §27; Master Architecture §55; runbook §5 step 5).
-- **OD-1, Route A, for R-F4 design only (2026-10-14).** R-F4 extends F5's own consumer and persistence path, and HB-4's
-  frozen composition is preserved (HB-R1, D6).
+| Milestone | Status |
+|---|---|
+| Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
+| Implementation and change-control authorization | **Not given**. It is the next owner action (§8.2) |
+| Implementation, tests, independent audit, component acceptance and freeze | Not started |
+| Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
+| HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
-**Proposed owner decisions:** RF4-M1 to RF4-M5 (§2), awaiting approval. The prefix keeps them apart from F6.4's M1–M5
-(F6.4 design §6) and F8's OD-1 to OD-6.
+**Owner decisions in force:**
+- **HB-Q7, Option A (2026-10-13).** Binding. R-F4 must be implemented, independently audited, accepted and frozen
+  before HB-7 / HB-S4 bulk document retrieval (Phase 2 design §11.5, §14.1, §27; Master Architecture §55; runbook §5
+  step 5).
+- **OD-1 / RF4-M1, Route A (for design on 2026-10-14; accepted with RF4-M1, also on 2026-10-14).** R-F4 extends F5's
+  own orchestration and persistence path under formal change control, and HB-4's frozen consumer composition is
+  preserved (HB-R1, D6).
+- **RF4-M2 to RF4-M5, and OD-7 / OD-8 = Q1 (2026-10-14):** §2 and §10.
 
-**Baseline and evidence.** The baseline is `main` at `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. The evidence is of
-three kinds:
+The `RF4-` prefix keeps these apart from F6.4's M1–M5 (F6.4 design §6) and F8's OD-1 to OD-6.
+
+**Baseline and evidence.** The code baseline is `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. `main` is now
+`e6a4881`, which adds only this record, so the code is identical. The evidence is of three kinds:
 - reading the baseline's code;
 - **reported synthetic results** of the OD-13 simulation. These ran on disposable scratch copies on 2026-10-14, were
   run by Claude and have not been independently re-executed. They used a simulated schema that differs from §4;
@@ -42,16 +53,20 @@ No real-document evidence exists: the RDV evidence was lost (owner decision 2026
 
 ## 2. Decision record
 
-| ID | Proposed owner decision | Status | Covers (earlier labels) | Blocks |
-|---|---|---|---|---|
-| **RF4-M1** | **Integration route and change control.** Route A: HB-4's frozen consumer composition is preserved, and F5's existing persistence path is extended to save the complete F4 model. The formal change-control package (§8) covers the frozen code and test amendments and the dependent preflight-pin cascade. Pin updates accompany the governed changes; passing preflight checks is not behavioural approval. The package includes version policy V1 (§7), RDV option R-a (§8 row 6), the F3 read-back in the R-F4 package (§5), and a new read-only R-F4 `verify` (§5) | Route A: **owner decision for design** (2026-10-14). Implementation and the package: **proposed** | OD-1, OD-2, OD-11, B8, B9 | Implementation |
-| **RF4-M2** | **F4 persistence.** Full, lossless F4 structured-data persistence through additive migration 0018 (§4, §7), subject to implementation and independent audit. It preserves `Decimal` representation, the integer/float distinction, floating-point values, complete headers, child ordering and every F4 field needed to reconstruct faithfully. Unsupported values are rejected, never coerced. It includes the F6.2 §10 amendment (§8 row 4), the `financial_f4_*` names, copied cell fields derived under a write guard, the F3 input hash, the write-time read-back check, and the consequence of an F4 save failure (§6) | **proposed** | OD-3, OD-4, OD-5, B6, B7, RF4-f | Implementation |
-| **RF4-M3** | **Numeric reconstruction.** No `decimal_context` column. Stored `Decimal`s are rebuilt from their exact persisted form, and F5 is rebuilt under a declared reconstruction context. If F5's existing consistency check refuses, the outcome is a typed `f5_rebuild_refused`, and F5's semantics are not changed. Extraction-context provenance is captured only on demonstrated need, and only truthfully, at extraction (§5) | **proposed** | Addendum 2 §1 | Implementation |
-| **RF4-M4** | **Acceptance.** RT-14 (end-to-end rebuild) **and** RT-15 (type-exact structural fidelity), including the `Decimal` and float edge cases. Both F5 `run()` and HB-4's slice are exercised, including save failure and rollback or retry. Hash equality alone does not establish F4 fidelity (§9) | **proposed** | Test plan | Freeze |
-| **RF4-M5** | **Governance and gates.** HB-Q7 is binding. The change-control, staging, pilot, deployment rehearsal, smoke-test and live-request gates stay as they are. Nothing here authorizes infrastructure, CSE contact or live acquisition (§10). `arm` does not check R-F4 (runbook §5); that stays explicit | HB-Q7: **owner decision** (2026-10-13). The rest restates existing gates: **proposed** | OD-12 (unchanged) | — |
+Every decision below was **accepted by the owner on 2026-10-14**. Accepting a design decision does not authorize
+implementation (§8.2), and it is not an audit, a component acceptance, a freeze, a staging pass, a pilot acceptance, a
+deployment or a live-operation authorization (§10).
 
-**The one owner decision that RF4-M1 to RF4-M5 do not settle** is the release sequence (OD-7/OD-8, §10). It doesn't
-block implementation approval, but it does block staging and pilot planning.
+| ID | Owner decision | Status | Covers (earlier labels) | Next milestone it governs |
+|---|---|---|---|---|
+| **RF4-M1** | **Integration route and change control.** Route A: HB-4's frozen consumer composition is preserved, and F5's existing orchestration and persistence path is extended to save the complete F4 model, under formal change control. The change-control package (§8) covers the frozen code and test amendments and the dependent HB-1 to HB-6 preflight-pin cascade. Pin updates accompany the governed changes; passing preflight checks is not behavioural approval. The package includes version policy V1 (§7), RDV option R-a (§8 row 6), the F3 read-back in the R-F4 package (§5), and a new read-only R-F4 `verify` (§5) | **Accepted**, 2026-10-14 (Route A for design first decided on 2026-10-14) | OD-1, OD-2, OD-11, B8, B9 | Implementation authorization |
+| **RF4-M2** | **F4 persistence.** Full, lossless F4 structured-data persistence through additive migration 0018 (§4, §7), subject to implementation and independent audit. It preserves `Decimal` representation, the integer/float distinction, floating-point values, complete headers, child ordering and every F4 field needed to reconstruct faithfully. Unsupported values are explicitly refused, never silently coerced. It includes the F6.2 §10 amendment (§8 row 4), the `financial_f4_*` names, copied cell fields derived under a write guard, the F3 input hash, the write-time read-back check, and the consequence of an F4 save failure (§6) | **Accepted**, 2026-10-14 | OD-3, OD-4, OD-5, B6, B7, RF4-f | Implementation |
+| **RF4-M3** | **Numeric reconstruction.** No `decimal_context` column. Stored `Decimal`s are rebuilt from their exact persisted form, and F5 is rebuilt under an explicitly declared reconstruction context. If F5's existing consistency check refuses, the outcome is a typed `f5_rebuild_refused`, and F5's semantics are not changed. Extraction-context provenance is captured only on demonstrated need, and only truthfully, at extraction (§5) | **Accepted**, 2026-10-14 | Addendum 2 §1 | Implementation |
+| **RF4-M4** | **Acceptance.** RT-14 (end-to-end F5 rebuild and hash equivalence) **and** RT-15 (independent structural-fidelity assertions), plus the numeric, floating-point, transaction, failure, rollback or retry, and regression tests in §9. Both F5 `run()` and HB-4's slice are exercised. Hash equality alone does not establish F4 fidelity | **Accepted**, 2026-10-14 | Test plan | Component acceptance and freeze |
+| **RF4-M5** | **Governance and gates.** HB-Q7 is binding. Every existing governance, staging, pilot, audit, freeze, deployment and live-request gate stays as it is. Nothing here authorizes infrastructure, CSE contact or live acquisition (§10). `arm` does not check R-F4 (runbook §5); that stays explicit | **Accepted**, 2026-10-14. HB-Q7 itself: 2026-10-13 | OD-12 (unchanged) | Every later milestone |
+| **OD-7 / OD-8** | **Release sequence Q1.** R-F4 is frozen before Docker staging, and the HB-S3 pilot runs on the R-F4 build. R-F4's real-document verification is part of pilot acceptance. A defect the pilot finds goes back through change control, audit and freeze, and staging, before HB-S4 (§10) | **Accepted**, 2026-10-14 | OD-7, OD-8, B1 | Staging and the pilot |
+
+There is no remaining open owner decision about the R-F4 design. Deferred items, which block nothing, are in §11.
 
 ## 3. Architecture (Route A)
 
@@ -206,10 +221,24 @@ inherited columns are copies (`:1355`).
   - F5 runs that have no F4 extraction.
 
   A runbook §6 step adds it to each checkpoint, on the restored copy.
+- **R-F4 preflight** is new, in the package. It checks that:
+  - 0018 is applied at its pinned hash;
+  - the five tables and their privileges (§4.4) are in place.
+
+  **No frozen preflight calls it.** HB-1's database check covers only 0016's objects
+  (`worker/financial_backfill/preflight.py:226-262`), and HB-4's preflight stays unchanged. So in HB-4's path, a
+  missing or broken 0018 first shows up at the insert inside `_persist`: that filing rolls back and is recorded as
+  `retry_wait` or `failed`, after its document has already been downloaded (§6).
+
+  **The smallest governed resolution, with no frozen change:**
+  - the preflight runs as an operational step: in staging after migrations, in the production smoke tests, and in
+    every checkpoint's `verify` (§10);
+  - in-band, the store also checks the schema on first use for each connection and raises a typed error. That is an
+    implementation detail.
 
 ## 6. Transactions, failure and retry
 
-The two callers behave differently. R-F4 keeps both behaviours.
+The two callers behave differently. R-F4 keeps both behaviours, and acceptance covers both (§9).
 
 | | F5 `run()` (capped manual tool, outside Phase 2) | HB-4 (the governed Phase 2 path) |
 |---|---|---|
@@ -230,7 +259,7 @@ The two callers behave differently. R-F4 keeps both behaviours.
 
 - **Current state.** No 0018 exists: the migrations are 0001–0005 and 0007–0017. The OD-9 and OD-13 "0018" files
   were scratch-only and never applied to a lasting database.
-- **Proposed migration.** One additive migration, `0018_f4_structure_persistence.sql`.
+- **Migration (accepted with RF4-M2).** One additive migration, `0018_f4_structure_persistence.sql`.
   - It follows the conventions of 0016/0017 and applies through the runner in one transaction.
   - It is forward-only: any fix is a later migration you approve. Rolling back the code leaves the tables in place,
     and `verify` reports any F5 run that has no F4 extraction.
@@ -240,7 +269,8 @@ The two callers behave differently. R-F4 keeps both behaviours.
   - the runner.
 - **Existing databases:** there is no production or staging database, so nothing needs migrating. Runbook §12's
   "migrations 0001–0017" becomes 0001–0018 when this is implemented.
-- **Version policy V1** (proposed, under RF4-M1):
+- **Applying 0018 before any R-F4 build runs** is an operational prerequisite. No frozen preflight checks it (§5).
+- **Version policy V1** (accepted with RF4-M1):
   - `STORE_VERSION = "f4.store.1"` is stored on every extraction and added to HB-1's `FROZEN_VERSIONS`, so it joins the
     A3 armed tuple. The tests build that tuple dynamically, and no production arming exists yet.
   - The F3, F4 and F5 versions are unchanged, because F5's output is unchanged.
@@ -255,14 +285,20 @@ The two callers behave differently. R-F4 keeps both behaviours.
 | 2 | HB-B9 and HB-1's `FROZEN_FILES` pin of that file (`worker/financial_backfill/preflight.py:56`), with the dependent pins in the HB-2 to HB-6 preflights | The edit changes the pinned hash, so the preflights refuse | Re-pin within the same governed change. HB-1: the F5 hash, the R-F4 modules `_persist` imports, and `STORE_VERSION` (V1). HB-2 to HB-6: only the hash of the preflight before each. Each is recorded as a pin-only amendment in the HB-1 to HB-6 freeze records. The pins follow the approved change; they don't approve it |
 | 3 | HB-B1 ("frozen code is unchanged") and the F5 row of design §4.1 | F5's frozen baseline moves | A note in the design record that HB-B1 and HB-B9 hold against the re-frozen F5. No rule changes |
 | 4 | F6.2 §10: "heading (at most 160 characters)" and "header (at most 160 characters)" (`docs/F6.2_DESIGN.md:356-357`). Losslessness is stated only for F5 (`:362`) | Lossless full text is required | Amend F6.2 §10 with the text below. F5's own 160-character clip on its output (`worker/financial_candidates.py:67, 265-266`) is unchanged |
-| 5 | Frozen F5 test `tests/test_f5_lifecycle.py::test_candidates_are_built_in_memory_and_the_document_is_deleted` | Its fake stores have no database connection, and it asserts the exact order `[f3, link, f5, commit]` | A frozen-test edit you approve: an F4 stand-in and the order `[f3, link, f4, f5, commit]`. This was the only behavioural regression in the reported OD-13 runs, on both platforms |
+| 5 | Frozen F5 test `tests/test_f5_lifecycle.py::test_candidates_are_built_in_memory_and_the_document_is_deleted` | Its fake stores have no database connection, and it asserts the exact order `[f3, link, f5, commit]` | A frozen-test edit, accepted in the design (RF4-M1) and made only under implementation authorization: an F4 stand-in and the order `[f3, link, f4, f5, commit]`. This was the only behavioural regression in the reported OD-13 runs, on both platforms |
 | 6 | RDV harness `tests/rdv_evidence.py::persist_filing` (`:364-381`), which claims to save "exactly in `_persist`'s order" | That becomes untrue. The corpus holds no F4 evidence, and RDV-R3 forbids inventing it, so the harness can't call `_persist` now | R-a: change its docstring to "the pre-R-F4 subset" and add a test that its order matches `_persist`'s apart from F4. At the governed re-collection of evidence, switch to `_persist` (R-b, deferred) |
 
 **Not material** (recorded only): `run()`'s batch transaction (§6, pre-existing); and the documentation updates that
-follow an approved implementation:
-- Phase 2 design §10.1, §10.2, §11.1, §11.2, §11.5, §20, §21, §22, §23.4, §27 and Appendix D;
-- Master Architecture §51, §52 and §55;
-- runbook §6, §11 and §12.
+follow an approved implementation (§8.1, items 13–17).
+
+**Statements made stale by the accepted design.** They say R-F4 "has not been designed" and that its design is an open
+owner decision:
+- Phase 2 design §11.5 (lines 1495-1496) and the §27 sequencing bullet (lines 2280-2282);
+- Master Architecture §52 (line 2073) and §55 (lines 2811-2813).
+
+They should now read "designed and accepted (`docs/R_F4_DESIGN.md`, 2026-10-14); not implemented; release sequence
+Q1". They can be updated in a small documentation change or with the implementation change. This record does not edit
+them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated historical entry and stays as written.
 
 **No conflict:**
 - HB-4's code;
@@ -271,7 +307,7 @@ follow an approved implementation:
 - F6.4, F8, and migrations 0001–0017;
 - HB-Q7.
 
-**Proposed F6.2 §10 amendment** (part of RF4-M2):
+**F6.2 §10 amendment text** (accepted with RF4-M2; applied to `docs/F6.2_DESIGN.md` in the implementation change):
 - `:356`: "heading (at most 160 characters)" becomes "heading (full original text)".
 - `:357`: "header (at most 160 characters)" becomes "header (full original text)".
 - `:362` gains: "and lossless for F4: the stored layer reproduces F4's complete output (every field, its type and order,
@@ -287,18 +323,74 @@ follow an approved implementation:
 
 - `:363` gains a note: F5's outputs are unchanged; its orchestration module saves the layer.
 
-**Package contents** (RF4-M1):
-- **Code:** the F5 module, HB-1's preflight, and the HB-2 to HB-6 preflights (pins only).
-- **New files:** migration 0018; the `worker/financial_f4_store/` package (store, reader, encoding, `verify`,
-  preflight); the new tests.
-- **Test edits:** the lifecycle test (row 5) and the RDV harness (row 6).
-- **Records:** the documentation updates listed above, plus an R-F4 implementation note and freeze record.
-- **Pre-R-F4 baseline**, which stays identifiable: commit `b4b8a49`, and the old hashes (the F5 file `9b94d745…`; the
-  preflights of HB-1 `0fbc73e4…`, HB-2 `d66a1470…`, HB-3 `cab061db…`, HB-4 `54332425…`, HB-5 `63f5bcaa…`).
+### 8.1 Implementation scope (the change-control package)
 
-## 9. Acceptance (RF4-M4)
+**Frozen implementation files to change:**
 
-Every test below is **planned**; none has run. The OD-13 outcomes are reported synthetic results only.
+| # | File | Change |
+|---|---|---|
+| 1 | `worker/extract_financial_candidates.py` (F5) | `make_consumer` keeps `"f4"`; `_persist` saves F4 between `link_filing` and the candidate save, and returns `"f4"`; the docstring is corrected. `run()` and `main()` are unchanged |
+| 2 | `worker/financial_backfill/preflight.py` (HB-1) | `FROZEN_FILES`: the F5 file's new hash, plus `worker/financial_f4_store/__init__.py` and every module `_persist` imports from it. `FROZEN_VERSIONS`: adds `("worker.financial_f4_store", "STORE_VERSION", "f4.store.1")` (V1). No rule changes |
+| 3–7 | The preflights of HB-2 (`worker/backfill_transport/`), HB-3 (`worker/backfill_discovery/`), HB-4 (`worker/backfill_documents/`), HB-5 (`worker/backfill_f6/`) and HB-6 (`worker/backfill_ops/`), each `preflight.py` | Hash only: each one's pin of the preflight before it, updated until no pin changes |
+
+**Frozen tests and test support to change:**
+
+| # | File | Change |
+|---|---|---|
+| 8 | `tests/test_f5_lifecycle.py` | That one test only (row 5) |
+| 9 | `tests/rdv_evidence.py` | The `persist_filing` docstring only (R-a, row 6) |
+
+**New files:**
+
+| # | File | Contents |
+|---|---|---|
+| 10 | `supabase/migrations/0018_f4_structure_persistence.sql` | §4, with the conventions of 0016/0017 |
+| 11 | `worker/financial_f4_store/` | `__init__.py` (`STORE_VERSION`), `codec.py` (§4.2), `store.py` (the writer, type and derivation guards, the read-back check), `reader.py` (the F4 reader, the F3 read-back, and the rebuild under `Context()`), `verify.py`, `preflight.py`, `__main__.py` (`preflight` and `verify` commands). No `ops/bin` wrapper; the runbook documents `python -m` |
+| 12 | `tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py` | Everything in §9, including the RDV ordering-consistency test (R-a) |
+
+**Documents** (updated in the implementation change, with "implemented, not frozen" status):
+
+| # | Document | Updates |
+|---|---|---|
+| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above |
+| 14 | `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` | §4.1 F5 row; the HB-B1/HB-B9 note; §10.1; §10.2 (`STORE_VERSION`); §11.1; §11.2 and §20 (capacity); §11.5 and §27 (status); §21 (R-F4 `verify`); §22 (F5 replay from the database); §23.4 (the frozen-test edits); a new Appendix D entry; pin-only notes in the HB-1 to HB-6 freeze records |
+| 15 | `docs/MASTER_ARCHITECTURE.md` | §51 (0018), §52 and §55 |
+| 16 | `docs/ops/PHASE2_BACKFILL.md` | §6 (R-F4 `verify`), §11 (testing), §12 (migrations 0001–0018; R-F4 preflight in deployment) |
+| 17 | `docs/R_F4_DESIGN.md` and a new `docs/R_F4_IMPLEMENTATION.md` | Implementation status. The freeze record is written only after the independent audit |
+
+**Not changed:**
+- HB-4's package code;
+- F2, F3 and F4;
+- F5's builder, mapper, vocabulary and stores;
+- migrations 0001–0017;
+- every other test and pin.
+
+**The pre-R-F4 baseline stays identifiable:**
+- code commit `b4b8a49` (`main` at `e6a4881` adds only this record);
+- the old hashes: the F5 file `9b94d745…`; the preflights of HB-1 `0fbc73e4…`, HB-2 `d66a1470…`, HB-3 `cab061db…`,
+  HB-4 `54332425…` and HB-5 `63f5bcaa…`.
+
+### 8.2 Change-control sequence for the implementation stage
+
+1. **Owner implementation authorization**, naming the §8.1 scope. This is the next owner action. Implementation then
+   proceeds on a controlled branch from `main` (`e6a4881`).
+2. **New code first** (items 10–12), with no frozen file touched yet. Then the targeted unit and PostgreSQL tests.
+3. **Frozen edits:** item 1 (F5), item 8 (the lifecycle test), and item 9 plus its consistency test.
+4. **The pin cascade last** (items 2–7), once every pinned file's content is final:
+   - HB-1 first, then HB-2 to HB-6, until no pin changes;
+   - any later edit to a pinned file means repeating the cascade;
+   - the pins record the change; they don't approve it.
+5. **Full Linux and Windows regression** with controls B, P, S and I, plus mutation testing (§9).
+6. **The records** (items 13–17).
+7. **Hand-off:** uncommitted, for your review and commit. Then the independent audit. Then your component acceptance
+   and the freeze record: R-F4 frozen, F5 frozen again, and the HB-1 to HB-6 pin-only amendments recorded.
+8. **The Q1 release sequence** continues from §10, step 8.
+
+## 9. Acceptance (RF4-M4, accepted 2026-10-14)
+
+Every test below is **planned**; none has run. The OD-13 outcomes are reported synthetic results, not independently
+re-executed. No real-document evidence exists. The two callers are tested separately, because they fail and retry
+differently (§6).
 
 | Test | Layer | What it requires |
 |---|---|---|
@@ -312,41 +404,69 @@ Every test below is **planned**; none has run. The OD-13 outcomes are reported s
 | **Tamper and versions** | Integration | Rows edited or deleted (triggers bypassed in a test database) are reported as `corrupt` or `incomplete`. An unknown store version gives `version_incompatible` |
 | **Migration** | Integration | A fresh install of 0001–0018; an upgrade from 0017; a refusal for an edited or missing 0018; an old build on a new database is flagged by `verify` |
 | **Access rules** | Integration | The privileges in §4.4 |
+| **R-F4 preflight** | Integration | It passes on a migrated database. It refuses when 0018 is missing, edited or under-privileged. The store's in-band schema check raises its typed error before any insert |
 | **Regression controls** | Full suites, Linux and Windows | **B:** the baseline. **P:** the package's non-behavioural parts only (re-pinned with a comment-only F5 edit, the R-F4 package present but not called, 0018 applied, `STORE_VERSION` added); P's failures must equal B's. **S:** the change with stale pins, showing refusals only. **I:** the change, which after the approved test edits must equal B, with identical skips. The suites that call `_persist` must show non-zero passes and no skips. Plus mutation testing |
 | **Real documents** | Governed pilot | At pilot acceptance, not at freeze (§10): seals intact, and the F5 rebuild 100% equal on every saved pilot document |
 
-## 10. Milestones and gates (RF4-M5)
+## 10. Milestones, gates and the Q1 release sequence (RF4-M5, OD-7 / OD-8: accepted 2026-10-14)
 
-Each milestone is separate, and finishing one does not authorize the next:
-1. you approve the design record;
-2. you approve implementation and the change-control package (RF4-M1 to RF4-M4);
-3. implementation on a controlled branch;
-4. targeted and integration tests;
-5. full regression with controls B, P, S and I;
-6. independent audit of the code and evidence;
-7. R-F4 acceptance and freeze (component acceptance, which meets HB-Q7's condition);
-8. Docker staging of the integrated build (staging has to be built first);
-9. acceptance of the integrated frozen build (Master Architecture §43.1);
-10. production deployment: the rehearsal, provisioning and smoke tests;
-11. the live prerequisites (HB-X2, HB-P1 and IE-2), then HB-S1 and HB-S2 under your arming;
-12. the HB-S3 pilot, then your acceptance of it, including R-F4's real-document criteria;
-13. HB-S4 / HB-7: HB-Q9, a recorded checkpoint, your confirmation that R-F4 is frozen (`arm` does not check it), then
-    a separate HB-S4 arming.
+Each milestone is separate. Finishing one does not authorize the next, and every one needs its own owner decision.
 
-**Open owner decision: the release sequence (OD-7/OD-8).**
-- **Q1 (Claude's recommendation):** R-F4 is frozen before staging, staging runs once, and the pilot runs on the R-F4
-  build. No extra downloads. R-F4's real-document checks become pilot-acceptance criteria. A defect found in the pilot
-  goes back through change control, freezing and staging before HB-S4. This matches the HB-6 precedent, which was
-  frozen before its live pilot.
-- **Q2:** the pilot runs on the current build first. That means a second staging cycle and about 50 to 300 more
-  requests to fill in F4 for the pilot documents.
+| # | Milestone | Status |
+|---|---|---|
+| 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
+| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Not given**: the next owner action |
+| 3 | Implementation on a controlled branch | Not started |
+| 4 | Targeted and integration tests (§9) | Not started |
+| 5 | Full regression with controls B, P, S and I; mutation testing | Not started |
+| 6 | Independent audit of the code and evidence | Not started |
+| 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
+| 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
+| 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
+| 10 | Production deployment: the rehearsal, provisioning and smoke tests | Not started. **No server is provisioned** |
+| 11 | The live prerequisites, then HB-S1 and HB-S2 under your arming | Not started |
+| 12 | The HB-S3 pilot **on the R-F4 build**, then your acceptance of it, including R-F4's real-document verification | Not started |
+| 13 | HB-S4 / HB-7 | Gated: HB-Q9, a recorded checkpoint, your confirmation that R-F4 is frozen (`arm` does not check it), then a separate HB-S4 arming |
 
-**Not authorized** by this record or by approving it: infrastructure provisioning, contacting CSE, live acquisition,
-arming, the pilot, or bulk retrieval.
+**Q1, as accepted:**
+- R-F4 is frozen (milestone 7) before Docker staging (milestone 8), so staging validates one integrated build that
+  includes R-F4.
+- The pilot runs on that build, so it needs no extra document downloads.
+- R-F4's real-document verification is part of pilot acceptance (milestone 12): for every saved pilot document, the
+  seals are intact and the F5 rebuild matches 100%. It is not a condition of the component freeze, which rests on the
+  development evidence of §9.
+- A defect the pilot finds goes back through change control, audit and freeze (milestones 2 to 7) and staging
+  (milestone 8) **before HB-S4**. The affected pilot documents are downloaded again under a new arming.
+- This follows the HB-6 precedent: HB-6 was frozen before its live pilot.
+
+**Operational prerequisites for Q1.** These come later and are all owner-run. Nothing is performed by this record.
+
+| Milestone | Prerequisites |
+|---|---|
+| 8 | Build the Docker staging environment (Master Architecture §43.1; it doesn't exist yet). Then: a fresh install of 0001–0018 and an upgrade from 0017; the R-F4 preflight and `verify`; crash and recovery; backup and restore, with F6.4's `verify`, `cse-backfill verify` and R-F4 `verify` on the restored copy; permissions; fault injection that includes forced repeated save failures, to measure the request-budget exposure in §6 |
+| 9 | Accept the integrated frozen build |
+| 10 | The Ubuntu 24.04 server, PostgreSQL 17, P1 provisioning, migrations **0001–0018** through P1's runner, Poppler 24.02.0, the dedicated temporary root, at least 20 GiB free, the deployment rehearsal, and smoke tests that include the R-F4 preflight (runbook §12) |
+| 11 | HB-X2 (a) and (b), with the contact e-mail configured; HB-P1 and IE-2; your arming of HB-S1 and HB-S2 |
+| 12 | Your HB-S3 arming with the pilot sample, which you may edit to add edge cases (runbook §5 step 3). The F6.4 designation after the first runs. A checkpoint with all three `verify` runs. Your pilot acceptance |
+| 13 | HB-Q9 capacity, including the `financial_f4_*` tables (about 200–260 KB per filing, an estimate the pilot measures through HB-6's report). A recorded checkpoint. Your confirmation that R-F4 is frozen. A separate HB-S4 arming |
+
+The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12) remains separate. It is what enables
+RDV option R-b later.
+
+**Not authorized** by this record or by the accepted decisions:
+- implementation (until milestone 2);
+- infrastructure provisioning;
+- contacting CSE;
+- live acquisition;
+- arming;
+- the pilot;
+- bulk retrieval.
 
 ## 11. Open items and assumptions
 
-- **Open owner decision:** the release sequence (§10).
+- **Open owner decisions on the design:** none. The next owner action is implementation authorization (§8.2).
+- **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
+  in-band check and no frozen change (§5, §10).
 - **Deferred:**
   - a job that writes re-mapped F5 runs;
   - `run()`'s batch-transaction finding;
