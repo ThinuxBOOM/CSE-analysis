@@ -5,6 +5,9 @@ migration 0018's tables.
 - Everything is encoded (codec) before any SQL: a value R-F4 cannot store exactly is refused, never coerced.
 - One SAVEPOINT, no commit: the caller owns the transaction, as with F3's and F5's stores. On any error the savepoint
   is rolled back and the error re-raised, so the caller's transaction stays usable and decides what to roll back.
+- Before any insert, inside the savepoint, one catalogue query (schema.problems) checks that 0018's tables exist, this
+  role may SELECT and INSERT, and every guard and append-only trigger is present and enabled: otherwise
+  SchemaUnavailable and nothing is written. It runs on every save, so a schema change is never hidden by a cache.
 - Insert-if-absent on F6.2 section 10's key. The same key with the same content is 'already_present'; with different
   content it is refused (ConflictingEvidence), never overwritten (the tables are append-only).
 - Before returning 'inserted', the extraction is read back in the same transaction and must reproduce the exact
@@ -12,7 +15,7 @@ migration 0018's tables.
 """
 import psycopg2.extras
 
-from . import STORE_VERSION, codec, reader
+from . import STORE_VERSION, codec, reader, schema
 from .errors import ConflictingEvidence, EvidenceRefused, SchemaUnavailable, UnsupportedValue
 
 STATEMENT_INSERT = ("statement_index", "statement_kind", "first_page", "pages", "continuation_of", "scope",
@@ -24,20 +27,6 @@ def _value(table, name, v):
     """A jsonb column's value always goes in as JSON (None as JSON null, read back as None); every other column's as
     it is. The jsonb columns are per table: a statement's cross_check is jsonb, a cell's is text."""
     return psycopg2.extras.Json(v) if name in codec.JSON_COLUMNS[table] else v
-
-
-def schema_problems(cur):
-    """The in-band check: the five tables exist and this role may insert into them. [] when usable."""
-    out = []
-    for t in codec.TABLES:
-        cur.execute("select to_regclass(%s) is not null", (f"public.{t}",))
-        if not cur.fetchone()[0]:
-            out.append(f"{t} is missing (migration 0018 not applied?)")
-        else:
-            cur.execute("select has_table_privilege(current_user, %s, 'INSERT')", (f"public.{t}",))
-            if not cur.fetchone()[0]:
-                out.append(f"{t}: the current role may not insert")
-    return out
 
 
 class PostgresF4Store:
@@ -61,7 +50,7 @@ class PostgresF4Store:
         with self.conn.cursor() as cur:
             cur.execute("savepoint f4_save")
             try:
-                problems = schema_problems(cur)
+                problems = schema.problems(cur)
                 if problems:
                     raise SchemaUnavailable("; ".join(problems))
                 names = list(row)

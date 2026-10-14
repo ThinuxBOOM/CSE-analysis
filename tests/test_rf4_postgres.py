@@ -7,7 +7,8 @@ tests therefore save each document in `_persist`'s accepted order by hand: F3's 
 issuer link, R-F4's store, then F5's store, in one transaction. RT-14 through F5's `run()` and HB-4's slice, and their
 rollback/retry paths, belong to that later stage.
 
-    p1   0018 applied at its pinned hash; the preflight passes as cse_worker and as cse_reader
+    p1   0018 applied at its pinned hash; the preflight's file and object checks pass for both roles, and its ledger
+         check is 'verified' as cse_reader (0009 lets it read ops) and the migration role, 'unverifiable' as cse_worker
     p2   least privilege; append-only for every role, the superuser included; the classification guard
     p3   every synthetic layout: saved, read back type-exactly (RT-15), the F3 read-back exact, F5 rebuilt to the same
          content_sha256 as the original in memory and as stored (RT-14 at the store level); unmapped cells kept
@@ -19,6 +20,11 @@ rollback/retry paths, belong to that later stage.
     p9   a database without 0018: refused in-band before any insert; the forward upgrade 0017 -> 0018
     p10  concurrent writers of the same key: one set of rows, no deadlock
     p11  verify: clean, then missing, incomplete, corrupt, version_incompatible and f5_mismatch, read-only as the reader
+    p12  in-band schema integrity: a missing, disabled, replica-only or re-pointed trigger, or a missing privilege,
+         refuses the save before any insert (the transaction's insert counter stays 0); the check is not cached
+    p13  the preflight's three checks kept apart: the ledger verified as cse_reader, the migration role and the
+         superuser, unverifiable as cse_worker, failed on a tampered or absent entry; object failures reported;
+         the command's exit codes (0 / 1 / 2)
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -187,8 +193,16 @@ def test_p1_0018_is_applied_at_its_pin_and_the_preflight_passes_for_both_roles(d
         [(preflight.MIGRATION_SHA256,)]
     names = [r[0] for r in q(su, "select filename from ops.schema_migrations order by version")]
     assert names[-2:] == ["0017_f8_asof_configuration.sql", preflight.MIGRATION]
-    assert preflight.problems(db.conn()) == []
-    assert preflight.problems(db.reader(), role="cse_reader") == []
+    r = preflight.report(db.conn())
+    assert r["file"] == [] and r["objects"] == [] and r["ledger"]["status"] == "unverifiable" and not r["clean"]
+    r = preflight.report(db.reader())
+    assert r["clean"] and r["ledger"] == {"status": "verified", "problems": [], "read_as": "cse_reader"}
+    m = db.cluster.connect(dbname=db.name, user="cse_migrator")
+    try:
+        r = preflight.report(m)
+        assert r["clean"] and r["ledger"] == {"status": "verified", "problems": [], "read_as": "cse_owner"}
+    finally:
+        m.close()
     types = dict(q(su, "select table_name || '.' || column_name, data_type from information_schema.columns where "
                        "table_name like 'financial\\_f4\\_%%'"))
     assert types["financial_f4_cells.parsed_value_text"] == "text" and types["financial_f4_columns.x0"] == "text"
@@ -460,10 +474,14 @@ def test_p9_without_0018_the_store_refuses_before_any_insert_and_0017_upgrades_f
         with pytest.raises(SchemaUnavailable, match="0018"):
             store.PostgresF4Store(w).save(ext, cid, cls)
         w.rollback()
-        problems = preflight.database_problems(w)
+        problems = preflight.object_problems(w)
         assert problems and all("missing" in p for p in problems)
+        assert preflight.ledger_check(m) == {"status": "failed", "read_as": "cse_owner",
+                                             "problems": [f"{preflight.MIGRATION} is not in the migration ledger"]}
+        assert preflight.ledger_check(w)["status"] == "unverifiable"
         assert mig.apply(m, mig.discover(S.MIGDIR), log=lambda _: None)["applied"] == [preflight.MIGRATION]
-        assert preflight.problems(w) == [] and preflight.problems(d.reader(), role="cse_reader") == []
+        assert preflight.object_problems(w) == [] and preflight.object_problems(d.reader()) == []
+        assert preflight.report(m)["clean"]
         s = persist(w, a_layout_with_cells(layouts), 990002)
         assert s.f4 == "inserted"
     finally:
@@ -554,3 +572,216 @@ def test_p11_verify_reports_every_kind_of_bad_evidence_read_only_as_the_reader(d
         rd = db.reader()
         q(rd, "select 1")
         verify.verify(rd)
+
+
+# ================================================================================================ p12
+
+def f4_inserts(c):
+    """Rows inserted into R-F4's tables by this backend, rolled-back savepoints included: pg_stat_xact_user_tables
+    counts an insert when it happens, not when it commits. It may also hold earlier transactions' counts that are not
+    flushed yet (PostgreSQL 15+), so a test compares it before and after, never with 0."""
+    return q(c, "select coalesce(sum(n_tup_ins), 0) from pg_stat_xact_user_tables where relname like "
+                "'financial\\_f4\\_%%'")[0][0]
+
+
+def trigger_def(su, table, trigger):
+    return q(su, "select pg_get_triggerdef(oid) from pg_trigger where tgrelid = %s::regclass and tgname = %s",
+             (f"public.{table}", trigger))[0][0]
+
+
+def as_owner(su, sql):
+    q(su, f"set role cse_owner; {sql}; reset role")
+
+
+def refused_before_any_insert(w, su, words, fid, match):
+    """Save F3 as `_persist` would, then R-F4: SchemaUnavailable, no row inserted into R-F4's tables even inside the
+    rolled-back savepoint, and the caller's transaction still usable (its F3 row is there until the caller rolls
+    back)."""
+    cls, ext, _ = R.chain(words, fid)
+    seed_filing(w, fid)
+    PostgresClassificationStore(w).save(cls, 1000)
+    cid = classification_id(w, cls)
+    before = f4_inserts(w)
+    with pytest.raises(SchemaUnavailable, match=match):
+        store.PostgresF4Store(w).save(ext, cid, cls)
+    assert f4_inserts(w) == before
+    assert q(w, "select count(*) from report_document_classifications where id = %s", (cid,)) == [(1,)]
+    w.rollback()
+    assert f4_counts(su, fid)["extractions"] == 0                  # counted as the superuser: SELECT may be revoked
+
+
+def test_p12_a_broken_trigger_or_privilege_refuses_the_save_before_any_insert(db, layouts):
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    # the positive control: a working save does register its inserts in this counter
+    cls, ext, _ = R.chain(words, 960000)
+    seed_filing(w, 960000)
+    PostgresClassificationStore(w).save(cls, 1000)
+    before = f4_inserts(w)
+    assert store.PostgresF4Store(w).save(ext, classification_id(w, cls), cls) == "inserted"
+    assert f4_inserts(w) > before
+    w.rollback()
+
+    guard = trigger_def(su, "financial_f4_extractions", "trg_ff4e_guard")
+    append_only = trigger_def(su, "financial_f4_statements", "trg_ff4s_append_only")
+    # (break, restore, the store's message, the preflight's message for cse_worker)
+    cases = [
+        ("alter table financial_f4_cells disable trigger trg_ff4c_append_only",
+         "alter table financial_f4_cells enable trigger trg_ff4c_append_only",
+         "financial_f4_cells: trigger trg_ff4c_append_only is missing or disabled",
+         "financial_f4_cells: trigger trg_ff4c_append_only is missing or disabled"),
+        ("alter table financial_f4_rows enable replica trigger trg_ff4r_no_truncate",     # fires only in replica mode
+         "alter table financial_f4_rows enable trigger trg_ff4r_no_truncate",
+         "financial_f4_rows: trigger trg_ff4r_no_truncate is missing or disabled",
+         "financial_f4_rows: trigger trg_ff4r_no_truncate is missing or disabled"),
+        ("drop trigger trg_ff4e_guard on financial_f4_extractions", guard,
+         "financial_f4_extractions: trigger trg_ff4e_guard is missing or disabled",
+         "financial_f4_extractions: trigger trg_ff4e_guard is missing or disabled"),
+        ("drop trigger trg_ff4s_append_only on financial_f4_statements; create trigger trg_ff4s_append_only before "
+         "update on financial_f4_statements for each row execute function f5_reject_mutation()",  # DELETE let through
+         f"drop trigger trg_ff4s_append_only on financial_f4_statements; {append_only}",
+         r"trg_ff4s_append_only runs f5_reject_mutation \(tgtype 19\), expected f5_reject_mutation \(tgtype 27\)",
+         "financial_f4_statements: trigger trg_ff4s_append_only runs f5_reject_mutation (tgtype 19), expected "
+         "f5_reject_mutation (tgtype 27)"),
+        ("revoke insert on financial_f4_rows from cse_worker", "grant insert on financial_f4_rows to cse_worker",
+         "financial_f4_rows: the current role lacks INSERT", "cse_worker lacks INSERT on financial_f4_rows"),
+        ("revoke select on financial_f4_cells from cse_worker", "grant select on financial_f4_cells to cse_worker",
+         "financial_f4_cells: the current role lacks SELECT", "cse_worker lacks SELECT on financial_f4_cells"),
+    ]
+    for n, (break_sql, restore_sql, match, reported) in enumerate(cases):
+        as_owner(su, break_sql)
+        try:
+            refused_before_any_insert(w, su, words, 960001 + n, match)
+            assert reported in preflight.object_problems(w)
+        finally:
+            as_owner(su, restore_sql)
+    assert preflight.object_problems(su) == []                        # every change was undone, exactly
+    assert q(su, "select count(*) from financial_f4_extractions") == [(0,)]
+
+
+def test_p12_the_check_runs_on_every_save_and_never_caches_a_success(db, layouts):
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    one = store.PostgresF4Store(w)                                    # one store, one connection, the whole test
+    cls, ext, _ = R.chain(words, 961001)
+    seed_filing(w, 961001)
+    PostgresClassificationStore(w).save(cls, 1000)
+    assert one.save(ext, classification_id(w, cls), cls) == "inserted"
+    w.commit()
+    cls2, ext2, _ = R.chain(words, 961002)
+    seed_filing(w, 961002)
+    as_owner(su, "alter table financial_f4_extractions disable trigger trg_ff4e_guard")
+    try:
+        PostgresClassificationStore(w).save(cls2, 1000)
+        with pytest.raises(SchemaUnavailable, match="trg_ff4e_guard is missing or disabled"):
+            one.save(ext2, classification_id(w, cls2), cls2)
+        w.rollback()
+    finally:
+        as_owner(su, "alter table financial_f4_extractions enable trigger trg_ff4e_guard")
+    PostgresClassificationStore(w).save(cls2, 1000)
+    assert one.save(ext2, classification_id(w, cls2), cls2) == "inserted"
+    w.commit()
+    assert f4_counts(w, 961002)["extractions"] == 1
+
+
+# ================================================================================================ p13
+
+def migrator(db):
+    """A connection as P1's migration role (NOINHERIT; may SET ROLE cse_owner), as `--migration-role` connects."""
+    c = db.cluster.connect(dbname=db.name, user="cse_migrator")
+    db._open.append(c)
+    return c
+
+
+def test_p13_the_ledger_is_verified_only_by_a_role_that_can_read_it(db):
+    w, rd, su, m = db.conn(), db.reader(), db.su(), migrator(db)
+    assert preflight.ledger_check(su) == {"status": "verified", "problems": [], "read_as": "postgres"}
+    assert preflight.ledger_check(rd) == {"status": "verified", "problems": [], "read_as": "cse_reader"}
+    assert preflight.ledger_check(m) == {"status": "verified", "problems": [], "read_as": "cse_owner"}
+    assert q(m, "select current_user") == [("cse_migrator",)]        # the owner role ended with the transaction
+    m.rollback()
+    got = preflight.ledger_check(w)
+    assert got["status"] == "unverifiable" and got["read_as"] is None
+    assert got["problems"][0].startswith("role cse_worker cannot read ops.schema_migrations")
+    assert "NOT verified" in got["problems"][0] and "--migration-role" in got["problems"][0]
+    assert q(w, "select has_schema_privilege(current_user, 'ops', 'USAGE')") == [(False,)]       # least privilege
+    w.rollback()
+    r = preflight.report(w)
+    assert r["file"] == [] and r["objects"] == [] and not r["clean"]
+    # one run as the migration role checks the file, both roles' objects and the ledger
+    assert preflight.report(m) == {"file": [], "objects": [], "roles": ["cse_worker", "cse_reader"], "clean": True,
+                                   "ledger": {"status": "verified", "problems": [], "read_as": "cse_owner"}}
+
+
+def test_p13_a_tampered_or_misnumbered_ledger_entry_fails(db):
+    su, m = db.su(), migrator(db)
+    pinned = q(su, "select sha256 from ops.schema_migrations where version = 18")[0][0]
+    assert pinned == preflight.MIGRATION_SHA256
+    q(su, "set session_replication_role = replica")                  # the ledger is append-only by trigger
+    try:
+        q(su, "update ops.schema_migrations set sha256 = %s where version = 18", ("e" * 64,))
+        got = preflight.ledger_check(m)
+        assert got["status"] == "failed" and "e" * 64 in got["problems"][0]
+        assert not preflight.report(m)["clean"]
+        q(su, "update ops.schema_migrations set version = 1018, sha256 = %s where version = 18", (pinned,))
+        got = preflight.ledger_check(m)
+        assert got["status"] == "failed" and "1018" in got["problems"][0]   # found by its filename, wrong version
+    finally:
+        q(su, "update ops.schema_migrations set version = 18, sha256 = %s where filename = %s",
+          (pinned, preflight.MIGRATION))
+        q(su, "set session_replication_role = origin")
+    assert preflight.ledger_check(m)["status"] == "verified"
+
+
+def test_p13_object_problems_are_reported_for_the_named_roles(db):
+    su, m = db.su(), migrator(db)
+    decimal_def = q(su, "select pg_get_constraintdef(oid) from pg_constraint where conname = 'chk_ff4c_decimal'")[0][0]
+    cases = [
+        ("grant update on financial_f4_cells to cse_worker", "revoke update on financial_f4_cells from cse_worker",
+         "cse_worker has UPDATE on financial_f4_cells: the table is append-only"),
+        ("grant insert on financial_f4_rows to cse_reader", "revoke insert on financial_f4_rows from cse_reader",
+         "cse_reader has INSERT on financial_f4_rows: the table is append-only"),
+        ("revoke select on financial_f4_statements from cse_reader",
+         "grant select on financial_f4_statements to cse_reader", "cse_reader lacks SELECT on financial_f4_statements"),
+        ("grant execute on function financial_f4_extraction_guard() to cse_worker",
+         "revoke execute on function financial_f4_extraction_guard() from cse_worker",
+         "cse_worker has EXECUTE on the trigger function financial_f4_extraction_guard"),
+        ("alter table financial_f4_cells drop constraint chk_ff4c_decimal",
+         f"alter table financial_f4_cells add constraint chk_ff4c_decimal {decimal_def}",
+         "financial_f4_cells: constraint chk_ff4c_decimal is missing"),
+        ("alter table financial_f4_columns disable trigger trg_ff4k_no_truncate",
+         "alter table financial_f4_columns enable trigger trg_ff4k_no_truncate",
+         "financial_f4_columns: trigger trg_ff4k_no_truncate is missing or disabled"),
+    ]
+    for break_sql, restore_sql, want in cases:
+        as_owner(su, break_sql)
+        try:
+            got = preflight.report(m)
+            assert want in got["objects"] and not got["clean"], (want, got["objects"])
+            assert got["file"] == [] and got["ledger"]["status"] == "verified"     # the three checks stay apart
+        finally:
+            as_owner(su, restore_sql)
+    assert preflight.report(m)["clean"]
+
+
+def test_p13_the_command_exits_0_clean_1_problem_2_unverifiable(db, monkeypatch, capsys):
+    from worker import db as worker_db
+    from worker.financial_f4_store import __main__ as cli
+    from worker.ops import settings as ops_settings
+    monkeypatch.setattr(worker_db, "get_connection", lambda: db.conn())
+    assert cli.main(["preflight"]) == 2                               # nothing wrong found, the ledger NOT verified
+    out = json.loads(capsys.readouterr().out)
+    assert out["ledger"]["status"] == "unverifiable" and out["clean"] is False
+    monkeypatch.setattr(ops_settings, "load", lambda: SimpleNamespace(owner_role="cse_owner", db_user=None))
+    monkeypatch.setattr(ops_settings, "connect", lambda s, user=None: db.cluster.connect(dbname=db.name, user=user))
+    assert cli.main(["preflight", "--migration-role"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["clean"] and out["ledger"]["read_as"] == "cse_owner"
+    su = db.su()
+    as_owner(su, "alter table financial_f4_cells disable trigger trg_ff4c_append_only")
+    try:
+        assert cli.main(["preflight", "--migration-role"]) == 1
+        assert cli.main(["preflight"]) == 1                           # a found problem outranks 'unverifiable'
+    finally:
+        as_owner(su, "alter table financial_f4_cells enable trigger trg_ff4c_append_only")
+    capsys.readouterr()

@@ -10,7 +10,10 @@ back exactly and verified, so that F5 can be rebuilt from the saved F3 and F4 ev
                no commit (the caller commits, as F3's and F5's stores), a read-back check before it returns
     reader     load an extraction; read F3 back from migration 0005; rebuild F5 under the declared decimal context
     verify     read-only: every extraction's seals, the F5 rebuild of every F5 run, F5 runs without an extraction
-    preflight  0018's pinned hash, the tables, the privileges and the triggers
+    schema     one catalogue query: 0018's tables, a role's SELECT/INSERT, the guard and append-only triggers enabled;
+               the store runs it before every save
+    preflight  three separate checks: the checkout's 0018 against its pin; the database objects (tables, constraints,
+               privileges of both roles, triggers); the migration ledger (verified, failed or unverifiable)
 
 Design section 3: F5's `_persist` is the intended caller (Route A). Nothing here changes F3, F4 or F5 semantics.
 """

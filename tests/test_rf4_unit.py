@@ -38,7 +38,7 @@ import pytest  # noqa: E402
 import rf4_support as R  # noqa: E402
 from worker import financial_candidates as f5  # noqa: E402
 from worker import statement_extraction as se  # noqa: E402
-from worker.financial_f4_store import STORE_VERSION, codec, preflight, reader  # noqa: E402
+from worker.financial_f4_store import STORE_VERSION, codec, preflight, reader, schema  # noqa: E402
 from worker.financial_f4_store.errors import EvidenceRefused, UnsupportedValue  # noqa: E402
 from worker.financial_values import parse_value  # noqa: E402
 
@@ -426,7 +426,7 @@ def _code_only(src):
 def test_u13_the_package_imports_no_network_cse_or_provider_module_and_writes_only_its_tables():
     sources = _package_sources()
     assert set(sources) == {"__init__.py", "__main__.py", "codec.py", "errors.py", "preflight.py", "reader.py",
-                            "store.py", "verify.py"}
+                            "schema.py", "store.py", "verify.py"}
     forbidden = re.compile(r"^(requests|urllib|http|socket|aiohttp|ftplib|smtplib|webbrowser|google|openai|anthropic)"
                            r"(\.|$)|cse_client|market_capture|document_retrieval|backfill_|pdf_words")
     for name, src in sources.items():
@@ -461,6 +461,29 @@ def test_u13_migration_0018_is_additive_and_pinned_by_the_preflight():
         assert re.search(rf"before truncate on {t}\s+for each statement execute function f5_reject_mutation", code)
     names = re.findall(r"constraint (\w+)", code)
     assert len(names) == len(set(names))
+
+
+def test_u13_the_schema_checks_name_exactly_what_0018_creates():
+    """The in-band check and the preflight hard-code 0018's triggers, constraints and foreign keys: tie them to the
+    migration's text, so an edit to either side fails here."""
+    code = re.sub(r"--[^\n]*", " ", open(MIGRATION, encoding="utf-8").read())
+    timing = {"before insert": schema.BEFORE_INSERT_ROW, "before update or delete": schema.BEFORE_UPDATE_DELETE_ROW,
+              "before truncate": schema.BEFORE_TRUNCATE_STATEMENT}
+    created = {}
+    for name, when, table, each, fn in re.findall(r"create trigger (\w+) (before [a-z ]+?) on (\w+)\s+for each "
+                                                   r"(row|statement) execute function (\w+)\(\)", code):
+        assert (each == "row") == bool(timing[when] & 1), name
+        created.setdefault(table, {})[name] = (fn, timing[when])
+    assert created == schema.TRIGGERS
+    assert preflight.TRIGGERS == {t: tuple(v) for t, v in schema.TRIGGERS.items()}
+    assert set(schema.TRIGGERS) == set(codec.TABLES) and set(preflight.CONSTRAINTS) == set(codec.TABLES)
+    for table, body in re.findall(r"create table (\w+) \((.*?)\n\);", code, re.S):
+        assert tuple(re.findall(r"constraint (\w+)", body)) == preflight.CONSTRAINTS[table], table
+        assert len(re.findall(r"\breferences\b", body)) == preflight.FOREIGN_KEYS[table], table
+        assert body.count("primary key") == 1, table
+    assert schema.STORE_PRIVILEGES == preflight.PRIVILEGES["cse_worker"][0]
+    assert re.search(r"grant select, insert on financial_f4_extractions, financial_f4_statements, financial_f4_columns, "
+                     r"financial_f4_rows,\s+financial_f4_cells to cse_worker", code)
 
 
 def test_u13_the_codec_knows_exactly_which_columns_of_each_table_are_jsonb():
