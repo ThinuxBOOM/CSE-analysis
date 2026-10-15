@@ -208,6 +208,20 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
 
 - The local Ubuntu 24.04 server; native PostgreSQL 17; P1 provisioning (roles, peer authentication, backups and the
   off-site destination); migrations 0001–0017 through P1's runner.
+- **R-F4 (`docs/R_F4_DESIGN.md`).** Only for a build that includes R-F4. R-F4 is implemented in Stage 1 on a branch
+  and is **not** audited, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen
+  before Docker staging. On such a build, migration 0018 is applied through P1's runner, and **before proceeding** the
+  owner runs the R-F4 preflight, which checks three things separately: the checked-out 0018 against the code's pin,
+  the migration ledger's 0018 entry and hash, and the live tables, constraints, privileges and triggers. The ledger
+  must be verified by a route that can read it:
+  - the migration role (owner-level):
+    `sudo -u cse-migrator env PYTHONPATH=/opt/cse/app CSE_DB_USER=cse_migrator python3 -m worker.financial_f4_store preflight --migration-role`;
+  - or a login that is a member of `cse_reader`, with `DATABASE_URL` set to it (none is provisioned yet).
+
+  Proceed only on exit 0 (`"clean": true`). Exit 1 is a problem to fix. Exit 2 means the ledger could not be read
+  (`"status": "unverifiable"`, as for a `cse_worker` connection, which has no access to `ops`): it is **not** a pass.
+  Re-run by one of the routes above. P1's `cse-ops migrate verify` compares the ledger with the checked-out files only,
+  not with R-F4's pin.
 - NTP time synchronisation, and approved outbound network access to CSE's API and CDN only.
 - P1's private spool and backup root; the dedicated temporary root with at least 464 MB free; Poppler 24.02.0; at least
   20 GiB free on the database disk (the runner refuses below it), and room at the dump destination for the growing dumps.

@@ -1,15 +1,20 @@
 # R-F4: full F4 structure persistence (design record)
 
-**Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). Implementation is **not yet authorized**. Nothing is
-implemented, independently audited, accepted as a component or frozen. Staging, the pilot, production deployment and
-live operation are separate, later milestones (§10). This record changes no code, migration, test, pin or other
-document.
+**Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). **Implementation authorized** by the owner on
+2026-10-14 for the §8.1 scope under the §8.2 sequence, **one stage at a time**: Stage 1 (§8.2 step 2, the new code and
+its tests) is implemented, with an owner-directed correction, on the controlled branch `claude/rf4-implementation`.
+Stage 2 (the frozen edits and the pin cascade, §8.2 steps 3–4) needs a **separate owner authorization** after the
+owner's review of Stage 1. R-F4 is **not** independently audited, accepted as a component or frozen; it is not wired
+into F5's `_persist`, so nothing in production code calls it. Staging, the pilot, production deployment and live
+operation are separate, later milestones (§10). This record changes no code, migration, test or pin.
 
 | Milestone | Status |
 |---|---|
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
-| Implementation and change-control authorization | **Not given**. It is the next owner action (§8.2) |
-| Implementation, tests, independent audit, component acceptance and freeze | Not started |
+| Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (it follows the owner's review of Stage 1) |
+| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then the correction `dc6302d` and `7c56cac`; not merged to `main`). Targeted results are Claude's reports, not independently re-executed (§10, milestone 4) |
+| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | Not started |
+| Independent audit, component acceptance and freeze | Not started |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -25,7 +30,8 @@ document.
 The `RF4-` prefix keeps these apart from F6.4's M1–M5 (F6.4 design §6) and F8's OD-1 to OD-6.
 
 **Baseline and evidence.** The code baseline is `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. `main` is now
-`e6a4881`, which adds only this record, so the code is identical. The evidence is of three kinds:
+`4646626`, which adds only this record (`e6a4881`, then its update), so the code is identical; Stage 1 branched from
+it. The design evidence is of three kinds:
 - reading the baseline's code;
 - **reported synthetic results** of the OD-13 simulation. These ran on disposable scratch copies on 2026-10-14, were
   run by Claude and have not been independently re-executed. They used a simulated schema that differs from §4;
@@ -221,9 +227,35 @@ inherited columns are copies (`:1355`).
   - F5 runs that have no F4 extraction.
 
   A runbook §6 step adds it to each checkpoint, on the restored copy.
-- **R-F4 preflight** is new, in the package. It checks that:
-  - 0018 is applied at its pinned hash;
-  - the five tables and their privileges (§4.4) are in place.
+- **R-F4 preflight** is new, in the package (`python -m worker.financial_f4_store preflight`). It makes three
+  **separate** checks and reports each on its own; one never stands in for another:
+  1. **file**: the checked-out `0018_f4_structure_persistence.sql` is identical (LF-normalised, as P1's runner hashes
+     it) to the code's pin;
+  2. **ledger**: `ops.schema_migrations` records version 18, `0018_f4_structure_persistence.sql`, at the pinned
+     SHA-256. Its result is `verified`, `failed`, or `unverifiable` when the connection cannot read the ledger;
+  3. **objects**: the live database as it is now: the five tables; their named constraints, primary keys and foreign
+     keys, validated; for `cse_worker` and `cse_reader` the privileges of §4.4 that each must have and must not have;
+     the guard and append-only triggers, present, enabled, running the expected function at the expected timing; the
+     guard function without `SECURITY DEFINER` and without EXECUTE for either role.
+
+  It reports **clean** (exit 0) only when the file and the objects pass **and** the ledger was read and verified.
+  Exit 1 means a check found a problem. Exit 2 means nothing was found wrong but the ledger could not be read: that is
+  **not** a pass.
+
+  **Who can verify the ledger** (no privilege is added for it):
+  - a login that is a member of `cse_reader`: migration 0009 already gives `cse_reader` USAGE on schema `ops` and
+    SELECT on its tables (`supabase/migrations/0009_local_security_boundary.sql:60,117`). No such login is provisioned
+    yet (P1 keeps `cse_reader` as a group role for later analysis logins);
+  - the migration role, the owner-level route: `preflight --migration-role` connects as P1's runner does (user
+    `CSE_DB_USER` or `cse_migrator`) and reads the ledger as `cse_owner`, the way the runner's own `status` does,
+    inside a read-only transaction that is rolled back.
+
+  `cse_worker` has no access to `ops`, by design. Run as `cse_worker`, the preflight reports the ledger as
+  `unverifiable` and is never clean; it does not skip the check silently. The object checks name both roles
+  explicitly, so one run checks both roles' privileges whoever runs it.
+
+  P1's own `cse-ops migrate verify` shows that every applied migration matches the **checked-out** file. It does not
+  compare 0018 with R-F4's code pin; the R-F4 preflight does.
 
   **No frozen preflight calls it.** HB-1's database check covers only 0016's objects
   (`worker/financial_backfill/preflight.py:226-262`), and HB-4's preflight stays unchanged. So in HB-4's path, a
@@ -233,8 +265,12 @@ inherited columns are copies (`:1355`).
   **The smallest governed resolution, with no frozen change:**
   - the preflight runs as an operational step: in staging after migrations, in the production smoke tests, and in
     every checkpoint's `verify` (§10);
-  - in-band, the store also checks the schema on first use for each connection and raises a typed error. That is an
-    implementation detail.
+  - in-band, the store also checks the schema and raises a typed error (`SchemaUnavailable`). As implemented in
+    Stage 1 (its owner-directed correction), the check runs on **every** save, inside the store's savepoint and before
+    any insert: one catalogue query covers the five tables, the current role's SELECT and INSERT, and every guard and
+    append-only trigger (present, enabled, expected function and timing). Nothing is cached, so a schema change made
+    while a process runs is seen at its next save. This is stricter than the "first use for each connection" first
+    proposed here, and is still an implementation detail.
 
 ## 6. Transactions, failure and retry
 
@@ -372,8 +408,10 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 ### 8.2 Change-control sequence for the implementation stage
 
-1. **Owner implementation authorization**, naming the §8.1 scope. This is the next owner action. Implementation then
-   proceeds on a controlled branch from `main` (`e6a4881`).
+1. **Owner implementation authorization**, naming the §8.1 scope. **Given 2026-10-14**, stage by stage: Stage 1 is
+   step 2 below; Stage 2 (steps 3–4) needs a separate owner authorization after the owner's review of Stage 1.
+   Implementation proceeds on the controlled branch `claude/rf4-implementation`, from `main` at `4646626` (code
+   identical to `e6a4881`).
 2. **New code first** (items 10–12), with no frozen file touched yet. Then the targeted unit and PostgreSQL tests.
 3. **Frozen edits:** item 1 (F5), item 8 (the lifecycle test), and item 9 plus its consistency test.
 4. **The pin cascade last** (items 2–7), once every pinned file's content is final:
@@ -388,9 +426,12 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 ## 9. Acceptance (RF4-M4, accepted 2026-10-14)
 
-Every test below is **planned**; none has run. The OD-13 outcomes are reported synthetic results, not independently
-re-executed. No real-document evidence exists. The two callers are tested separately, because they fail and retry
-differently (§6).
+These are the acceptance tests. **Stage 1** ran the parts that need no frozen change, at the store level
+(`tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py`): its results are Claude's reports, on synthetic layouts, not
+independently re-executed. The parts that go through F5's `run()` and HB-4's slice (RT-14 end to end, rollback and
+retry), the regression controls and mutation testing need **Stage 2** and have not run. The OD-13 outcomes are reported
+synthetic results, not independently re-executed. No real-document evidence exists. The two callers are tested
+separately, because they fail and retry differently (§6).
 
 | Test | Layer | What it requires |
 |---|---|---|
@@ -404,7 +445,7 @@ differently (§6).
 | **Tamper and versions** | Integration | Rows edited or deleted (triggers bypassed in a test database) are reported as `corrupt` or `incomplete`. An unknown store version gives `version_incompatible` |
 | **Migration** | Integration | A fresh install of 0001–0018; an upgrade from 0017; a refusal for an edited or missing 0018; an old build on a new database is flagged by `verify` |
 | **Access rules** | Integration | The privileges in §4.4 |
-| **R-F4 preflight** | Integration | It passes on a migrated database. It refuses when 0018 is missing, edited or under-privileged. The store's in-band schema check raises its typed error before any insert |
+| **R-F4 preflight** | Integration | It passes on a migrated database. It refuses when 0018 is missing, edited or under-privileged. It reports the file, the ledger and the objects separately, and is never clean while the ledger is unverifiable (`cse_worker`). The store's in-band schema check raises its typed error before any insert when a table, a privilege or a trigger is missing, disabled or altered |
 | **Regression controls** | Full suites, Linux and Windows | **B:** the baseline. **P:** the package's non-behavioural parts only (re-pinned with a comment-only F5 edit, the R-F4 package present but not called, 0018 applied, `STORE_VERSION` added); P's failures must equal B's. **S:** the change with stale pins, showing refusals only. **I:** the change, which after the approved test edits must equal B, with identical skips. The suites that call `_persist` must show non-zero passes and no skips. Plus mutation testing |
 | **Real documents** | Governed pilot | At pilot acceptance, not at freeze (§10): seals intact, and the F5 rebuild 100% equal on every saved pilot document |
 
@@ -415,9 +456,9 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
-| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Not given**: the next owner action |
-| 3 | Implementation on a controlled branch | Not started |
-| 4 | Targeted and integration tests (§9) | Not started |
+| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given** 2026-10-14, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (after the owner's review of Stage 1) |
+| 3 | Implementation on a controlled branch | **In progress.** Stage 1 (§8.1 items 10–12: migration 0018, the `worker/financial_f4_store/` package, the R-F4 tests) on `claude/rf4-implementation`: owner commits `77cfb84`, then `dc6302d` and `7c56cac` (the owner-directed correction: the in-band schema check, the preflight's three separate checks, test cleanup). Stage 2 (items 1–9, 13–17) not started |
+| 4 | Targeted and integration tests (§9) | **Stage 1 part run**, as Claude's reports on synthetic layouts, not independently re-executed: the R-F4 unit and PostgreSQL suites in a Linux container (PostgreSQL 17.11) and the full Windows suite, plus a negative control of the in-band check against the uncorrected `77cfb84` store. The Stage 2 parts (RT-14 through `run()` and HB-4, rollback and retry) have not run |
 | 5 | Full regression with controls B, P, S and I; mutation testing | Not started |
 | 6 | Independent audit of the code and evidence | Not started |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
@@ -454,7 +495,8 @@ The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12
 RDV option R-b later.
 
 **Not authorized** by this record or by the accepted decisions:
-- implementation (until milestone 2);
+- implementation beyond Stage 1: Stage 2 (the F5 wiring, the frozen-test and RDV edits, the pin cascade) needs its own
+  owner authorization;
 - infrastructure provisioning;
 - contacting CSE;
 - live acquisition;
@@ -464,9 +506,11 @@ RDV option R-b later.
 
 ## 11. Open items and assumptions
 
-- **Open owner decisions on the design:** none. The next owner action is implementation authorization (§8.2).
+- **Open owner decisions on the design:** none. The next owner actions are the review of Stage 1, then a separate
+  Stage 2 authorization (§8.2).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
-  in-band check and no frozen change (§5, §10).
+  in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
+  that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.
 - **Deferred:**
   - a job that writes re-mapped F5 runs;
   - `run()`'s batch-transaction finding;

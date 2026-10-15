@@ -593,6 +593,16 @@ def as_owner(su, sql):
     q(su, f"set role cse_owner; {sql}; reset role")
 
 
+def restore_after_rollback(w, su, restore_sql):
+    """Undo a schema change made for a test. The worker's transaction is rolled back first: after a failed assertion it
+    may still hold locks on the table, and the restoring ALTER TABLE would wait on them for ever. The restore runs even
+    if that rollback fails (a broken connection releases its locks anyway)."""
+    try:
+        w.rollback()
+    finally:
+        as_owner(su, restore_sql)
+
+
 def refused_before_any_insert(w, su, words, fid, match):
     """Save F3 as `_persist` would, then R-F4: SchemaUnavailable, no row inserted into R-F4's tables even inside the
     rolled-back savepoint, and the caller's transaction still usable (its F3 row is there until the caller rolls
@@ -654,8 +664,7 @@ def test_p12_a_broken_trigger_or_privilege_refuses_the_save_before_any_insert(db
             refused_before_any_insert(w, su, words, 960001 + n, match)
             assert reported in preflight.object_problems(w)
         finally:
-            w.rollback()                  # a failed assertion must not leave the worker's locks blocking the restore
-            as_owner(su, restore_sql)
+            restore_after_rollback(w, su, restore_sql)
     assert preflight.object_problems(su) == []                        # every change was undone, exactly
     assert q(su, "select count(*) from financial_f4_extractions") == [(0,)]
 
@@ -678,8 +687,7 @@ def test_p12_the_check_runs_on_every_save_and_never_caches_a_success(db, layouts
             one.save(ext2, classification_id(w, cls2), cls2)
         w.rollback()
     finally:
-        w.rollback()                      # a failed assertion must not leave the worker's locks blocking the restore
-        as_owner(su, "alter table financial_f4_extractions enable trigger trg_ff4e_guard")
+        restore_after_rollback(w, su, "alter table financial_f4_extractions enable trigger trg_ff4e_guard")
     PostgresClassificationStore(w).save(cls2, 1000)
     assert one.save(ext2, classification_id(w, cls2), cls2) == "inserted"
     w.commit()
