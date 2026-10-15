@@ -654,6 +654,7 @@ def test_p12_a_broken_trigger_or_privilege_refuses_the_save_before_any_insert(db
             refused_before_any_insert(w, su, words, 960001 + n, match)
             assert reported in preflight.object_problems(w)
         finally:
+            w.rollback()                  # a failed assertion must not leave the worker's locks blocking the restore
             as_owner(su, restore_sql)
     assert preflight.object_problems(su) == []                        # every change was undone, exactly
     assert q(su, "select count(*) from financial_f4_extractions") == [(0,)]
@@ -677,6 +678,7 @@ def test_p12_the_check_runs_on_every_save_and_never_caches_a_success(db, layouts
             one.save(ext2, classification_id(w, cls2), cls2)
         w.rollback()
     finally:
+        w.rollback()                      # a failed assertion must not leave the worker's locks blocking the restore
         as_owner(su, "alter table financial_f4_extractions enable trigger trg_ff4e_guard")
     PostgresClassificationStore(w).save(cls2, 1000)
     assert one.save(ext2, classification_id(w, cls2), cls2) == "inserted"
