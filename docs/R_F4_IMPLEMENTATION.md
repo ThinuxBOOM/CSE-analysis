@@ -1,9 +1,10 @@
 # R-F4: full F4 structure persistence (implementation record)
 
-**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. NOT
-independently audited after Stage 2, NOT accepted, NOT frozen.** §8.1 item 13 of the design is **blocked** (an open
-owner decision, §6 below), so the approved change-control package is incomplete on that item. Every result here is
-Claude's report, on synthetic layouts, not independently re-executed. No real-document evidence exists.
+**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The
+independent audit of Stage 2 is NOT complete: its three findings (2026-10-17) are remediated in `f67c181` (§7) and await
+the owner's independent review. NOT accepted, NOT frozen.** §8.1 item 13 was decided by the owner on 2026-10-17: Option
+B, F6.2 stays frozen and the R-F4 design carries the amendment text (§7.1). Every result here is Claude's report, on
+synthetic layouts, not independently re-executed. No real-document evidence exists.
 
 **Canonical design:** [`docs/R_F4_DESIGN.md`](R_F4_DESIGN.md) (decisions RF4-M1 to RF4-M5 and release sequence Q1,
 accepted 2026-10-14). Where this record and the design differ, the design wins. This record adds implementation detail
@@ -23,10 +24,14 @@ and evidence only; it changes no decision.
 | `248b31c` | Claude (owner-directed follow-up) | F5 text only: `main()`'s `--write-db` help names 0018, `run()`'s docstring names the optional `"f4"` store. The F5 hash changed, so the cascade was run again (pin-only, stable after one round). The design's Stage 2 status corrected |
 | `5e4d0c3` | Claude (Stage 2 test gap) | p24, concurrency through F5's `run()` (§3 below); design §6 and §10 record it. Test and documents only |
 | `82b7a3e` | Claude | "p18–p24" in `tests/test_rf4_postgres.py`'s docstring and design §9 (they said p18–p23). Text only |
-| the commit adding this record | Claude | This record; the design's §10 status lines. Documents only (§5.9) |
+| `acb3a70` | Claude | This record (sections 1–6); the design's §10 status lines. Documents only (§5.9) |
+| `f67c181` | Claude (audit remediation) | Findings 1–3 (store, in-band trigger check, preflight constraints), their tests (u18, p25–p27), the HB-1 to HB-6 re-pin, the design's record of item 13 (Option B) and of the remediation (§7) |
+| the commit adding section 7 | Claude | Section 7 and the status lines of this record. Documents only (§7.6) |
 
-**The tested tree is `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S, mutants M15 to M17
-and the unit-level mutants all ran on it or on copies of it (§5).
+**Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
+mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
+at `f67c181`** (§7). Where they differ, §7 is current: it changes the store, the in-band check, the preflight and the
+HB-1 to HB-6 pins named in §2.
 
 **Push.** `fa464d2` is on `origin`. `248b31c`, `5e4d0c3`, `82b7a3e` and the record commit are committed on
 `claude/rf4-implementation` locally only: Claude's `git push` was refused (HTTP 403) because the Git credential on the
@@ -69,7 +74,7 @@ control trees collect identical test IDs (§5.4).
 | 8 lifecycle test | Done | the test itself; M1–M5, M7, M9 |
 | 9 RDV docstring + consistency test | Done | u17 RDV test; M14 |
 | 10–12 new files | Done (Stage 1); p24 added in Stage 2 | §3.2 |
-| **13 F6.2 §10 amendment** | **Blocked**: not applied | §6.1 |
+| **13 F6.2 §10 amendment** | **Decided 2026-10-17, Option B: not applied**; F6.2 stays frozen, the R-F4 design carries the text | §7.1 |
 | 14–16 Phase 2 design, MA, runbook | Done | §2; reviewed against the tree (§4) |
 | 17 R-F4 design + this record | Done | — |
 
@@ -294,7 +299,7 @@ commit changes none of them.
 
 ## 6. Blockers, open items and limitations
 
-### 6.1 §8.1 item 13 (blocked; open owner decision)
+### 6.1 §8.1 item 13 (as it stood at `82b7a3e`; decided since: §7.1)
 
 The accepted F6.2 §10 amendment was not applied. `docs/F6.2_DESIGN.md` is pinned byte for byte (LF SHA-256
 `4c97c6a816fe…`) by two frozen tests, `tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged` and
@@ -316,8 +321,8 @@ amendment text. The independent audit should treat it as an open package item.
 - **Real documents:** none. Every result is on synthetic layouts; the RDV/F0 evidence is lost, so its suites skip in
   every control. R-F4's real-document verification belongs to pilot acceptance (design §10).
 - **Per-test results** are counted per cluster (`-q`), not listed per test; S's reasons were read one by one (§5.6).
-- **Not independently re-executed:** every run here was made by the implementer. The independent audit (design §10,
-  milestone 6) has not started.
+- **Not independently re-executed:** every run here was made by the implementer. At `82b7a3e` the independent audit
+  had not started; its findings and their remediation are §7.
 - **Pre-existing, unchanged:** the HB-2 clock failure; `run()`'s batch transaction (design §6, deferred).
 
 ### 6.3 Not done, and not authorized
@@ -325,3 +330,98 @@ amendment text. The independent audit should treat it as an open package item.
 Not done by this work: the independent audit of Stage 2; component acceptance; the freeze record (R-F4 frozen, F5
 frozen again, the HB-1 to HB-6 pin-only amendments recorded); the merge to `main`. Not authorized and not done:
 staging, deployment, provisioning, contacting CSE, live acquisition, arming, the pilot, bulk retrieval.
+
+## 7. Independent-audit remediation (2026-10-17)
+
+The owner's independent audit of Stage 2 reported three findings. This section records their remediation and the
+owner's decision on §8.1 item 13. **The remediation is Claude's work and every result below was run by Claude**; it is
+not independently re-executed. The audit is **not complete**: the owner reviews the resulting tree independently.
+
+**Tested code commit: `f67c181`** (`f67c181d9304a13ce6881b0906371e63660e3873`, parent `acb3a70`). The commit adding
+this section changes documents only (§7.6).
+
+### 7.1 Owner decision: §8.1 item 13, Option B (2026-10-17)
+
+The owner chose Option B: **F6.2's freeze is preserved.** `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251`
+and `tests/test_f64_unit.py:378` are not modified (checked: identical to `main` at `f67c181`), and the accepted
+amendment text stays in the R-F4 design record (design §8, §8.1 row 13, §11). Item 13 is closed by that decision; §6.1
+below is superseded.
+
+### 7.2 Findings and changes
+
+| Finding | Change (`f67c181`) |
+|---|---|
+| **1.** The store did not verify that the persisted F3 classification named by `classification_id` is the one F5 consumed. F3's store returns `already_present` for an earlier row of the same F3 key with other content, so an extraction could name F3 evidence F5 did not consume | `worker/financial_f4_store/store.py`: inside the savepoint, after the schema check and **before any insert**, the classification persisted under `classification_id` is read back (`reader.load_classification`, migration 0005) and its `f3_input_sha256` must equal that of the classification F5 consumed; otherwise `ConflictingEvidence`, on the `inserted` and the `already_present` paths alike. The caller's transaction then fails as for any refusal: `run()` raises and its batch is uncommitted; HB-4 rolls the filing back and records it (design §6) |
+| **2.** The live-schema trigger check compared only the trigger name, the function name and `tgtype` | `worker/financial_f4_store/schema.py` (used by the store's in-band check and by the preflight): each trigger's function by identity (schema `public`, no arguments; a same-named function in another schema is another function) and by definition (language, the caller's rights, and the body's SHA-256 exactly as migration 0007 or 0018 writes it); the trigger's `tgtype`; and no WHEN condition, arguments, column list, constraint trigger or transition tables. The pinned body hashes are derived from the migration files by a unit test and equal the live ones on a database migrated by P1's runner |
+| **3.** The preflight checked constraints only by name and validation | `worker/financial_f4_store/preflight.py`: every constraint 0018 creates (its 21 named ones, 5 primary keys, 6 foreign keys under PostgreSQL's default names) is checked by `contype` and by its full definition (`pg_get_constraintdef` under `search_path = public`: key columns, a foreign key's referenced table, columns and actions, a check's expression), for validation, and no other constraint may exist. Read-only; the file, objects and ledger results stay separate |
+
+`worker/financial_f4_store/errors.py`: docstrings of `SchemaUnavailable` and `ConflictingEvidence` only. **Migration
+0018 and its pin are unchanged** (`39855c0d…`; no migration change was needed). `store.py`, `schema.py` and `errors.py`
+are in HB-1's pinned R-F4 closure, so **the HB-1 to HB-6 pin cascade was run again** under design §8.2 step 4
+(pin-only; stable in two rounds, a second run changed nothing; F5's pin unchanged at `8bdf472aec40…`):
+
+| Preflight | Pin changed | Now |
+|---|---|---|
+| HB-1 `worker/financial_backfill/preflight.py` | `worker/financial_f4_store/store.py`, `schema.py`, `errors.py` | `c6cd058bb2e7…`, `842bf15e9329…`, `da442cb48a4b…` |
+| HB-2 `worker/backfill_transport/preflight.py` | HB-1's preflight | `4039adbef255…` |
+| HB-3 `worker/backfill_discovery/preflight.py` | HB-2's preflight | `f0667795c410…` |
+| HB-4 `worker/backfill_documents/preflight.py` | HB-3's preflight | `d35d17e40097…` |
+| HB-5 `worker/backfill_f6/preflight.py` | HB-4's preflight | `496226ef0efb…` |
+| HB-6 `worker/backfill_ops/preflight.py` | HB-5's preflight | `4b27201d03a5…`; its own hash `85d3bc8fbc8f…`, pinned by nothing |
+
+The Phase 2 design's six pin-only notes carry these prefixes. No other frozen implementation file or test changed
+(`git diff --stat acb3a70 f67c181`: the four R-F4 files, the six preflights, the two R-F4 test files, the R-F4 design
+and the Phase 2 design).
+
+### 7.3 Tests added
+
+| Test | What it shows |
+|---|---|
+| u18 (4 tests, no database) | the pinned function bodies are the ones migrations 0007 and 0018 write; `schema._trigger_problems` reports each kind of difference (another schema or signature, another body, language or rights, a WHEN condition, arguments, a column list, a constraint trigger, transition tables, another `tgtype`) and nothing for the exact trigger; `preflight.CONSTRAINT_DEFINITIONS` is 0018's by name, type, key columns and references; `_constraint_problems` reports a replaced, weakened, NOT VALID, missing or extra constraint |
+| p25, store level | a pre-existing F3 row of the same key with other content: the F4 save is `ConflictingEvidence` before any insert (insert counter unchanged), the caller's transaction stays usable; an extraction saved by a writer without the check (history) is reported `corrupt` by `verify` for the extraction and its F5 run; saving it again is refused, not `already_present` |
+| p25, `run()` | a batch of two filings, the second with such an F3 row: `run()` raises; the first filing is uncommitted too; only the earlier F3 row remains; `verify` clean |
+| p25, HB-4 | one filing with such an F3 row: the slice records `retry_wait` with the rolled-back `ConflictingEvidence`; no F4 or F5 row, no `persisted` event |
+| p26 | five altered triggers, each refused by the store before any insert and reported by the preflight: a no-op same-named function in another schema; `WHEN (false)` on the guard; the guard function's body replaced in place; an update trigger narrowed to one column; an argument. Every change undone; the preflight clean again |
+| p27 | the live constraints of a database migrated by P1's runner equal the preflight's definitions; eight changes each reported, with the file and ledger results unaffected and nothing else reported: a same-name unique replaced by a check; a weakened check; a widened unique key; a foreign key to another relationship; a foreign key with ON DELETE CASCADE; a foreign key into a same-named table in another schema; a NOT VALID check; an extra check |
+
+### 7.4 Evidence (all run by Claude, 2026-10-16 20:10–21:02 UTC, 2026-10-17 local time)
+
+Environments as §5.1 (the container `cse-p1-test:latest`, `sha256:f491c4600e90…`: Python 3.12.3, pytest 7.4.4,
+PostgreSQL 17.11, no network; Windows: Python 3.14.6, pytest 9.1.1), with the same RAM guard. Commands as §5.2.
+
+| Run | Tree | Result |
+|---|---|---|
+| Live catalogue dump (scratch test, `pg_get_constraintdef`, trigger function bodies, the new `schema.problems`) | the working tree before `f67c181`, migrated by P1's runner | 32 constraints, whose definitions became `CONSTRAINT_DEFINITIONS`; both trigger functions' body hashes equal the ones derived from migrations 0007 and 0018; the new in-band check reports nothing, as the superuser and as `cse_worker` |
+| R-F4 PostgreSQL suite | the working tree, code and tests identical to `f67c181` | **40 passed**, none failed or skipped (the 35 before plus p25 ×3, p26, p27) |
+| Windows: R-F4 unit, lifecycle, HB-1 to HB-6 unit, F8 static | the same | **540 passed**, 2 skipped (POSIX signals) |
+| Pins | `f67c181` | every preflight's check `[]`; the cascade stable on a second run; each committed blob's LF SHA-256 equals the pin that names it |
+| **Negative control**: the old code with the new tests | `acb3a70` + only the two new test files | unit: **exactly the 4 new tests fail**, 234 pass; PostgreSQL: **exactly the 5 new tests fail**, 35 pass (one guard stop, re-run). Each fails for its finding: p25 store and `run()` `DID NOT RAISE ConflictingEvidence`; p25 HB-4: the item ended `persisted` (the old code committed inconsistent evidence through the governed path); p26 `DID NOT RAISE SchemaUnavailable` (the other-schema function passed the old check); p27: the old preflight has no constraint definitions |
+| **Finding 3 reproduced** (scratch test, never committed) | `acb3a70`'s preflight | four same-name changes (a unique replaced by a check, a weakened check, a widened unique key, a foreign key with ON DELETE CASCADE): the old preflight reports each **clean** (`objects: []`); `f67c181`'s reports each (p27) |
+| **Control I2**: the whole suite, 19 clusters, as §5.2 | LF clone of `f67c181`, clean (20:26–20:55Z; no cluster re-run) | **4,492 passed, 1 failed, 617 skipped, 2 xfailed**. Against B (§5.5): the same single failure (`test_hb2_postgres.py::test_l4_seeding_reads_both_archives`); skips outside the R-F4 files identical (Linux 85, Windows 492); the extra 516 passes are exactly the R-F4 tests (278 on Linux, 238 on Windows), the extra 40 skips the R-F4 PostgreSQL tests on Windows. Every suite that calls `_persist` passes with no skips on Linux: HB-4 PostgreSQL 48, HB-5 PostgreSQL 25, R-F4 PostgreSQL 40, the lifecycle test |
+| Collection | `f67c181` | 2,556 tests: §5.4's 2,547 plus the 9 new ones; outside the R-F4 files identical test IDs to B |
+| Unit-level mutants M1–M14 (§5.7) | copies of `f67c181` | **14 of 14 killed**, by the same tests as at `82b7a3e` |
+| Mutants M15–M17 (§5.7) | copies of `f67c181`, one file changed each | **killed**: M15 by p21 (both cases) and p25 (`run()`: filing 1 committed); M16 by p17; M17 by p24, p7, p10, p16, p17, p19. In each, HB-4's seven tests (p22, p23 ×5, p25 HB-4) also fail, by HB-1's pin refusing the changed file: not counted as kills |
+
+Control I2's per-cluster results equal I's (§5.5) in every cluster except L16 (541 passed / 37 skipped, against 532 /
+37: the 9 new tests) and W3 (929 / 247, against 925 / 242: the 4 new unit tests and the 5 new PostgreSQL tests skipped
+on Windows).
+
+### 7.5 Limitations and consequences
+
+- **Finding 1 refuses a re-download whose F3 classification differs from the row persisted earlier under the same F3
+  key** (for example after the filing's metadata changed). HB-4 records it `retry_wait`, downloads again on each retry
+  and meets the same refusal, then records `failed`. Resolving such a filing is an owner action; nothing is repaired
+  automatically.
+- **Constraint definitions are compared as PostgreSQL 17 renders them.** Another major version may render them
+  differently; the preflight then reports a problem (it fails closed). Production is PostgreSQL 17 (design §10).
+- **Not covered by these checks:** column definitions (types, NOT NULL, defaults), indexes beyond those backing the
+  constraints, and the bodies of functions other than the two trigger functions. The audit findings did not ask for
+  them; a change to them is not detected by the preflight.
+- **Not re-run for the remediation:** controls B, P and S (§5); B is unchanged, and P and S concern Stage 2's pins,
+  which §7.2's cascade replaces. A stale-pin control for the new pins was not run: control S (§5.6) showed that HB-1
+  refuses on any changed pinned file, and M15–M17 above show it again for the changed R-F4 files.
+
+### 7.6 The record commit against the tested commit
+
+The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` only (`git diff --stat f67c181`). No test reads
+or pins it (§5.9).
