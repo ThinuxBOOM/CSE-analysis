@@ -15,6 +15,8 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
     u11  the F3 projection holds every field F5's builder reads
     u12  the declared reconstruction context is Python's default
     u13  the package's static boundary and migration 0018's shape
+    u14  an integer outside its column's SQL range (integer or bigint) is refused, never clamped; the boundaries pass
+    u15  an oversized integer is refused when written and corrupt when read, never an untyped ValueError
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -514,3 +516,127 @@ def test_u13_the_codec_field_lists_are_the_dataclasses_fields():
         set(codec.EXTRACTION_FIELDS) - {"cse_filing_id", "word_extractor", "f4_extractor_version", "statement_count",
                                         "column_count", "row_count", "cell_count"} | \
         {"filing_id", "extractor", "extractor_version", "statements"}
+
+
+def test_u13_every_integer_column_carries_its_sql_type():
+    """integer() refuses by the destination column's SQL type: tie the codec's map to the migration's text."""
+    code = re.sub(r"--[^\n]*", " ", open(MIGRATION, encoding="utf-8").read())
+    for table, body in re.findall(r"create table (\w+) \((.*?)\n\);", code, re.S):
+        typed = {m.group(1): m.group(2) for m in re.finditer(r"^\s*(\w+) (integer|bigint)(?:\[\])?\b", body, re.M)}
+        assert {k: v for k, v in typed.items() if k not in codec.COMPUTED_INTEGER_COLUMNS} == \
+            codec.INTEGER_COLUMNS[table], table
+    assert codec.SQL_INTEGER_RANGES == RANGES and codec.MAX_INT_DIGITS == 4300
+
+
+# ================================================================================================ u14
+
+INT4_MIN, INT4_MAX, INT8_MIN, INT8_MAX = -2 ** 31, 2 ** 31 - 1, -2 ** 63, 2 ** 63 - 1
+RANGES = {"integer": (INT4_MIN, INT4_MAX), "bigint": (INT8_MIN, INT8_MAX)}      # PostgreSQL's, as the tests expect
+
+
+@pytest.mark.parametrize("sql,ok,bad", [
+    ("integer", [INT4_MIN, -1, 0, 1, INT4_MAX], [INT4_MIN - 1, INT4_MAX + 1, 2 ** 40, -2 ** 40, INT8_MAX, 10 ** 5000]),
+    ("bigint", [INT8_MIN, -1, 0, 2 ** 40, INT8_MAX], [INT8_MIN - 1, INT8_MAX + 1, 2 ** 64, -2 ** 70, 10 ** 5000])])
+def test_u14_an_integer_outside_its_sql_range_is_refused_never_clamped(sql, ok, bad):
+    for v in ok:
+        got = codec.integer(v, "v", sql=sql)
+        assert got == v and type(got) is int
+    for v in bad:
+        with pytest.raises(UnsupportedValue, match=f"outside the {sql} column range"):
+            codec.integer(v, "v", sql=sql)
+
+
+# (where, how to set it, its SQL type); none of these is copied into a cell, so a boundary value is stored as it is
+NOT_COPIED = [
+    ("page_count", lambda e, v: setattr(e, "page_count", v), "integer"),
+    ("first_page", lambda e, v: setattr(e.statements[0], "first_page", v), "integer"),
+    ("pages[0]", lambda e, v: e.statements[0].pages.__setitem__(0, v), "integer"),
+    ("continuation_of", lambda e, v: setattr(e.statements[0], "continuation_of", v), "integer"),
+    ("heading_page", lambda e, v: setattr(e.statements[0], "heading_page", v), "integer"),
+    ("statements[0].scale", lambda e, v: setattr(e.statements[0], "scale", v), "bigint"),
+    ("line_count", lambda e, v: setattr(e.statements[0].rows[0], "line_count", v), "integer"),
+    ("cells[0].scale", lambda e, v: setattr(e.statements[0].cells[0], "scale", v), "bigint"),
+]
+# fields whose out-of-range value is refused before any copy of it is compared
+COPIED = [
+    ("filing_id", lambda e, v: setattr(e, "filing_id", v), "bigint"),
+    ("rows[0].page", lambda e, v: setattr(e.statements[0].rows[0], "page", v), "integer"),
+    ("duration_months", lambda e, v: setattr(e.statements[0].columns[0], "duration_months", v), "integer"),
+    ("columns[0].index", lambda e, v: setattr(e.statements[0].columns[0], "index", v), "integer"),
+    ("rows[0].index", lambda e, v: setattr(e.statements[0].rows[0], "index", v), "integer"),
+    ("statements[0].index", lambda e, v: setattr(e.statements[0], "index", v), "integer"),
+]
+
+
+def _first_statement_with_cells(extractions):
+    for _, _, ext in extractions:
+        if ext.statements and ext.statements[0].cells and ext.statements[0].rows and ext.statements[0].columns:
+            return copy.deepcopy(ext)
+    raise AssertionError("no extraction whose first statement has cells")
+
+
+@pytest.mark.parametrize("where,put,sql", NOT_COPIED, ids=[w for w, _, _ in NOT_COPIED])
+def test_u14_each_columns_boundaries_are_stored_exactly_and_one_past_them_is_refused(extractions, where, put, sql):
+    lo, hi = RANGES[sql]
+    for v in (lo, hi):
+        ext = _first_statement_with_cells(extractions)
+        put(ext, v)
+        assert R.diff(ext, roundtrip(ext)) is None, (where, v)
+    for v in (lo - 1, hi + 1):
+        ext = _first_statement_with_cells(extractions)
+        put(ext, v)
+        with pytest.raises(UnsupportedValue, match=rf"{re.escape(where)}: -?[0-9]+ is outside the {sql} column range"):
+            codec.encode_extraction(ext)
+
+
+@pytest.mark.parametrize("where,put,sql", COPIED, ids=[w for w, _, _ in COPIED])
+def test_u14_an_out_of_range_copied_or_index_field_is_refused_by_its_range(extractions, where, put, sql):
+    ext = _first_statement_with_cells(extractions)
+    put(ext, RANGES[sql][1] + 1)
+    with pytest.raises(UnsupportedValue, match=f"outside the {sql} column range"):
+        codec.encode_extraction(ext)
+
+
+def test_u14_the_reported_line_count_of_2_to_the_40_is_a_typed_refusal(extractions):
+    ext = _first_statement_with_cells(extractions)
+    ext.statements[0].rows[0].line_count = 2 ** 40
+    with pytest.raises(UnsupportedValue, match=r"line_count: 1099511627776 is outside the integer column range"):
+        codec.encode_extraction(ext)
+
+
+# ================================================================================================ u15
+
+EDGE = 10 ** 4300 - 1                                 # the longest integer stored as text: 4300 nines
+
+
+def test_u15_an_oversized_integer_is_refused_when_written_never_an_untyped_valueerror():
+    for v in (EDGE, -EDGE):                           # the longest still round-trips, exactly and as an int
+        back = codec.decode_number(codec.number(v, "x0"), "x0")
+        assert back == v and type(back) is int
+        assert codec.from_json(json.loads(json.dumps(codec.to_json({"k": [v]}, "v"))), "v") == {"k": [v]}
+    for v in (EDGE + 1, -(EDGE + 1), 10 ** 5000, -(10 ** 100000)):
+        with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
+            codec.number(v, "x0")
+        with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
+            codec.to_json({"coordinates": {"x0": v}}, "v")
+
+
+def test_u15_an_oversized_integer_in_an_extraction_is_a_typed_refusal(extractions):
+    ext = _first_statement_with_cells(extractions)
+    ext.statements[0].columns[0].x0 = 10 ** 5000                           # a number column (text)
+    with pytest.raises(UnsupportedValue, match="x0: an integer of"):
+        codec.encode_extraction(ext)
+    ext = _first_statement_with_cells(extractions)
+    ext.statements[0].reasons = ["fine", 10 ** 5000]                       # inside jsonb
+    with pytest.raises(UnsupportedValue, match=r"reasons\[1\]: an integer of"):
+        codec.encode_extraction(ext)
+
+
+@pytest.mark.parametrize("bad", ["1" * 4301, "-" + "1" * 4301, "1" * 5000, "9" * 100000],
+                         ids=["4301 digits", "-4301 digits", "5000 digits", "100000 digits"])
+def test_u15_an_oversized_number_encoding_is_corrupt_on_read(bad):
+    for read in (lambda: codec.decode_number(bad, "x0"), lambda: codec.from_json({"$f": bad}, "x0")):
+        with pytest.raises(EvidenceRefused) as e:
+            read()
+        assert e.value.kind == "corrupt" and "exceeds 4300 digits" in e.value.detail
+    assert codec.decode_number("1" * 4300, "x0") == int("1" * 4300)       # the longest is still read

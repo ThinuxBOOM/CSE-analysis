@@ -216,7 +216,8 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
   must be verified by a route that can read it:
   - the migration role (owner-level):
     `sudo -u cse-migrator env PYTHONPATH=/opt/cse/app CSE_DB_USER=cse_migrator python3 -m worker.financial_f4_store preflight --migration-role`;
-  - or a login that is a member of `cse_reader`, with `DATABASE_URL` set to it (none is provisioned yet).
+  - or, with `DATABASE_URL` set to it, a login that inherits `cse_reader`'s privileges or whose session sets role
+    `cse_reader` (none is provisioned yet). A member that does neither gets `unverifiable`, which is not a pass.
 
   Proceed only on exit 0 (`"clean": true`). Exit 1 is a problem to fix. Exit 2 means the ledger could not be read
   (`"status": "unverifiable"`, as for a `cse_worker` connection, which has no access to `ops`): it is **not** a pass.

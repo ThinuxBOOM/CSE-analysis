@@ -182,6 +182,11 @@ inherited columns are copies (`:1355`).
 - PUBLIC is revoked. `cse_worker` may SELECT and INSERT; `cse_reader` may SELECT; `cse_backup` reads through
   `pg_read_all_data`.
 - `f5_reject_mutation` triggers stop UPDATE, DELETE and TRUNCATE for every role.
+- **Known limitation of this design (recorded 2026-10-16, Stage 1 audit finding F-4; not changed):** append-only does
+  not close an extraction once saved. A role with INSERT (`cse_worker`) can still add statement, column, row or cell
+  rows to an extraction that is already committed. That is **detected, not prevented**: the child counts and the
+  content hash no longer match, so the reader refuses the extraction and `verify` reports it `incomplete` or
+  `corrupt`. Preventing it would be a design change for the owner to decide.
 - There is no `SECURITY DEFINER`, no row-level security, no new role, no advisory-lock literal, no `bytea` and no
   `*path` column (HB-B8).
 - Retention is permanent (F6.2 §11).
@@ -234,7 +239,8 @@ inherited columns are copies (`:1355`).
   2. **ledger**: `ops.schema_migrations` records version 18, `0018_f4_structure_persistence.sql`, at the pinned
      SHA-256. Its result is `verified`, `failed`, or `unverifiable` when the connection cannot read the ledger;
   3. **objects**: the live database as it is now: the five tables; their named constraints, primary keys and foreign
-     keys, validated; for `cse_worker` and `cse_reader` the privileges of §4.4 that each must have and must not have;
+     keys, validated; for `cse_worker` and `cse_reader` the privileges of §4.4 that each must have and must not have
+     (a forbidden INSERT or UPDATE is found whether granted on the table or on a single column);
      the guard and append-only triggers, present, enabled, running the expected function at the expected timing; the
      guard function without `SECURITY DEFINER` and without EXECUTE for either role.
 
@@ -243,9 +249,11 @@ inherited columns are copies (`:1355`).
   **not** a pass.
 
   **Who can verify the ledger** (no privilege is added for it):
-  - a login that is a member of `cse_reader`: migration 0009 already gives `cse_reader` USAGE on schema `ops` and
-    SELECT on its tables (`supabase/migrations/0009_local_security_boundary.sql:60,117`). No such login is provisioned
-    yet (P1 keeps `cse_reader` as a group role for later analysis logins);
+  - a login with `cse_reader`'s privileges: migration 0009 already gives `cse_reader` USAGE on schema `ops` and
+    SELECT on its tables (`supabase/migrations/0009_local_security_boundary.sql:60,117`). The login must **inherit**
+    those privileges (a member with INHERIT) or its session must have **set role** `cse_reader`. A member that does
+    neither cannot read the ledger, and the preflight reports it `unverifiable`, never clean. No such login is
+    provisioned yet (P1 keeps `cse_reader` as a group role for later analysis logins);
   - the migration role, the owner-level route: `preflight --migration-role` connects as P1's runner does (user
     `CSE_DB_USER` or `cse_migrator`) and reads the ledger as `cse_owner`, the way the runner's own `status` does,
     inside a read-only transaction that is rolled back.
@@ -289,7 +297,9 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
 - **Pre-existing difference, not changed:** `run()`'s batch transaction is not "one transaction per filing" as F6.2 §10
   words it (`docs/F6.2_DESIGN.md:341`). R-F4 neither introduces nor fixes this. It is recorded as a separate finding.
 - **Concurrent writers:** the insert is skipped if the key already exists, so a second writer waits, then gets
-  `already_present`. This is not yet tested.
+  `already_present`. Stage 1 tests this **at the store level only** (`tests/test_rf4_postgres.py`, p10): two
+  connections save the same key under PostgreSQL's default READ COMMITTED isolation, and the result is one set of rows
+  and no deadlock. Concurrency through F5's `run()` or HB-4's slice has **not** been tested; it needs Stage 2.
 
 ## 7. Migration and version policy
 
@@ -368,6 +378,11 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 | 1 | `worker/extract_financial_candidates.py` (F5) | `make_consumer` keeps `"f4"`; `_persist` saves F4 between `link_filing` and the candidate save, and returns `"f4"`; the docstring is corrected. `run()` and `main()` are unchanged |
 | 2 | `worker/financial_backfill/preflight.py` (HB-1) | `FROZEN_FILES`: the F5 file's new hash, plus `worker/financial_f4_store/__init__.py` and every module `_persist` imports from it. `FROZEN_VERSIONS`: adds `("worker.financial_f4_store", "STORE_VERSION", "f4.store.1")` (V1). No rule changes |
 | 3–7 | The preflights of HB-2 (`worker/backfill_transport/`), HB-3 (`worker/backfill_discovery/`), HB-4 (`worker/backfill_documents/`), HB-5 (`worker/backfill_f6/`) and HB-6 (`worker/backfill_ops/`), each `preflight.py` | Hash only: each one's pin of the preflight before it, updated until no pin changes |
+
+**Stage 2 requirement recorded from Stage 1 (2026-10-16; not done in Stage 1):** item 2's closure of "every module
+`_persist` imports" from the package includes `worker/financial_f4_store/schema.py`, which Stage 1 added and
+`store.py` imports for its in-band check. As built in Stage 1, the closure is `__init__.py`, `store.py`, `codec.py`,
+`reader.py`, `errors.py` and `schema.py`; Stage 2 re-derives it from the final code before the cascade.
 
 **Frozen tests and test support to change:**
 

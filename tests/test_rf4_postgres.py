@@ -23,8 +23,12 @@ rollback/retry paths, belong to that later stage.
     p12  in-band schema integrity: a missing, disabled, replica-only or re-pointed trigger, or a missing privilege,
          refuses the save before any insert (the transaction's insert counter stays 0); the check is not cached
     p13  the preflight's three checks kept apart: the ledger verified as cse_reader, the migration role and the
-         superuser, unverifiable as cse_worker, failed on a tampered or absent entry; object failures reported;
-         the command's exit codes (0 / 1 / 2)
+         superuser, unverifiable as cse_worker, failed on a tampered or absent entry; object failures reported,
+         a forbidden INSERT or UPDATE granted on single columns included; the command's exit codes (0 / 1 / 2)
+    p14  integers: each column's SQL-range boundaries are stored and read back exactly; one past them (line_count
+         2**40) is a typed refusal before any insert, and the caller's transaction stays usable
+    p15  verify: an oversized number in saved evidence (as text, or inside jsonb) is `corrupt` with its reason, and
+         the other extractions and runs are still verified
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -774,6 +778,47 @@ def test_p13_object_problems_are_reported_for_the_named_roles(db):
     assert preflight.report(m)["clean"]
 
 
+def acls(su):
+    """Every table- and column-level ACL on R-F4's tables, to compare before and after a test that changes grants."""
+    return q(su, "select c.relname, '', coalesce(c.relacl::text, '') from pg_class c where c.relkind = 'r' and "
+                 "c.relname like 'financial\\_f4\\_%' union all select c.relname, a.attname, a.attacl::text from "
+                 "pg_attribute a join pg_class c on c.oid = a.attrelid where c.relname like 'financial\\_f4\\_%' and "
+                 "a.attacl is not null order by 1, 2")
+
+
+def test_p13_a_forbidden_privilege_granted_on_single_columns_is_reported(db):
+    su, m = db.su(), migrator(db)
+    before = acls(su)
+    assert preflight.report(m)["clean"]
+    # (what is granted, to whom, the table and privilege, what the preflight must report)
+    cases = [
+        ("insert (raw_value) on financial_f4_cells", "cse_reader", ("financial_f4_cells", "INSERT"),
+         "cse_reader has INSERT on column(s) raw_value of financial_f4_cells: the table is append-only"),
+        ("insert (label_raw, kind) on financial_f4_rows", "cse_reader", ("financial_f4_rows", "INSERT"),
+         "cse_reader has INSERT on column(s) label_raw, kind of financial_f4_rows: the table is append-only"),
+        ("update (status) on financial_f4_rows", "cse_worker", ("financial_f4_rows", "UPDATE"),
+         "cse_worker has UPDATE on column(s) status of financial_f4_rows: the table is append-only"),
+        ("update (raw_value) on financial_f4_cells", "cse_reader", ("financial_f4_cells", "UPDATE"),
+         "cse_reader has UPDATE on column(s) raw_value of financial_f4_cells: the table is append-only"),
+    ]
+    try:
+        for what, role, (table, priv), want in cases:
+            as_owner(su, f"grant {what} to {role}")
+            try:
+                assert q(su, "select has_table_privilege(%s, %s, %s), has_any_column_privilege(%s, %s, %s)",
+                         (role, table, priv, role, table, priv)) == [(False, True)]       # column-level only
+                got = preflight.report(m)
+                assert want in got["objects"] and not got["clean"], (want, got["objects"])
+                assert got["file"] == [] and got["ledger"]["status"] == "verified"     # the three checks stay apart
+            finally:
+                as_owner(su, f"revoke {what} from {role}")
+            assert acls(su) == before
+    finally:
+        for what, role, _, _ in cases:                    # again, idempotently, in case a step above failed
+            as_owner(su, f"revoke {what} from {role}")
+    assert acls(su) == before and preflight.report(m)["clean"]
+
+
 def test_p13_the_command_exits_0_clean_1_problem_2_unverifiable(db, monkeypatch, capsys):
     from worker import db as worker_db
     from worker.financial_f4_store import __main__ as cli
@@ -795,3 +840,67 @@ def test_p13_the_command_exits_0_clean_1_problem_2_unverifiable(db, monkeypatch,
     finally:
         as_owner(su, "alter table financial_f4_cells enable trigger trg_ff4c_append_only")
     capsys.readouterr()
+
+
+# ================================================================================================ p14
+
+def first_statement_with_cells(ext):
+    for i, st in enumerate(ext.statements):
+        if st.cells and st.rows and st.columns:
+            return i
+    raise AssertionError("no statement with cells")
+
+
+def test_p14_integer_boundaries_are_stored_exactly_and_one_past_is_refused_before_any_insert(db, layouts):
+    w = db.conn()
+    cls, ext, _ = R.chain(a_layout_with_cells(layouts), 975001)
+    seed_filing(w, 975001)
+    PostgresClassificationStore(w).save(cls, 1000)
+    cid = classification_id(w, cls)
+    si = first_statement_with_cells(ext)
+    bad = copy.deepcopy(ext)
+    bad.statements[si].rows[0].line_count = 2 ** 40                  # the audit's case
+    before = f4_inserts(w)
+    with pytest.raises(UnsupportedValue, match="line_count: 1099511627776 is outside the integer column range"):
+        store.PostgresF4Store(w).save(bad, cid, cls)
+    assert f4_inserts(w) == before and q(w, "select 1") == [(1,)]   # nothing written; the transaction is usable
+    assert q(w, "select count(*) from report_document_classifications where id = %s", (cid,)) == [(1,)]
+    edge = copy.deepcopy(ext)                                         # every boundary, none of them copied to a cell
+    st = edge.statements[si]
+    edge.page_count = 2 ** 31 - 1
+    st.heading_page, st.scale, st.first_page = -2 ** 31, 2 ** 63 - 1, 2 ** 31 - 1
+    st.rows[0].line_count = 2 ** 31 - 1
+    st.cells[0].scale = -2 ** 63
+    assert store.PostgresF4Store(w).save(edge, cid, cls) == "inserted"
+    w.commit()
+    eid = reader.extraction_id_for(w, {"cse_filing_id": 975001, "document_sha256": edge.document_sha256,
+                                       "word_extractor": edge.extractor, "f4_extractor_version": edge.extractor_version,
+                                       "classification_id": cid})
+    assert R.diff(edge, reader.load_extraction(w, eid)) is None
+    w.rollback()
+
+
+# ================================================================================================ p15
+
+def test_p15_an_oversized_number_in_saved_evidence_is_corrupt_and_the_others_still_verify(db, layouts):
+    w = db.conn()
+    text_bad, json_bad, good = (persist(w, a_layout_with_cells(layouts), 976001 + i) for i in range(3))
+    su = db.su()
+    q(su, "set session_replication_role = replica")                  # superuser only: the append-only triggers off
+    try:
+        q(su, "update financial_f4_rows r set y0 = %s from financial_f4_statements s where s.id = r.statement_id "
+              "and s.extraction_id = %s and r.seq = 0", ("1" * 5000, text_bad.eid))           # a number column
+        q(su, "update financial_f4_cells k set coordinates = jsonb_set(k.coordinates, '{page}', "
+              "('1' || repeat('0', 5000))::jsonb) from financial_f4_statements s where s.id = k.statement_id and "
+              "s.extraction_id = %s and k.seq = 0", (json_bad.eid,))                         # inside jsonb
+    finally:
+        q(su, "set session_replication_role = origin")
+    report = verify.verify(db.reader())                               # completes: nothing escapes as a ValueError
+    by = {}
+    for p in report["problems"]:
+        by.setdefault(p.get("extraction_id") or p.get("run_id"), []).append(p)
+    for s, why in ((text_bad, "exceeds 4300 digits"), (json_bad, "its saved evidence cannot be decoded: ValueError")):
+        assert [p["kind"] for p in by[str(s.eid)]] == ["corrupt"] and why in by[str(s.eid)][0]["detail"], by
+        assert [p["kind"] for p in by[str(s.run_id)]] == ["corrupt"]                       # its F5 run cannot rebuild
+    assert str(good.eid) not in by and str(good.run_id) not in by                          # the others still verified
+    assert report["extractions"] == report["runs"] == 3 and report["rebuilt"] == 1 and not report["clean"]

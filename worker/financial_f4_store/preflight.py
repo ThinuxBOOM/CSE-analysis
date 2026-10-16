@@ -6,16 +6,19 @@ keeps them apart:
     file     the checkout's migration 0018 is byte-identical (LF-normalised, as P1's runner hashes it) to the code's pin
     objects  the database's 0018 objects, as they are now: the five tables; their named constraints, primary keys and
              foreign keys, validated; for each of cse_worker and cse_reader the privileges it must have (cse_worker
-             SELECT + INSERT, cse_reader SELECT) and must not have (UPDATE, DELETE, TRUNCATE; INSERT for the reader);
+             SELECT + INSERT, cse_reader SELECT) and must not have (UPDATE, DELETE, TRUNCATE; INSERT for the reader),
+             a forbidden INSERT or UPDATE found whether granted on the table or on a single column;
              the guard and append-only triggers, present, enabled and running the expected function at the expected
              timing; the guard function with the caller's rights and no EXECUTE for either role
     ledger   ops.schema_migrations records 0018 at the pinned hash: 'verified', 'failed' (a problem was found), or
              'unverifiable' (this connection cannot read the ledger)
 
 Who can read the ledger (no grant is added for this): cse_reader, which 0009 gives USAGE on schema ops and SELECT on
-its tables (0009_local_security_boundary.sql:60,117); the superuser; and the migration role cse_migrator, which reads
-it, as P1's runner does (worker/ops/migrate.py, status), as the owner role inside a read-only transaction that is rolled
-back. cse_worker cannot, by design (least privilege): for it the ledger is 'unverifiable' and `report` is never clean.
+its tables (0009_local_security_boundary.sql:60,117), through a login that inherits its privileges or whose session has
+set role cse_reader (a member that does neither gets 'unverifiable'); the superuser; and the migration role
+cse_migrator, which reads it, as P1's runner does (worker/ops/migrate.py, status), as the owner role inside a read-only
+transaction that is rolled back. cse_worker cannot, by design (least privilege): for it the ledger is 'unverifiable'
+and `report` is never clean.
 The owner-level check:
     CSE_DB_USER=cse_migrator python -m worker.financial_f4_store preflight --migration-role
 The object checks name the roles explicitly, so one run verifies both roles' privileges whoever runs it; the migration
@@ -35,6 +38,9 @@ GUARD_FUNCTION = schema.GUARD_FUNCTION
 TRIGGERS = {t: tuple(names) for t, names in schema.TRIGGERS.items()}
 PRIVILEGES = {"cse_worker": (("SELECT", "INSERT"), ("UPDATE", "DELETE", "TRUNCATE")),
               "cse_reader": (("SELECT",), ("INSERT", "UPDATE", "DELETE", "TRUNCATE"))}
+# The privileges PostgreSQL also grants per column (DELETE and TRUNCATE exist only for a whole table): a forbidden one
+# is found whether it was granted on the table or on any of its columns.
+COLUMN_PRIVILEGES = frozenset({"SELECT", "INSERT", "UPDATE", "REFERENCES"})
 # Named in migration 0018; each must exist on its table and be validated. Every table also has one primary key, and
 # the foreign keys counted here (the unnamed `references` columns plus fk_ff4c_row and fk_ff4c_column).
 CONSTRAINTS = {
@@ -77,6 +83,13 @@ def _role_problems(cur, role):
         for p in must_not:
             if _one(cur, "select has_table_privilege(%s, %s, %s)", (role, f"public.{t}", p))[0]:
                 out.append(f"{role} has {p} on {t}: the table is append-only")
+            elif p in COLUMN_PRIVILEGES:                  # granted on some columns only: as forbidden
+                cur.execute("select a.attname from pg_attribute a where a.attrelid = %s::regclass and a.attnum > 0 "
+                            "and not a.attisdropped and has_column_privilege(%s, a.attrelid, a.attnum, %s) "
+                            "order by a.attnum", (f"public.{t}", role, p))
+                cols = [r[0] for r in cur.fetchall()]
+                if cols:
+                    out.append(f"{role} has {p} on column(s) {', '.join(cols)} of {t}: the table is append-only")
     got = _one(cur, "select has_function_privilege(%s, p.oid, 'EXECUTE') from pg_proc p join pg_namespace n on "
                     "n.oid = p.pronamespace where n.nspname = 'public' and p.proname = %s", (role, GUARD_FUNCTION))
     if got is not None and got[0]:

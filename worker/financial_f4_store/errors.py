@@ -19,7 +19,10 @@ class UnsupportedValue(F4Refused):
 
 
 class SchemaUnavailable(F4Refused):
-    """Migration 0018's tables are missing or the connection's role cannot write them."""
+    """Migration 0018's schema is not usable, so nothing is written (the store's in-band check, schema.problems, run
+    before every save): one of the five tables is missing; the connection's role lacks SELECT or INSERT on one; or a
+    guard or append-only trigger is missing, disabled (or replica-only), or runs another function or at another timing
+    than 0018 creates it with."""
     kind = "schema_unavailable"
 
 

@@ -7,6 +7,8 @@ back, exactly, or a refusal. No database, no file, no network.
                     lose the sign of zero and the exponent form); non-finite Decimals are refused
     int or float    str(int) or repr(float) of a finite number, restored as the same type (float8 would turn an int
                     into a float, and F4's geometry holds both); NaN and infinities are refused
+    integer columns refused outside the column's SQL range (integer or bigint, INTEGER_COLUMNS), never clamped; an
+                    integer stored as text or inside jsonb has at most MAX_INT_DIGITS digits, so it always reads back
     nested values   jsonb: str, int, bool, null, list and dict as themselves, a float as {"$f": repr(x)}, a Decimal as
                     {"$d": str(d)} (plain jsonb would turn -0.0 into 0.0 and 1e16 into an int); keys starting with
                     "$", non-string keys, tuples and every other type are refused
@@ -63,6 +65,23 @@ JSON_COLUMNS = {
 COPIED_CELL_FIELDS = ("filing_id", "document_sha256", "page", "statement", "statement_index", "scope", "row_label_raw",
                       "row_label_normalized", "section_label_raw", "column_kind", "column_header_raw", "column_period",
                       "current_comparative", "audit_status")
+# PostgreSQL's integer types, and the SQL type of each integer column 0018 fills from F4's values (an integer[] column
+# by its element type). seq, value_ordinal and the child counts are computed by the writer, not taken from F4.
+SQL_INTEGER_RANGES = {"integer": (-2 ** 31, 2 ** 31 - 1), "bigint": (-2 ** 63, 2 ** 63 - 1)}
+INTEGER_COLUMNS = {
+    "financial_f4_extractions": {"cse_filing_id": "bigint", "page_count": "integer"},
+    "financial_f4_statements": {"statement_index": "integer", "first_page": "integer", "pages": "integer",
+                                "continuation_of": "integer", "heading_page": "integer", "scale": "bigint"},
+    "financial_f4_columns": {"column_index": "integer", "duration_months": "integer"},
+    "financial_f4_rows": {"row_index": "integer", "page": "integer", "line_count": "integer"},
+    "financial_f4_cells": {"row_index": "integer", "column_index": "integer", "scale": "bigint"},
+}
+COMPUTED_INTEGER_COLUMNS = frozenset({"seq", "value_ordinal", "statement_count", "column_count", "row_count",
+                                      "cell_count"})
+# The longest integer, in decimal digits, stored as text (a number column, or an integer inside jsonb): Python's default
+# int-string conversion limit (sys.int_info.default_max_str_digits), fixed here so that what is written can always be
+# read back, whatever limit an interpreter is configured with.
+MAX_INT_DIGITS = 4300
 
 
 # ================================================================================================ values (writing)
@@ -81,11 +100,27 @@ def text(v, where, optional=False):
     return v
 
 
-def integer(v, where, optional=False):
+def _int_text(v, where):
+    """str(v) of an int of at most MAX_INT_DIGITS digits, or a refusal (never Python's own conversion ValueError)."""
+    try:
+        s = str(v)
+    except ValueError:                          # beyond this interpreter's int-string conversion limit
+        s = None
+    if s is None or len(s) - (s[0] == "-") > MAX_INT_DIGITS:
+        raise UnsupportedValue(f"{where}: an integer of {v.bit_length()} bits has more than {MAX_INT_DIGITS} digits")
+    return s
+
+
+def integer(v, where, optional=False, sql="integer"):
+    """An int for a column of SQL type `sql` (integer or bigint): refused outside that type's range, never clamped."""
     if v is None and optional:
         return None
     if type(v) is not int:
         raise UnsupportedValue(f"{where}: expected int, got {type(v).__name__}")
+    lo, hi = SQL_INTEGER_RANGES[sql]
+    if not lo <= v <= hi:
+        shown = str(v) if v.bit_length() <= 256 else f"an integer of {v.bit_length()} bits"   # always printable
+        raise UnsupportedValue(f"{where}: {shown} is outside the {sql} column range {lo}..{hi}")
     return v
 
 
@@ -103,10 +138,10 @@ def iso_date(v, where):
     return v
 
 
-def int_list(v, where):
+def int_list(v, where, sql="integer"):
     if type(v) is not list:
         raise UnsupportedValue(f"{where}: expected list, got {type(v).__name__}")
-    return [integer(x, f"{where}[{i}]") for i, x in enumerate(v)]
+    return [integer(x, f"{where}[{i}]", sql=sql) for i, x in enumerate(v)]
 
 
 def number(v, where, optional=False):
@@ -114,7 +149,7 @@ def number(v, where, optional=False):
     if v is None and optional:
         return None
     if type(v) is int:
-        return str(v)
+        return _int_text(v, where)
     if type(v) is float:
         if not math.isfinite(v):
             raise UnsupportedValue(f"{where}: the non-finite float {v!r} is refused")
@@ -138,7 +173,10 @@ def decimal_text(v, where):
 def to_json(v, where):
     """The jsonb form of a nested value, or a refusal."""
     t = type(v)
-    if v is None or t is bool or t is int:
+    if v is None or t is bool:
+        return v
+    if t is int:
+        _int_text(v, where)                     # jsonb holds it exactly; the cap keeps it readable
         return v
     if t is str:
         return text(v, where)
@@ -171,8 +209,11 @@ def decode_number(s, where, optional=False):
     if s is None and optional:
         return None
     if type(s) is str:
-        if INT_RE.fullmatch(s) and str(int(s)) == s:
-            return int(s)
+        if INT_RE.fullmatch(s):
+            if len(s) - s.startswith("-") > MAX_INT_DIGITS:
+                raise _corrupt(where, f"an integer encoding of {len(s)} characters exceeds {MAX_INT_DIGITS} digits")
+            if str(int(s)) == s:
+                return int(s)
         if FLOAT_RE.fullmatch(s) and ("." in s or "e" in s) and repr(float(s)) == s:
             return float(s)
     raise _corrupt(where, f"not an exact number encoding: {s!r}")
@@ -272,22 +313,30 @@ def _same(a, b):
 
 # ================================================================================================ extraction -> rows
 
+def _int(table, column, v, where, optional=False):
+    """integer() for a column of 0018, by that column's SQL type (INTEGER_COLUMNS)."""
+    return integer(v, where, optional, INTEGER_COLUMNS[table][column])
+
+
 def encode_extraction(ext):
     """{"extraction": row, "statements": [row], "columns": [row], "rows": [row], "cells": [row]}; children carry their
     statement_index. Refuses anything it cannot store exactly. Pure."""
+    E, S, K, R, C = TABLES
     if type(ext) is not se.DocumentExtraction:
         raise UnsupportedValue(f"expected an F4 DocumentExtraction, got {type(ext).__name__}")
     if not SHA_RE.fullmatch(text(ext.document_sha256, "document_sha256")):
         raise UnsupportedValue(f"document_sha256 is not a SHA-256: {ext.document_sha256!r}")
     out = {"extraction": {
-        "cse_filing_id": integer(ext.filing_id, "filing_id"), "document_sha256": ext.document_sha256,
+        "cse_filing_id": _int(E, "cse_filing_id", ext.filing_id, "filing_id"),
+        "document_sha256": ext.document_sha256,
         "word_extractor": text(ext.extractor, "extractor"),
         "f4_extractor_version": text(ext.extractor_version, "extractor_version"),
         "classifier_version": text(ext.classifier_version, "classifier_version", optional=True),
         "f3_document_type": text(ext.f3_document_type, "f3_document_type", optional=True),
         "document_status": text(ext.document_status, "document_status"),
         "status_reasons": to_json(ext.status_reasons, "status_reasons"),
-        "page_count": integer(ext.page_count, "page_count"), "page_trust": to_json(ext.page_trust, "page_trust"),
+        "page_count": _int(E, "page_count", ext.page_count, "page_count"),
+        "page_trust": to_json(ext.page_trust, "page_trust"),
         "companion_check": to_json(ext.companion_check, "companion_check")},
         "statements": [], "columns": [], "rows": [], "cells": []}
     if type(ext.statements) is not list:
@@ -296,16 +345,18 @@ def encode_extraction(ext):
         w = f"statements[{pos}]"
         if type(st) is not se.StatementExtraction:
             raise UnsupportedValue(f"{w}: expected a StatementExtraction, got {type(st).__name__}")
-        if integer(st.index, f"{w}.index") != pos:
+        if _int(S, "statement_index", st.index, f"{w}.index") != pos:
             raise UnsupportedValue(f"{w}: index {st.index} is not its position")
         out["statements"].append({
             "statement_index": pos, "statement_kind": text(st.statement_kind, f"{w}.statement_kind"),
-            "first_page": integer(st.first_page, f"{w}.first_page"), "pages": int_list(st.pages, f"{w}.pages"),
-            "continuation_of": integer(st.continuation_of, f"{w}.continuation_of", optional=True),
+            "first_page": _int(S, "first_page", st.first_page, f"{w}.first_page"),
+            "pages": int_list(st.pages, f"{w}.pages", INTEGER_COLUMNS[S]["pages"]),
+            "continuation_of": _int(S, "continuation_of", st.continuation_of, f"{w}.continuation_of", optional=True),
             "scope": text(st.scope, f"{w}.scope", optional=True), "heading_raw": text(st.heading_raw, f"{w}.heading_raw"),
-            "heading_page": integer(st.heading_page, f"{w}.heading_page"),
+            "heading_page": _int(S, "heading_page", st.heading_page, f"{w}.heading_page"),
             "heading_bbox": to_json(st.heading_bbox, f"{w}.heading_bbox"), "status": text(st.status, f"{w}.status"),
-            "reasons": to_json(st.reasons, f"{w}.reasons"), "scale": integer(st.scale, f"{w}.scale", optional=True),
+            "reasons": to_json(st.reasons, f"{w}.reasons"),
+            "scale": _int(S, "scale", st.scale, f"{w}.scale", optional=True),
             "scale_status": text(st.scale_status, f"{w}.scale_status"),
             "scale_basis": text(st.scale_basis, f"{w}.scale_basis", optional=True),
             "scale_evidence": to_json(st.scale_evidence, f"{w}.scale_evidence"),
@@ -319,7 +370,7 @@ def encode_extraction(ext):
             wc = f"{w}.columns[{seq}]"
             if type(c) is not se.ColumnModel:
                 raise UnsupportedValue(f"{wc}: expected a ColumnModel, got {type(c).__name__}")
-            if integer(c.index, f"{wc}.index") in cols:
+            if _int(K, "column_index", c.index, f"{wc}.index") in cols:
                 raise UnsupportedValue(f"{wc}: duplicate column index {c.index}")
             cols[c.index] = c
             out["columns"].append({
@@ -334,7 +385,8 @@ def encode_extraction(ext):
                 "period_kind": text(c.period_kind, f"{wc}.period_kind", optional=True),
                 "start_date": iso_date(c.start_date, f"{wc}.start_date"),
                 "end_date": iso_date(c.end_date, f"{wc}.end_date"),
-                "duration_months": integer(c.duration_months, f"{wc}.duration_months", optional=True),
+                "duration_months": _int(K, "duration_months", c.duration_months, f"{wc}.duration_months",
+                                        optional=True),
                 "duration_label": text(c.duration_label, f"{wc}.duration_label", optional=True),
                 "period_basis": text(c.period_basis, f"{wc}.period_basis", optional=True),
                 "role": text(c.role, f"{wc}.role"), "role_basis": text(c.role_basis, f"{wc}.role_basis", optional=True),
@@ -346,15 +398,17 @@ def encode_extraction(ext):
             wr = f"{w}.rows[{seq}]"
             if type(r) is not se.RowModel:
                 raise UnsupportedValue(f"{wr}: expected a RowModel, got {type(r).__name__}")
-            if integer(r.index, f"{wr}.index") in rows:
+            if _int(R, "row_index", r.index, f"{wr}.index") in rows:
                 raise UnsupportedValue(f"{wr}: duplicate row index {r.index}")
             rows[r.index] = r
             out["rows"].append({
-                "statement_index": pos, "seq": seq, "row_index": r.index, "page": integer(r.page, f"{wr}.page"),
+                "statement_index": pos, "seq": seq, "row_index": r.index,
+                "page": _int(R, "page", r.page, f"{wr}.page"),
                 "label_raw": text(r.label_raw, f"{wr}.label_raw"),
                 "label_normalized": text(r.label_normalized, f"{wr}.label_normalized"),
                 "y0": number(r.y0, f"{wr}.y0"), "y1": number(r.y1, f"{wr}.y1"),
-                "line_count": integer(r.line_count, f"{wr}.line_count"), "wrapped": boolean(r.wrapped, f"{wr}.wrapped"),
+                "line_count": _int(R, "line_count", r.line_count, f"{wr}.line_count"),
+                "wrapped": boolean(r.wrapped, f"{wr}.wrapped"),
                 "section_label_raw": text(r.section_label_raw, f"{wr}.section_label_raw", optional=True),
                 "note_ref_raw": text(r.note_ref_raw, f"{wr}.note_ref_raw", optional=True),
                 "kind": text(r.kind, f"{wr}.kind"), "status": text(r.status, f"{wr}.status"),
@@ -364,7 +418,8 @@ def encode_extraction(ext):
             wk = f"{w}.cells[{seq}]"
             if type(cell) is not se.ExtractedCell:
                 raise UnsupportedValue(f"{wk}: expected an ExtractedCell, got {type(cell).__name__}")
-            ri, ci = integer(cell.row_index, f"{wk}.row_index"), integer(cell.column_index, f"{wk}.column_index")
+            ri = _int(C, "row_index", cell.row_index, f"{wk}.row_index")
+            ci = _int(C, "column_index", cell.column_index, f"{wk}.column_index")
             if ri not in rows or ci not in cols:
                 raise UnsupportedValue(f"{wk}: row {ri} or column {ci} is not in the statement")
             for f, want in copied_cell_fields(ext, st, rows[ri], cols[ci]).items():
@@ -377,7 +432,7 @@ def encode_extraction(ext):
                 "value_ordinal": ordinal[(ri, ci)], "raw_value": text(cell.raw_value, f"{wk}.raw_value"),
                 "parsed_value_text": decimal_text(cell.parsed_value, f"{wk}.parsed_value"),
                 "representation_class": text(cell.representation_class, f"{wk}.representation_class"),
-                "scale": integer(cell.scale, f"{wk}.scale", optional=True),
+                "scale": _int(C, "scale", cell.scale, f"{wk}.scale", optional=True),
                 "scale_basis": text(cell.scale_basis, f"{wk}.scale_basis"),
                 "currency": text(cell.currency, f"{wk}.currency", optional=True),
                 "coordinates": to_json(cell.coordinates, f"{wk}.coordinates"),

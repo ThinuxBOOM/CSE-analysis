@@ -56,7 +56,19 @@ def extraction_id_for(conn, key):
 
 def load_extraction(conn, extraction_id):
     """The DocumentExtraction, exactly as F4 produced it: the version, the child counts and the content hash are
-    checked (version_incompatible, incomplete, corrupt)."""
+    checked (version_incompatible, incomplete, corrupt).
+
+    Saved evidence that cannot even be decoded is `corrupt` too: a ValueError while reading it (psycopg2 decoding a
+    jsonb integer past Python's int-string limit, say) or an ArithmeticError (decimal). Only those, and only here, per
+    extraction: a database error or any other exception (a programming error) still propagates."""
+    try:
+        return _load_extraction(conn, extraction_id)
+    except (ValueError, ArithmeticError) as exc:
+        raise EvidenceRefused("corrupt", f"extraction {extraction_id}: its saved evidence cannot be decoded: "
+                                         f"{type(exc).__name__}: {exc}") from exc
+
+
+def _load_extraction(conn, extraction_id):
     e = extraction_row(conn, extraction_id)
     if (e["store_version"], e["f4_extractor_version"]) not in SUPPORTED:
         raise EvidenceRefused("version_incompatible",
