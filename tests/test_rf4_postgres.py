@@ -3,7 +3,7 @@ R-F4 (docs/R_F4_DESIGN.md) against REAL PostgreSQL 17: migration 0018 through P1
 F3 read-back, the F5 rebuild, verify and the preflight, as the restricted roles.
 
 p1-p17 (Stage 1) save each document in `_persist`'s accepted order by hand: F3's store, the classification id, the
-issuer link, R-F4's store, then F5's store, in one transaction. p18-p23 (Stage 2, design section 8.2 step 3) go through
+issuer link, R-F4's store, then F5's store, in one transaction. p18-p24 (Stage 2, design section 8.2 step 3) go through
 the real callers, with F5's `_persist` wired to R-F4: F5's own `run()` with exactly main()'s four stores, and HB-4's
 document slice, both unchanged and both reaching R-F4 through `_persist`'s fallback.
 

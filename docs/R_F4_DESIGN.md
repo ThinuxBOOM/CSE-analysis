@@ -468,7 +468,7 @@ audit. The independent audit, acceptance and freeze have not started.
 These are the acceptance tests. **Stage 1** ran the parts that need no frozen change, at the store level
 (`tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py`): its results are Claude's reports, on synthetic layouts, not
 independently re-executed. The parts that go through F5's `run()` and HB-4's slice (RT-14 end to end, rollback and
-retry), the regression controls and mutation testing ran in **Stage 2** (`tests/test_rf4_postgres.py` p18–p23, controls
+retry), the regression controls and mutation testing ran in **Stage 2** (`tests/test_rf4_postgres.py` p18–p24, controls
 B, P, S and I, mutation testing; results in `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports, not independently
 re-executed. The OD-13 outcomes are reported
 synthetic results, not independently re-executed. No real-document evidence exists. The two callers are tested
