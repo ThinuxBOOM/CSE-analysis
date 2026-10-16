@@ -48,6 +48,8 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p23  HB-4: a failure inside the F4 save, inside the F5 save after it, in the ledger event, or RT-4's NaN rolls the
          filing back (no F3, F4 or F5 rows) and is recorded (retry_wait or failed); the retry downloads once more and
          saves once
+    p24  two concurrent run()s of one filing, each on its own connection: the second waits on the first's uncommitted
+         rows, then finds F3, F4 and F5 already present; one set of rows, no deadlock (design section 6)
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -64,6 +66,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import uuid
 from types import SimpleNamespace
 
@@ -1371,3 +1374,59 @@ def test_p23_hb4_rolls_the_filing_back_records_it_and_a_retry_saves_once(env, la
     assert rows_of(w, [fid]) == (1, 1, 1) and f4_counts(w)["extractions"] == 1
     w.rollback()
     assert verify.verify(_reader_of(env))["clean"]
+
+
+# ------------------------------------------------------------------------------------------------ concurrent callers
+
+def test_p24_two_concurrent_runs_of_one_filing_leave_one_set_of_rows_and_no_deadlock(db, layouts, monkeypatch):
+    """Design section 6 (concurrent writers) through F5's run(), each run on its own connection with main()'s four
+    stores: run A holds its uncommitted F3, F4 and F5 rows while run B saves the same filing. B waits on A's rows (a
+    lock wait in pg_stat_activity); once A commits, B finds all three already present. No deadlock, one set of rows."""
+    fid = 987001
+    words = a_layout_with_cells(layouts)
+    wa, wb = db.conn(), db.conn()
+    seed_filing(wa, fid)
+    held, release = threading.Event(), threading.Event()
+    real_f5_save = PostgresCandidateStore.save
+
+    def f5_save(self, result, cid, link=None):
+        out = real_f5_save(self, result, cid, link)
+        if self.conn is wa:                                   # run A: F3, F4 and F5 saved, not yet committed
+            held.set()
+            assert release.wait(60)
+        return out
+    monkeypatch.setattr(PostgresCandidateStore, "save", f5_save)
+    got = {}
+
+    def run(name, w):
+        try:
+            got[name] = run_f5(w, [fid], {fid: words})[0]
+        except BaseException as exc:  # noqa: BLE001 - reported below
+            got[name] = exc
+    a = threading.Thread(target=run, args=("a", wa))
+    b = threading.Thread(target=run, args=("b", wb))
+    su, pid = db.su(), wb.get_backend_pid()
+    try:
+        a.start()
+        assert held.wait(60), got
+        b.start()
+        for _ in range(400):                                  # B waits on A's uncommitted rows
+            if q(su, "select wait_event_type from pg_stat_activity where pid = %s", (pid,))[0][0] == "Lock":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(f"run B never waited on run A's rows: {got}")
+        assert b.is_alive() and rows_of(su, [fid]) == (0, 0, 0)       # nothing of A's is committed yet
+    finally:
+        release.set()
+        a.join(60)
+        if b.ident is not None:
+            b.join(60)
+    assert not a.is_alive() and not b.is_alive()
+    assert not any(isinstance(r, BaseException) for r in got.values()), got
+    stored = {k: [(r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) for r in v["records"]]
+              for k, v in got.items()}
+    assert stored =={"a": [("inserted",) * 3], "b": [("already_present",) * 3]}
+    assert rows_of(su, [fid]) == (1, 1, 1) and f4_counts(su)["extractions"] == 1
+    report = verify.verify(db.reader())
+    assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == 1

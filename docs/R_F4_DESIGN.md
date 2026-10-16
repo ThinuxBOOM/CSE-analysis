@@ -315,7 +315,10 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
 - **Concurrent writers:** the insert is skipped if the key already exists, so a second writer waits, then gets
   `already_present`. Stage 1 tests this **at the store level only** (`tests/test_rf4_postgres.py`, p10): two
   connections save the same key under PostgreSQL's default READ COMMITTED isolation, and the result is one set of rows
-  and no deadlock. Concurrency through F5's `run()` or HB-4's slice has **not** been tested; it needs Stage 2.
+  and no deadlock. Stage 2 tests it **through F5's `run()`** (p24): two runs of one filing, each on its own
+  connection. The second waits on the first's uncommitted rows (at its first conflicting insert, F3's), then finds F3,
+  F4 and F5 already present: one set of rows, no deadlock. **Not tested:** concurrency through HB-4's slice (HB-4
+  claims each item under its slice's lease), or an HB-4 slice and a manual `run()` saving the same filing at once.
 
 ## 7. Migration and version policy
 
@@ -496,7 +499,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
 | 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
 | 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 blocked (§11) |
-| 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice |
+| 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()` (not through HB-4's slice, §6) |
 | 5 | Full regression with controls B, P, S and I; mutation testing | **Run** (Stage 2; `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports |
 | 6 | Independent audit of the code and evidence | Not started |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
