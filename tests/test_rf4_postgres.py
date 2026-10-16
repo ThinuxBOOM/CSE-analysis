@@ -926,6 +926,7 @@ def int_digit_limit(n):
 
 
 def test_p16_long_integers_saved_without_a_limit_read_back_under_the_lowest_limit(db, layouts):
+    started_with = sys.get_int_max_str_digits()
     w = db.conn()
     cls, ext, _ = R.chain(a_layout_with_cells(layouts), 977001)
     seed_filing(w, 977001)
@@ -952,7 +953,7 @@ def test_p16_long_integers_saved_without_a_limit_read_back_under_the_lowest_limi
             assert store.PostgresF4Store(w).save(copy.deepcopy(ext), cid, cls) == "already_present"
             w.rollback()
     finally:
-        assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits
+        assert sys.get_int_max_str_digits() == started_with                  # restored to what the test found
 
 
 # ================================================================================================ p17

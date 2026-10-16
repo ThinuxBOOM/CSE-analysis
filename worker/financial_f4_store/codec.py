@@ -114,6 +114,13 @@ def text_to_int(s):
     return -v if neg else v
 
 
+def _json_float(v):
+    # a float as json.dumps(..., allow_nan=False) writes it, as a value or as a key: NaN and infinities are refused
+    if not math.isfinite(v):
+        raise ValueError(f"Out of range float values are not JSON compliant: {v!r}")
+    return float.__repr__(v)
+
+
 def _json_parts(v, sort_keys, out):
     # json.dumps(v, separators=(",", ":"), allow_nan=False, sort_keys=...), the standard library's own output, except
     # that an integer is written by int_to_text
@@ -128,9 +135,7 @@ def _json_parts(v, sort_keys, out):
     elif isinstance(v, int):
         out.append(int_to_text(int(v)))
     elif isinstance(v, float):
-        if not math.isfinite(v):
-            raise ValueError(f"Out of range float values are not JSON compliant: {v!r}")
-        out.append(float.__repr__(v))
+        out.append(_json_float(v))
     elif isinstance(v, (list, tuple)):
         out.append("[")
         for i, x in enumerate(v):
@@ -148,7 +153,7 @@ def _json_parts(v, sort_keys, out):
             elif isinstance(k, int):
                 key = int_to_text(int(k))
             elif isinstance(k, float):
-                key = float.__repr__(k)
+                key = _json_float(k)
             else:
                 raise TypeError(f"keys must be str, int, float, bool or None, not {type(k).__name__}")
             out.append(("," if i else "") + json.encoder.encode_basestring_ascii(key) + ":")

@@ -617,7 +617,9 @@ def test_u15_an_oversized_integer_is_refused_when_written_never_an_untyped_value
     for v in (EDGE, -EDGE):                           # the longest still round-trips, exactly and as an int
         back = codec.decode_number(codec.number(v, "x0"), "x0")
         assert back == v and type(back) is int
-        assert codec.from_json(json.loads(json.dumps(codec.to_json({"k": [v]}, "v"))), "v") == {"k": [v]}
+        with int_digit_limit(0):                      # the standard library's JSON, whatever the running limit
+            trip = json.loads(json.dumps(codec.to_json({"k": [v]}, "v")))
+        assert codec.from_json(trip, "v") == {"k": [v]}
     for v in (EDGE + 1, -(EDGE + 1), 10 ** 5000, -(10 ** 100000)):
         with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
             codec.number(v, "x0")
@@ -643,7 +645,7 @@ def test_u15_an_oversized_number_encoding_is_corrupt_on_read(bad):
         with pytest.raises(EvidenceRefused) as e:
             read()
         assert e.value.kind == "corrupt" and "exceeds 4300 digits" in e.value.detail
-    assert codec.decode_number("1" * 4300, "x0") == int("1" * 4300)       # the longest is still read
+    assert codec.decode_number("1" * 4300, "x0") == (10 ** 4300 - 1) // 9  # the longest is still read (4300 ones)
 
 
 # ================================================================================================ u16
@@ -661,7 +663,7 @@ def int_digit_limit(n):
 
 
 LONG = [10 ** 599 - 1, 10 ** 599, 10 ** 600 - 1, 10 ** 600, 10 ** 600 + 1, 10 ** 999 + 7, 2 ** 5000, 10 ** 4300 - 1,
-        int("123456789" * 477 + "1234567")]                 # the last: 4300 digits, no zero pieces
+        sum(123456789 * 10 ** (9 * i + 7) for i in range(477)) + 1234567]   # "123456789" * 477 + "1234567": 4300 digits
 JSON_ODDITIES = [None, True, False, 0, -0.0, 0.0, 1e16, 5e-324, -1.7976931348623157e308, 1, -1, 2 ** 63, "", "x",
                  "é \U0001f600\x01\"\\/", [], {}, [[], {}], {"b": 1, "a": [1, 2.5, None], "": {"$f": "1.0"}},
                  (1, 2), {"z": (3,)}, {1: "int key", 2.5: "float key", True: "bool key", None: "null key"}]
@@ -670,7 +672,8 @@ JSON_ODDITIES = [None, True, False, 0, -0.0, 0.0, 1e16, 5e-324, -1.7976931348623
 def test_u16_canonical_json_is_json_dumps_character_for_character(extractions, layouts):
     """The hashes are unchanged: R-F4's own JSON writer equals the standard library's on every value it is given."""
     def dumps(v, **kw):
-        return json.dumps(v, separators=(",", ":"), allow_nan=False, **kw)
+        with int_digit_limit(0):                      # the reference, whatever the running int-string limit
+            return json.dumps(v, separators=(",", ":"), allow_nan=False, **kw)
     for _, _, ext in extractions:
         d = ext.to_dict()
         assert codec.canonical_json(d) == dumps(d, sort_keys=True)
@@ -691,7 +694,8 @@ def test_u16_canonical_json_is_json_dumps_character_for_character(extractions, l
             codec.canonical_json(bad)
 
 
-@pytest.mark.parametrize("v", LONG + [-x for x in LONG] + [0, -1, 7], ids=lambda v: f"{len(str(abs(v)))}d")
+@pytest.mark.parametrize("v", LONG + [-x for x in LONG] + [0, -1, 7],
+                         ids=lambda v: f"{'-' if v < 0 else ''}{v.bit_length()}bits")
 def test_u16_integer_text_conversion_is_exact_and_limit_free(v):
     with int_digit_limit(0):                                  # the reference: no limit at all
         ref = str(v)
@@ -701,6 +705,7 @@ def test_u16_integer_text_conversion_is_exact_and_limit_free(v):
 
 
 def test_u16_long_integers_written_permissively_read_back_under_the_lowest_limit():
+    started_with = sys.get_int_max_str_digits()
     values = [10 ** 999 + 7, -(10 ** 999 + 7), 10 ** 4300 - 1, -(10 ** 4300 - 1)]
     with int_digit_limit(0):                                  # a permissive writer
         texts = [codec.number(v, "x0") for v in values]
@@ -713,11 +718,12 @@ def test_u16_long_integers_written_permissively_read_back_under_the_lowest_limit
         assert back == {"reasons": values, "deep": [{"k": values[0]}]}
         assert codec.sha256_of({"k": values}) == expected_hash             # the hash of long integers is the same
         assert [codec.number(v, "x0") for v in values] == texts             # and so is the encoding
-    assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits
+    assert sys.get_int_max_str_digits() == started_with                      # restored
 
 
 @pytest.mark.parametrize("limit", [0, 640, 4300])
 def test_u16_past_the_contract_is_a_typed_refusal_under_any_limit(limit):
+    started_with = sys.get_int_max_str_digits()
     over = 10 ** 4300                                         # 4301 digits
     with int_digit_limit(limit):
         with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
@@ -730,4 +736,28 @@ def test_u16_past_the_contract_is_a_typed_refusal_under_any_limit(limit):
         with pytest.raises(ValueError, match="exceeds 4300 digits"):          # the reader reports it as corrupt
             codec.json_loads("[1" + "0" * 4300 + "]")
         assert codec.decode_number("1" + "0" * 4299, "x0") == 10 ** 4299        # the longest is still read
-    assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits
+    assert sys.get_int_max_str_digits() == started_with                      # restored
+
+
+def test_u16_the_limit_helper_restores_the_limit_it_found_even_on_an_exception():
+    started_with = sys.get_int_max_str_digits()
+    for other in (0, 640, 5000):
+        with pytest.raises(RuntimeError):
+            with int_digit_limit(other):
+                assert sys.get_int_max_str_digits() == other
+                raise RuntimeError("inside the block")
+        assert sys.get_int_max_str_digits() == started_with
+
+
+@pytest.mark.parametrize("key", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"])
+@pytest.mark.parametrize("sort_keys", [False, True], ids=["unsorted", "sorted"])
+def test_u16_a_non_finite_float_key_is_refused_as_json_dumps_refuses_it(key, sort_keys):
+    for v in ({key: 1}, {"a": {key: [1]}}, [{key: None}]):
+        with pytest.raises(ValueError, match="Out of range float values are not JSON compliant"):
+            json.dumps(v, separators=(",", ":"), allow_nan=False, sort_keys=sort_keys)          # the reference
+        with pytest.raises(ValueError, match="Out of range float values are not JSON compliant"):
+            codec.json_text(v, sort_keys=sort_keys)                                            # never serialized
+        with pytest.raises(UnsupportedValue, match="Out of range float values are not JSON compliant"):
+            codec.canonical_json(v)                                                            # the typed refusal
+    assert codec.json_text({2.5: 1, -0.0: 2, 1e16: 3}) == json.dumps({2.5: 1, -0.0: 2, 1e16: 3}, separators=(",", ":"),
+                                                                      allow_nan=False)        # finite keys unchanged
