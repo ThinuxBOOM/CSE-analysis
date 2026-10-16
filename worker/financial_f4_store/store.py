@@ -8,8 +8,10 @@ migration 0018's tables.
 - Before any insert, inside the savepoint, one catalogue query (schema.problems) checks that 0018's tables exist, this
   role may SELECT and INSERT, and every guard and append-only trigger is present and enabled: otherwise
   SchemaUnavailable and nothing is written. It runs on every save, so a schema change is never hidden by a cache.
-- Insert-if-absent on F6.2 section 10's key. The same key with the same content is 'already_present'; with different
-  content it is refused (ConflictingEvidence), never overwritten (the tables are append-only).
+- Insert-if-absent on F6.2 section 10's key. The same key with different content is refused (ConflictingEvidence),
+  never overwritten (the tables are append-only). The same key with the same content is 'already_present' only once the
+  saved extraction has been read back intact (child counts, decoding, content hash); otherwise the reader's typed
+  refusal (incomplete, corrupt, version_incompatible) is raised.
 - Before returning 'inserted', the extraction is read back in the same transaction and must reproduce the exact
   content hash (the write-time read-back check).
 """
@@ -25,8 +27,9 @@ STATEMENT_INSERT = ("statement_index", "statement_kind", "first_page", "pages", 
 
 def _value(table, name, v):
     """A jsonb column's value always goes in as JSON (None as JSON null, read back as None); every other column's as
-    it is. The jsonb columns are per table: a statement's cross_check is jsonb, a cell's is text."""
-    return psycopg2.extras.Json(v) if name in codec.JSON_COLUMNS[table] else v
+    it is. The jsonb columns are per table: a statement's cross_check is jsonb, a cell's is text. The JSON text is
+    codec.json_text's, so a long integer is written whatever the interpreter's int-string limit."""
+    return psycopg2.extras.Json(v, dumps=codec.json_text) if name in codec.JSON_COLUMNS[table] else v
 
 
 class PostgresF4Store:
@@ -60,16 +63,21 @@ class PostgresF4Store:
                             [_value("financial_f4_extractions", n, row[n]) for n in names])
                 got = cur.fetchone()
                 if got is None:
-                    cur.execute("select store_version, f4_content_sha256, f3_input_sha256 from financial_f4_extractions "
-                                "where cse_filing_id = %s and document_sha256 = %s and word_extractor = %s and "
-                                "f4_extractor_version = %s and classification_id = %s",
+                    cur.execute("select id, store_version, f4_content_sha256, f3_input_sha256 from "
+                                "financial_f4_extractions where cse_filing_id = %s and document_sha256 = %s and "
+                                "word_extractor = %s and f4_extractor_version = %s and classification_id = %s",
                                 (row["cse_filing_id"], row["document_sha256"], row["word_extractor"],
                                  row["f4_extractor_version"], row["classification_id"]))
                     existing = cur.fetchone()
                     want = (STORE_VERSION, row["f4_content_sha256"], row["f3_input_sha256"])
-                    if existing != want:
+                    if existing is None or tuple(existing[1:]) != want:
                         raise ConflictingEvidence(f"filing {row['cse_filing_id']}: an extraction with this key is saved "
-                                                  f"with different content ({existing} != {want})")
+                                                  f"with different content ({existing and tuple(existing[1:])} != "
+                                                  f"{want})")
+                    # Equal hashes on the extraction row do not prove its children still match them (rows may have been
+                    # appended or tampered with since): read it back like any other evidence. A failure is its typed
+                    # refusal (incomplete, corrupt, version_incompatible); nothing is repaired or written.
+                    reader.load_extraction(self.conn, str(existing[0]))
                     cur.execute("release savepoint f4_save")
                     return "already_present"
                 eid = str(got[0])

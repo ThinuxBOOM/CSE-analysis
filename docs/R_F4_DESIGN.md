@@ -12,7 +12,7 @@ operation are separate, later milestones (§10). This record changes no code, mi
 |---|---|
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
 | Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (it follows the owner's review of Stage 1) |
-| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then the correction `dc6302d` and `7c56cac`; not merged to `main`). Targeted results are Claude's reports, not independently re-executed (§10, milestone 4) |
+| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12` and `b00affc`, and a correction of the two findings of the independent source audit of `b00affc`, under owner review; not merged to `main`). Targeted results are Claude's reports, not independently re-executed (§10, milestone 4). **Not accepted or frozen:** that follows the independent re-audit |
 | Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | Not started |
 | Independent audit, component acceptance and freeze | Not started |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
@@ -147,7 +147,16 @@ inherited columns are copies (`:1355`).
 - NaN or ±∞ floats;
 - non-finite `Decimal`s;
 - tuples, non-string keys, keys beginning with `$`, and subclassed types;
-- any value of a type its column doesn't expect.
+- any value of a type its column doesn't expect;
+- an integer outside its column's SQL range (`integer` or `bigint`), or of more than 4,300 digits where it is stored
+  as text or inside `jsonb` (Stage 1 corrections).
+
+**Long integers are portable (Stage 1 correction after the independent source audit).** The 4,300-digit limit is
+R-F4's own contract, not the running interpreter's: Python's int-string conversion limit (`sys.set_int_max_str_digits`)
+can be set as low as 640 digits. R-F4 converts long integers itself, in pieces below that minimum, when it writes number
+text, writes and reads `jsonb` (its own JSON writer, and a `jsonb` decoder registered on the reader's cursors only),
+and hashes. So evidence within the contract that one process writes, another reads back exactly, whatever either's
+setting. The JSON writer reproduces `json.dumps` character for character, so the hashes are unchanged.
 
 **Why these encodings (reported probe and census, 2026-10-14):**
 - **`numeric`** drops the sign of zero and rewrites positive exponents, and psycopg2 sends a non-finite `Decimal` as
@@ -289,7 +298,7 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
 | Transaction | **One per batch** of up to 20 filings: `_persist` runs per filing, and everything commits once after the loop (`worker/extract_financial_candidates.py:111-127`). Each filing's F3, F4 and F5 rows stay atomic within it | **One per filing:** `_persist` plus the ledger event `persisted` (`worker/backfill_documents/worker.py:325-344`) |
 | An F4 save fails at filing *k* | The store rolls back its savepoint and re-raises, and `run()` raises. Filings 1 to *k*−1 are uncommitted and roll back when the connection closes (`main()`'s `finally`, `:172-182`) or when the caller rolls back. Later filings are never saved, and no report is written | The filing's whole transaction rolls back, and the failure is recorded in a separate transaction as `retry_wait` or `failed` (`:455-466`). The slice continues |
 | Retry | None built in. Running again repeats the batch, downloading every document again, because F2 has already deleted them | The next slice claims the item again and downloads the document again, up to `item_max_attempts` times (default 3, `worker/backfill_ops/decisions.py:40`). HB-2's circuit breaker counts request outcomes only (`worker/backfill_transport/slice.py:244-245`), so a systematic save fault can cost up to that many downloads per document, within the armed budgets |
-| Duplicate run | `already_present` for F3, F4 and F5, but the document is still downloaded | A saved item is never claimed again |
+| Duplicate run | `already_present` for F3, F4 and F5, but the document is still downloaded. For F4 only once the saved extraction reads back intact (child counts, decoding, content hash); otherwise its typed refusal (`incomplete`, `corrupt`, `version_incompatible`), with nothing written (Stage 1 correction) | A saved item is never claimed again |
 
 - **Consequence of an F4 save failure** (part of RF4-M2): it stops F3 and F5 being saved for that filing in HB-4, and
   for the whole batch in `run()`. This follows from F6.2 §10's single transaction and from HB-Q7. A non-fatal F4 save
@@ -472,7 +481,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
 | 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given** 2026-10-14, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (after the owner's review of Stage 1) |
-| 3 | Implementation on a controlled branch | **In progress.** Stage 1 (§8.1 items 10–12: migration 0018, the `worker/financial_f4_store/` package, the R-F4 tests) on `claude/rf4-implementation`: owner commits `77cfb84`, then `dc6302d` and `7c56cac` (the owner-directed correction: the in-band schema check, the preflight's three separate checks, test cleanup). Stage 2 (items 1–9, 13–17) not started |
+| 3 | Implementation on a controlled branch | **In progress.** Stage 1 (§8.1 items 10–12: migration 0018, the `worker/financial_f4_store/` package, the R-F4 tests) on `claude/rf4-implementation`: owner commits `77cfb84`, then `dc6302d` and `7c56cac` (the owner-directed correction: the in-band schema check, the preflight's three separate checks, test cleanup), `c5b1c12` (records) and `b00affc` (the self-audit's findings: column-level privileges, typed integer ranges, oversized numbers). The independent source audit of `b00affc` found two more (integer-limit portability; a duplicate save that did not re-read the saved evidence), corrected and under owner review. Stage 2 (items 1–9, 13–17) not started |
 | 4 | Targeted and integration tests (§9) | **Stage 1 part run**, as Claude's reports on synthetic layouts, not independently re-executed: the R-F4 unit and PostgreSQL suites in a Linux container (PostgreSQL 17.11) and the full Windows suite, plus a negative control of the in-band check against the uncorrected `77cfb84` store. The Stage 2 parts (RT-14 through `run()` and HB-4, rollback and retry) have not run |
 | 5 | Full regression with controls B, P, S and I; mutation testing | Not started |
 | 6 | Independent audit of the code and evidence | Not started |

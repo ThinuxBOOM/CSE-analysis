@@ -17,12 +17,16 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
     u13  the package's static boundary and migration 0018's shape
     u14  an integer outside its column's SQL range (integer or bigint) is refused, never clamped; the boundaries pass
     u15  an oversized integer is refused when written and corrupt when read, never an untyped ValueError
+    u16  the 4300-digit contract holds whatever the interpreter's int-string limit: long integers written under a
+         permissive setting read back under the lowest (640); R-F4's JSON writer is json.dumps character for character
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
+import contextlib
 import copy
 import decimal
 import glob
+import hashlib
 import json
 import math
 import os
@@ -640,3 +644,90 @@ def test_u15_an_oversized_number_encoding_is_corrupt_on_read(bad):
             read()
         assert e.value.kind == "corrupt" and "exceeds 4300 digits" in e.value.detail
     assert codec.decode_number("1" * 4300, "x0") == int("1" * 4300)       # the longest is still read
+
+
+# ================================================================================================ u16
+
+@contextlib.contextmanager
+def int_digit_limit(n):
+    """sys.set_int_max_str_digits(n) for the block (0 = unlimited; 640 is the lowest Python allows), restored on exit
+    whatever happens inside."""
+    old = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(n)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(old)
+
+
+LONG = [10 ** 599 - 1, 10 ** 599, 10 ** 600 - 1, 10 ** 600, 10 ** 600 + 1, 10 ** 999 + 7, 2 ** 5000, 10 ** 4300 - 1,
+        int("123456789" * 477 + "1234567")]                 # the last: 4300 digits, no zero pieces
+JSON_ODDITIES = [None, True, False, 0, -0.0, 0.0, 1e16, 5e-324, -1.7976931348623157e308, 1, -1, 2 ** 63, "", "x",
+                 "é \U0001f600\x01\"\\/", [], {}, [[], {}], {"b": 1, "a": [1, 2.5, None], "": {"$f": "1.0"}},
+                 (1, 2), {"z": (3,)}, {1: "int key", 2.5: "float key", True: "bool key", None: "null key"}]
+
+
+def test_u16_canonical_json_is_json_dumps_character_for_character(extractions, layouts):
+    """The hashes are unchanged: R-F4's own JSON writer equals the standard library's on every value it is given."""
+    def dumps(v, **kw):
+        return json.dumps(v, separators=(",", ":"), allow_nan=False, **kw)
+    for _, _, ext in extractions:
+        d = ext.to_dict()
+        assert codec.canonical_json(d) == dumps(d, sort_keys=True)
+        enc = codec.encode_extraction(ext)
+        for table, name in (("financial_f4_statements", "statements"), ("financial_f4_cells", "cells")):
+            for r in enc[name]:
+                for col in codec.JSON_COLUMNS[table]:
+                    assert codec.json_text(r[col]) == dumps(r[col])
+    for name, words, _, _ in layouts[:10]:
+        p = codec.f3_projection(R.chain(words, 1)[0])
+        assert codec.canonical_json(p) == dumps(p, sort_keys=True), name
+    for v in JSON_ODDITIES + LONG + [-x for x in LONG]:
+        assert codec.json_text(v) == dumps(v), repr(v)[:60]
+        if not isinstance(v, dict) or len({type(k) for k in v}) <= 1:      # json.dumps cannot sort mixed key types
+            assert codec.canonical_json(v) == dumps(v, sort_keys=True), repr(v)[:60]
+    for bad in (float("nan"), float("inf"), Decimal("1"), {(1, 2): 3}, object()):
+        with pytest.raises(UnsupportedValue):
+            codec.canonical_json(bad)
+
+
+@pytest.mark.parametrize("v", LONG + [-x for x in LONG] + [0, -1, 7], ids=lambda v: f"{len(str(abs(v)))}d")
+def test_u16_integer_text_conversion_is_exact_and_limit_free(v):
+    with int_digit_limit(0):                                  # the reference: no limit at all
+        ref = str(v)
+    with int_digit_limit(640):                                # the lowest setting Python allows
+        assert codec.int_to_text(v) == ref and codec.text_to_int(ref) == v
+        assert type(codec.text_to_int(ref)) is int
+
+
+def test_u16_long_integers_written_permissively_read_back_under_the_lowest_limit():
+    values = [10 ** 999 + 7, -(10 ** 999 + 7), 10 ** 4300 - 1, -(10 ** 4300 - 1)]
+    with int_digit_limit(0):                                  # a permissive writer
+        texts = [codec.number(v, "x0") for v in values]
+        nested = codec.json_text(codec.to_json({"reasons": values, "deep": [{"k": values[0]}]}, "v"))
+        expected_hash = hashlib.sha256(json.dumps({"k": values}, sort_keys=True, separators=(",", ":"))
+                                       .encode("ascii")).hexdigest()
+    with int_digit_limit(640):                                # a reader at the lowest limit
+        assert [codec.decode_number(t, "x0") for t in texts] == values
+        back = codec.from_json(codec.json_loads(nested), "v")
+        assert back == {"reasons": values, "deep": [{"k": values[0]}]}
+        assert codec.sha256_of({"k": values}) == expected_hash             # the hash of long integers is the same
+        assert [codec.number(v, "x0") for v in values] == texts             # and so is the encoding
+    assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits
+
+
+@pytest.mark.parametrize("limit", [0, 640, 4300])
+def test_u16_past_the_contract_is_a_typed_refusal_under_any_limit(limit):
+    over = 10 ** 4300                                         # 4301 digits
+    with int_digit_limit(limit):
+        with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
+            codec.number(over, "x0")
+        with pytest.raises(UnsupportedValue, match="more than 4300 digits"):
+            codec.to_json([over], "v")
+        with pytest.raises(EvidenceRefused) as e:
+            codec.decode_number("1" + "0" * 4300, "x0")
+        assert e.value.kind == "corrupt"
+        with pytest.raises(ValueError, match="exceeds 4300 digits"):          # the reader reports it as corrupt
+            codec.json_loads("[1" + "0" * 4300 + "]")
+        assert codec.decode_number("1" + "0" * 4299, "x0") == 10 ** 4299        # the longest is still read
+    assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits

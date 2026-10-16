@@ -29,10 +29,16 @@ rollback/retry paths, belong to that later stage.
          2**40) is a typed refusal before any insert, and the caller's transaction stays usable
     p15  verify: an oversized number in saved evidence (as text, or inside jsonb) is `corrupt` with its reason, and
          the other extractions and runs are still verified
+    p16  long integers (up to 4300 digits) saved by a writer with no int-string limit read back exactly through the
+         real reader and its jsonb decoding, verify included, in a process at the lowest limit Python allows (640)
+    p17  a rerun of a saved key is 'already_present' only when the saved extraction reads back intact: after a row is
+         appended or a cell tampered with, the same save is refused (incomplete, corrupt), writes nothing and leaves the
+         caller's transaction usable; once the evidence is restored it is 'already_present' again
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
 """
+import contextlib
 import copy
 import decimal
 import json
@@ -904,3 +910,103 @@ def test_p15_an_oversized_number_in_saved_evidence_is_corrupt_and_the_others_sti
         assert [p["kind"] for p in by[str(s.run_id)]] == ["corrupt"]                       # its F5 run cannot rebuild
     assert str(good.eid) not in by and str(good.run_id) not in by                          # the others still verified
     assert report["extractions"] == report["runs"] == 3 and report["rebuilt"] == 1 and not report["clean"]
+
+
+# ================================================================================================ p16
+
+@contextlib.contextmanager
+def int_digit_limit(n):
+    """sys.set_int_max_str_digits(n) for the block (0 = unlimited), restored on exit whatever happens inside."""
+    old = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(n)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(old)
+
+
+def test_p16_long_integers_saved_without_a_limit_read_back_under_the_lowest_limit(db, layouts):
+    w = db.conn()
+    cls, ext, _ = R.chain(a_layout_with_cells(layouts), 977001)
+    seed_filing(w, 977001)
+    PostgresClassificationStore(w).save(cls, 1000)
+    cid = classification_id(w, cls)
+    si = first_statement_with_cells(ext)
+    st = ext.statements[si]
+    st.columns[0].x0 = 10 ** 999 + 7                                  # a number column (text), 1000 digits
+    st.rows[0].y1 = -(10 ** 4300 - 1)                                 # the longest the contract allows
+    st.reasons = st.reasons + [10 ** 2000 + 3, {"k": [-(10 ** 4300 - 1)]}]       # inside jsonb
+    with int_digit_limit(0):                                          # a permissive writer
+        assert store.PostgresF4Store(w).save(ext, cid, cls) == "inserted"
+        w.commit()
+    key = {"cse_filing_id": 977001, "document_sha256": ext.document_sha256, "word_extractor": ext.extractor,
+           "f4_extractor_version": ext.extractor_version, "classification_id": cid}
+    try:
+        with int_digit_limit(640):                                    # a reader at the lowest limit Python allows
+            eid = reader.extraction_id_for(w, key)
+            back = reader.load_extraction(w, eid)                     # the real reader: text columns and jsonb
+            assert R.diff(ext, back) is None
+            w.rollback()
+            report = verify.verify(db.reader())
+            assert report["clean"] and report["extractions"] == 1, report["problems"]
+            assert store.PostgresF4Store(w).save(copy.deepcopy(ext), cid, cls) == "already_present"
+            w.rollback()
+    finally:
+        assert sys.get_int_max_str_digits() == sys.int_info.default_max_str_digits
+
+
+# ================================================================================================ p17
+
+def test_p17_a_rerun_is_already_present_only_when_the_saved_extraction_reads_back_intact(db, layouts):
+    w, su = db.conn(), db.su()
+    s = persist(w, a_layout_with_cells(layouts), 978001)
+    rerun = store.PostgresF4Store(w)
+    assert rerun.save(copy.deepcopy(s.ext), s.cid, s.cls) == "already_present"         # intact: as before
+    w.rollback()
+    intact = f4_counts(su)
+    sid = q(su, "select id from financial_f4_statements where extraction_id = %s order by statement_index limit 1",
+            (s.eid,))[0][0]
+
+    def refused(kind):
+        """The same save as the original, now refused with `kind`: nothing written, the caller's transaction usable."""
+        q(w, "select count(*) from report_document_classifications")    # the caller's own work in this transaction
+        before = f4_inserts(w)
+        with pytest.raises(EvidenceRefused) as e:
+            rerun.save(copy.deepcopy(s.ext), s.cid, s.cls)
+        assert e.value.kind == kind, e.value
+        assert f4_inserts(w) == before and q(w, "select 1") == [(1,)]
+        w.rollback()
+
+    # a row appended after the save, by the worker role itself (INSERT is all append-only allows)
+    q(w, "insert into financial_f4_rows (statement_id, seq, row_index, page, label_raw, label_normalized, y0, y1, "
+         "line_count, wrapped, kind, status, reasons) values (%s, 9999, 9999, 1, 'x', 'x', '1', '2', 1, false, "
+         "'values', 'ok', '[]')", (sid,))
+    w.commit()
+    try:
+        refused("incomplete")
+    finally:
+        q(su, "set session_replication_role = replica")              # the triggers off: undo the append
+        try:
+            q(su, "delete from financial_f4_rows where statement_id = %s and seq = 9999", (sid,))
+        finally:
+            q(su, "set session_replication_role = origin")
+    assert f4_counts(su) == intact
+    assert rerun.save(copy.deepcopy(s.ext), s.cid, s.cls) == "already_present"
+    w.rollback()
+
+    # a cell tampered with after the save
+    cell = q(su, "select k.id, k.raw_value from financial_f4_cells k join financial_f4_statements t on t.id = "
+                 "k.statement_id where t.extraction_id = %s order by t.statement_index, k.seq limit 1", (s.eid,))[0]
+    q(su, "set session_replication_role = replica")
+    try:
+        q(su, "update financial_f4_cells set raw_value = raw_value || '!' where id = %s", (cell[0],))
+        refused("corrupt")
+    finally:
+        try:
+            q(su, "update financial_f4_cells set raw_value = %s where id = %s", (cell[1], cell[0]))
+        finally:
+            q(su, "set session_replication_role = origin")
+    assert f4_counts(su) == intact
+    assert rerun.save(copy.deepcopy(s.ext), s.cid, s.cls) == "already_present"
+    w.rollback()
+    assert verify.verify(db.reader())["clean"]

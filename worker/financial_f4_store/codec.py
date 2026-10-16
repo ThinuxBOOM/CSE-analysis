@@ -79,9 +79,103 @@ INTEGER_COLUMNS = {
 COMPUTED_INTEGER_COLUMNS = frozenset({"seq", "value_ordinal", "statement_count", "column_count", "row_count",
                                       "cell_count"})
 # The longest integer, in decimal digits, stored as text (a number column, or an integer inside jsonb): Python's default
-# int-string conversion limit (sys.int_info.default_max_str_digits), fixed here so that what is written can always be
-# read back, whatever limit an interpreter is configured with.
+# int-string conversion limit (sys.int_info.default_max_str_digits), fixed here as R-F4's own contract. It does not
+# follow the running interpreter's limit (sys.set_int_max_str_digits, which may be as low as 640 digits or unlimited):
+# R-F4 converts long integers itself (int_to_text, text_to_int), in pieces short enough that no limit ever applies, so
+# what one process writes another reads back, whatever either's setting.
 MAX_INT_DIGITS = 4300
+_MAX_INT_BITS = (10 ** MAX_INT_DIGITS).bit_length()   # an int with more bits has more than MAX_INT_DIGITS digits
+_PIECE = 600                                          # digits per piece: below the lowest limit Python allows (640)
+_PIECE_BASE = 10 ** _PIECE
+
+
+# ================================================================================================ integers and JSON
+
+def int_to_text(v):
+    """str(v) for an int, exactly, without Python's int-string conversion limit."""
+    if -_PIECE_BASE < v < _PIECE_BASE:
+        return str(v)
+    sign, v = ("-", -v) if v < 0 else ("", v)
+    pieces = []
+    while v:
+        v, r = divmod(v, _PIECE_BASE)
+        pieces.append(r)
+    return sign + str(pieces[-1]) + "".join(str(p).zfill(_PIECE) for p in reversed(pieces[:-1]))
+
+
+def text_to_int(s):
+    """int(s) for a decimal integer text (INT_RE), exactly, without Python's int-string conversion limit."""
+    neg = s.startswith("-")
+    digits = s[1:] if neg else s
+    v = 0
+    for i in range(0, len(digits), _PIECE):
+        piece = digits[i:i + _PIECE]
+        v = v * 10 ** len(piece) + int(piece)
+    return -v if neg else v
+
+
+def _json_parts(v, sort_keys, out):
+    # json.dumps(v, separators=(",", ":"), allow_nan=False, sort_keys=...), the standard library's own output, except
+    # that an integer is written by int_to_text
+    if v is None:
+        out.append("null")
+    elif v is True:
+        out.append("true")
+    elif v is False:
+        out.append("false")
+    elif isinstance(v, str):
+        out.append(json.encoder.encode_basestring_ascii(v))
+    elif isinstance(v, int):
+        out.append(int_to_text(int(v)))
+    elif isinstance(v, float):
+        if not math.isfinite(v):
+            raise ValueError(f"Out of range float values are not JSON compliant: {v!r}")
+        out.append(float.__repr__(v))
+    elif isinstance(v, (list, tuple)):
+        out.append("[")
+        for i, x in enumerate(v):
+            if i:
+                out.append(",")
+            _json_parts(x, sort_keys, out)
+        out.append("]")
+    elif isinstance(v, dict):
+        out.append("{")
+        for i, (k, x) in enumerate(sorted(v.items()) if sort_keys else v.items()):
+            if isinstance(k, str):
+                key = k
+            elif k is True or k is False or k is None:
+                key = {True: "true", False: "false", None: "null"}[k]
+            elif isinstance(k, int):
+                key = int_to_text(int(k))
+            elif isinstance(k, float):
+                key = float.__repr__(k)
+            else:
+                raise TypeError(f"keys must be str, int, float, bool or None, not {type(k).__name__}")
+            out.append(("," if i else "") + json.encoder.encode_basestring_ascii(key) + ":")
+            _json_parts(x, sort_keys, out)
+        out.append("}")
+    else:
+        raise TypeError(f"Object of type {type(v).__name__} is not JSON serializable")
+
+
+def json_text(v, sort_keys=False):
+    """The JSON text of v, as json.dumps(v, separators=(",", ":"), allow_nan=False[, sort_keys=True]) writes it, but
+    independent of the interpreter's int-string limit. What the store sends to jsonb, and what the hashes hash."""
+    out = []
+    _json_parts(v, sort_keys, out)
+    return "".join(out)
+
+
+def _json_int(s):
+    if len(s) - s.startswith("-") > MAX_INT_DIGITS:
+        raise ValueError(f"a JSON integer of {len(s)} characters exceeds {MAX_INT_DIGITS} digits")
+    return text_to_int(s)
+
+
+def json_loads(s):
+    """json.loads(s), but reading integers with text_to_int: independent of the interpreter's int-string limit. An
+    integer of more than MAX_INT_DIGITS digits is a ValueError, which the reader reports as corrupt evidence."""
+    return json.loads(s, parse_int=_json_int)
 
 
 # ================================================================================================ values (writing)
@@ -101,11 +195,9 @@ def text(v, where, optional=False):
 
 
 def _int_text(v, where):
-    """str(v) of an int of at most MAX_INT_DIGITS digits, or a refusal (never Python's own conversion ValueError)."""
-    try:
-        s = str(v)
-    except ValueError:                          # beyond this interpreter's int-string conversion limit
-        s = None
+    """The decimal text of an int of at most MAX_INT_DIGITS digits, whatever the interpreter's int-string limit; a
+    longer one is refused (never Python's own conversion ValueError)."""
+    s = int_to_text(v) if v.bit_length() <= _MAX_INT_BITS else None      # longer: refused without converting
     if s is None or len(s) - (s[0] == "-") > MAX_INT_DIGITS:
         raise UnsupportedValue(f"{where}: an integer of {v.bit_length()} bits has more than {MAX_INT_DIGITS} digits")
     return s
@@ -212,8 +304,9 @@ def decode_number(s, where, optional=False):
         if INT_RE.fullmatch(s):
             if len(s) - s.startswith("-") > MAX_INT_DIGITS:
                 raise _corrupt(where, f"an integer encoding of {len(s)} characters exceeds {MAX_INT_DIGITS} digits")
-            if str(int(s)) == s:
-                return int(s)
+            v = text_to_int(s)                                  # whatever the interpreter's int-string limit
+            if int_to_text(v) == s:
+                return v
         if FLOAT_RE.fullmatch(s) and ("." in s or "e" in s) and repr(float(s)) == s:
             return float(s)
     raise _corrupt(where, f"not an exact number encoding: {s!r}")
@@ -257,8 +350,10 @@ def from_json(v, where):
 # ================================================================================================ hashes
 
 def canonical_json(obj):
+    """json.dumps(obj, sort_keys=True, separators=(",", ":"), allow_nan=False), character for character (the hashes
+    are unchanged), written by json_text so the interpreter's int-string limit never applies."""
     try:
-        return json.dumps(obj, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        return json_text(obj, sort_keys=True)
     except (TypeError, ValueError) as exc:
         raise UnsupportedValue(f"no canonical JSON form: {exc}") from None
 

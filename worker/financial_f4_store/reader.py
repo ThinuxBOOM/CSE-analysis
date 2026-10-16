@@ -10,6 +10,8 @@ on a negative longer than the precision) the rebuild is `f5_rebuild_refused`, ne
 """
 import decimal
 
+import psycopg2.extras
+
 from .. import financial_candidates as f5
 from .. import statement_extraction as se
 from ..report_classification_store import CLASSIFICATION_COLUMNS, EVIDENCE_COLUMNS, PERIOD_COLUMNS
@@ -24,6 +26,10 @@ RUN_KEY = ("cse_filing_id", "document_sha256", "word_extractor", "f4_extractor_v
 
 
 def _rows(cur, sql, args=()):
+    # json and jsonb are decoded by codec.json_loads on this cursor only (nothing global changes): integers are read
+    # whatever the interpreter's int-string limit, and one past MAX_INT_DIGITS is a ValueError (corrupt evidence)
+    psycopg2.extras.register_default_json(cur, loads=codec.json_loads)
+    psycopg2.extras.register_default_jsonb(cur, loads=codec.json_loads)
     cur.execute(sql, args)
     names = [d[0] for d in cur.description]
     return [dict(zip(names, r)) for r in cur.fetchall()]
@@ -58,9 +64,9 @@ def load_extraction(conn, extraction_id):
     """The DocumentExtraction, exactly as F4 produced it: the version, the child counts and the content hash are
     checked (version_incompatible, incomplete, corrupt).
 
-    Saved evidence that cannot even be decoded is `corrupt` too: a ValueError while reading it (psycopg2 decoding a
-    jsonb integer past Python's int-string limit, say) or an ArithmeticError (decimal). Only those, and only here, per
-    extraction: a database error or any other exception (a programming error) still propagates."""
+    Saved evidence that cannot even be decoded is `corrupt` too: a ValueError while reading it (a jsonb integer of more
+    than codec.MAX_INT_DIGITS digits, say) or an ArithmeticError (decimal). Only those, and only here, per extraction:
+    a database error or any other exception (a programming error) still propagates."""
     try:
         return _load_extraction(conn, extraction_id)
     except (ValueError, ArithmeticError) as exc:
