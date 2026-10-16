@@ -50,6 +50,16 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
          saves once
     p24  two concurrent run()s of one filing, each on its own connection: the second waits on the first's uncommitted
          rows, then finds F3, F4 and F5 already present; one set of rows, no deadlock (design section 6)
+    p25  audit remediation (Finding 1): an F3 row persisted earlier under the same F3 key, with content other than the
+         classification F5 consumed, refuses the F4 save (ConflictingEvidence) before any insert, on the 'inserted'
+         and 'already_present' paths; run() then leaves its whole batch uncommitted, HB-4 rolls the filing back and
+         records it; verify still reports historical evidence saved without the check
+    p26  audit remediation (Finding 2): a trigger running a same-named function in another schema, a WHEN condition,
+         a replaced function body, a column list or an argument is refused by the store before any insert and
+         reported by the preflight
+    p27  audit remediation (Finding 3): the live constraints equal the preflight's definitions; a same-name
+         replacement of another type, a weakened check, a changed key, a foreign key into another schema or with
+         another action, a NOT VALID constraint and an extra constraint are each reported, the three checks apart
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -1430,3 +1440,241 @@ def test_p24_two_concurrent_runs_of_one_filing_leave_one_set_of_rows_and_no_dead
     assert rows_of(su, [fid]) == (1, 1, 1) and f4_counts(su)["extractions"] == 1
     report = verify.verify(db.reader())
     assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == 1
+
+
+# ========================================================================================== audit remediation
+
+def differing(classification):
+    """A classification of the same F3 key (filing, document, classifier version, text extractor) with other content:
+    what F3's store keeps when it saved an earlier classification of the same document."""
+    earlier = copy.deepcopy(classification)
+    earlier["status_reasons"] = list(earlier.get("status_reasons") or []) + ["rf4 test: an earlier classification"]
+    return earlier
+
+
+def consumed_classification(w, fid, words, url):
+    """The F3 classification F5's consumer makes for this filing (a dry run: nothing is written)."""
+    made = {}
+    by = ByDocument({fid: words})
+    with TempRoot() as root:
+        f5cli.run(f5cli.load_filings_from_db(w, [fid]), temp_root=root, request_delay_seconds=0,
+                  fetcher=FakeFetcher({url: _ok(fid)}), extract_text=by.text, extract_words=by.words,
+                  require_poppler=False, on_result=lambda f, res, cls: made.setdefault(f, cls))
+    return made[fid]
+
+
+def test_p25_a_persisted_f3_other_than_the_one_f5_consumed_refuses_the_save_and_verify_reports_history(
+        db, layouts, monkeypatch):
+    w, su = db.conn(), db.su()
+    fid = 990001
+    cls, ext, res = R.chain(a_layout_with_cells(layouts), fid)
+    seed_filing(w, fid)
+    earlier = differing(cls)
+    assert PostgresClassificationStore(w).save(earlier, 1000) == "inserted"
+    w.commit()
+    assert PostgresClassificationStore(w).save(cls, 1000) == "already_present"     # F3's store keeps the earlier row
+    cid = classification_id(w, cls)
+    persisted = codec.f3_input_sha256(reader.load_classification(w, cid))
+    assert persisted == codec.f3_input_sha256(earlier) != codec.f3_input_sha256(cls)
+    before = f4_inserts(w)
+    with pytest.raises(ConflictingEvidence, match="is persisted with content other than the classification F5 "
+                                                  "consumed") as e:
+        store.PostgresF4Store(w).save(ext, cid, cls)
+    assert e.value.kind == "conflicting" and persisted in e.value.detail
+    assert f4_inserts(w) == before                                              # refused before any insert
+    assert q(w, "select count(*) from report_document_classifications where id = %s", (cid,)) == [(1,)]   # usable
+    w.rollback()
+    # History: an extraction saved by a writer without this check (simulated by reading back the classification F5
+    # consumed) names F3 evidence F5 did not consume. verify reports it; saving it again is refused, not
+    # 'already_present'.
+    with monkeypatch.context() as m:
+        m.setattr(store.reader, "load_classification", lambda conn, c: cls)
+        assert store.PostgresF4Store(w).save(ext, cid, cls) == "inserted"
+    _, run_id = PostgresCandidateStore(w).save(res, cid, PostgresIssuerStore(w).link_filing(fid))
+    w.commit()
+    eid = reader.extraction_id_for(w, {"cse_filing_id": fid, "document_sha256": ext.document_sha256,
+                                       "word_extractor": ext.extractor, "f4_extractor_version": ext.extractor_version,
+                                       "classification_id": cid})
+    report = verify.verify(db.reader())
+    assert not report["clean"]
+    assert {(p["kind"], p.get("extraction_id") or p.get("run_id")) for p in report["problems"]} == \
+        {("corrupt", str(eid)), ("corrupt", str(run_id))}
+    assert all("f3_input_sha256" in p["detail"] for p in report["problems"])
+    before = f4_inserts(w)
+    with pytest.raises(ConflictingEvidence, match="is persisted with content other than"):
+        store.PostgresF4Store(w).save(copy.deepcopy(ext), cid, cls)               # the 'already_present' path
+    assert f4_inserts(w) == before
+    w.rollback()
+    assert f4_counts(su, fid)["extractions"] == 1
+
+
+def test_p25_run_with_a_differing_persisted_f3_raises_and_leaves_its_whole_batch_uncommitted(db, layouts):
+    w = db.conn()
+    words = a_layout_with_cells(layouts)
+    fids = [990101, 990102]
+    for fid in fids:
+        seed_filing(w, fid)
+    cls = consumed_classification(w, fids[1], words, H.url_of(R.path_of(fids[1])))
+    PostgresClassificationStore(w).save(differing(cls), 1000)
+    w.commit()
+    with pytest.raises(ConflictingEvidence, match="is persisted with content other than"):
+        run_f5(w, fids, dict.fromkeys(fids, words))
+    w.rollback()                                                            # what main()'s finally does (close)
+    assert rows_of(w, [fids[0]]) == (0, 0, 0)                               # filing 1 is uncommitted too
+    assert rows_of(w, [fids[1]]) == (1, 0, 0)                               # only the earlier F3 row
+    assert f4_counts(w)["extractions"] == 0 and verify.verify(db.reader())["clean"]
+
+
+def test_p25_hb4_with_a_differing_persisted_f3_rolls_the_filing_back_and_records_it(env, layouts):
+    fid = 990201
+    words = a_layout_with_cells(layouts)
+    w = open_hb4(env, [fid], item_max_attempts=3)
+    cls = consumed_classification(w, fid, words, H.url_of(H.path_of(fid)))
+    PostgresClassificationStore(w).save(differing(cls), 1000)
+    w.commit()
+    cdn = H.ScriptedCDN(env.clock, {H.url_of(H.path_of(fid)): H.ok_doc(fid)})
+    ds, err = hb4_slice(env, cdn, ByDocument({fid: words}))
+    it = H.item_of(w, fid)
+    ev = ledger.events(w, it["id"])[-1]
+    assert err is None and (ev["state"], ev["action"]) == ("retry_wait", "record"), ev
+    assert "rolled back" in ev["reason"] and "ConflictingEvidence" in ev["reason"], ev["reason"]
+    assert rows_of(w, [fid]) == (1, 0, 0) and f4_counts(w)["extractions"] == 0     # only the earlier F3 row
+    assert not any(e["state"] == "persisted" for e in ledger.events(w, it["id"]))
+    w.rollback()
+
+
+def test_p26_a_trigger_altered_beyond_its_name_is_refused_before_any_insert_and_reported(db, layouts):
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    guard = trigger_def(su, "financial_f4_extractions", "trg_ff4e_guard")
+    cells = trigger_def(su, "financial_f4_cells", "trg_ff4c_append_only")
+    statements = trigger_def(su, "financial_f4_statements", "trg_ff4s_append_only")
+    rows = trigger_def(su, "financial_f4_rows", "trg_ff4r_append_only")
+    guard_function = q(su, "select pg_get_functiondef('public.financial_f4_extraction_guard()'::regprocedure)")[0][0]
+    status = q(su, "select attnum from pg_attribute where attrelid = 'public.financial_f4_statements'::regclass and "
+                   "attname = 'status'")[0][0]
+    noop = "returns trigger language plpgsql as $$ begin return coalesce(new, old); end $$"
+    # (break, restore, the store's message (a regex), the preflight's message for cse_worker)
+    cases = [
+        # a same-named function in another schema: a no-op that lets UPDATE and DELETE through
+        (f"create schema rf4_other; create function rf4_other.f5_reject_mutation() {noop}; "
+         "drop trigger trg_ff4c_append_only on financial_f4_cells; create trigger trg_ff4c_append_only before update "
+         "or delete on financial_f4_cells for each row execute function rf4_other.f5_reject_mutation()",
+         f"drop trigger trg_ff4c_append_only on financial_f4_cells; {cells}; drop schema rf4_other cascade",
+         r"trg_ff4c_append_only runs rf4_other\.f5_reject_mutation\(\), expected public\.f5_reject_mutation\(\)",
+         "financial_f4_cells: trigger trg_ff4c_append_only runs rf4_other.f5_reject_mutation(), expected "
+         "public.f5_reject_mutation()"),
+        # a WHEN condition that never lets the guard fire
+        ("drop trigger trg_ff4e_guard on financial_f4_extractions; create trigger trg_ff4e_guard before insert on "
+         "financial_f4_extractions for each row when (false) execute function financial_f4_extraction_guard()",
+         f"drop trigger trg_ff4e_guard on financial_f4_extractions; {guard}",
+         r"trg_ff4e_guard has a WHEN condition \(false\)",
+         "financial_f4_extractions: trigger trg_ff4e_guard has a WHEN condition (false); migration 0018 creates it "
+         "without one"),
+        # the guard function's body replaced in place (same name, schema and oid)
+        (f"create or replace function public.financial_f4_extraction_guard() {noop}", guard_function,
+         r"trg_ff4e_guard runs public\.financial_f4_extraction_guard\(\) defined other than in migration 0018",
+         None),
+        # an update trigger narrowed to one column: an UPDATE of any other column gets through
+        ("drop trigger trg_ff4s_append_only on financial_f4_statements; create trigger trg_ff4s_append_only before "
+         "update of status or delete on financial_f4_statements for each row execute function f5_reject_mutation()",
+         f"drop trigger trg_ff4s_append_only on financial_f4_statements; {statements}",
+         rf"trg_ff4s_append_only fires only for column\(s\) {status} \(attnum\)",
+         f"financial_f4_statements: trigger trg_ff4s_append_only fires only for column(s) {status} (attnum); "
+         "migration 0018 names no columns"),
+        # an argument the migration does not pass
+        ("drop trigger trg_ff4r_append_only on financial_f4_rows; create trigger trg_ff4r_append_only before update "
+         "or delete on financial_f4_rows for each row execute function f5_reject_mutation('x')",
+         f"drop trigger trg_ff4r_append_only on financial_f4_rows; {rows}",
+         r"trg_ff4r_append_only passes 1 argument\(s\)",
+         "financial_f4_rows: trigger trg_ff4r_append_only passes 1 argument(s); migration 0018 passes none"),
+    ]
+    for n, (break_sql, restore_sql, match, reported) in enumerate(cases):
+        q(su, break_sql)                                              # as the superuser: a schema, functions, triggers
+        try:
+            refused_before_any_insert(w, su, words, 962001 + n, match)
+            problems = preflight.object_problems(w)
+            assert any(re.search(match, p) for p in problems), (match, problems)
+            if reported is not None:
+                assert reported in problems, (reported, problems)
+        finally:
+            try:
+                w.rollback()
+            finally:
+                q(su, restore_sql)
+    assert preflight.object_problems(su) == []                        # every change was undone, exactly
+    assert q(su, "select count(*) from financial_f4_extractions") == [(0,)]
+    assert q(su, "select count(*) from pg_namespace where nspname = 'rf4_other'") == [(0,)]
+
+
+def live_constraints(su):
+    return {t: {n: (k, d) for n, k, d in q(su, "select conname, contype, pg_get_constraintdef(oid) from pg_constraint "
+                                               "where conrelid = %s::regclass and contype <> 'n'", (f"public.{t}",))}
+            for t in codec.TABLES}
+
+
+def test_p27_the_preflight_verifies_each_constraint_by_type_and_definition(db):
+    su, m = db.su(), migrator(db)
+    q(su, "set search_path = public")
+    assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS          # 0018 as P1's runner applies it
+    assert preflight.report(m)["clean"]
+    d = preflight.CONSTRAINT_DEFINITIONS
+    put = lambda t, n: f"alter table {t} drop constraint {n}; alter table {t} add constraint {n} {d[t][n][1]}"
+    cases = [  # (break, restore, what the preflight must report)
+        ("alter table financial_f4_cells drop constraint uq_financial_f4_cell_seq; alter table financial_f4_cells "
+         "add constraint uq_financial_f4_cell_seq check (seq >= 0)",                 # same name, another type
+         put("financial_f4_cells", "uq_financial_f4_cell_seq"),
+         "financial_f4_cells: constraint uq_financial_f4_cell_seq is a check constraint (CHECK ((seq >= 0))), "
+         f"expected a unique constraint ({d['financial_f4_cells']['uq_financial_f4_cell_seq'][1]})"),
+        ("alter table financial_f4_cells drop constraint chk_ff4c_decimal; alter table financial_f4_cells add "
+         "constraint chk_ff4c_decimal check (parsed_value_text is null or length(parsed_value_text) > 0)",  # weakened
+         put("financial_f4_cells", "chk_ff4c_decimal"),
+         "financial_f4_cells: constraint chk_ff4c_decimal is CHECK (((parsed_value_text IS NULL) OR "
+         f"(length(parsed_value_text) > 0))), expected {d['financial_f4_cells']['chk_ff4c_decimal'][1]}"),
+        ("alter table financial_f4_extractions drop constraint uq_financial_f4_extraction; alter table "
+         "financial_f4_extractions add constraint uq_financial_f4_extraction unique (cse_filing_id, document_sha256, "
+         "word_extractor, f4_extractor_version, classification_id, store_version)",   # a key widened (weaker)
+         put("financial_f4_extractions", "uq_financial_f4_extraction"),
+         "financial_f4_extractions: constraint uq_financial_f4_extraction is UNIQUE (cse_filing_id, document_sha256, "
+         "word_extractor, f4_extractor_version, classification_id, store_version), expected "
+         f"{d['financial_f4_extractions']['uq_financial_f4_extraction'][1]}"),
+        ("alter table financial_f4_cells drop constraint fk_ff4c_row; alter table financial_f4_cells add constraint "
+         "fk_ff4c_row foreign key (statement_id) references financial_f4_statements(id)",   # another relationship
+         put("financial_f4_cells", "fk_ff4c_row"),
+         "financial_f4_cells: constraint fk_ff4c_row is FOREIGN KEY (statement_id) REFERENCES "
+         f"financial_f4_statements(id), expected {d['financial_f4_cells']['fk_ff4c_row'][1]}"),
+        ("alter table financial_f4_statements drop constraint financial_f4_statements_extraction_id_fkey; alter "
+         "table financial_f4_statements add constraint financial_f4_statements_extraction_id_fkey foreign key "
+         "(extraction_id) references financial_f4_extractions(id) on delete cascade",       # another action
+         put("financial_f4_statements", "financial_f4_statements_extraction_id_fkey"),
+         "financial_f4_statements: constraint financial_f4_statements_extraction_id_fkey is FOREIGN KEY "
+         "(extraction_id) REFERENCES financial_f4_extractions(id) ON DELETE CASCADE, expected "
+         f"{d['financial_f4_statements']['financial_f4_statements_extraction_id_fkey'][1]}"),
+        ("create schema rf4_other; create table rf4_other.report_filings (cse_filing_id bigint primary key); alter "
+         "table financial_f4_extractions drop constraint financial_f4_extractions_cse_filing_id_fkey; alter table "
+         "financial_f4_extractions add constraint financial_f4_extractions_cse_filing_id_fkey foreign key "
+         "(cse_filing_id) references rf4_other.report_filings(cse_filing_id)",          # a same-named table elsewhere
+         put("financial_f4_extractions", "financial_f4_extractions_cse_filing_id_fkey")
+         + "; drop schema rf4_other cascade",
+         "financial_f4_extractions: constraint financial_f4_extractions_cse_filing_id_fkey is FOREIGN KEY "
+         "(cse_filing_id) REFERENCES rf4_other.report_filings(cse_filing_id), expected "
+         f"{d['financial_f4_extractions']['financial_f4_extractions_cse_filing_id_fkey'][1]}"),
+        ("alter table financial_f4_rows drop constraint chk_ff4r_seq; alter table financial_f4_rows add constraint "
+         "chk_ff4r_seq check (seq >= 0) not valid",                                      # not validated
+         put("financial_f4_rows", "chk_ff4r_seq"),
+         "financial_f4_rows: constraint chk_ff4r_seq is not validated"),
+        ("alter table financial_f4_rows add constraint chk_rf4_extra check (seq < 1000000)",   # not 0018's
+         "alter table financial_f4_rows drop constraint chk_rf4_extra",
+         "financial_f4_rows: constraint chk_rf4_extra (CHECK ((seq < 1000000))) is not one migration 0018 creates"),
+    ]
+    for break_sql, restore_sql, want in cases:
+        q(su, break_sql)                                                  # as the superuser
+        try:
+            got = preflight.report(m)
+            assert want in got["objects"] and not got["clean"], (want, got["objects"])
+            assert got["file"] == [] and got["ledger"]["status"] == "verified"     # the three checks stay apart
+            assert len(got["objects"]) == 1, got["objects"]                          # nothing else is reported
+        finally:
+            q(su, restore_sql)
+    assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS and preflight.report(m)["clean"]
+    assert q(su, "select count(*) from pg_namespace where nspname = 'rf4_other'") == [(0,)]

@@ -21,13 +21,16 @@ class UnsupportedValue(F4Refused):
 class SchemaUnavailable(F4Refused):
     """Migration 0018's schema is not usable, so nothing is written (the store's in-band check, schema.problems, run
     before every save): one of the five tables is missing; the connection's role lacks SELECT or INSERT on one; or a
-    guard or append-only trigger is missing, disabled (or replica-only), or runs another function or at another timing
-    than 0018 creates it with."""
+    guard or append-only trigger is missing, disabled (or replica-only), or differs from how 0018 creates it: another
+    function (by schema, signature, language or definition), another timing, a WHEN condition, arguments or a column
+    list."""
     kind = "schema_unavailable"
 
 
 class ConflictingEvidence(F4Refused):
-    """An extraction with the same key is already saved with different content."""
+    """Evidence with the same key is already saved with different content: an extraction with the same key, or the F3
+    classification the extraction would name (persisted under its id, its content differs from the classification F5
+    consumed: f3_input_sha256)."""
     kind = "conflicting"
 
 

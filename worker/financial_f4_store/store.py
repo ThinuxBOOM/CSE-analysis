@@ -6,8 +6,15 @@ migration 0018's tables.
 - One SAVEPOINT, no commit: the caller owns the transaction, as with F3's and F5's stores. On any error the savepoint
   is rolled back and the error re-raised, so the caller's transaction stays usable and decides what to roll back.
 - Before any insert, inside the savepoint, one catalogue query (schema.problems) checks that 0018's tables exist, this
-  role may SELECT and INSERT, and every guard and append-only trigger is present and enabled: otherwise
-  SchemaUnavailable and nothing is written. It runs on every save, so a schema change is never hidden by a cache.
+  role may SELECT and INSERT, and every guard and append-only trigger is present, enabled and exactly as 0018 creates
+  it (its function by schema, signature and definition; its timing, no WHEN condition, no arguments, no column list):
+  otherwise SchemaUnavailable and nothing is written. It runs on every save, so a schema change is never hidden by a
+  cache.
+- Then, still before any insert, the F3 classification persisted under `classification_id` is read back (0005) and must
+  hash to the f3_input_sha256 of the classification F5 consumed. F3's own store keeps an earlier row whose key is equal
+  and whose content differs ('already_present'), so without this check the extraction would name F3 evidence F5 did not
+  consume. A difference is ConflictingEvidence and nothing is written, on the 'inserted' and 'already_present' paths
+  alike; the caller's transaction then fails as for any refusal, so neither F4 nor F5 is persisted.
 - Insert-if-absent on F6.2 section 10's key. The same key with different content is refused (ConflictingEvidence),
   never overwritten (the tables are append-only). The same key with the same content is 'already_present' only once the
   saved extraction has been read back intact (child counts, decoding, content hash); otherwise the reader's typed
@@ -38,8 +45,9 @@ class PostgresF4Store:
 
     def save(self, ext, classification_id, classification):
         """Save one extraction. classification_id: the F3 row this extraction was built under; classification: the F3
-        dict F5 consumed (its 0005 projection is hashed into f3_input_sha256). Returns 'inserted' or 'already_present';
-        raises UnsupportedValue, SchemaUnavailable, ConflictingEvidence or EvidenceRefused."""
+        dict F5 consumed (its 0005 projection is hashed into f3_input_sha256, and the row persisted under
+        classification_id must hash the same). Returns 'inserted' or 'already_present'; raises UnsupportedValue,
+        SchemaUnavailable, ConflictingEvidence or EvidenceRefused ('missing' when no F3 row has that id)."""
         enc = codec.encode_extraction(ext)
         if classification_id is None:
             raise UnsupportedValue("classification_id is missing")
@@ -56,6 +64,12 @@ class PostgresF4Store:
                 problems = schema.problems(cur)
                 if problems:
                     raise SchemaUnavailable("; ".join(problems))
+                persisted = codec.f3_input_sha256(reader.load_classification(self.conn, row["classification_id"]))
+                if persisted != row["f3_input_sha256"]:
+                    raise ConflictingEvidence(f"filing {row['cse_filing_id']}: the F3 classification "
+                                              f"{row['classification_id']} is persisted with content other than the "
+                                              f"classification F5 consumed (f3_input_sha256 {persisted} != "
+                                              f"{row['f3_input_sha256']})")
                 names = list(row)
                 cur.execute(f"insert into financial_f4_extractions ({', '.join(names)}) values "
                             f"({', '.join(['%s'] * len(names))}) on conflict (cse_filing_id, document_sha256, "

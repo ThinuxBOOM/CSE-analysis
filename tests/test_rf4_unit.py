@@ -23,6 +23,10 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          and F5 with the F3 dict F5 consumed, falls back to R-F4's store when the caller has none (HB-4), never saves F5
          after a failed F4 save; the RDV harness keeps _persist's order apart from F4 (R-a); HB-1 pins exactly the R-F4
          modules _persist imports and STORE_VERSION
+    u18  audit remediation: the trigger functions' pinned bodies are the ones migrations 0007 and 0018 write; a live
+         trigger is judged by its function's identity and definition and by its own properties (WHEN, arguments,
+         columns); the preflight's constraint definitions are 0018's, by name, type, key columns and references, and
+         a replaced, weakened, NOT VALID, missing or extra constraint is reported
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -957,3 +961,108 @@ def test_u17_hb1_pins_the_r_f4_modules_persist_imports_and_store_version():
     assert pinned == closure and "worker/extract_financial_candidates.py" in hb1.FROZEN_FILES
     assert ("worker.financial_f4_store", "STORE_VERSION", STORE_VERSION) in hb1.FROZEN_VERSIONS
     assert hb1.file_problems() == [] and hb1.version_problems() == []
+
+
+# ============================================================================================ u18 (audit remediation)
+
+def _function_body(migration, function):
+    """The body of a trigger function exactly as its migration writes it between the dollar quotes (LF line ends)."""
+    text = open(os.path.join(REPO, "supabase", "migrations", migration), "rb").read().replace(b"\r\n", b"\n")
+    bodies = re.findall(r"create (?:or replace )?function " + function + r"\(\) returns trigger\nlanguage (\w+) as "
+                        r"\$\$(.*?)\$\$;", text.decode("utf-8"), re.S)
+    assert len(bodies) == 1, (migration, function, len(bodies))
+    return bodies[0]
+
+
+def test_u18_the_trigger_functions_are_pinned_to_the_bodies_their_migrations_write():
+    files = {"0007": "0007_issuers.sql", "0018": "0018_f4_structure_persistence.sql"}
+    assert set(schema.FUNCTIONS) == {schema.GUARD_FUNCTION, schema.REJECT_FUNCTION}
+    for function, (migration, language, body_sha256) in schema.FUNCTIONS.items():
+        got_language, body = _function_body(files[migration], function)
+        assert (got_language, hashlib.sha256(body.encode("utf-8")).hexdigest()) == (language, body_sha256), function
+    assert {f for table in schema.TRIGGERS.values() for f, _ in table.values()} == set(schema.FUNCTIONS)
+
+
+def _live_trigger(function, tgtype, /, **changes):
+    migration, language, body = schema.FUNCTIONS[function]
+    got = {"name": "t", "schema": "public", "function": function, "arguments": "", "language": language,
+           "security_definer": False, "body_sha256": body, "tgtype": tgtype, "when": None, "nargs": 0, "columns": "",
+           "constraint_trigger": False, "transition_tables": False}
+    got.update(changes)
+    return got
+
+
+def test_u18_a_trigger_is_judged_by_its_functions_identity_and_definition_and_by_its_own_properties():
+    want = (schema.GUARD_FUNCTION, schema.BEFORE_INSERT_ROW)
+    check = lambda **changes: schema._trigger_problems("financial_f4_extractions", "trg_ff4e_guard", want,
+                                                       _live_trigger(*want, **changes))
+    assert check() == []                                                                  # exactly as 0018 creates it
+    at = "financial_f4_extractions: trigger trg_ff4e_guard"
+    assert check(schema="rf4_other") == [f"{at} runs rf4_other.financial_f4_extraction_guard(), expected "
+                                         "public.financial_f4_extraction_guard()"]
+    assert check(arguments="x integer") == [f"{at} runs public.financial_f4_extraction_guard(x integer), expected "
+                                            "public.financial_f4_extraction_guard()"]
+    for changes in ({"body_sha256": "0" * 64}, {"language": "sql"}, {"security_definer": True}):
+        [got] = check(**changes)
+        assert got.startswith(f"{at} runs public.financial_f4_extraction_guard() defined other than in migration "
+                              "0018"), changes
+    assert check(when="false") == [f"{at} has a WHEN condition (false); migration 0018 creates it without one"]
+    assert check(nargs=1) == [f"{at} passes 1 argument(s); migration 0018 passes none"]
+    assert check(columns="4") == [f"{at} fires only for column(s) 4 (attnum); migration 0018 names no columns"]
+    for changes in ({"constraint_trigger": True}, {"transition_tables": True}):
+        assert check(**changes) == [f"{at} is a constraint trigger or has transition tables; migration 0018 creates "
+                                    "neither"], changes
+    assert check(tgtype=schema.BEFORE_UPDATE_DELETE_ROW) == [
+        f"{at} runs financial_f4_extraction_guard (tgtype 27), expected financial_f4_extraction_guard (tgtype 7)"]
+    assert len(check(schema="rf4_other", when="true", nargs=2)) == 3                     # every difference reported
+
+
+def test_u18_the_preflights_constraint_definitions_are_0018s():
+    """Every constraint name 0018 writes, plus each table's primary key and the foreign keys of its `references`
+    columns under PostgreSQL's default names; each named one of the type, key columns and references 0018 writes."""
+    code = re.sub(r"--[^\n]*", " ", open(MIGRATION, encoding="utf-8").read())
+    assert set(preflight.CONSTRAINT_DEFINITIONS) == set(codec.TABLES)
+    kinds = {"check": "c", "unique": "u", "foreign key": "f"}
+    for table, body in re.findall(r"create table (\w+) \((.*?)\n\);", code, re.S):
+        defs = preflight.CONSTRAINT_DEFINITIONS[table]
+        expected = {f"{table}_pkey": ("p", "PRIMARY KEY (id)")}
+        for column, target in re.findall(r"\n  (\w+) [^,\n]*?\breferences (\w+\(\w+\))", body):
+            expected[f"{table}_{column}_fkey"] = ("f", f"FOREIGN KEY ({column}) REFERENCES {target}")
+        for name, kind, rest in re.findall(r"constraint (\w+) (check|unique|foreign key) (.*?)(?=,\n  constraint|$)",
+                                           body, re.S):
+            assert defs[name][0] == kinds[kind], name
+            rest = " ".join(rest.split())
+            if kind == "unique":
+                expected[name] = ("u", f"UNIQUE {rest}")
+            elif kind == "foreign key":
+                cols, target = re.fullmatch(r"(\([^)]*\)) references (\w+\([^)]*\))", rest).groups()
+                expected[name] = ("f", f"FOREIGN KEY {cols} REFERENCES {target}")
+            else:
+                expected[name] = defs[name]       # a check's text is PostgreSQL's rendering: compared live (p27)
+        assert defs == expected, table
+        assert set(preflight.CONSTRAINTS[table]) | {n for n in defs if n.endswith(("_pkey", "_fkey"))} == set(defs)
+        assert sum(k == "f" for k, _ in defs.values()) == preflight.FOREIGN_KEYS[table], table
+    assert sum(map(len, preflight.CONSTRAINT_DEFINITIONS.values())) == 32
+
+
+def test_u18_the_preflight_reports_a_replaced_weakened_unvalidated_missing_or_extra_constraint():
+    table = "financial_f4_cells"
+    exact = {n: (k, True, d) for n, (k, d) in preflight.CONSTRAINT_DEFINITIONS[table].items()}
+    assert preflight._constraint_problems(table, exact) == []
+    decimal_def = preflight.CONSTRAINT_DEFINITIONS[table]["chk_ff4c_decimal"][1]
+    seq_def = preflight.CONSTRAINT_DEFINITIONS[table]["uq_financial_f4_cell_seq"][1]
+    cases = [
+        ({"uq_financial_f4_cell_seq": ("c", True, "CHECK ((seq >= 0))")},
+         [f"{table}: constraint uq_financial_f4_cell_seq is a check constraint (CHECK ((seq >= 0))), expected a unique "
+          f"constraint ({seq_def})"]),
+        ({"chk_ff4c_decimal": ("c", True, "CHECK (true)")},
+         [f"{table}: constraint chk_ff4c_decimal is CHECK (true), expected {decimal_def}"]),
+        ({"chk_ff4c_decimal": ("c", False, decimal_def + " NOT VALID")},
+         [f"{table}: constraint chk_ff4c_decimal is not validated"]),
+        ({"chk_extra": ("c", True, "CHECK ((seq < 10))")},
+         [f"{table}: constraint chk_extra (CHECK ((seq < 10))) is not one migration 0018 creates"]),
+    ]
+    for change, want in cases:
+        assert preflight._constraint_problems(table, {**exact, **change}) == want, change
+    missing = {n: v for n, v in exact.items() if n != "fk_ff4c_row"}
+    assert preflight._constraint_problems(table, missing) == [f"{table}: constraint fk_ff4c_row is missing"]

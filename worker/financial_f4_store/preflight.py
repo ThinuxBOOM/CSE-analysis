@@ -4,12 +4,14 @@ migrations, in the production smoke tests and at every checkpoint. It answers th
 keeps them apart:
 
     file     the checkout's migration 0018 is byte-identical (LF-normalised, as P1's runner hashes it) to the code's pin
-    objects  the database's 0018 objects, as they are now: the five tables; their named constraints, primary keys and
-             foreign keys, validated; for each of cse_worker and cse_reader the privileges it must have (cse_worker
-             SELECT + INSERT, cse_reader SELECT) and must not have (UPDATE, DELETE, TRUNCATE; INSERT for the reader),
-             a forbidden INSERT or UPDATE found whether granted on the table or on a single column;
-             the guard and append-only triggers, present, enabled and running the expected function at the expected
-             timing; the guard function with the caller's rights and no EXECUTE for either role
+    objects  the database's 0018 objects, as they are now: the five tables; every constraint 0018 creates, by name,
+             with its type and its definition (its key columns, a foreign key's referenced table and columns, a check's
+             expression), validated, and no other constraint; for each of cse_worker and cse_reader the privileges it
+             must have (cse_worker SELECT + INSERT, cse_reader SELECT) and must not have (UPDATE, DELETE, TRUNCATE;
+             INSERT for the reader), a forbidden INSERT or UPDATE found whether granted on the table or on a single
+             column; the guard and append-only triggers, present, enabled and exactly as 0018 creates them (schema.py:
+             the function by schema, signature and definition, the timing, no WHEN condition, arguments or column
+             list); the guard function with the caller's rights and no EXECUTE for either role
     ledger   ops.schema_migrations records 0018 at the pinned hash: 'verified', 'failed' (a problem was found), or
              'unverifiable' (this connection cannot read the ledger)
 
@@ -41,8 +43,7 @@ PRIVILEGES = {"cse_worker": (("SELECT", "INSERT"), ("UPDATE", "DELETE", "TRUNCAT
 # The privileges PostgreSQL also grants per column (DELETE and TRUNCATE exist only for a whole table): a forbidden one
 # is found whether it was granted on the table or on any of its columns.
 COLUMN_PRIVILEGES = frozenset({"SELECT", "INSERT", "UPDATE", "REFERENCES"})
-# Named in migration 0018; each must exist on its table and be validated. Every table also has one primary key, and
-# the foreign keys counted here (the unnamed `references` columns plus fk_ff4c_row and fk_ff4c_column).
+# Named in migration 0018 (tests/test_rf4_unit.py ties these names and the foreign-key counts to its text).
 CONSTRAINTS = {
     "financial_f4_extractions": ("chk_ff4e_hex", "chk_ff4e_store_version", "chk_ff4e_counts",
                                  "uq_financial_f4_extraction"),
@@ -55,6 +56,77 @@ CONSTRAINTS = {
 }
 FOREIGN_KEYS = {"financial_f4_extractions": 2, "financial_f4_statements": 1, "financial_f4_columns": 1,
                 "financial_f4_rows": 1, "financial_f4_cells": 3}
+# Every constraint 0018 creates, by name: (pg_constraint.contype, its definition as PostgreSQL 17's
+# pg_get_constraintdef renders it under search_path public). The names above, plus each table's primary key and the
+# foreign keys of its `references` columns under PostgreSQL's default names. A table must have exactly these: a
+# same-name replacement of another type or definition, a weakened or NOT VALID one, or an extra one is a problem.
+# tests/test_rf4_postgres.py checks this map against a database migrated by P1's runner.
+CONSTRAINT_DEFINITIONS = {
+    "financial_f4_extractions": {
+        "chk_ff4e_counts": ("c",
+            'CHECK (((page_count >= 0) AND (statement_count >= 0) AND (column_count >= 0) AND (row_count >= 0) AND '
+            '(cell_count >= 0)))'),
+        "chk_ff4e_hex": ("c",
+            "CHECK (((document_sha256 ~ '^[0-9a-f]{64}$'::text) AND (f4_content_sha256 ~ '^[0-9a-f]{64}$'::text) AND "
+            "(f3_input_sha256 ~ '^[0-9a-f]{64}$'::text)))"),
+        "chk_ff4e_store_version": ("c", "CHECK ((store_version ~ '^f4\\.store\\.[0-9]+$'::text))"),
+        "financial_f4_extractions_classification_id_fkey": ("f",
+            'FOREIGN KEY (classification_id) REFERENCES report_document_classifications(id)'),
+        "financial_f4_extractions_cse_filing_id_fkey": ("f",
+            'FOREIGN KEY (cse_filing_id) REFERENCES report_filings(cse_filing_id)'),
+        "financial_f4_extractions_pkey": ("p", 'PRIMARY KEY (id)'),
+        "uq_financial_f4_extraction": ("u",
+            'UNIQUE (cse_filing_id, document_sha256, word_extractor, f4_extractor_version, classification_id)'),
+    },
+    "financial_f4_statements": {
+        "chk_ff4s_index": ("c", 'CHECK ((statement_index >= 0))'),
+        "financial_f4_statements_extraction_id_fkey": ("f",
+            'FOREIGN KEY (extraction_id) REFERENCES financial_f4_extractions(id)'),
+        "financial_f4_statements_pkey": ("p", 'PRIMARY KEY (id)'),
+        "uq_financial_f4_statement": ("u", 'UNIQUE (extraction_id, statement_index)'),
+    },
+    "financial_f4_columns": {
+        "chk_ff4k_dates": ("c",
+            "CHECK ((((start_date IS NULL) OR (start_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'::text)) AND ((end_date IS "
+            "NULL) OR (end_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'::text))))"),
+        "chk_ff4k_numbers": ("c",
+            "CHECK (((x0 ~ '^-?[0-9]'::text) AND (x1 ~ '^-?[0-9]'::text) AND (right_edge ~ '^-?[0-9]'::text) AND "
+            "((header_x0 IS NULL) OR (header_x0 ~ '^-?[0-9]'::text)) AND ((header_x1 IS NULL) OR (header_x1 ~ "
+            "'^-?[0-9]'::text))))"),
+        "chk_ff4k_seq": ("c", 'CHECK ((seq >= 0))'),
+        "financial_f4_columns_pkey": ("p", 'PRIMARY KEY (id)'),
+        "financial_f4_columns_statement_id_fkey": ("f",
+            'FOREIGN KEY (statement_id) REFERENCES financial_f4_statements(id)'),
+        "uq_financial_f4_column": ("u", 'UNIQUE (statement_id, column_index)'),
+        "uq_financial_f4_column_seq": ("u", 'UNIQUE (statement_id, seq)'),
+    },
+    "financial_f4_rows": {
+        "chk_ff4r_numbers": ("c", "CHECK (((y0 ~ '^-?[0-9]'::text) AND (y1 ~ '^-?[0-9]'::text)))"),
+        "chk_ff4r_seq": ("c", 'CHECK ((seq >= 0))'),
+        "financial_f4_rows_pkey": ("p", 'PRIMARY KEY (id)'),
+        "financial_f4_rows_statement_id_fkey": ("f",
+            'FOREIGN KEY (statement_id) REFERENCES financial_f4_statements(id)'),
+        "uq_financial_f4_row": ("u", 'UNIQUE (statement_id, row_index)'),
+        "uq_financial_f4_row_seq": ("u", 'UNIQUE (statement_id, seq)'),
+    },
+    "financial_f4_cells": {
+        "chk_ff4c_decimal": ("c",
+            'CHECK (((parsed_value_text IS NULL) OR (parsed_value_text ~ '
+            "'^-?[0-9]+(\\.[0-9]+)?(E[+-][0-9]+)?$'::text)))"),
+        "chk_ff4c_seq": ("c", 'CHECK (((seq >= 0) AND (value_ordinal >= 0)))'),
+        "financial_f4_cells_pkey": ("p", 'PRIMARY KEY (id)'),
+        "financial_f4_cells_statement_id_fkey": ("f",
+            'FOREIGN KEY (statement_id) REFERENCES financial_f4_statements(id)'),
+        "fk_ff4c_column": ("f",
+            'FOREIGN KEY (statement_id, column_index) REFERENCES financial_f4_columns(statement_id, column_index)'),
+        "fk_ff4c_row": ("f",
+            'FOREIGN KEY (statement_id, row_index) REFERENCES financial_f4_rows(statement_id, row_index)'),
+        "uq_financial_f4_cell": ("u", 'UNIQUE (statement_id, row_index, column_index, value_ordinal)'),
+        "uq_financial_f4_cell_seq": ("u", 'UNIQUE (statement_id, seq)'),
+    },
+}
+CONSTRAINT_KINDS = {"c": "check", "f": "foreign key", "p": "primary key", "u": "unique", "x": "exclusion",
+                    "t": "constraint trigger"}
 
 
 def file_problems(repo=REPO):
@@ -69,6 +141,28 @@ def file_problems(repo=REPO):
 def _one(cur, sql, args=()):
     cur.execute(sql, args)
     return cur.fetchone()
+
+
+def _constraint_problems(table, live):
+    """How `live` ({name: (contype, validated, definition)}) differs from CONSTRAINT_DEFINITIONS[table]."""
+    out = []
+    for name, (kind, definition) in CONSTRAINT_DEFINITIONS[table].items():
+        got = live.get(name)
+        if got is None:
+            out.append(f"{table}: constraint {name} is missing")
+            continue
+        got_kind, validated, got_definition = got
+        if got_kind != kind:
+            out.append(f"{table}: constraint {name} is a {CONSTRAINT_KINDS.get(got_kind, got_kind)} constraint "
+                       f"({got_definition}), expected a {CONSTRAINT_KINDS[kind]} constraint ({definition})")
+            continue
+        if got_definition.removesuffix(" NOT VALID") != definition:
+            out.append(f"{table}: constraint {name} is {got_definition}, expected {definition}")
+        if not validated:
+            out.append(f"{table}: constraint {name} is not validated")
+    for name in sorted(set(live) - set(CONSTRAINT_DEFINITIONS[table])):
+        out.append(f"{table}: constraint {name} ({live[name][2]}) is not one migration 0018 creates")
+    return out
 
 
 def _role_problems(cur, role):
@@ -113,26 +207,19 @@ def object_problems(conn, roles=tuple(PRIVILEGES), owner_role=OWNER_ROLE):
             if not _one(cur, "select has_schema_privilege(current_user, 'public', 'USAGE')")[0] and \
                     _may_become(cur, owner_role):
                 cur.execute(sql.SQL("set local role {}").format(sql.Identifier(owner_role)))
+            # pg_get_constraintdef names a referenced table without its schema only when the search path makes it
+            # visible: under `public` alone, a reference into any other schema shows that schema
+            cur.execute("set local search_path = public")
             missing = [t for t in codec.TABLES
                        if not _one(cur, "select to_regclass(%s) is not null", (f"public.{t}",))[0]]
             out += [f"{t} is missing (migration 0018 not applied?)" for t in missing]
             for t in codec.TABLES:
                 if t in missing:
                     continue
-                cur.execute("select conname, contype, convalidated from pg_constraint where conrelid = %s::regclass",
-                            (f"public.{t}",))
-                cons = cur.fetchall()
-                named = {n: v for n, _, v in cons}
-                for name in CONSTRAINTS[t]:
-                    if name not in named:
-                        out.append(f"{t}: constraint {name} is missing")
-                    elif not named[name]:
-                        out.append(f"{t}: constraint {name} is not validated")
-                if sum(1 for _, k, _ in cons if k == "p") != 1:
-                    out.append(f"{t}: the primary key is missing")
-                fks = sum(1 for _, k, v in cons if k == "f" and v)
-                if fks != FOREIGN_KEYS[t]:
-                    out.append(f"{t}: {fks} validated foreign keys, expected {FOREIGN_KEYS[t]}")
+                # contype 'n' (NOT NULL, catalogued as a constraint from PostgreSQL 18) is a column property here
+                cur.execute("select conname, contype, convalidated, pg_get_constraintdef(oid) from pg_constraint "
+                            "where conrelid = %s::regclass and contype <> 'n'", (f"public.{t}",))
+                out += _constraint_problems(t, {n: (k, v, d) for n, k, v, d in cur.fetchall()})
             got = _one(cur, "select p.prosecdef from pg_proc p join pg_namespace n on n.oid = p.pronamespace "
                             "where n.nspname = 'public' and p.proname = %s", (GUARD_FUNCTION,))
             if got is None:
