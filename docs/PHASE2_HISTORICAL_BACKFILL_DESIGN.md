@@ -44,7 +44,7 @@ two §23.4 frozen-test edits. The frozen baseline includes:
 - D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/financial_backfill/preflight.py`: `FROZEN_FILES` pins F5's
-`worker/extract_financial_candidates.py` at `a1730ca6b6e8…` (was `9b94d745710b…`) and adds the R-F4 modules `_persist`
+`worker/extract_financial_candidates.py` at `8bdf472aec40…` (was `9b94d745710b…`) and adds the R-F4 modules `_persist`
 imports (`worker/financial_f4_store/` `__init__`, `codec`, `errors`, `reader`, `schema`, `store`); `FROZEN_VERSIONS`
 adds `worker.financial_f4_store.STORE_VERSION` `f4.store.1` (V1). No rule changes; the pins follow R-F4's approved
 change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned, and R-F4 itself
@@ -72,7 +72,7 @@ are implemented:
 - A10: the User-Agent is P2's exact `user_agent()` value (`cse-analysis-capture/p2.capture.1 ...`).
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_transport/preflight.py`: its pin of
-`worker/financial_backfill/preflight.py` is `130dd08630fd…` (was `0fbc73e46ae0…`). No rule changes; the pins follow
+`worker/financial_backfill/preflight.py` is `f6beb1159f54…` (was `0fbc73e46ae0…`). No rule changes; the pins follow
 R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
 and R-F4 itself is not yet frozen.
 
@@ -161,7 +161,7 @@ unchanged at the audited HEAD `30bba72`. The merge into `main` and the new froze
 acceptance of F8 revision 3 (MA §55).
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_discovery/preflight.py`: its pin of
-`worker/backfill_transport/preflight.py` is `9960b38cea30…` (was `d66a1470fea4…`). No rule changes; the pins follow
+`worker/backfill_transport/preflight.py` is `cba91c934919…` (was `d66a1470fea4…`). No rule changes; the pins follow
 R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
 and R-F4 itself is not yet frozen.
 
@@ -342,7 +342,7 @@ composition itself present.
 - `run()` on a slice that is not open fails at once instead of offering the same item again.
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_documents/preflight.py`: its pin of
-`worker/backfill_discovery/preflight.py` is `aed8ca320584…` (was `cab061db4539…`). HB-4's code is otherwise unchanged;
+`worker/backfill_discovery/preflight.py` is `d327d7b1cf37…` (was `cab061db4539…`). HB-4's code is otherwise unchanged;
 its `_persist` call now also saves F4 through R-F4's fallback (`docs/R_F4_DESIGN.md` §3). No rule changes; the pins
 follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen,
 re-pinned, and R-F4 itself is not yet frozen.
@@ -522,7 +522,7 @@ implementation `4d28663` plus the correction its freeze audit required, committe
   the same held filings as stage 8. `test_a6` checks both levels with a real L7 hold.
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_f6/preflight.py`: its pin of
-`worker/backfill_documents/preflight.py` is `cd6aaf697567…` (was `54332425ed69…`). No rule changes; the pins follow
+`worker/backfill_documents/preflight.py` is `098c2876f7f2…` (was `54332425ed69…`). No rule changes; the pins follow
 R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
 and R-F4 itself is not yet frozen.
 
@@ -685,7 +685,7 @@ This record is committed after it.
   - `general` otherwise; `unknown` with no name.
 
 *R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_ops/preflight.py`: its pin of
-`worker/backfill_f6/preflight.py` is `bba68d133ebd…` (was `63f5bcaae57f…`); its own hash is now `dc53457d85fe…`, which
+`worker/backfill_f6/preflight.py` is `fec098b728c2…` (was `63f5bcaae57f…`); its own hash is now `488258b699a6…`, which
 nothing pins. No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do
 not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
 

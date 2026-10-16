@@ -53,7 +53,7 @@ FROZEN_FILES = {
     "worker/db.py": "62b0f7e6a87e3b1eb274b75d97f3afa4a0c03aaebd643742001f53ddf693beda",
     "worker/document_retrieval.py": "4471b055f7f819ce4920c71fe565a3cf4aabcf152567f0273391d98e88a08465",
     "worker/document_text.py": "87afc3ad306ef2b9aa3a9c57898194c93c290e41cde7979917d5773438c4f052",
-    "worker/extract_financial_candidates.py": "a1730ca6b6e8ace2cf27474b3cf92270c39fb3db40f82a1201a0cf687e04e909",
+    "worker/extract_financial_candidates.py": "8bdf472aec407bfa6365ab16e1a3c89fda6f0dd4188225e1cb80e9f180d99966",
     "worker/financial_candidates.py": "4bd6c5e0bd065810a1f2093ba88dd6ca47d1f914f9eecf81bbc86f33c1f8ed9d",
     "worker/financial_candidates_store.py": "85800b337176b831fc2a57d80271cdc87cdbea945b411fb26df87bbe5777b46f",
     "worker/financial_concepts.py": "23c3f63feabc5a817f07ef1d56f0cdf07537e6eb4a30072b7305de1fccf5f4db",

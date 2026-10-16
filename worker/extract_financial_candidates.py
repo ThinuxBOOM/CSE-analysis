@@ -98,7 +98,8 @@ def _count(items):
 
 def run(filings, *, temp_root=None, request_delay_seconds=1.0, fetcher=None, extract_text=document_text.extract_text,
         extract_words=None, require_poppler=True, stores=None, on_result=None) -> dict:
-    """stores: None (dry run) or {"conn", "classification", "issuer", "candidates"} Postgres stores."""
+    """stores: None (dry run) or {"conn", "classification", "issuer", "candidates"} Postgres stores, optionally with
+    "f4" (R-F4's store; without it _persist uses PostgresF4Store on stores["conn"])."""
     if len(filings) > MAX_FILINGS_PER_RUN:
         raise ValueError(f"{len(filings)} documents requested; at most {MAX_FILINGS_PER_RUN} per run "
                          f"(production-scale retrieval is gated pending the CSE terms-of-use decision)")
@@ -161,7 +162,8 @@ def main(argv=None):
     p.add_argument("--temp-root", default=None)
     p.add_argument("--request-delay-seconds", type=float, default=1.0)
     p.add_argument("--report-file", required=True)
-    p.add_argument("--write-db", action="store_true", help="persist (DATABASE_URL; migrations 0005, 0007, 0008)")
+    p.add_argument("--write-db", action="store_true",
+                   help="persist (DATABASE_URL; migrations 0005, 0007, 0008 and R-F4's 0018)")
     args = p.parse_args(argv)
     if args.f1_state and not args.ids:
         p.error("--f1-state needs --ids")
