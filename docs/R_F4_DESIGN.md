@@ -500,7 +500,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
 | 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 blocked (§11) |
 | 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()` (not through HB-4's slice, §6) |
-| 5 | Full regression with controls B, P, S and I; mutation testing | **Run** (Stage 2; `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports |
+| 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
 | 6 | Independent audit of the code and evidence | Not started |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
