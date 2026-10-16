@@ -1862,7 +1862,11 @@ Worker code must not operate as the database owner.
 Current migration sequence reaches 0017 (F8's additive
 `0017_f8_asof_configuration.sql`, after Phase 2 HB-1's additive
 `0016_historical_backfill_ledger.sql`, after F6.4's additive
-`0015_financial_truth_persistence.sql`); `0006` remains unused.
+`0015_financial_truth_persistence.sql`); `0006` remains unused. On the
+R-F4 branch (`claude/rf4-implementation`, not merged), R-F4's additive
+`0018_f4_structure_persistence.sql` follows 0017 (`docs/R_F4_DESIGN.md`
+§4, §7); it is implemented, not independently audited, accepted or
+frozen.
 
 Historical notes:
 
@@ -2070,7 +2074,14 @@ Still open after real-data validation:
     structure persistence (R-F4; Phase 2 design §11.5) must be
     implemented, independently audited, accepted and frozen before
     HB-7 / HB-S4 bulk document retrieval. This adds a gate to HB-7
-    and replaces none. R-F4 has not been designed or implemented.
+    and replaces none. R-F4 is designed and accepted
+    (`docs/R_F4_DESIGN.md`, 2026-10-14; release sequence Q1) and
+    implemented in two owner-authorized stages on the controlled
+    branch `claude/rf4-implementation` (not merged): Stage 1, the new
+    package, migration 0018 and its tests; Stage 2, F5's `_persist`
+    wired to it, the approved frozen-test and RDV edits and the HB-1
+    to HB-6 pin cascade. It is not yet independently audited after
+    Stage 2, accepted or frozen (`docs/R_F4_IMPLEMENTATION.md`).
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2747,9 +2758,11 @@ architecture should be implemented in dependency order.
 -   formalize F6.2 storage changes --- done for F6 storage:
     implemented by F6.4 (migration 0015). The full F4 structure
     persistence of F6.2 §10--§11 is a separate phase (requirement
-    R-F4, Phase 2 design §11.5; F6.4 §23 Q3), not yet designed or
-    implemented; its sequencing is owner decision HB-Q7 (2026-10-13,
-    below);
+    R-F4, Phase 2 design §11.5; F6.4 §23 Q3), designed and accepted
+    (`docs/R_F4_DESIGN.md`, 2026-10-14) and implemented on the
+    controlled branch `claude/rf4-implementation`, not yet
+    independently audited after Stage 2, accepted or frozen; its
+    sequencing is owner decision HB-Q7 (2026-10-13, below);
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
@@ -2808,9 +2821,14 @@ This adds a gate to HB-7 and waives none. HB-7 still requires the live
 pilot, the owner's review and acceptance of its report, HB-Q9, the
 backup checkpoints and the owner's arming decisions with their budgets
 (Phase 2 design §14.1, §21, §27). Like every implementation step, R-F4
-follows the release sequence of §43.1. R-F4 has not been designed or
-implemented; its design, its implementation and its position relative
-to Docker staging and the live pilot are open owner decisions.
+follows the release sequence of §43.1. R-F4 is designed and accepted
+(`docs/R_F4_DESIGN.md`, 2026-10-14). Its position relative to Docker
+staging and the live pilot is release sequence Q1 (accepted
+2026-10-14): R-F4 is frozen before Docker staging, and the pilot runs on
+that build. It is implemented on the controlled branch
+`claude/rf4-implementation` (Stages 1 and 2; not merged) and is not yet
+independently audited after Stage 2, accepted or frozen
+(`docs/R_F4_IMPLEMENTATION.md`).
 
 ## Phase 2 --- Historical financial backfill
 

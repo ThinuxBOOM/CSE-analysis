@@ -36,7 +36,7 @@ PINNED_FILES = {
     "worker/backfill_transport/gates.py": "1c625d3f7c34e7859b771326f858abe55fd7df65d3170c580e5aedd652c94d1b",
     "worker/backfill_transport/journal.py": "41f99ed65e7141541f5e77ee8dbd1199e7514b39052a19d7ba568ae7cbd69e33",
     "worker/backfill_transport/ledger.py": "175f156a383eef4c52a663f214cd37d9eb7a8f365a860a192b21add2d71db0d2",
-    "worker/backfill_transport/preflight.py": "d66a1470fea43f75e0e8568ee66a9fb00114d0003d41f4b2c7e8a2f1f96b4f9c",
+    "worker/backfill_transport/preflight.py": "9960b38cea30613544042f0327ca02adbec0867dabb14ea0c7ef341c8d25ae2e",
     "worker/backfill_transport/recovery.py": "94590faa94a6f8a75fe0549825d1c6fc735ccdbc0fb0cd879c4ad76beab71683",
     "worker/backfill_transport/requester.py": "bb36f21531232fa3b514d98c7052949ab790cfc3ddda310989f470f0403d479f",
     "worker/backfill_transport/slice.py": "9e1a130331f9dd48c254cd6317afbe647c23b5c39af44d34bd3d6a04764bfeea",

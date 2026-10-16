@@ -122,7 +122,10 @@ the pilot sample for HB-S3, the checkpoint and block for HB-S4, `--confirm-stop-
 P1 is unchanged (nightly dumps, off-site sync, weekly restore checks). Before HB-S4, after every 2,000 documents and at
 the end, the owner runs a manual dump and a restore check, runs `cse-financial verify` and `cse-backfill verify` on the
 restored copy, and records the checkpoint **in the next HB-S4 arming decision** (the P1 backup-ledger run ids). The
-worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49).
+worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49). On a
+build that includes R-F4, the checkpoint also runs R-F4's `verify` on the restored copy, read-only, as the reader role
+(`python -m worker.financial_f4_store verify`; exit 0 only when every extraction's seals and every F5 rebuild hold;
+`docs/R_F4_DESIGN.md` §5, §10).
 
 ## 7. The pilot sample and report
 
@@ -192,6 +195,10 @@ privileges and guards. Machine-specific values and the contact e-mail live only 
   single-runner enforcement, resume and repeated runs, failure and re-queue workflows, M4 without re-download,
   SIGTERM, the gates, the reports and checkpoints, and transaction and lock boundaries.
 - `ops/tests/provision_backfill_in_docker.sh` is the clean-server Docker test.
+- On a build that includes R-F4: `tests/test_rf4_unit.py` and `tests/test_rf4_postgres.py` cover R-F4's store, reader,
+  `verify` and preflight, and its persistence end to end through F5's `run()` and HB-4's document slice (rebuild,
+  rollback and retry, idempotency). The results are recorded in `docs/R_F4_IMPLEMENTATION.md`; R-F4 is not yet
+  frozen.
 
 Verification at the freeze audit (2026-10-13, on `9f05041`):
 - the HB-6 suites: 36 unit and 19 PostgreSQL tests pass;
@@ -207,10 +214,13 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
 ## 12. Deployment prerequisites (owner-run; none is an implementation prerequisite)
 
 - The local Ubuntu 24.04 server; native PostgreSQL 17; P1 provisioning (roles, peer authentication, backups and the
-  off-site destination); migrations 0001–0017 through P1's runner.
-- **R-F4 (`docs/R_F4_DESIGN.md`).** Only for a build that includes R-F4. R-F4 is implemented in Stage 1 on a branch
-  and is **not** audited, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen
-  before Docker staging. On such a build, migration 0018 is applied through P1's runner, and **before proceeding** the
+  off-site destination); migrations 0001–0017 through P1's runner, or 0001–0018 for a build that includes R-F4.
+- **R-F4 (`docs/R_F4_DESIGN.md`, `docs/R_F4_IMPLEMENTATION.md`).** Only for a build that includes R-F4. R-F4 is
+  implemented (Stages 1 and 2) on the branch `claude/rf4-implementation` and is **not** yet independently audited after
+  Stage 2, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen before Docker
+  staging. Stage 2 wires F5's `_persist` to it, so such a build **needs** migration 0018: without it every filing's
+  save is refused (`SchemaUnavailable`) and recorded as a failure. On such a build, migration 0018 is applied through
+  P1's runner, and **before proceeding** the
   owner runs the R-F4 preflight, which checks three things separately: the checked-out 0018 against the code's pin,
   the migration ledger's 0018 entry and hash, and the live tables, constraints, privileges and triggers. The ledger
   must be verified by a route that can read it:

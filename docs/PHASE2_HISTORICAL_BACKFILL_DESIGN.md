@@ -26,6 +26,12 @@ implemented, independently audited, accepted and frozen before HB-7 / HB-S4 bulk
 Appendix D, D15). This adds a gate and removes none. R-F4 has not been designed or implemented. D16 removes a stale
 HB-Q7 dependency from HB-4's row in §27, where HB-Q7 was never a blocker, and brings Appendix C up to date.
 
+Revision 5 (2026-10-16) records R-F4's implementation (`docs/R_F4_IMPLEMENTATION.md`): designed and accepted
+(`docs/R_F4_DESIGN.md`, 2026-10-14), implemented in two owner-authorized stages on the controlled branch
+`claude/rf4-implementation` (not merged), and not yet independently audited after Stage 2, accepted or frozen.
+HB-Q7's gate on HB-7 / HB-S4 is therefore not met. The sections it touches are listed in Appendix D, D17; the
+revision 4 paragraph above is a dated entry and stays as written.
+
 **HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
 HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
 `f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7`), the package `worker/financial_backfill/` and the
@@ -36,6 +42,13 @@ two §23.4 frozen-test edits. The frozen baseline includes:
 - the D-2 coverage: PostgreSQL regression tests pinning every 0016 guard clause that a planted fault previously left
   undetected; 37 of 37 planted mutations of 0016 killed;
 - D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
+
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/financial_backfill/preflight.py`: `FROZEN_FILES` pins F5's
+`worker/extract_financial_candidates.py` at `a1730ca6b6e8…` (was `9b94d745710b…`) and adds the R-F4 modules `_persist`
+imports (`worker/financial_f4_store/` `__init__`, `codec`, `errors`, `reader`, `schema`, `store`); `FROZEN_VERSIONS`
+adds `worker.financial_f4_store.STORE_VERSION` `f4.store.1` (V1). No rule changes; the pins follow R-F4's approved
+change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned, and R-F4 itself
+is not yet frozen.
 
 **HB-2 implementation status** (recorded at freeze; the design text is unchanged). HB-2 is implemented (`3a7512c`) and
 frozen with the B-HB2-1 correction (`1896280`: a slice never releases its lease while an attempt lacks an outcome; the
@@ -57,6 +70,11 @@ are implemented:
 - A9: a document starts only if the budgets cover its worst case of 6 requests; CDN 403/404 are terminal attempts that
   count towards the circuit breaker;
 - A10: the User-Agent is P2's exact `user_agent()` value (`cse-analysis-capture/p2.capture.1 ...`).
+
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_transport/preflight.py`: its pin of
+`worker/financial_backfill/preflight.py` is `130dd08630fd…` (was `0fbc73e46ae0…`). No rule changes; the pins follow
+R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
+and R-F4 itself is not yet frozen.
 
 Dead slices are expired by the transport's own spool-aware recovery (a spooled response becomes `recovered_from_spool`
 without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.
@@ -141,6 +159,11 @@ environment limitation, not evidence of equivalence.
 **HB-3 freeze (2026-10-05).** HB-3 is implemented and frozen. Its code is as of `60d004d` on `claude/hb3-discovery`,
 unchanged at the audited HEAD `30bba72`. The merge into `main` and the new frozen baseline follow the owner's
 acceptance of F8 revision 3 (MA §55).
+
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_discovery/preflight.py`: its pin of
+`worker/backfill_transport/preflight.py` is `9960b38cea30…` (was `d66a1470fea4…`). No rule changes; the pins follow
+R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
+and R-F4 itself is not yet frozen.
 
 The final freeze audit checked the code, the tests and this documentation against each settled decision above:
 D-HB3-1, G2, G10, current-plan closure, plan-versioned IE-4, HB-Q5/HB-Q6, HB-P1 and the recovery state machine. It
@@ -318,6 +341,12 @@ composition itself present.
   tests install a sentinel handler of their own.
 - `run()` on a slice that is not open fails at once instead of offering the same item again.
 
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_documents/preflight.py`: its pin of
+`worker/backfill_discovery/preflight.py` is `aed8ca320584…` (was `cab061db4539…`). HB-4's code is otherwise unchanged;
+its `_persist` call now also saves F4 through R-F4's fallback (`docs/R_F4_DESIGN.md` §3). No rule changes; the pins
+follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen,
+re-pinned, and R-F4 itself is not yet frozen.
+
 The final freeze audit checked the corrected tree against every HB-4 requirement and found no failing rule. These
 observations are carried forward; none is a blocker:
 - G2's branch for a failed in-flight query (the lease is kept) is not exercised by a test;
@@ -492,6 +521,11 @@ implementation `4d28663` plus the correction its freeze audit required, committe
   evidence. The candidate level ignored holds (stage 8 already showed them), so it never reported `held`. It now uses
   the same held filings as stage 8. `test_a6` checks both levels with a real L7 hold.
 
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_f6/preflight.py`: its pin of
+`worker/backfill_documents/preflight.py` is `cd6aaf697567…` (was `54332425ed69…`). No rule changes; the pins follow
+R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned,
+and R-F4 itself is not yet frozen.
+
 The final freeze audit checked the corrected tree against every HB-5 requirement (sections 10.3, 11, 14, 15.3, 18, 19,
 22, 25 and 27, and F8 section 3.4) and found no failing rule. These observations are carried forward; none is a blocker:
 - **A process ending after a failed F6.4 job is not tested.** If a process ends after F6.4 commits a failed validate
@@ -649,6 +683,11 @@ This record is committed after it.
   - `bank_like` when CSE's issuer name on the filing (F1's `source_name`, else P2's company name) names a bank, finance,
     leasing or credit company;
   - `general` otherwise; `unknown` with no name.
+
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2).* `worker/backfill_ops/preflight.py`: its pin of
+`worker/backfill_f6/preflight.py` is `bba68d133ebd…` (was `63f5bcaae57f…`); its own hash is now `dc53457d85fe…`, which
+nothing pins. No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do
+not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
 
   It is never an input to F4. The pilot report compares it with F4's actual template.
 - **B-HB6-2 (code). The database disk.** Section 24 says a low database disk refuses at the preflight. Section 20 says
@@ -831,7 +870,7 @@ functions and never edits or wraps their logic.
 | F2 `document_retrieval` | `process_batch([filing], consumer, role="primary", fetcher=<governed fetcher>, temp_root=…)` with one filing: exactly F5 `run()`'s call. It adds F2's leftover check and returns the full retrieval record. Also `validate_temp_root`. The `fetcher` parameter is F2's own injection point (its tests use it) | `RequestsFetcher` (default User-Agent). It never persists a document, text or temporary path |
 | F3 `report_classification`, `document_text`, store (0005) | Through F5's consumer; `PostgresClassificationStore.save` | A new classifier version; persisted text |
 | F4 `statement_extraction`, `pdf_words` | Through F5's consumer; `pdf_words.require_tools()` before any download | Companion (`path2`) retrieval: the frozen F5 path never uses it |
-| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | The functions F5's `run()` composes, called as it calls them: `load_filings_from_db` (the filing row F3 and F5 read), `make_consumer` (F3 → F4 → F5 in memory), `attach_timestamps` and F5's own `_persist` (F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`). Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
+| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | The functions F5's `run()` composes, called as it calls them: `load_filings_from_db` (the filing row F3 and F5 read), `make_consumer` (F3 → F4 → F5 in memory), `attach_timestamps` and F5's own `_persist` (F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`; since R-F4's Stage 2, not yet frozen, an F4 save through R-F4's `PostgresF4Store` (0018) between the link and the candidate save, `docs/R_F4_DESIGN.md` §3). Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
 | F6.1, F6.3 | Only through F6.4's jobs | Direct calls in production paths |
 | F6.4 `financial_truth_store` (0015) | `jobs.validate`, `jobs.pending_runs`, `jobs.reconcile` (incl. `only_issuer`), `jobs.register_configuration`, `jobs.configuration_from_present_runs`, `jobs.designate` (owner path), `verify`, `preflight`, the views | A new F6 table, column or job kind; backfill job state in F6 tables |
 | P1 `worker/ops` | Settings, `spool` (content-addressed, write-once), the migration runner and ledger, backups unchanged | Any P1 change; units in `ops/systemd` |
@@ -870,6 +909,11 @@ functions and never edits or wraps their logic.
 - **HB-B9. The runtime runs exactly the frozen code.** The backfill preflight compares the SHA-256 of the frozen stage
   files it uses with a pinned list, and refuses on any difference. The F5 audit's known finding explains why: a rule
   change without a version bump is silently `already_present`.
+- **R-F4 note on HB-B1 and HB-B9 (2026-10-16; `docs/R_F4_DESIGN.md` §8 rows 2–3).** R-F4 changes F5's frozen
+  `_persist` under its own change control (RF4-M1, Route A). HB-B1 and HB-B9 hold against that re-pinned F5, which is to
+  be frozen again with R-F4: HB-1's pinned list now holds F5's new hash, the R-F4 modules `_persist` imports and R-F4's
+  `STORE_VERSION`, and the HB-2 to HB-6 preflights pin-only the preflight before each. No rule changes; the pins
+  follow the approved change and do not approve it.
 
 ## 5. Five-year time-window definition
 
@@ -1348,8 +1392,8 @@ F2 process_batch([filing], F5 make_consumer(...), fetcher=<governed>)
 if consumer succeeded and deletion verified:
   F5 attach_timestamps(result, filing row, retrieval record)   -- pure, no database
   BEGIN
-    F5 _persist(stores, got)              -- F3 save → classification_id → link_filing → candidate save;
-                                          -- link_filing returns the link pass's decision (§7.4)
+    F5 _persist(stores, got)              -- F3 save → classification_id → link_filing → F4 save (R-F4) →
+                                          -- candidate save; link_filing returns the link pass's decision (§7.4)
     ledger: item event 'persisted' (refs: _persist's classification id, F5 run id, link)
   COMMIT
 else:
@@ -1359,6 +1403,12 @@ else:
 `_persist`'s stores each use their own SAVEPOINT and leave the commit to the caller, as in F5's `run()`. A database
 error inside `_persist` propagates, because `run()` does not catch it either. The worker then rolls back, and records
 the failure event in a transaction of its own.
+
+**R-F4 (`docs/R_F4_DESIGN.md` §3, §6; implemented in its Stage 2, not yet frozen).** F5's `_persist` also saves F4's
+complete output (migration 0018) between `link_filing` and the candidate save, through R-F4's store on the worker's
+own connection (HB-4's four stores are unchanged; `_persist` falls back to R-F4's store). It is part of the same
+transaction: an F4 save failure rolls the whole filing back and is recorded as `retry_wait` or `failed`, like any
+other failure inside `_persist`.
 
 ### 10.2 Tool and version pins (checked by the preflight before any download)
 
@@ -1374,6 +1424,7 @@ the failure event in a transaction of its own.
   | Issuer rule | `f5.issuer.2` |
   | F6 | `f6.validation.1`, `f6.inputs.1`, `f6.op1.partition.1`, `f6.admission.1`, `f6.identity.1`, `f6.reconciliation.1` |
   | F6.4 | `f6.store.1` |
+  | R-F4 | `f4.store.1` (`STORE_VERSION`, added to HB-1's pinned versions by R-F4's version policy V1; not yet frozen) |
 
 - **The armed tuple.** The owner's arming decision records this tuple. A deployed code revision whose frozen-file hashes
   differ is refused (HB-B9).
@@ -1420,6 +1471,9 @@ the failure event in a transaction of its own.
 | **Provenance** | The above, by foreign keys and envelopes | Views `financial_fact_provenance`, `financial_fact_state`, `financial_reconciliation_current`, `financial_validation_run_current`, … (0015) |
 | F6 job state | F6.4 | T10 `financial_f6_jobs`, T11 `financial_f6_job_events` (kinds `validate` / `reconcile` / `cleanup` only) |
 | **Backfill job state** | **None existing: HB-X1** | The Phase 2 ledger (§11.4) |
+| **F4 structure (R-F4)** | R-F4 `PostgresF4Store`, called by F5's `_persist` (R-F4 Stage 2; implemented, not yet frozen) | `financial_f4_extractions`, `financial_f4_statements`, `financial_f4_columns`, `financial_f4_rows`, `financial_f4_cells` (0018; `docs/R_F4_DESIGN.md` §4) |
+
+This table was written before R-F4: the F4 row is its one addition, by R-F4's own change control.
 
 ### 11.2 What Phase 2 adds to F6.4
 
@@ -1432,8 +1486,10 @@ volume estimate (F6.4 §20, for about 7,900 filings) scales to W:
 | F6, with indexes | about 10–11 GB |
 | F1–F5 | about 0.6 GB |
 | A second validation generation, if issuer evidence changes for every filing | about +5.8 GB |
+| R-F4's F4 structure (0018), at about 200–260 KB per filing (`docs/R_F4_DESIGN.md` §4.4) | about 1.6–2.1 GB for about 7,900 filings |
 
-All of these are estimates, to be measured by the pilot.
+All of these are estimates, to be measured by the pilot. The R-F4 row is an estimate for HB-Q9 (capacity); the pilot
+measures it through HB-6's report.
 
 ### 11.3 F6.4 constraints Phase 2 respects
 
@@ -1492,8 +1548,13 @@ blocker HB-X1** and **not** written. The requirements it must meet are below. Th
 - **HB-Q7: decided (owner decision, 2026-10-13): Option A.** The F4 persistence phase (R-F4) precedes Phase 2's bulk
   document stage: R-F4 must be implemented, independently audited, accepted and frozen before HB-7 / HB-S4 bulk
   document retrieval (§14.1, §27). This was the recommendation: G-1's "minimum request set" favours it. The decision
-  adds a gate to HB-S4 and removes none. R-F4 has not been designed or implemented; its design and implementation
-  choices are open owner decisions.
+  adds a gate to HB-S4 and removes none.
+- **R-F4 status (2026-10-16).** Designed and accepted (`docs/R_F4_DESIGN.md`, owner decisions RF4-M1 to RF4-M5 and
+  release sequence Q1, 2026-10-14). Implemented in two owner-authorized stages on the controlled branch
+  `claude/rf4-implementation` (not merged): Stage 1, the new package `worker/financial_f4_store/`, migration 0018 and
+  their tests; Stage 2, F5's `_persist` wired to it, the approved frozen-test and RDV edits and the HB-1 to HB-6 pin
+  cascade (`docs/R_F4_IMPLEMENTATION.md`). **Not yet independently audited after Stage 2, accepted or frozen**: HB-Q7's
+  gate on HB-7 / HB-S4 is not met.
 
 ## 12. Provenance
 
@@ -1971,14 +2032,16 @@ imported by production code (HB-B8). Parity is tested on the RDV evidence (§23)
   - temp or DB disk under threshold;
   - a stale lease.
 - **Database growth.** About 11–12 GB with indexes for W (F6 about 10–11 GB, F1–F5 about 0.6 GB), plus about 6 GB if
-  a second validation generation happens (§11.2). It is monitored at each wake-up, against free space and the P1 dump
-  destination.
+  a second validation generation happens (§11.2), plus R-F4's F4 structure, about 1.6–2.1 GB (§11.2, an estimate for
+  HB-Q9 that the pilot measures). It is monitored at each wake-up, against free space and the P1 dump destination.
 
 ## 21. Backup/evidence requirements
 
 - **P1 is unchanged.** Nightly dumps, hourly off-site sync and the weekly restore check include all Phase 2 data
   automatically (`pg_dump` of the whole database; the restore check digests every table). On a restored copy, run F6.4
-  `verify` and the Phase 2 `verify`.
+  `verify` and the Phase 2 `verify`; on a build that includes R-F4, also R-F4's `verify`
+  (`python -m worker.financial_f4_store verify`, read-only, as the reader role; `docs/R_F4_DESIGN.md` §5, §10). Every
+  checkpoint then runs all three.
 - **Capacity (HB-Q9).** Before HB-S4, the owner confirms:
   - backup-disk capacity for the larger dumps;
   - local dump retention (an open P1 decision);
@@ -2012,6 +2075,11 @@ imported by production code (HB-B8). Parity is tested on the RDV evidence (§23)
 | F6 | F6.4 `verify` reproduces validation runs from persisted rows; reconciliation from stored SOs | No |
 | Coverage audit | A pure function of one snapshot under `hb.coverage.1` → equal digest | No |
 | Cross-database comparison | An id-free projection, mapping database-generated ids and times to natural labels (RDV §10.1) | No |
+
+**R-F4 (`docs/R_F4_DESIGN.md` §5; implemented, not yet frozen).** For a filing saved with R-F4, F5 is replayed from the
+database without CSE: R-F4's reader rebuilds F4's output exactly and reads F3 back from 0005, and F5's own builder,
+under the declared decimal context, reproduces the stored `content_sha256` (R-F4's `verify`). F3 and F4 themselves still
+need the document again, as above, and so does a filing saved before R-F4.
 
 **Determinism guards:**
 - discovery closure before F3 (HB-U5);
@@ -2152,6 +2220,14 @@ fake transports, no real sleeping.
   - re-requesting a successful item.
 - **The live pilot** (HB-6) is the release gate, owner-run, after every owner decision. It is the first time Phase 2
   contacts CSE.
+- **R-F4's frozen-test edits (`docs/R_F4_DESIGN.md` §8.1 items 8–9; approved with RF4-M1, made in R-F4's Stage 2):**
+  - `tests/test_f5_lifecycle.py::test_candidates_are_built_in_memory_and_the_document_is_deleted`, that one test only:
+    an F4 stand-in and the persistence order `[f3, link, f4, f5, commit]`;
+  - `tests/rdv_evidence.py::persist_filing`, its docstring only (option R-a): it saves the pre-R-F4 subset of
+    `_persist`'s order, checked by a new test in `tests/test_rf4_unit.py`.
+
+  No other frozen test changes: every other suite that calls `_persist` (F5's `run()`, HB-4's slice) passes unchanged,
+  with R-F4 reached through `_persist`'s fallback.
 
 ## 24. Failure modes
 
@@ -2277,9 +2353,11 @@ hard-code assumptions about the canonical financial-truth layer.
   corrections at `9f05041`) and frozen: **HB-6 IMPLEMENTATION FROZEN / ACCEPTED** (2026-10-13). Its live pilot is
   owner-run, after the deployment prerequisites; HB-7 has not started, and when it starts is the owner's decision.
 - HB-Q7 is decided (owner decision, 2026-10-13: Option A): R-F4, the full F4 structure persistence of F6.2 §10–§12
-  (§11.5), must be implemented, independently audited, accepted and frozen before HB-7. R-F4 has not been designed or
-  implemented. Its design and implementation, and its position relative to Docker staging and the live pilot, are
-  open owner decisions. HB-7's other gates are unchanged.
+  (§11.5), must be implemented, independently audited, accepted and frozen before HB-7. R-F4 is designed and accepted
+  (`docs/R_F4_DESIGN.md`, 2026-10-14); its position relative to Docker staging and the live pilot is release sequence
+  Q1 (frozen before staging; the pilot runs on that build). It is implemented on the controlled branch
+  `claude/rf4-implementation` (Stages 1 and 2, not merged) and is **not yet independently audited after Stage 2,
+  accepted or frozen** (§11.5). HB-7's other gates are unchanged.
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
@@ -2363,7 +2441,8 @@ hard-code assumptions about the canonical financial-truth layer.
 D1–D13 (revision 2) were found by re-checking revision 1 against the repository at `59ac143`. D14 (revision 3) was found
 at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. D16
 (revision 4) corrects two stale statements found on the owner's review of revision 4. Every correction is confined
-to this document.
+to this document. D17 (revision 5) records R-F4's implementation, made under R-F4's own change control
+(`docs/R_F4_DESIGN.md` §8), in the sections it touches; it changes no Phase 2 rule.
 - D1–D13 change no frozen stage, blocker conclusion or owner default.
 - D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
   2026-10-02.
@@ -2391,3 +2470,4 @@ to this document.
 | D14 | Status, §1, §23.4, §26 (HB-X3, HB-Q3), §27, Appendix A | Revision 2 named one frozen-test edit (RDV V9) and stated that no other frozen test pins the count or the last migration (D11). F6.4's migration-ledger/preflight regression test also re-applies the migrations and asserts that 0015 is the last applied one, so any 0016 fails it | HB-X3 is two narrow durable edits with the same invariants: 0015 present at position 14 with its exact frozen hash, `0006` unused, every later migration numbered after 0015, and re-application a no-op | `tests/test_f64_postgres.py:239-241` (`again["already_applied"][-1] == name`). The full offline suite, run with a no-op 0016 in a throwaway copy, failed exactly this test and RDV V9 |
 | D15 | Status, §11.5, §14.1, §26.2, §27, Appendix D | HB-Q7 was an open owner question, and HB-7's dependency "HB-Q7 decided" named the decision but not its consequence | Records owner decision HB-Q7 (Option A, 2026-10-13) and adds the gate "R-F4 implemented, independently audited, accepted and frozen" to HB-S4 (§14.1) and HB-7 (§27), keeping every existing gate | Owner decision HB-Q7, 2026-10-13 |
 | D16 | Status, §27, Appendix C, Appendix D | §27's HB-4 row still listed "(HB-Q7)" as a dependency, although HB-Q7 gates only HB-7 / HB-S4 (§11.5) and HB-4's implementation status (Status) lists it among the "Not HB-4 blockers". Appendix C still said that the Master Architecture was not edited and that the proposed cross-reference was in the phase report only | HB-4 depends on HB-2; its scope and exit criteria are unchanged. Appendix C separates the design work (revisions 1–3 did not edit the Master Architecture) from the later updates that did, including the owner-approved update that records HB-Q7 | `git log -- docs/MASTER_ARCHITECTURE.md`: no change in revisions 1–3 (`59ac143`, `62a24f6`, `75fd835`); the cross-reference first appears in the HB-1 freeze record `54bce75`. Owner review of revision 4, 2026-10-14 |
+| D17 | Status (revision 5), §4.1, §4.2 (R-F4 note), §10.1, §10.2, §11.1, §11.2, §11.5, §21, §22, §23.4, §27, the HB-1 to HB-6 implementation and freeze records (pin-only notes), Appendix D | The design described F5's `_persist` without R-F4's F4 save, the frozen pins and version tuple without R-F4's, and R-F4 as not designed or implemented | Records R-F4 as designed and accepted (2026-10-14) and implemented in Stages 1 and 2 on `claude/rf4-implementation` (not merged, not yet independently audited after Stage 2, accepted or frozen); the F4 save in `_persist`'s order; `f4.store.1` in the armed tuple; the 0018 tables; the capacity estimate; R-F4's `verify` at checkpoints; replay of F5 from the database; R-F4's two approved frozen-test edits; the HB-1 to HB-6 pin-only amendments. HB-Q7's gate is unchanged and not met | `docs/R_F4_DESIGN.md` §3, §5, §7, §8; `docs/R_F4_IMPLEMENTATION.md` |

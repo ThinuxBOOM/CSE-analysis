@@ -72,6 +72,13 @@ def test_candidates_are_built_in_memory_and_the_document_is_deleted(monkeypatch)
     import worker.financial_candidates_store as st
     monkeypatch.setattr(st, "classification_id", lambda conn, c: "cid-1")
     got, stores = {}, RecordingStores()
+
+    class F4:                                   # R-F4 (docs/R_F4_DESIGN.md section 8.1 item 8): the F4 stand-in
+        def save(self, ext, cid, cls):
+            assert isinstance(ext, se.DocumentExtraction) and cid == "cid-1" and cls["cse_filing_id"] == ext.filing_id
+            stores.saved.append(("f4", ext.filing_id))
+            return "inserted"
+    stores["f4"] = F4()
     with TempRoot() as root:
         fetcher = FakeFetcher({URL(PRIMARY): FakeResp(200, PDF, {"last-modified": LAST_MODIFIED})})
         out = cli.run([filing()], temp_root=root, request_delay_seconds=0, fetcher=fetcher, extract_text=text,
@@ -84,8 +91,8 @@ def test_candidates_are_built_in_memory_and_the_document_is_deleted(monkeypatch)
     res = got[50553]
     assert res["run"]["counts"]["candidates"] == 28 and res["run"]["timestamps"]["cdn_last_modified_raw"] == LAST_MODIFIED
     assert res["run"]["timestamps"]["path_epoch_ms"] == 1790000000001
-    assert stores.saved == [("f3", 50553), ("link", 50553), ("f5", 50553, LAST_MODIFIED), ("commit",)]
-    assert rec["stored"]["f5"] == "inserted"
+    assert stores.saved == [("f3", 50553), ("link", 50553), ("f4", 50553), ("f5", 50553, LAST_MODIFIED), ("commit",)]
+    assert rec["stored"]["f4"] == "inserted" and rec["stored"]["f5"] == "inserted"
     report = json.dumps(out, default=str)
     assert "62,085" not in report and "66563" not in report and "Revenue" not in report      # counts only
 

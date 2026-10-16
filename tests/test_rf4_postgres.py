@@ -2,10 +2,10 @@
 R-F4 (docs/R_F4_DESIGN.md) against REAL PostgreSQL 17: migration 0018 through P1's runner, the writer, the reader, the
 F3 read-back, the F5 rebuild, verify and the preflight, as the restricted roles.
 
-Stage 1 (design section 8.2): F5's `_persist` is not wired to R-F4 yet (a later, separately reviewed stage). These
-tests therefore save each document in `_persist`'s accepted order by hand: F3's store, the classification id, the
-issuer link, R-F4's store, then F5's store, in one transaction. RT-14 through F5's `run()` and HB-4's slice, and their
-rollback/retry paths, belong to that later stage.
+p1-p17 (Stage 1) save each document in `_persist`'s accepted order by hand: F3's store, the classification id, the
+issuer link, R-F4's store, then F5's store, in one transaction. p18-p23 (Stage 2, design section 8.2 step 3) go through
+the real callers, with F5's `_persist` wired to R-F4: F5's own `run()` with exactly main()'s four stores, and HB-4's
+document slice, both unchanged and both reaching R-F4 through `_persist`'s fallback.
 
     p1   0018 applied at its pinned hash; the preflight's file and object checks pass for both roles, and its ledger
          check is 'verified' as cse_reader (0009 lets it read ops) and the migration role, 'unverifiable' as cse_worker
@@ -34,6 +34,20 @@ rollback/retry paths, belong to that later stage.
     p17  a rerun of a saved key is 'already_present' only when the saved extraction reads back intact: after a row is
          appended or a cell tampered with, the same save is refused (incomplete, corrupt), writes nothing and leaves the
          caller's transaction usable; once the evidence is restored it is 'already_present' again
+    p18  RT-14 and RT-15 through F5's run() for every synthetic layout: each saved F4 extraction reads back type-exactly
+         equal to F4's in-memory output, and F5 rebuilt from the saved evidence hashes to the in-memory result and the
+         stored one; verify is clean
+    p19  a rerun of run() is 'already_present' for F3, F4 and F5 (the documents are downloaded again; nothing is
+         written twice); a run saved before R-F4 is 'missing' to verify and gets F4 only from a new download
+    p20  RT-3 through run() wrapped in three extraction contexts: signed zeros and exponent forms stored exactly, RT-14
+         holds, and the precision-5 extraction is f5_rebuild_refused under the declared context
+    p21  a failure at filing k (a scripted F4 failure, or RT-4's NaN refused by R-F4) makes run() raise and leaves the
+         whole batch uncommitted, filing 1 included; a rerun saves every filing once
+    p22  RT-14 and RT-15 through HB-4's slice; the F4 extraction, the F5 run and the 'persisted' event are written by
+         one transaction per filing
+    p23  HB-4: a failure inside the F4 save, inside the F5 save after it, in the ledger event, or RT-4's NaN rolls the
+         filing back (no F3, F4 or F5 rows) and is recorded (retry_wait or failed); the retry downloads once more and
+         saves once
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -43,6 +57,7 @@ import copy
 import decimal
 import json
 import os
+import re
 import shutil
 import socket
 import struct
@@ -58,8 +73,15 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
 import f64_support as S  # noqa: E402
+import hb4_support as H  # noqa: E402
 import rf4_support as R  # noqa: E402
+from test_document_retrieval import FakeFetcher, FakeResp, TempRoot  # noqa: E402
+from worker import document_text  # noqa: E402
+from worker import extract_financial_candidates as f5cli  # noqa: E402
 from worker import financial_candidates as f5  # noqa: E402
+from worker import statement_extraction as se  # noqa: E402
+from worker.backfill_documents import worker as hb4  # noqa: E402
+from worker.financial_backfill import store as ledger  # noqa: E402
 from worker.financial_candidates_store import PostgresCandidateStore, classification_id  # noqa: E402
 from worker.financial_f4_store import codec, preflight, reader, store, verify  # noqa: E402
 from worker.financial_f4_store.errors import (ConflictingEvidence, EvidenceRefused, SchemaUnavailable,  # noqa: E402
@@ -1011,3 +1033,341 @@ def test_p17_a_rerun_is_already_present_only_when_the_saved_extraction_reads_bac
     assert rerun.save(copy.deepcopy(s.ext), s.cid, s.cls) == "already_present"
     w.rollback()
     assert verify.verify(db.reader())["clean"]
+
+
+# ================================================================================================ Stage 2: the callers
+
+def text_of(words):
+    """F3's layout text of a synthetic word layer, as rf4_support.chain makes it."""
+    return document_text.from_pages(["\n".join(l.rendered for l in se.build_lines(p)) for p in words.pages],
+                                    extractor=R.LAYOUT_EXTRACTOR)
+
+
+class ByDocument:
+    """F3's text and F4's word layer of each temporary document, chosen by the filing its PDF names (the HB-4
+    harness's distinct PDF per filing, `% filing <id>`): one synthetic layout per filing through the real F2 lifecycle,
+    nothing about the callers changed."""
+
+    def __init__(self, layers):
+        self.layers = layers
+
+    def fid(self, path):
+        with open(path, "rb") as f:
+            return int(re.search(rb"% filing (\d+)", f.read()).group(1))
+
+    def words(self, path):
+        return self.layers[self.fid(path)]
+
+    def text(self, path):
+        return text_of(self.words(path))
+
+
+class Originals:
+    """F4's and F5's outputs as the consumer makes them, captured as made (F4's deep-copied at once, so a later change
+    to the object it hands on would show): the originals of RT-14 and RT-15. `mutate(ext)`, if given, changes F4's
+    output after the copy (RT-4: a value R-F4 must refuse)."""
+
+    def __init__(self, monkeypatch, mutate=None):
+        self.f4, self.f5 = {}, {}
+        real_extract, real_build = f5cli.se.extract_document, f5cli.f5.build
+
+        def extract(*a, **k):
+            ext = real_extract(*a, **k)
+            self.f4.setdefault(ext.filing_id, copy.deepcopy(ext))
+            if mutate:
+                mutate(ext)
+            return ext
+
+        def build(ext, cls):
+            res = real_build(ext, cls)
+            self.f5.setdefault(ext.filing_id, copy.deepcopy(res))
+            return res
+        monkeypatch.setattr(f5cli.se, "extract_document", extract)
+        monkeypatch.setattr(f5cli.f5, "build", build)
+
+
+def main_stores(w):
+    """Exactly the stores F5's main() builds (four keys): R-F4 is reached through _persist's fallback."""
+    return {"conn": w, "classification": PostgresClassificationStore(w), "issuer": PostgresIssuerStore(w),
+            "candidates": PostgresCandidateStore(w)}
+
+
+def run_f5(w, fids, layers, fetcher=None):
+    """F5's own run() over `fids` (from report_filings): the real F2 lifecycle against a scripted CDN serving the
+    harness's distinct PDF per filing, F3/F4 over each filing's layout, persisted and committed by run()."""
+    by = ByDocument(layers)
+    fetcher = fetcher or FakeFetcher({H.url_of(R.path_of(f)): _ok(f) for f in fids})
+    with TempRoot() as root:
+        out = f5cli.run(f5cli.load_filings_from_db(w, fids), temp_root=root, request_delay_seconds=0, fetcher=fetcher,
+                        extract_text=by.text, extract_words=by.words, require_poppler=False, stores=main_stores(w))
+        assert os.listdir(root) == []
+    return out, fetcher
+
+
+def _ok(fid):
+    status, headers, body = H.ok_doc(fid)
+    return FakeResp(status, body, headers)
+
+
+def rows_of(c, fids):
+    """(F3 classifications, F4 extractions, F5 runs) of these filings."""
+    return tuple(q(c, f"select count(*) from {t} where cse_filing_id = any(%s)", (list(fids),))[0][0]
+                 for t in ("report_document_classifications", "financial_f4_extractions", "financial_extraction_runs"))
+
+
+def assert_rt14_rt15(c, fid, originals, run_id):
+    """RT-15: the saved F4 output reads back type-exactly equal to F4's in-memory original. RT-14: F5 rebuilt from the
+    saved F3 and F4 evidence under the declared context hashes to both the original in-memory result and the stored."""
+    key = q(c, "select cse_filing_id, document_sha256, word_extractor, f4_extractor_version, classification_id from "
+               "financial_extraction_runs where id = %s", (run_id,))[0]
+    eid = reader.extraction_id_for(c, dict(zip(reader.RUN_KEY, key)))
+    assert eid is not None, fid
+    d = R.diff(originals.f4[fid], reader.load_extraction(c, eid))
+    assert d is None, (fid, d)
+    rebuilt, stored = reader.rebuild_f5(c, run_id)
+    assert f5.content_sha256(rebuilt) == stored == f5.content_sha256(originals.f5[fid]), fid
+
+
+def test_p18_rt14_and_rt15_through_f5_run_for_every_synthetic_layout(db, layouts, monkeypatch):
+    w = db.conn()
+    fids = [981000 + i for i in range(len(layouts))]
+    layers = {fid: words for fid, (_, words, _, _) in zip(fids, layouts)}
+    for fid in fids:
+        seed_filing(w, fid)
+    originals = Originals(monkeypatch)
+    stored = {}
+    for i in range(0, len(fids), f5cli.MAX_FILINGS_PER_RUN):
+        out, _ = run_f5(w, fids[i:i + f5cli.MAX_FILINGS_PER_RUN], layers)
+        assert out["ok"]
+        for r in out["records"]:
+            assert (r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) == ("inserted",) * 3, r["retrieval"]
+            stored[r["retrieval"]["cse_filing_id"]] = r["stored"]
+    assert sorted(stored) == fids and len(fids) >= 45
+    for fid in fids:
+        assert_rt14_rt15(w, fid, originals, stored[fid]["run_id"])
+    w.rollback()
+    report = verify.verify(db.reader())
+    assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == len(fids)
+
+
+def test_p19_a_rerun_is_already_present_for_all_three_and_a_pre_r_f4_run_gets_f4_only_by_downloading_again(
+        db, layouts, monkeypatch):
+    w = db.conn()
+    words = a_layout_with_cells(layouts)
+    fids = [982001, 982002]
+    for fid in fids:
+        seed_filing(w, fid)
+    layers = dict.fromkeys(fids, words)
+    out, fetcher = run_f5(w, fids, layers)
+    assert all(r["stored"]["f4"] == "inserted" for r in out["records"])
+    before = (rows_of(w, fids), f4_counts(w))
+    out, fetcher2 = run_f5(w, fids, layers)                          # the same batch again: downloaded again
+    assert [(r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) for r in out["records"]] == \
+        [("already_present",) * 3] * 2 and len(fetcher2.calls) == 2
+    assert (rows_of(w, fids), f4_counts(w)) == before                # nothing written twice
+    # a run saved before R-F4 (F3 + link + F5, as the pre-R-F4 _persist did): verify finds it missing; a governed
+    # re-download through run() then saves F4, and F3 and F5 are already present
+    pre = 982003
+    seed_filing(w, pre)
+    with TempRoot() as root:
+        made = {}
+        f5cli.run(f5cli.load_filings_from_db(w, [pre]), temp_root=root, request_delay_seconds=0,
+                  fetcher=FakeFetcher({H.url_of(R.path_of(pre)): _ok(pre)}), extract_text=ByDocument({pre: words}).text,
+                  extract_words=ByDocument({pre: words}).words, require_poppler=False,
+                  on_result=lambda fid, res, cls: made.setdefault(fid, (res, cls)))
+    res, cls = made[pre]
+    PostgresClassificationStore(w).save(cls, 1000)
+    cid = classification_id(w, cls)
+    PostgresCandidateStore(w).save(res, cid, PostgresIssuerStore(w).link_filing(pre))
+    w.commit()
+    assert rows_of(w, [pre]) == (1, 0, 1)
+    assert [p["kind"] for p in verify.verify(db.reader())["problems"]] == ["missing"]
+    out, fetcher3 = run_f5(w, [pre], {pre: words})
+    [r] = out["records"]
+    assert (r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) == ("already_present", "inserted",
+                                                                        "already_present") and len(fetcher3.calls) == 1
+    assert rows_of(w, [pre]) == (1, 1, 1) and verify.verify(db.reader())["clean"]
+
+
+def test_p20_rt3_decimals_through_f5_run_under_three_extraction_contexts(db, monkeypatch):
+    """Design section 9, RT-3 with run() wrapped in a test-only context: default (unsigned zeros), ROUND_FLOOR (signed
+    zeros) and precision 5 (an exponent form F5's consistency check later refuses under the declared context)."""
+    w = db.conn()
+    words = R.rt3_layout()
+    contexts = {983001: decimal.Context(), 983002: decimal.Context(rounding=decimal.ROUND_FLOOR),
+                983003: decimal.Context(prec=5)}
+    originals = Originals(monkeypatch)
+    stored = {}
+    for fid, ctx in contexts.items():
+        seed_filing(w, fid)
+        with decimal.localcontext(ctx):
+            out, _ = run_f5(w, [fid], {fid: words})
+        [r] = out["records"]
+        assert r["stored"]["f4"] == "inserted", r
+        stored[fid] = r["stored"]
+    signed = [c.parsed_value for c in R.cells(originals.f4[983002]) if c.parsed_value is not None]
+    assert any(v.is_zero() and v.is_signed() for v in signed)               # the floor context's signed zeros
+    for fid in (983001, 983002):
+        assert_rt14_rt15(w, fid, originals, stored[fid]["run_id"])
+    key = q(w, "select cse_filing_id, document_sha256, word_extractor, f4_extractor_version, classification_id from "
+               "financial_extraction_runs where id = %s", (stored[983003]["run_id"],))[0]
+    eid = reader.extraction_id_for(w, dict(zip(reader.RUN_KEY, key)))
+    assert R.diff(originals.f4[983003], reader.load_extraction(w, eid)) is None             # stored exactly
+    with pytest.raises(EvidenceRefused) as e:
+        reader.rebuild_f5(w, stored[983003]["run_id"])
+    assert e.value.kind == "f5_rebuild_refused"
+
+
+def _nan_coordinate(ext):
+    for st in ext.statements:
+        for cell in st.cells:
+            cell.coordinates["x0"] = float("nan")
+            return
+
+
+@pytest.mark.parametrize("fault", ["scripted_f4_failure", "nan_in_f4_output"])
+def test_p21_a_failure_at_filing_k_leaves_runs_batch_uncommitted_and_a_rerun_saves_every_filing_once(
+        db, layouts, monkeypatch, fault):
+    w = db.conn()
+    words = a_layout_with_cells(layouts)
+    fids = [984001, 984002, 984003]
+    for fid in fids:
+        seed_filing(w, fid)
+    layers = dict.fromkeys(fids, words)
+    real_save = store.PostgresF4Store.save
+    calls = []
+    with monkeypatch.context() as m:
+        if fault == "scripted_f4_failure":
+            def save(self, ext, cid, cls):
+                calls.append(ext.filing_id)
+                if len(calls) == 2:                                         # filing k = 2
+                    raise ValueError("scripted: the F4 save fails at filing k")
+                return real_save(self, ext, cid, cls)
+            m.setattr(store.PostgresF4Store, "save", save)
+            expected = ValueError
+        else:
+            Originals(m, mutate=lambda ext: ext.filing_id == fids[1] and _nan_coordinate(ext))
+            expected = UnsupportedValue
+        with pytest.raises(expected):
+            run_f5(w, fids, layers)
+    w.rollback()                                                            # what main()'s finally does (close)
+    assert rows_of(w, fids) == (0, 0, 0) and f4_counts(w)["extractions"] == 0    # filing 1 included: one batch
+    out, _ = run_f5(w, fids, layers)
+    assert [(r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) for r in out["records"]] == \
+        [("inserted",) * 3] * 3
+    assert rows_of(w, fids) == (3, 3, 3) and verify.verify(db.reader())["clean"]
+
+
+# ------------------------------------------------------------------------------------------------ HB-4's slice
+
+@pytest.fixture
+def env(cluster, tmp_path, monkeypatch):
+    e = H.Env(cluster, tmp_path, monkeypatch)
+    yield e
+    e.close()
+
+
+def hb4_slice(env, cdn, by, **settings):
+    """One HB-4 document slice, run and closed; (slice, error or None)."""
+    ds = env.slice(cdn, extract_text=by.text, extract_words=by.words, **settings)
+    err = None
+    try:
+        with ds:
+            ds.run()
+    except BaseException as exc:  # noqa: BLE001 - the test inspects it
+        err = exc
+    return ds, err
+
+
+def open_hb4(env, fids, **arming):
+    H.ready(env, [H.feed_item(fid, H.path_of(fid)) for fid in fids], **arming)
+    return env.conn()
+
+
+def test_p22_rt14_and_rt15_through_hb4s_slice_with_f4_in_the_filings_one_transaction(env, layouts, monkeypatch):
+    fids = [985001, 985002, 985003, 985004]
+    picked = [l for l in layouts if R.cells(R.chain(l[1], 1)[1])][:4]
+    layers = {fid: words for fid, (_, words, _, _) in zip(fids, picked)}
+    w = open_hb4(env, fids)
+    su = env.conn("postgres")                                   # test-only: the top-level transaction of each write
+    H.q(su, "create table rf4_tx (relname text, txid bigint)")      # H.q commits: the slice must see it
+    H.q(su, "create function rf4_tx_log() returns trigger language plpgsql as $$ begin insert into rf4_tx values "
+            "(tg_table_name, txid_current()); return new; end $$")
+    H.q(su, "grant insert on rf4_tx to cse_worker")
+    H.q(su, "grant execute on function rf4_tx_log() to cse_worker")
+    for t, cond in (("financial_f4_extractions", ""), ("financial_extraction_runs", ""),
+                    ("backfill_item_events", "when (new.state = 'persisted') ")):
+        H.q(su, f"create trigger rf4_tx_{t} after insert on {t} for each row {cond}execute function rf4_tx_log()")
+    originals = Originals(monkeypatch)
+    cdn = H.ScriptedCDN(env.clock, {H.url_of(H.path_of(f)): H.ok_doc(f) for f in fids})
+    ds, err = hb4_slice(env, cdn, ByDocument(layers))
+    assert err is None and len(cdn.calls) == len(fids)
+    for fid in fids:
+        it = H.item_of(w, fid)
+        assert H.state(w, it) == "persisted", fid
+        ev = ledger.events(w, it["id"])[-1]
+        assert ev["details"]["f3"] == "inserted" and ev["details"]["f5"] == "inserted"
+        assert_rt14_rt15(w, fid, originals, ev["f5_run_id"])
+    by_tx = {}
+    for rel, tx in H.q(su, "select relname, txid from rf4_tx"):
+        by_tx.setdefault(tx, []).append(rel)
+    assert sorted(sorted(v) for v in by_tx.values()) == [sorted(["backfill_item_events", "financial_extraction_runs",
+                                                                 "financial_f4_extractions"])] * len(fids)
+    w.rollback()
+    report = verify.verify(_reader_of(env))
+    assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == len(fids)
+
+
+def _reader_of(env):
+    c = env.conn("postgres")
+    c.autocommit = True
+    with c.cursor() as cur:
+        cur.execute("set role cse_reader")
+    c.autocommit = False
+    return c
+
+
+@pytest.mark.parametrize("fault, mx, final", [("f4_save", 3, "retry_wait"), ("f4_save", 1, "failed"),
+                                              ("f5_save_after_f4", 3, "retry_wait"), ("ledger_event", 3, "retry_wait"),
+                                              ("nan_in_f4_output", 1, "failed")])
+def test_p23_hb4_rolls_the_filing_back_records_it_and_a_retry_saves_once(env, layouts, monkeypatch, fault, mx, final):
+    fid = 986001
+    words = a_layout_with_cells(layouts)
+    w = open_hb4(env, [fid], item_max_attempts=mx)
+    by = ByDocument({fid: words})
+    cdn = H.ScriptedCDN(env.clock, {H.url_of(H.path_of(fid)): H.ok_doc(fid)})
+    with monkeypatch.context() as m:
+        if fault == "f4_save":
+            def boom(self, ext, cid, cls):
+                raise ValueError("scripted: a database failure inside the F4 save")
+            m.setattr(store.PostgresF4Store, "save", boom)
+        elif fault == "f5_save_after_f4":
+            def boom(self, result, cid, link=None):
+                raise ValueError("scripted: a database failure inside the F5 save, after the F4 save")
+            m.setattr(PostgresCandidateStore, "save", boom)
+        elif fault == "ledger_event":
+            real = hb4.append_event_in
+
+            def boom(cur, item_id, st, action, **kw):
+                if st == "persisted":
+                    raise RuntimeError("scripted: the ledger event cannot be written")
+                return real(cur, item_id, st, action, **kw)
+            m.setattr(hb4, "append_event_in", boom)
+        else:
+            Originals(m, mutate=_nan_coordinate)
+        ds, err = hb4_slice(env, cdn, by)
+    it = H.item_of(w, fid)
+    ev = ledger.events(w, it["id"])[-1]
+    assert err is None and (ev["state"], ev["action"]) == (final, "record"), ev
+    if fault != "ledger_event":
+        assert "rolled back" in ev["reason"], ev["reason"]
+    if fault == "nan_in_f4_output":
+        assert "UnsupportedValue" in ev["reason"] or "unsupported_value" in ev["reason"], ev["reason"]
+    assert rows_of(w, [fid]) == (0, 0, 0) and f4_counts(w)["extractions"] == 0      # the whole filing rolled back
+    if final == "failed":
+        return
+    ds, err = hb4_slice(env, cdn, by)                                # the retry: one more download, saved once
+    assert err is None and H.state(w, it) == "persisted" and len(cdn.calls) == 2
+    assert rows_of(w, [fid]) == (1, 1, 1) and f4_counts(w)["extractions"] == 1
+    w.rollback()
+    assert verify.verify(_reader_of(env))["clean"]

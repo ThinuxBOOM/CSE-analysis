@@ -19,6 +19,10 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
     u15  an oversized integer is refused when written and corrupt when read, never an untyped ValueError
     u16  the 4300-digit contract holds whatever the interpreter's int-string limit: long integers written under a
          permissive setting read back under the lowest (640); R-F4's JSON writer is json.dumps character for character
+    u17  Stage 2: make_consumer keeps F4's output (the object F5 built from); _persist saves it between the issuer link
+         and F5 with the F3 dict F5 consumed, falls back to R-F4's store when the caller has none (HB-4), never saves F5
+         after a failed F4 save; the RDV harness keeps _persist's order apart from F4 (R-a); HB-1 pins exactly the R-F4
+         modules _persist imports and STORE_VERSION
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -761,3 +765,195 @@ def test_u16_a_non_finite_float_key_is_refused_as_json_dumps_refuses_it(key, sor
             codec.canonical_json(v)                                                            # the typed refusal
     assert codec.json_text({2.5: 1, -0.0: 2, 1e16: 3}) == json.dumps({2.5: 1, -0.0: 2, 1e16: 3}, separators=(",", ":"),
                                                                       allow_nan=False)        # finite keys unchanged
+
+
+# ================================================================================================ u17 (Stage 2)
+
+class _Recorder:
+    """F5's four stores and the F4 store as stand-ins, recording the persistence order (no database)."""
+
+    def __init__(self, with_f4=True, f4_error=None):
+        self.saved, self.f4_args = [], None
+        this = self
+
+        class Cls:
+            def save(self, c, n):
+                this.saved.append("f3")
+                return "inserted"
+
+        class Iss:
+            def link_filing(self, fid):
+                this.saved.append("link")
+                return None
+
+        class F4:
+            def save(self, ext, cid, cls):
+                this.saved.append("f4")
+                this.f4_args = (ext, cid, cls)
+                if f4_error:
+                    raise f4_error
+                return "inserted"
+
+        class Cand:
+            def save(self, result, cid, link):
+                this.saved.append("f5")
+                return "inserted", "run-1"
+
+        self.stores = {"conn": object(), "classification": Cls(), "issuer": Iss(), "candidates": Cand()}
+        self.f4 = F4()
+        if with_f4:
+            self.stores["f4"] = self.f4
+
+
+def _got():
+    cls = {"cse_filing_id": 7, "document_sha256": "a" * 64}
+    return {"classification": cls, "f4": object(), "result": {"run": {"cse_filing_id": 7}}, "document_bytes": 10}
+
+
+def test_u17_make_consumer_keeps_f4s_output_the_same_object_f5_built_from(monkeypatch):
+    from worker import extract_financial_candidates as cli
+    seen = {}
+    ext = object()
+    monkeypatch.setattr(cli.rc, "classify", lambda text, meta, **k: SimpleCls())
+    monkeypatch.setattr(cli.se, "extract_document", lambda *a, **k: ext)
+    monkeypatch.setattr(cli.f5, "build", lambda e, c: seen.setdefault("built_from", e) and {"built": True})
+    results = {}
+    consumer = cli.make_consumer({7: {}}, results, extract_text=lambda path: "text")
+    consumer(type("Doc", (), {"cse_filing_id": 7, "path": "p", "sha256": "a" * 64, "byte_length": 10})())
+    assert results[7]["f4"] is ext and seen["built_from"] is ext
+
+
+class SimpleCls:
+    def to_dict(self):
+        return {"cse_filing_id": 7, "document_sha256": "a" * 64}
+
+
+def test_u17_persist_saves_f4_between_the_link_and_f5_with_the_f3_dict_f5_consumed(monkeypatch):
+    from worker import extract_financial_candidates as cli
+    import worker.financial_candidates_store as fcs
+    monkeypatch.setattr(fcs, "classification_id", lambda conn, c: "cid-7")
+    rec, got = _Recorder(), _got()
+    out = cli._persist(rec.stores, got)
+    assert rec.saved == ["f3", "link", "f4", "f5"]
+    assert rec.f4_args[0] is got["f4"] and rec.f4_args[1] == "cid-7" and rec.f4_args[2] is got["classification"]
+    assert out == {"f3": "inserted", "classification_id": "cid-7", "issuer_link": None, "f4": "inserted",
+                   "f5": "inserted", "run_id": "run-1"}
+
+
+def test_u17_without_an_f4_store_persist_uses_r_f4s_store_on_the_callers_connection(monkeypatch):
+    """HB-4 builds its stores with four keys (unchanged): _persist falls back to PostgresF4Store(stores['conn'])."""
+    from worker import extract_financial_candidates as cli
+    import worker.financial_candidates_store as fcs
+    from worker.financial_f4_store import store as f4store
+    monkeypatch.setattr(fcs, "classification_id", lambda conn, c: "cid-7")
+    rec = _Recorder(with_f4=False)
+    made = []
+
+    class Fake:
+        def __init__(self, conn):
+            made.append(conn)
+
+        def save(self, ext, cid, cls):
+            return rec.f4.save(ext, cid, cls)
+    monkeypatch.setattr(f4store, "PostgresF4Store", Fake)
+    out = cli._persist(rec.stores, _got())
+    assert made == [rec.stores["conn"]] and rec.saved == ["f3", "link", "f4", "f5"] and out["f4"] == "inserted"
+
+
+def test_u17_a_failing_f4_save_propagates_and_f5_is_never_saved(monkeypatch):
+    from worker import extract_financial_candidates as cli
+    import worker.financial_candidates_store as fcs
+    monkeypatch.setattr(fcs, "classification_id", lambda conn, c: "cid-7")
+    rec = _Recorder(f4_error=UnsupportedValue("scripted: R-F4 refuses this extraction"))
+    with pytest.raises(UnsupportedValue):
+        cli._persist(rec.stores, _got())
+    assert rec.saved == ["f3", "link", "f4"]
+
+
+def test_u17_the_rdv_harness_persists_in_persists_order_apart_from_f4(monkeypatch):
+    """R-a (design section 8 row 6): tests/rdv_evidence.persist_filing saves the pre-R-F4 subset of _persist."""
+    import rdv_evidence
+    from worker import extract_financial_candidates as cli
+    import worker.financial_candidates_store as fcs
+    import worker.report_classification_store as rcs
+    order = []
+
+    class Cls:
+        def __init__(self, conn):
+            pass
+
+        def save(self, c, n):
+            order.append("f3")
+            return "inserted"
+
+    class Cand:
+        def __init__(self, conn):
+            pass
+
+        def save(self, result, cid, link):
+            order.append("f5")
+            return "inserted", "run-1"
+
+    class Conn:
+        def commit(self):
+            order.append("commit")
+
+        def rollback(self):
+            order.append("rollback")
+
+    def cid(conn, c):
+        order.append("classification_id")
+        return "cid-7"
+    monkeypatch.setattr(rcs, "PostgresClassificationStore", Cls)
+    monkeypatch.setattr(fcs, "PostgresCandidateStore", Cand)
+    monkeypatch.setattr(fcs, "classification_id", cid)
+    class F4:
+        def save(self, ext, cid, cls):
+            order.append("f4")
+            return "inserted"
+    issuer = type("Iss", (), {"link_filing": lambda self, fid: order.append("link")})()
+    got = _got()
+    rdv_evidence.persist_filing(Conn(), issuer, {"classification": got["classification"], "result": got["result"],
+                                                 "retrieval": {"byte_length": 10}})
+    rdv, order[:] = list(order), []
+    cli._persist({"conn": Conn(), "classification": Cls(None), "issuer": issuer, "f4": F4(),
+                  "candidates": Cand(None)}, got)
+    persist = list(order)
+    assert persist == ["f3", "classification_id", "link", "f4", "f5"]
+    assert rdv == ["f3", "classification_id", "link", "f5", "commit"]
+    assert [s for s in rdv if s != "commit"] == [s for s in persist if s != "f4"]
+
+
+def _package_imports(module_file):
+    """The worker.financial_f4_store modules a module imports, directly or through each other."""
+    pkg = os.path.dirname(module_file)
+    seen, todo = set(), [os.path.basename(module_file)]
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        tree = ast.parse(open(os.path.join(pkg, name), encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                if node.module:
+                    todo.append(node.module.split(".")[0] + ".py")
+                else:
+                    todo += [a.name + ".py" for a in node.names if os.path.exists(os.path.join(pkg, a.name + ".py"))]
+                    todo.append("__init__.py")
+    return {f"worker/financial_f4_store/{n}" for n in seen} | {"worker/financial_f4_store/__init__.py"}
+
+
+def test_u17_hb1_pins_the_r_f4_modules_persist_imports_and_store_version():
+    """Design section 8.1 item 2 (HB-B9 and V1): HB-1's FROZEN_FILES holds the F5 module and every R-F4 module
+    _persist imports (store.py and, through it, the rest), and FROZEN_VERSIONS holds STORE_VERSION; the pins hold."""
+    from worker.financial_backfill import preflight as hb1
+    src = open(os.path.join(REPO, "worker", "extract_financial_candidates.py"), encoding="utf-8").read()
+    assert "from .financial_f4_store.store import PostgresF4Store" in src
+    closure = _package_imports(os.path.join(PACKAGE, "store.py"))
+    assert closure == {f"worker/financial_f4_store/{n}" for n in
+                       ("__init__.py", "codec.py", "errors.py", "reader.py", "schema.py", "store.py")}
+    pinned = {rel for rel in hb1.FROZEN_FILES if rel.startswith("worker/financial_f4_store/")}
+    assert pinned == closure and "worker/extract_financial_candidates.py" in hb1.FROZEN_FILES
+    assert ("worker.financial_f4_store", "STORE_VERSION", STORE_VERSION) in hb1.FROZEN_VERSIONS
+    assert hb1.file_problems() == [] and hb1.version_problems() == []

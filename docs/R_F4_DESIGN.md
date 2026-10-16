@@ -2,19 +2,22 @@
 
 **Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). **Implementation authorized** by the owner on
 2026-10-14 for the §8.1 scope under the §8.2 sequence, **one stage at a time**: Stage 1 (§8.2 step 2, the new code and
-its tests) is implemented, with an owner-directed correction, on the controlled branch `claude/rf4-implementation`.
-Stage 2 (the frozen edits and the pin cascade, §8.2 steps 3–4) needs a **separate owner authorization** after the
-owner's review of Stage 1. R-F4 is **not** independently audited, accepted as a component or frozen; it is not wired
-into F5's `_persist`, so nothing in production code calls it. Staging, the pilot, production deployment and live
-operation are separate, later milestones (§10). This record changes no code, migration, test or pin.
+its tests) is implemented, with its audit corrections, on the controlled branch `claude/rf4-implementation`.
+**Stage 2** (§8.2 steps 3–6: F5's `_persist` wired to R-F4, the approved frozen-test and RDV edits, the HB-1 to HB-6 pin
+cascade, the end-to-end tests, the regression controls and the records) was **authorized by the owner on 2026-10-16** and
+is implemented on the same branch, handed over uncommitted for review (§8.2 step 7); §8.1 item 13 is blocked (§11).
+R-F4 is **not** accepted as a component or frozen, and Stage 2 is not yet independently audited. Staging, the pilot,
+production deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
+of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code, migration, test or
+pin.
 
 | Milestone | Status |
 |---|---|
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
-| Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (it follows the owner's review of Stage 1) |
-| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12` and `b00affc`, and a correction of the two findings of the independent source audit of `b00affc`, under owner review; not merged to `main`). Targeted results are Claude's reports, not independently re-executed (§10, milestone 4). **Not accepted or frozen:** that follows the independent re-audit |
-| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | Not started |
-| Independent audit, component acceptance and freeze | Not started |
+| Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
+| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
+| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented**, uncommitted on `claude/rf4-implementation` for the owner's review (§8.2 step 7). §8.1 item 13 is blocked (§11). Results: `docs/R_F4_IMPLEMENTATION.md` (Claude's reports) |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2's independent audit, the component acceptance and the freeze: **not started** |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -93,6 +96,9 @@ There is no remaining open owner decision about the R-F4 design. Deferred items,
   - The order is F6.2 §10's: F3, then the issuer link, then F4, then F5.
   - The fallback is required because HB-4 builds its stores with four keys
     (`worker/backfill_documents/worker.py:328-330`) and stays unchanged.
+  - **As implemented (Stage 2):** the call is `f4.save(got["f4"], classification_id, got["classification"])`. The
+    store also takes the F3 dict F5 consumed (already in `got`), from which it computes `f3_input_sha256` (§4.3); the
+    two-argument form above is shorthand.
 - **The module docstring** ("Never persisted: … unmapped rows/cells") is corrected.
 - **Unchanged:** `run()`, `main()`, F2, F3, F4, F5's builder, mapper, vocabulary and stores, and all of HB-4.
 
@@ -412,7 +418,7 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 | # | Document | Updates |
 |---|---|---|
-| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above |
+| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above. **Blocked in Stage 2 (§11):** `docs/F6.2_DESIGN.md` is pinned byte for byte (LF SHA-256 `4c97c6a8…`) by frozen tests of F6.3 (`tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged`) and F6.4 (`tests/test_f64_unit.py::test_u9_frozen_files_are_unchanged`), which this package does not list for change |
 | 14 | `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` | §4.1 F5 row; the HB-B1/HB-B9 note; §10.1; §10.2 (`STORE_VERSION`); §11.1; §11.2 and §20 (capacity); §11.5 and §27 (status); §21 (R-F4 `verify`); §22 (F5 replay from the database); §23.4 (the frozen-test edits); a new Appendix D entry; pin-only notes in the HB-1 to HB-6 freeze records |
 | 15 | `docs/MASTER_ARCHITECTURE.md` | §51 (0018), §52 and §55 |
 | 16 | `docs/ops/PHASE2_BACKFILL.md` | §6 (R-F4 `verify`), §11 (testing), §12 (migrations 0001–0018; R-F4 preflight in deployment) |
@@ -448,12 +454,18 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
    and the freeze record: R-F4 frozen, F5 frozen again, and the HB-1 to HB-6 pin-only amendments recorded.
 8. **The Q1 release sequence** continues from §10, step 8.
 
+**Progress (2026-10-16).** Steps 1–2 (Stage 1) are done and owner-committed. Stage 2 was authorized on 2026-10-16:
+steps 3–6 are done except item 13 (blocked, §11), and step 7's hand-off is the uncommitted working tree on
+`claude/rf4-implementation`. The independent audit, acceptance and freeze have not started.
+
 ## 9. Acceptance (RF4-M4, accepted 2026-10-14)
 
 These are the acceptance tests. **Stage 1** ran the parts that need no frozen change, at the store level
 (`tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py`): its results are Claude's reports, on synthetic layouts, not
 independently re-executed. The parts that go through F5's `run()` and HB-4's slice (RT-14 end to end, rollback and
-retry), the regression controls and mutation testing need **Stage 2** and have not run. The OD-13 outcomes are reported
+retry), the regression controls and mutation testing ran in **Stage 2** (`tests/test_rf4_postgres.py` p18–p23, controls
+B, P, S and I, mutation testing; results in `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports, not independently
+re-executed. The OD-13 outcomes are reported
 synthetic results, not independently re-executed. No real-document evidence exists. The two callers are tested
 separately, because they fail and retry differently (§6).
 
@@ -480,10 +492,10 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
-| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given** 2026-10-14, stage by stage. Stage 1 authorized; Stage 2 **not yet authorized** (after the owner's review of Stage 1) |
-| 3 | Implementation on a controlled branch | **In progress.** Stage 1 (§8.1 items 10–12: migration 0018, the `worker/financial_f4_store/` package, the R-F4 tests) on `claude/rf4-implementation`: owner commits `77cfb84`, then `dc6302d` and `7c56cac` (the owner-directed correction: the in-band schema check, the preflight's three separate checks, test cleanup), `c5b1c12` (records) and `b00affc` (the self-audit's findings: column-level privileges, typed integer ranges, oversized numbers). The independent source audit of `b00affc` found two more (integer-limit portability; a duplicate save that did not re-read the saved evidence), corrected and under owner review. Stage 2 (items 1–9, 13–17) not started |
-| 4 | Targeted and integration tests (§9) | **Stage 1 part run**, as Claude's reports on synthetic layouts, not independently re-executed: the R-F4 unit and PostgreSQL suites in a Linux container (PostgreSQL 17.11) and the full Windows suite, plus a negative control of the in-band check against the uncorrected `77cfb84` store. The Stage 2 parts (RT-14 through `run()` and HB-4, rollback and retry) have not run |
-| 5 | Full regression with controls B, P, S and I; mutation testing | Not started |
+| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
+| 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1 owner-committed (`77cfb84` to `6834280`); Stage 2 uncommitted for the owner's review (`docs/R_F4_IMPLEMENTATION.md`). §8.1 item 13 blocked (§11) |
+| 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice |
+| 5 | Full regression with controls B, P, S and I; mutation testing | **Run** (Stage 2; `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports |
 | 6 | Independent audit of the code and evidence | Not started |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
@@ -519,8 +531,7 @@ The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12
 RDV option R-b later.
 
 **Not authorized** by this record or by the accepted decisions:
-- implementation beyond Stage 1: Stage 2 (the F5 wiring, the frozen-test and RDV edits, the pin cascade) needs its own
-  owner authorization;
+- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them;
 - infrastructure provisioning;
 - contacting CSE;
 - live acquisition;
@@ -530,8 +541,14 @@ RDV option R-b later.
 
 ## 11. Open items and assumptions
 
-- **Open owner decisions on the design:** none. The next owner actions are the review of Stage 1, then a separate
-  Stage 2 authorization (§8.2).
+- **Open owner decision (Stage 2): §8.1 item 13.** The accepted F6.2 §10 amendment cannot be applied within the
+  approved package: `docs/F6.2_DESIGN.md` is pinned byte for byte by two frozen tests, of F6.3
+  (`tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged`) and F6.4
+  (`tests/test_f64_unit.py::test_u9_frozen_files_are_unchanged`), which §8.1 does not list for change. Editing the
+  document fails both. Either approve those two pin updates under change control and apply the amendment, or keep F6.2
+  as frozen and let this record (§8, the amendment text) carry it. Stage 2 applied neither.
+- **Next owner actions:** the review of Stage 2 and its commit; the decision above; then the independent audit of
+  Stage 2 (§10, milestone 6).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
   in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
   that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.
