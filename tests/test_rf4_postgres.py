@@ -65,6 +65,16 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p29  audit remediation (Finding 5): an extra enabled BEFORE INSERT trigger named after the guard rewrites a row
          the guard accepted; it, and one on another table, are refused by the store before any insert and reported
          by the preflight; a disabled one is not counted as enabled
+    p30  audit remediation (search_path): a role-level search_path with a shadow schema ahead of public, under which
+         Findings 2-5's checks pass and the guard accepts another filing's classification, is refused by the store
+         before any insert and reported by the preflight; a safe role-in-database setting outranks it and passes
+    p31  a database-level search_path ahead of public is refused and reported whether its schema holds a shadow
+         table, is empty or does not exist; a safe one passes
+    p32  a SET in the saving session is refused in-band (the preflight cannot see it); "$user" with an existing
+         cse_worker schema, or with CREATE on the database, is refused and reported; public missing or pg_catalog
+         after public is refused; the default passes
+    p33  a temporary report_document_classifications, which the guard reads first, or any temporary relation, is
+         refused in-band; an empty temporary schema passes
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -101,7 +111,7 @@ from worker import statement_extraction as se  # noqa: E402
 from worker.backfill_documents import worker as hb4  # noqa: E402
 from worker.financial_backfill import store as ledger  # noqa: E402
 from worker.financial_candidates_store import PostgresCandidateStore, classification_id  # noqa: E402
-from worker.financial_f4_store import codec, preflight, reader, store, verify  # noqa: E402
+from worker.financial_f4_store import codec, preflight, reader, schema, store, verify  # noqa: E402
 from worker.financial_f4_store.errors import (ConflictingEvidence, EvidenceRefused, SchemaUnavailable,  # noqa: E402
                                               UnsupportedValue)
 from worker.issuer_store import PostgresIssuerStore  # noqa: E402
@@ -1809,3 +1819,203 @@ def test_p29_an_enabled_trigger_0018_does_not_create_is_refused_by_the_store_and
     assert preflight.object_problems(su) == [] and preflight.report(m)["clean"]
     assert q(su, "select count(*) from pg_proc where proname = 'rf4_rewrite_classification'") == [(0,)]
     assert f4_counts(su)["extractions"] == 2                                   # s and other only
+
+
+# ---------------------------------------------------------------------------------------- name resolution (search_path)
+
+def shadow_schema(su, s=None, other=None):
+    """rf4_shadow, a schema cse_worker and cse_reader may use; with s and other, a report_document_classifications in
+    it that says other's classification is of s's filing and document."""
+    q(su, "create schema rf4_shadow; grant usage on schema rf4_shadow to cse_worker, cse_reader")
+    if s is not None:
+        q(su, "create table rf4_shadow.report_document_classifications (id uuid primary key, cse_filing_id bigint, "
+              "document_sha256 text); grant select on rf4_shadow.report_document_classifications to cse_worker")
+        q(su, "insert into rf4_shadow.report_document_classifications values (%s, %s, %s)",
+          (other.cid, s.fid, s.ext.document_sha256))
+
+
+def f3_saved(w, words, fid):
+    """The filing and its F3 classification, saved and committed by a session that resolves names safely (F3's own
+    store, frozen, uses unqualified names too); (cls, ext, cid)."""
+    cls, ext, _ = R.chain(words, fid)
+    seed_filing(w, fid)
+    PostgresClassificationStore(w).save(cls, 1000)
+    w.commit()
+    return cls, ext, classification_id(w, cls)
+
+
+def f4_refused(a, w, words, fid, match):
+    """R-F4's save in session a: SchemaUnavailable before any insert; a's transaction still usable."""
+    cls, ext, cid = f3_saved(w, words, fid)
+    before = f4_inserts(a)
+    with pytest.raises(SchemaUnavailable, match=match):
+        store.PostgresF4Store(a).save(ext, cid, cls)
+    assert f4_inserts(a) == before and q(a, "select 1") == [(1,)]
+    a.rollback()
+
+
+def f4_saved(a, w, words, fid):
+    cls, ext, cid = f3_saved(w, words, fid)
+    assert store.PostgresF4Store(a).save(ext, cid, cls) == "inserted"
+    a.commit()
+
+
+def search_path_settings(su):
+    """Every catalogued search_path setting (role, database), to show a test leaves none behind."""
+    return q(su, "select coalesce(r.rolname, '*'), coalesce(d.datname, '*'), cfg from pg_db_role_setting s "
+                 "cross join lateral unnest(s.setconfig) as cfg left join pg_roles r on r.oid = s.setrole "
+                 "left join pg_database d on d.oid = s.setdatabase where cfg like 'search_path=%%'")
+
+
+def assert_restored(db, su, m):
+    assert search_path_settings(su) == []
+    assert q(su, "select nspname from pg_namespace where nspname like 'rf4\\_%%' or nspname = 'cse_worker'") == []
+    assert q(su, "select has_database_privilege('cse_worker', current_database(), 'CREATE'), "
+                 "has_database_privilege('cse_worker', current_database(), 'TEMPORARY')") == [(False, False)]
+    assert preflight.report(m)["clean"]
+
+
+def test_p30_a_role_level_search_path_ahead_of_public_is_refused_by_the_store_and_reported_by_the_preflight(
+        db, layouts):
+    """ALTER ROLE cse_worker SET search_path = rf4_shadow, public: the guard's body, configuration and triggers are
+    still 0018's (Findings 2-5's checks pass), yet a shadow report_document_classifications makes it accept another
+    filing's classification. The store refuses before any insert; the preflight reports the role's setting. A
+    role-in-database setting outranks it: a safe one there passes both checks."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    s = persist(w, words, 965001)
+    other = persist(w, words, 965002)
+    assert_restored(db, su, m)
+    try:
+        shadow_schema(su, s, other)
+        q(su, "alter role cse_worker set search_path = rf4_shadow, public")
+        a = db.conn()                                                    # a new session gets the role's setting
+        assert q(a, "show search_path") == [("rf4_shadow, public",)]
+        assert schema.problems(a.cursor()) == []                         # Findings 2-5's checks see nothing wrong
+        a.rollback()
+        # why it matters: the guard reads rf4_shadow's table and accepts a classification of another filing
+        assert insert_extraction_row(a, s.fid, s.ext.document_sha256, other.cid) == str(other.cid)
+        a.rollback()
+        f4_refused(a, w, words, 965003, re.escape("search_path 'rf4_shadow, public': schema rf4_shadow is searched "
+                                                  "before public"))
+        got = preflight.report(m)
+        want = ("cse_worker: the search_path its sessions get (its role setting (ALTER ROLE ... SET): "
+                "'rf4_shadow, public'): schema rf4_shadow is searched before public, whether or not it exists or "
+                "holds a table now")
+        assert got["objects"] == [want] and not got["clean"]             # cse_reader's sessions are not affected
+        assert got["file"] == [] and got["ledger"]["status"] == "verified"
+        # a role-in-database setting outranks the role setting: a safe one passes both checks
+        q(su, f"alter role cse_worker in database {db.name} set search_path = pg_catalog, public")
+        b = db.conn()
+        assert q(b, "show search_path") == [("pg_catalog, public",)]
+        f4_saved(b, w, words, 965004)
+        assert preflight.report(m)["clean"]
+    finally:
+        q(su, f"alter role cse_worker reset search_path; alter role cse_worker in database {db.name} reset "
+              "search_path; drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+
+
+def test_p31_a_database_level_search_path_is_refused_even_before_its_schema_holds_a_table_or_exists(db, layouts):
+    """ALTER DATABASE … SET search_path: an unsafe effective setting for cse_worker (and cse_reader) whether the
+    schema ahead of public holds a shadow table, is empty, or does not exist yet; a safe one passes."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    assert_restored(db, su, m)
+    level = "this database's setting (ALTER DATABASE ... SET)"
+    try:
+        shadow_schema(su)                                                # exists, may be used, holds no table
+        for n, path in enumerate(("rf4_shadow, public", "rf4_not_yet, public")):     # the second does not exist
+            q(su, f"alter database {db.name} set search_path = {path}")
+            a = db.conn()
+            assert q(a, "show search_path") == [(path,)]
+            schema_name = path.split(",")[0]
+            f4_refused(a, w, words, 966001 + n, re.escape(f"search_path '{path}': schema {schema_name} is searched "
+                                                          "before public, whether or not it exists or holds a table "
+                                                          "now"))
+            got = preflight.report(m)
+            assert got["objects"] == [f"{role}: the search_path its sessions get ({level}: '{path}'): schema "
+                                      f"{schema_name} is searched before public, whether or not it exists or holds a "
+                                      "table now" for role in ("cse_worker", "cse_reader")], got["objects"]
+            assert got["file"] == [] and got["ledger"]["status"] == "verified" and not got["clean"]
+        q(su, f"alter database {db.name} set search_path = pg_catalog, public")      # safe
+        f4_saved(db.conn(), w, words, 966003)
+        assert preflight.report(m)["clean"]
+    finally:
+        q(su, f"alter database {db.name} reset search_path; drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+
+
+def test_p32_a_session_setting_and_the_default_user_schema_are_checked_where_they_take_effect(db, layouts):
+    """A SET in the saving session (as a client's connection options would be) is seen by the store's in-band check,
+    which runs in that session; the preflight, which reads the catalogue, cannot see it. The default "$user" is safe
+    only while no schema named cse_worker exists and cse_worker may not create one. public missing, and pg_catalog
+    after public (public's operators before the built-in =), are refused."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    assert_restored(db, su, m)
+    try:
+        shadow_schema(su)
+        for n, (path, match) in enumerate((
+                ("rf4_shadow, public", "schema rf4_shadow is searched before public"),
+                ("public, pg_catalog", "pg_catalog comes after public"),
+                ("rf4_shadow", "public is not in it"))):
+            a = db.conn()
+            q(a, f"set search_path = {path}")
+            f4_refused(a, w, words, 967001 + n, re.escape(match))
+            assert preflight.report(m)["clean"]                          # not in the catalogue: the session's own
+        q(su, "create schema cse_worker; grant usage on schema cse_worker to cse_worker")    # "$user" now names one
+        a = db.conn()
+        assert q(a, "show search_path") == [('"$user", public',)]
+        f4_refused(a, w, words, 967004, re.escape("this session searches cse_worker before public"))
+        want = ("cse_worker: the search_path its sessions get (the server's default: '\"$user\", public'): \"$user\" "
+                "before public names an existing schema cse_worker")
+        assert preflight.report(m)["objects"] == [want]
+        q(su, "drop schema cse_worker")
+        q(su, f"grant create on database {db.name} to cse_worker")      # it could make one itself
+        f4_refused(db.conn(), w, words, 967005, re.escape("cse_worker may create a schema named cse_worker"))
+        assert preflight.report(m)["objects"] == [
+            "cse_worker: the search_path its sessions get (the server's default: '\"$user\", public'): \"$user\" "
+            "before public, and cse_worker may create a schema named cse_worker (CREATE on the database)"]
+        q(su, f"revoke create on database {db.name} from cse_worker")
+        f4_saved(db.conn(), w, words, 967006)                           # the default, safe again
+    finally:
+        q(su, f"revoke create on database {db.name} from cse_worker; drop schema if exists cse_worker; "
+              "drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+
+
+def test_p33_a_temporary_table_searched_before_public_is_refused(db, layouts):
+    """The session's temporary schema is searched before public and pg_catalog for relations: a temporary
+    report_document_classifications makes the guard accept another filing's classification. Any relation in the
+    saving session's temporary schema is refused (cse_worker has no TEMPORARY in P1; granted here for the test); an
+    empty temporary schema passes."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    s = persist(w, words, 968001)
+    other = persist(w, words, 968002)
+    assert_restored(db, su, m)
+    try:
+        q(su, f"grant temporary on database {db.name} to cse_worker")
+        t = db.conn()
+        q(t, "create temporary table report_document_classifications (id uuid primary key, cse_filing_id bigint, "
+             "document_sha256 text)")
+        q(t, "insert into report_document_classifications values (%s, %s, %s)",
+          (other.cid, s.fid, s.ext.document_sha256))
+        t.commit()                                                       # the temporary table lasts the session
+        assert insert_extraction_row(t, s.fid, s.ext.document_sha256, other.cid) == str(other.cid)
+        t.rollback()                                                     # why it matters; nothing kept
+        f4_refused(t, w, words, 968003, r"this session's temporary schema pg_temp_\d+ holds \d+ relation")
+        assert preflight.report(m)["clean"]                              # a session's own objects: in-band only
+        q(t, "drop table report_document_classifications; create temporary table rf4_scratch (x integer)")
+        t.commit()
+        f4_refused(t, w, words, 968004, r"temporary schema pg_temp_\d+ holds")       # any temporary relation
+        q(t, "drop table rf4_scratch")
+        t.commit()
+        assert q(t, "select pg_my_temp_schema() <> 0") == [(True,)]     # its temporary schema exists, now empty
+        t.rollback()
+        f4_saved(t, w, words, 968005)
+    finally:
+        q(su, f"revoke temporary on database {db.name} from cse_worker")
+    assert_restored(db, su, m)
+    assert f4_counts(su)["extractions"] == 3                            # s, other and 968005 only

@@ -41,7 +41,7 @@ PINNED_FILES = {
     "worker/backfill_documents/gate.py": "f8fa96606b9d4e2be7003bb3b331593675d64946bea81fb0cc32ed83d1d33af8",
     "worker/backfill_documents/outcomes.py": "15619cffd6f73bbec2adbd1851203c0b27e17174377c3c210ec32b450a4deb7c",
     "worker/backfill_documents/planning.py": "8775f8be8df2c556b13fabbc96116ddebde98465a25bead7b571d56053e06980",
-    "worker/backfill_documents/preflight.py": "39a0038f601e1b9a40ddd53bd5a2035b2e798936a6bb7cbdff100cd2d5726294",
+    "worker/backfill_documents/preflight.py": "68b3945c7460bfc3683a8bf2f4f49434c6daea698e7fa650f66c8eb2eef1ee0c",
     "worker/backfill_documents/signals.py": "74b7189c6f3efd6ada8c82e273231d323a2bd9b9eab6df0f8d0c299da196db8c",
     "worker/backfill_documents/temproot.py": "335fbabbc0fadd4ce32de70d2371463f9ec61cc7033e9704213d6be14cace9d5",
     "worker/backfill_documents/tools.py": "42658173cf11430255c0847b3002dc35482c4cd83f0661c869586e18455949e1",

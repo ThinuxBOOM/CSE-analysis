@@ -5,11 +5,13 @@ migration 0018's tables.
 - Everything is encoded (codec) before any SQL: a value R-F4 cannot store exactly is refused, never coerced.
 - One SAVEPOINT, no commit: the caller owns the transaction, as with F3's and F5's stores. On any error the savepoint
   is rolled back and the error re-raised, so the caller's transaction stays usable and decides what to roll back.
-- Before any insert, inside the savepoint, one catalogue query (schema.problems) checks that 0018's tables exist, this
-  role may SELECT and INSERT, every guard and append-only trigger is present, enabled and exactly as 0018 creates it
-  (its function by schema, signature, definition and configuration; its timing, no WHEN condition, no arguments, no
-  column list), and no other trigger is enabled on the five tables: otherwise SchemaUnavailable and nothing is
-  written. It runs on every save, so a schema change is never hidden by a cache.
+- Before any insert, inside the savepoint, the session's name resolution is checked first (schema.search_path_problems):
+  the guard and this store use unqualified names, so the session's search path and temporary schema must not let any of
+  them resolve outside public (or pg_catalog). Then one catalogue query (schema.problems) checks that 0018's tables
+  exist, this role may SELECT and INSERT, every guard and append-only trigger is present, enabled and exactly as 0018
+  creates it (its function by schema, signature, definition and configuration; its timing, no WHEN condition, no
+  arguments, no column list), and no other trigger is enabled on the five tables: otherwise SchemaUnavailable and
+  nothing is written. It runs on every save, so a schema change is never hidden by a cache.
 - Then, still before any insert, the F3 classification persisted under `classification_id` is read back (0005) and must
   hash to the f3_input_sha256 of the classification F5 consumed. F3's own store keeps an earlier row whose key is equal
   and whose content differs ('already_present'), so without this check the extraction would name F3 evidence F5 did not
@@ -61,7 +63,7 @@ class PostgresF4Store:
         with self.conn.cursor() as cur:
             cur.execute("savepoint f4_save")
             try:
-                problems = schema.problems(cur)
+                problems = schema.search_path_problems(cur) or schema.problems(cur)    # name resolution first
                 if problems:
                     raise SchemaUnavailable("; ".join(problems))
                 persisted = codec.f3_input_sha256(reader.load_classification(self.conn, row["classification_id"]))

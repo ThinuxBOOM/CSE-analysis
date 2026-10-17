@@ -22,6 +22,9 @@ Not compared, because they do not change what the function does when a trigger f
 rows, parallel safety, leakproofness, its owner (it runs with the caller's rights) and its comment. Its EXECUTE grants
 are the preflight's (the guard function: no EXECUTE for either role).
 
+Before all of that the store checks the saving session's name resolution (search_path_problems, below): the guard
+and the store use unqualified names, so the session must not be able to resolve them outside public and pg_catalog.
+
 The preflight runs the same check for a named role, then the checks only it makes (privileges that must be absent, the
 guard function's rights, the constraints' definitions, the migration ledger).
 """
@@ -115,6 +118,141 @@ def _trigger_problems(table, trigger, want, got):
         out.append(f"{at} fires only for column(s) {got['columns']} (attnum); migration 0018 names no columns")
     if got["constraint_trigger"] or got["transition_tables"]:
         out.append(f"{at} is a constraint trigger or has transition tables; migration 0018 creates neither")
+    return out
+
+
+# ================================================================================ name resolution (search_path)
+#
+# The guard (0018) reads report_document_classifications, and R-F4's store and reader read and write their tables, by
+# unqualified names; the guard's comparisons use unqualified operators (=). With no function-level configuration
+# (Finding 4), every one of those names resolves through the SAVING SESSION's effective search path, whatever set it:
+# a role, role-in-database, database or all-roles setting, the server, the client's connection options, or a SET. So
+# the function's body and configuration can match 0018 exactly while its lookup reads another table.
+#
+# PostgreSQL's lookup: relations and types are searched first in the session's temporary schema (unless pg_temp is
+# listed later), then in pg_catalog (unless it is listed later), then in the listed schemas in order; "$user" stands
+# for a schema named after the current role; a listed schema that does not exist, or that the role may not use, is
+# skipped. Functions and operators are never looked up in the temporary schema.
+#
+# The invariant, checked before any R-F4 insert (and, for the sessions a role will get, by the preflight): before
+# public, a session searches only
+# - pg_catalog: the system schema (nothing can be added to it without superuser and allow_system_table_mods); listed
+#   after public, public's operators would come before the built-in ones, so that is refused;
+# - its own temporary schema, which only that session can fill: at save time it must hold no relation and no type
+#   (between this check and the insert the session runs nothing else);
+# - "$user", PostgreSQL's default, only while no schema named after the role exists and the role may not create one
+#   (CREATE on the database); otherwise any session of the role could make one appear before public.
+# Any other schema before public is refused whether or not it exists or holds a table now: one created, or given a
+# table, later would be searched first. A path without public is refused. Checking only what
+# report_document_classifications resolves to now would miss all of these.
+#
+# Remaining, and outside what a check can close: a superuser or the owner of the schemas can change any of this between
+# the check and the insert (as they can change a trigger); the check sees it at the next save.
+SAFE_BEFORE_PUBLIC = ("pg_catalog", "pg_temp")
+USER_SCHEMA = "$user"
+
+
+def parse_search_path(text):
+    """The schema names of a search_path value, split as PostgreSQL splits it (SplitIdentifierString): comma-separated,
+    spaces around a name ignored; a double-quoted name keeps its case and "" inside it is a quote; an unquoted name is
+    lower-cased (ASCII). [] for an empty value; None for one PostgreSQL would refuse (an unterminated quote, an empty
+    name, a missing comma)."""
+    out, i, n = [], 0, len(text)
+    if not text.strip():
+        return out
+    while True:
+        while i < n and text[i].isspace():
+            i += 1
+        if i < n and text[i] == '"':
+            parts, j = [], i + 1
+            while True:
+                k = text.find('"', j)
+                if k < 0:
+                    return None
+                parts.append(text[j:k])
+                if text[k + 1:k + 2] == '"':
+                    parts.append('"')
+                    j = k + 2
+                    continue
+                i = k + 1
+                break
+            name = "".join(parts)
+        else:
+            j = i
+            while i < n and text[i] != "," and not text[i].isspace():
+                i += 1
+            name = "".join(c.lower() if "A" <= c <= "Z" else c for c in text[j:i])
+        if not name:
+            return None
+        out.append(name)
+        while i < n and text[i].isspace():
+            i += 1
+        if i == n:
+            return out
+        if text[i] != ",":
+            return None
+        i += 1
+
+
+def path_problems(elements, role, role_schema_exists, role_may_create_schemas):
+    """How a search path (its parsed elements, for `role`) breaks the invariant above; [] when it holds."""
+    if "public" not in elements:
+        return ["public is not in it, so an unqualified name resolves elsewhere or not at all"]
+    i = elements.index("public")
+    out = []
+    for name in elements[:i]:
+        if name in SAFE_BEFORE_PUBLIC:
+            continue
+        if name == USER_SCHEMA:
+            if role_schema_exists:
+                out.append(f'"$user" before public names an existing schema {role}')
+            elif role_may_create_schemas:
+                out.append(f'"$user" before public, and {role} may create a schema named {role} (CREATE on the '
+                           "database)")
+            continue
+        out.append(f"schema {name} is searched before public, whether or not it exists or holds a table now")
+    if "pg_catalog" in elements[i + 1:] and "pg_catalog" not in elements[:i]:
+        out.append("pg_catalog comes after public, so public's operators and functions come before the built-in ones")
+    return out
+
+
+# The saving session's own resolution, every name qualified with pg_catalog (the operators too), so that the check
+# cannot itself be redirected by the path it inspects.
+_SESSION_QUERY = """
+select pg_catalog.current_setting('search_path'),
+       pg_catalog.current_schemas(true)::pg_catalog.text[],
+       (select n.nspname::pg_catalog.text from pg_catalog.pg_namespace n
+         where n.oid OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema()),
+       current_user::pg_catalog.text,
+       exists (select 1 from pg_catalog.pg_namespace n where n.nspname OPERATOR(pg_catalog.=) current_user),
+       pg_catalog.has_database_privilege(current_user, pg_catalog.current_database(), 'CREATE'),
+       (select pg_catalog.count(*) from pg_catalog.pg_class c
+         where c.relnamespace OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema())
+         OPERATOR(pg_catalog.+)
+       (select pg_catalog.count(*) from pg_catalog.pg_type t
+         where t.typnamespace OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema())
+"""
+
+
+def search_path_problems(cur):
+    """[] when the current session's name resolution meets the invariant above. One catalogue query, run by the store
+    before anything else in its savepoint: until it passes, no other unqualified name is trusted."""
+    cur.execute(_SESSION_QUERY)
+    setting, schemas, temp, role, role_schema, may_create, temp_objects = cur.fetchone()
+    elements = parse_search_path(setting)
+    if elements is None:
+        out = [f"search_path {setting!r} cannot be parsed"]
+    else:
+        out = [f"search_path {setting!r}: {p}" for p in path_problems(elements, role, role_schema, may_create)]
+    if "public" in schemas:                       # what this session does search before public, implicit schemas too
+        extra = [s for s in schemas[:schemas.index("public")] if s not in ("pg_catalog", temp)]
+        if extra:
+            out.append(f"this session searches {', '.join(extra)} before public")
+    elif elements and "public" in elements:
+        out.append("this session does not search public (it may not use it)")
+    if temp_objects:
+        out.append(f"this session's temporary schema {temp} holds {temp_objects} relation(s) or type(s); it is "
+                   "searched before public and pg_catalog for every unqualified relation and type name")
     return out
 
 

@@ -29,6 +29,10 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          a replaced, weakened, NOT VALID, missing or extra constraint is reported
     u19  audit remediation (Findings 4 and 5): a trigger function's configuration (proconfig) must be its migration's
          (none); an enabled trigger 0018 does not create is a problem, even one running an expected function
+    u20  audit remediation (search_path): a search_path value is split as PostgreSQL splits it; the name-resolution
+         invariant (before public only pg_catalog, the session's own empty temporary schema, and "$user" while no
+         schema of the role's name exists or can be created by it); the in-band check's query qualifies every
+         catalogue name and operator; the preflight reads a role's search path in PostgreSQL's precedence
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1128,3 +1132,106 @@ def test_u19_an_enabled_trigger_0018_does_not_create_is_a_problem():
                                                     name="trg_ff4c_extra"))     # even running an expected function
     [problem] = schema.problems(_Catalogue(rows))
     assert problem.startswith("financial_f4_cells: trigger trg_ff4c_extra (runs public.f5_reject_mutation, tgtype 27)")
+
+
+# ============================================================================================ u20 (audit remediation)
+
+@pytest.mark.parametrize("text, want", [
+    ('"$user", public', ["$user", "public"]), ("public", ["public"]), ("Public", ["public"]), ('"Public"', ["Public"]),
+    (" pg_temp ,public", ["pg_temp", "public"]), ('"a""b", public', ['a"b', "public"]),
+    ("$user,public", ["$user", "public"]), ("", []), ("  ", []), ("a,,b", None), ('"x', None), ("a b", None),
+    ('""', None), ("a,", None)])
+def test_u20_a_search_path_value_is_split_as_postgresql_splits_it(text, want):
+    assert schema.parse_search_path(text) == want
+
+
+def test_u20_the_name_resolution_invariant():
+    p = lambda elements, exists=False, create=False: schema.path_problems(elements, "cse_worker", exists, create)
+    for safe in (["$user", "public"], ["public"], ["pg_catalog", "public"], ["pg_temp", "public"],
+                 ["pg_temp", "pg_catalog", "public"], ["public", "rf4_after"], ["$user", "pg_catalog", "public"]):
+        assert p(safe) == [], safe
+    assert p(["rf4_shadow", "public"]) == ["schema rf4_shadow is searched before public, whether or not it exists or "
+                                          "holds a table now"]
+    assert p(["$user", "public"], exists=True) == ['"$user" before public names an existing schema cse_worker']
+    assert p(["$user", "public"], create=True) == ['"$user" before public, and cse_worker may create a schema named '
+                                                  "cse_worker (CREATE on the database)"]
+    assert p(["$user", "rf4_shadow"]) == ["public is not in it, so an unqualified name resolves elsewhere or not at all"]
+    assert p([]) == p(["rf4_shadow"]) and len(p([])) == 1
+    assert p(["public", "pg_catalog"]) == ["pg_catalog comes after public, so public's operators and functions come "
+                                           "before the built-in ones"]
+    assert p(["pg_catalog", "public", "pg_catalog"]) == []                 # listed first: the built-ins come first
+    assert len(p(["rf4_a", "rf4_b", "public", "pg_catalog"])) == 3
+
+
+class _Session:
+    """search_path_problems' cursor: one row (setting, current_schemas(true), temp schema, role, a schema of the
+    role's name exists, the role may create schemas, objects in the temporary schema)."""
+
+    def __init__(self, **changes):
+        row = {"setting": '"$user", public', "schemas": ["pg_catalog", "public"], "temp": None, "role": "cse_worker",
+               "role_schema": False, "may_create": False, "temp_objects": 0}
+        row.update(changes)
+        self.row = tuple(row.values())
+
+    def execute(self, sql, args=None):
+        assert args is None
+
+    def fetchone(self):
+        return self.row
+
+
+def test_u20_the_in_band_check_reads_the_sessions_own_resolution():
+    check = lambda **changes: schema.search_path_problems(_Session(**changes))
+    assert check() == [] and check(schemas=["pg_temp_3", "pg_catalog", "public"], temp="pg_temp_3") == []
+    assert check(setting="rf4_shadow, public", schemas=["pg_catalog", "public"]) == [
+        "search_path 'rf4_shadow, public': schema rf4_shadow is searched before public, whether or not it exists or "
+        "holds a table now"]                                                  # configured, though not searched yet
+    assert check(schemas=["pg_catalog", "cse_worker", "public"]) == ["this session searches cse_worker before public"]
+    assert check(temp="pg_temp_3", temp_objects=2, schemas=["pg_temp_3", "pg_catalog", "public"]) == [
+        "this session's temporary schema pg_temp_3 holds 2 relation(s) or type(s); it is searched before public and "
+        "pg_catalog for every unqualified relation and type name"]
+    assert check(schemas=["pg_catalog"]) == ["this session does not search public (it may not use it)"]
+    assert check(setting='"x') == ["search_path '\"x' cannot be parsed"]
+    assert len(check(setting="", schemas=["pg_catalog"])) == 1              # public missing: said once
+
+
+def test_u20_the_in_band_query_names_every_catalogue_object_and_operator_with_pg_catalog():
+    """The check must not be redirectable by the path it inspects: every relation, function, type and operator it
+    uses is qualified (keywords such as current_user and exists are not looked up)."""
+    sql = re.sub(r"'[^']*'", "''", schema._SESSION_QUERY)                         # string literals aside
+    names = re.findall(r"(?<![.\w])([a-z_][a-z0-9_]*)\s*(?=\()", sql)             # unqualified calls
+    assert set(names) <= {"exists"}, names
+    for obj in ("pg_namespace", "pg_class", "pg_type", "text"):
+        assert re.findall(rf"(?<![.\w]){obj}\b", sql) == [], obj                  # never unqualified
+    rest = re.sub(r"OPERATOR\(pg_catalog\.[=+]\)", " ", sql)
+    assert not re.search(r"[=+<>]", rest), rest                                     # no bare operator
+
+
+class _Catalogue2:
+    """_search_path_problems' cursor: the configured setting row, then the role's schema/CREATE row."""
+
+    def __init__(self, configured, role_schema=False, may_create=False):
+        self.answers = [configured, (role_schema, may_create)]
+
+    def execute(self, sql, args=None):
+        assert args
+
+    def fetchone(self):
+        return self.answers.pop(0)
+
+
+def test_u20_the_preflight_reads_a_roles_search_path_in_postgresqls_precedence():
+    assert "order by level" in preflight._CONFIGURED_SEARCH_PATH and "limit 1" in preflight._CONFIGURED_SEARCH_PATH
+    assert list(preflight.SEARCH_PATH_LEVELS) == [1, 2, 3, 4]           # role-in-database, role, database, all roles
+    server = ('"$user", public', "the server's default")
+    assert preflight._search_path_problems(_Catalogue2(None), "cse_worker", server) == []
+    assert preflight._search_path_problems(_Catalogue2((3, "rf4_shadow, public")), "cse_worker", server) == [
+        "cse_worker: the search_path its sessions get (this database's setting (ALTER DATABASE ... SET): "
+        "'rf4_shadow, public'): schema rf4_shadow is searched before public, whether or not it exists or holds a table "
+        "now"]
+    assert preflight._search_path_problems(_Catalogue2((1, "public")), "cse_worker", None) == []
+    got = preflight._search_path_problems(_Catalogue2(None, role_schema=True), "cse_worker", server)
+    assert got == ["cse_worker: the search_path its sessions get (the server's default: '\"$user\", public'): "
+                   '"$user" before public names an existing schema cse_worker']
+    [unknown] = preflight._search_path_problems(_Catalogue2(None), "cse_worker", None)
+    assert unknown.startswith("cse_worker: the search_path its sessions get cannot be determined from this connection")

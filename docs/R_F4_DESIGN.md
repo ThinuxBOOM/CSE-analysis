@@ -257,16 +257,18 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
      it) to the code's pin;
   2. **ledger**: `ops.schema_migrations` records version 18, `0018_f4_structure_persistence.sql`, at the pinned
      SHA-256. Its result is `verified`, `failed`, or `unverifiable` when the connection cannot read the ledger;
-  3. **objects**: the live database as it is now: the five tables; every constraint 0018 creates, by name, with its
-     type and its definition (key columns, a foreign key's referenced table, columns and actions, a check's
-     expression), validated, and no constraint 0018 does not create (audit Finding 3, 2026-10-17); for `cse_worker`
-     and `cse_reader` the privileges of §4.4 that each must have and must not have (a forbidden INSERT or UPDATE is
-     found whether granted on the table or on a single column); the guard and append-only triggers, present, enabled
-     and exactly as 0018 creates them, and no other trigger enabled (the in-band check below); the guard function
-     without `SECURITY DEFINER` and
-     without EXECUTE for either role. The constraint definitions are compared as PostgreSQL 17 renders them
-     (`pg_get_constraintdef`, search path `public`); another major version may render them differently, and the
-     preflight then reports a problem rather than passing.
+  3. **objects**: the live database as it is now: the five tables; every constraint 0018 creates, by name, with its type
+     and its definition (key columns, a foreign key's referenced table, columns and actions, a check's expression),
+     validated, and no constraint 0018 does not create (audit Finding 3, 2026-10-17); for `cse_worker` and `cse_reader`
+     the privileges of §4.4 that each must have and must not have (a forbidden INSERT or UPDATE is found whether granted
+     on the table or on a single column); the guard and append-only triggers, present, enabled and exactly as 0018
+     creates them, and no other trigger enabled (the in-band check below); the guard function without `SECURITY DEFINER`
+     and without EXECUTE for either role; and, for `cse_worker` and `cse_reader`, the search path their new sessions get
+     from the catalogue (their setting in this database, their role setting, this database's setting, the setting for
+     all roles, else the server's) meets the name-resolution invariant of the in-band check below (audit, 2026-10-17).
+     The constraint definitions are compared as PostgreSQL 17 renders them (`pg_get_constraintdef`, search path
+     `public`); another major version may render them differently, and the preflight then reports a problem rather than
+     passing.
 
   It reports **clean** (exit 0) only when the file and the objects pass **and** the ledger was read and verified.
   Exit 1 means a check found a problem. Exit 2 means nothing was found wrong but the ledger could not be read: that is
@@ -297,22 +299,31 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
   **The smallest governed resolution, with no frozen change:**
   - the preflight runs as an operational step: in staging after migrations, in the production smoke tests, and in
     every checkpoint's `verify` (§10);
-  - in-band, the store also checks the schema and raises a typed error (`SchemaUnavailable`). As implemented in
-    Stage 1 (its owner-directed correction), the check runs on **every** save, inside the store's savepoint and before
-    any insert: one catalogue query covers the five tables, the current role's SELECT and INSERT, and every guard and
-    append-only trigger: present, enabled, and exactly as 0018 creates it (audit Finding 2, 2026-10-17): the function
-    it runs by identity (schema `public`, no arguments: a same-named function in another schema is refused) and by
-    definition (language, the caller's rights, and its body exactly as migration 0007 or 0018 writes it, pinned by
-    hash) and configuration (`proconfig`: migrations 0007 and 0018 set none; a function-level `search_path` would
-    change which `report_document_classifications` the guard's unqualified name reads, with the body unchanged: audit
-    Finding 4), its timing and events, and no WHEN condition, arguments, column list, constraint trigger or transition
-    table; and each table's enabled triggers are exactly 0018's (audit Finding 5): BEFORE triggers fire in name order,
-    so an extra one named after the guard could change a row the guard has accepted. "Enabled" is as before: firing
-    in normal operation (`O` origin or `A` always). Of the function's catalogue entry only what changes what it does
-    when the trigger fires is compared (identity, language, body, rights, configuration); volatility, strictness,
-    cost, parallel safety, leakproofness and its owner are not (`worker/financial_f4_store/schema.py`). Nothing is
-    cached, so a schema change made while a process runs is seen at its next save. This is stricter than the "first
-    use for each connection" first proposed here, and is still an implementation detail.
+  - in-band, the store also checks the schema and raises a typed error (`SchemaUnavailable`). As implemented in Stage 1
+    (its owner-directed correction), the check runs on **every** save, inside the store's savepoint and before any
+    insert: one catalogue query covers the five tables, the current role's SELECT and INSERT, and every guard and
+    append-only trigger: present, enabled, and exactly as 0018 creates it (audit Finding 2, 2026-10-17): the function it
+    runs by identity (schema `public`, no arguments: a same-named function in another schema is refused) and by
+    definition (language, the caller's rights, and its body exactly as migration 0007 or 0018 writes it, pinned by hash)
+    and configuration (`proconfig`: migrations 0007 and 0018 set none; a function-level `search_path` would change which
+    `report_document_classifications` the guard's unqualified name reads, with the body unchanged: audit Finding 4), its
+    timing and events, and no WHEN condition, arguments, column list, constraint trigger or transition table; and each
+    table's enabled triggers are exactly 0018's (audit Finding 5): BEFORE triggers fire in name order, so an extra one
+    named after the guard could change a row the guard has accepted. "Enabled" is as before: firing in normal operation
+    (`O` origin or `A` always). Of the function's catalogue entry only what changes what it does when the trigger fires
+    is compared (identity, language, body, rights, configuration); volatility, strictness, cost, parallel safety,
+    leakproofness and its owner are not (`worker/financial_f4_store/schema.py`). Nothing is cached, so a schema change
+    made while a process runs is seen at its next save. This is stricter than the "first use for each connection" first
+    proposed here, and is still an implementation detail. **Name resolution (audit, 2026-10-17).** The guard reads
+    `report_document_classifications`, and the store and reader their tables, by unqualified names, and its comparisons
+    use unqualified operators; with no function-level configuration they resolve through the saving session's search
+    path and temporary schema, however these were set (role, role-in-database, database or server settings, the client's
+    options, a `SET`). Before that catalogue query, therefore, the store checks the session's own resolution
+    (`schema.search_path_problems`, every name and operator in it qualified with `pg_catalog`): before `public` the
+    session may search only `pg_catalog`, its own temporary schema while that holds no relation or type, and the default
+    `"$user"` while no schema named after the role exists and the role may not create one; any other schema before
+    `public` is refused whether or not it exists or holds a table now; `public` must be in the path, and `pg_catalog`
+    may not come after it. Migration 0018 is unchanged.
 
 ## 6. Transactions, failure and retry
 

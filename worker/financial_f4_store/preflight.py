@@ -12,7 +12,9 @@ keeps them apart:
              column; the guard and append-only triggers, present, enabled and exactly as 0018 creates them (schema.py:
              the function by schema, signature, definition and configuration, the timing, no WHEN condition,
              arguments or column list), and no other trigger enabled on the tables; the guard function with the
-             caller's rights and no EXECUTE for either role
+             caller's rights and no EXECUTE for either role; and, for each role, the search path its sessions get
+             from the catalogue (role-in-database, role, database or all-roles setting, else the server's) meets
+             schema.py's name-resolution invariant
     ledger   ops.schema_migrations records 0018 at the pinned hash: 'verified', 'failed' (a problem was found), or
              'unverifiable' (this connection cannot read the ledger)
 
@@ -192,6 +194,47 @@ def _role_problems(cur, role):
     return out
 
 
+# The search_path a NEW session of a role gets from the catalogue, highest precedence first (PostgreSQL applies them
+# in this order at connection; a client's connection options or a SET in the session come after, and only the
+# store's in-band check, which runs in the session itself, sees those).
+SEARCH_PATH_LEVELS = {1: "its setting in this database (ALTER ROLE ... IN DATABASE ... SET)",
+                      2: "its role setting (ALTER ROLE ... SET)",
+                      3: "this database's setting (ALTER DATABASE ... SET)",
+                      4: "the setting for all roles (ALTER ROLE ALL SET)"}
+_CONFIGURED_SEARCH_PATH = """
+select case when s.setrole <> 0 and s.setdatabase <> 0 then 1 when s.setrole <> 0 then 2
+            when s.setdatabase <> 0 then 3 else 4 end as level,
+       substr(cfg, length('search_path=') + 1)
+  from pg_catalog.pg_db_role_setting s cross join lateral unnest(s.setconfig) as cfg
+ where cfg like 'search_path=%%'
+   and s.setrole in (0, (select oid from pg_catalog.pg_roles where rolname = %s))
+   and s.setdatabase in (0, (select oid from pg_catalog.pg_database where datname = current_database()))
+ order by level
+ limit 1
+"""
+
+
+def _search_path_problems(cur, role, server):
+    """How the search path `role`'s new sessions get breaks schema.py's name-resolution invariant ([] when it holds).
+    server: (value, label) of the server-level value, or None when this connection cannot tell it."""
+    got = _one(cur, _CONFIGURED_SEARCH_PATH, (role,))
+    if got is not None:
+        value, source = got[1], SEARCH_PATH_LEVELS[got[0]]
+    elif server is not None:
+        value, source = server
+    else:
+        return [f"{role}: the search_path its sessions get cannot be determined from this connection: no role or "
+                "database setting applies, and this connection's own search_path is not the server's"]
+    role_schema, may_create = _one(cur, "select exists (select 1 from pg_catalog.pg_namespace where nspname = %s), "
+                                        "pg_catalog.has_database_privilege(%s, pg_catalog.current_database(), "
+                                        "'CREATE')", (role, role))
+    elements = schema.parse_search_path(value)
+    if elements is None:
+        return [f"{role}: the search_path its sessions get ({source}: {value!r}) cannot be parsed"]
+    return [f"{role}: the search_path its sessions get ({source}: {value!r}): {problem}"
+            for problem in schema.path_problems(elements, role, role_schema, may_create)]
+
+
 def _may_become(cur, owner_role):
     return _one(cur, "select case when exists (select 1 from pg_roles where rolname = %s) "
                      "then pg_has_role(current_user, %s, 'SET') else false end", (owner_role, owner_role))[0]
@@ -205,6 +248,10 @@ def object_problems(conn, roles=tuple(PRIVILEGES), owner_role=OWNER_ROLE):
     try:
         with conn.cursor() as cur:
             cur.execute("set transaction read only")
+            # the server-level search_path, read before this transaction sets its own: known only when this
+            # connection's value is the server's (no role, database, client or session setting of its own)
+            value, source = _one(cur, "select setting, source from pg_catalog.pg_settings where name = 'search_path'")
+            server = (value, f"the server's {source}") if source in ("default", "configuration file") else None
             if not _one(cur, "select has_schema_privilege(current_user, 'public', 'USAGE')")[0] and \
                     _may_become(cur, owner_role):
                 cur.execute(sql.SQL("set local role {}").format(sql.Identifier(owner_role)))
@@ -230,6 +277,8 @@ def object_problems(conn, roles=tuple(PRIVILEGES), owner_role=OWNER_ROLE):
             if not missing:
                 for role in roles:
                     out += _role_problems(cur, role)
+            for role in roles:
+                out += _search_path_problems(cur, role, server)
         conn.rollback()
     except Exception as exc:  # noqa: BLE001 - a preflight reports, it does not crash the caller
         conn.rollback()
