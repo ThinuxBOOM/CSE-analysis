@@ -3,10 +3,10 @@
 **Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The
 independent audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7),
 `2bc66c1` (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9) and await the owner's independent review.
-NOT accepted, NOT frozen.** For §8.1 item
-13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text); **item
-13 remains open** (§8.1). Every result here is Claude's report, on synthetic layouts, not independently re-executed.
-No real-document evidence exists.
+NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4
+design carries the amendment text) and then, the same day, formally waived the item for this implementation package:
+**item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
+re-executed. No real-document evidence exists.
 
 **Canonical design:** [`docs/R_F4_DESIGN.md`](R_F4_DESIGN.md) (decisions RF4-M1 to RF4-M5 and release sequence Q1,
 accepted 2026-10-14). Where this record and the design differ, the design wins. This record adds implementation detail
@@ -32,7 +32,8 @@ and evidence only; it changes no decision.
 | `2bc66c1` | Claude (audit remediation) | Findings 4–5 (trigger functions' configuration; no unexpected enabled trigger), their tests (u19, p28, p29; u18 and p22 adjusted), the HB-1 to HB-6 re-pin, the design's correction of item 13 (open under Option B) (§8) |
 | `8140cb2` | Claude | Section 8, the item 13 correction and the status lines of this record. Documents only (§8.6) |
 | `d6924e7` | Claude (audit remediation) | The guard's name resolution: the store's in-band search-path check and the preflight's per-role check, their tests (u20, p30–p33), the HB-1 to HB-6 re-pin, the design's §5 (§9) |
-| the commit adding section 9 | Claude | Section 9, the closure note under §8.5 and the status lines of this record. Documents only (§9.7) |
+| `38d2a34` | Claude | Section 9, the closure note under §8.5 and the status lines of this record. Documents only (§9.7) |
+| the commit adding section 10 | Claude (owner decision recorded) | The owner's waiver of §8.1 item 13: section 10, the status lines, §3.1 and the notes under §6.1, §7.1, §8.1 and §9 here; the design's record of it. Documents only (§10) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -41,8 +42,8 @@ Where they differ, the later section is
 current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
-without write access to the repository, and it was not changed. The owner pushes; every commit up to `db2ae2d` is on
-`origin`.
+without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
+`origin` (checked with `git ls-remote`, 2026-10-17).
 
 ## 2. What was built
 
@@ -80,7 +81,7 @@ control trees collect identical test IDs (§5.4).
 | 8 lifecycle test | Done | the test itself; M1–M5, M7, M9 |
 | 9 RDV docstring + consistency test | Done | u17 RDV test; M14 |
 | 10–12 new files | Done (Stage 1); p24 added in Stage 2 | §3.2 |
-| **13 F6.2 §10 amendment** | **Open.** Option B selected 2026-10-17: not applied; F6.2 stays frozen; the R-F4 design carries the text. No waiver or amendment of the item is recorded | §8.1 |
+| **13 F6.2 §10 amendment** | **Waived by owner** (2026-10-17): not applied. Option B selected first (F6.2 stays frozen; the R-F4 design carries the text), which left the item open (§8.1); then the item's outstanding requirement waived for this package | §10 |
 | 14–16 Phase 2 design, MA, runbook | Done | §2; reviewed against the tree (§4) |
 | 17 R-F4 design + this record | Done | — |
 
@@ -305,7 +306,7 @@ commit changes none of them.
 
 ## 6. Blockers, open items and limitations
 
-### 6.1 §8.1 item 13 (as it stood at `82b7a3e`; Option B selected since, the item still open: §8.1)
+### 6.1 §8.1 item 13 (as it stood at `82b7a3e`; Option B selected since, then the item waived by the owner: §10)
 
 The accepted F6.2 §10 amendment was not applied. `docs/F6.2_DESIGN.md` is pinned byte for byte (LF SHA-256
 `4c97c6a816fe…`) by two frozen tests, `tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged` and
@@ -352,7 +353,8 @@ The owner chose Option B: **F6.2's freeze is preserved.** `docs/F6.2_DESIGN.md`,
 and `tests/test_f64_unit.py:378` are not modified (checked: identical to `main` at `f67c181`), and the accepted
 amendment text stays in the R-F4 design record (design §8, §8.1 row 13, §11). *Corrected (§8.1): this section first
 said that item 13 was closed by that decision. It is not: selecting Option B leaves item 13 open until its requirement
-is formally satisfied or a separate owner-approved waiver or amendment is recorded.*
+is formally satisfied or a separate owner-approved waiver or amendment is recorded.* *The owner waived item 13 on
+2026-10-17 (§10).*
 
 ### 7.2 Findings and changes
 
@@ -443,7 +445,7 @@ independently. R-F4 is **not** accepted or frozen.
 **Tested code commit: `2bc66c1`** (`2bc66c12116c9bba4f1d8ddb62bad785cb79b441`, parent `db2ae2d`). The commit adding
 this section changes documents only (§8.6).
 
-### 8.1 Correction: §8.1 item 13 remains open
+### 8.1 Correction: §8.1 item 13 remained open under Option B (waived since: §10)
 
 §7.1 said that item 13 was "closed by that decision". That was wrong, and is corrected (§7.1, §3.1, the status lines,
 and the design's status lines, §8.1 row 13, §8.2, §10 and §11). **The owner selected Option B on 2026-10-17:** F6.2's
@@ -451,7 +453,8 @@ freeze is preserved; `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251` 
 modified (identical to `main` at `2bc66c1`); the amendment text stays in the R-F4 design record. **Selecting Option B
 does not close item 13.** Its requirement, the amendment applied to F6.2 §10, is not satisfied, and no separate
 owner-approved waiver of the item or amendment of the design's §8.1 is recorded. Item 13 stays **open** until one of
-those happens, and the approved package is incomplete on it until then.
+those happens, and the approved package is incomplete on it until then. *That waiver was recorded on 2026-10-17
+(§10).*
 
 ### 8.2 Findings and changes
 
@@ -550,7 +553,8 @@ unqualified name, so with no function-level configuration the saving session's e
 table it reads; a role- or database-level setting could redirect it while the function's body hash and `proconfig`
 still match 0018. The reviewer asked for it to be closed without changing migration 0018. **All of this section's work
 and every test below was done and run by Claude; none is independently re-executed or audited.** The audit is **not
-complete**; R-F4 is **not** accepted or frozen; §8.1 item 13 **remains open** (Option B does not resolve it).
+complete**; R-F4 is **not** accepted or frozen; at `d6924e7` §8.1 item 13 **remained open** (Option B does not
+resolve it; the owner has since waived it, §10).
 
 **Tested code commit: `d6924e7`** (`d6924e71cb34c951320defb71291b701f03cf092`, parent `8140cb2`). The commit adding
 this section changes documents only (§9.7).
@@ -679,3 +683,52 @@ No result from an earlier commit is counted for `d6924e7`. §8's results are for
 
 The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` only (`git diff --stat d6924e7`): this section,
 the note under §8.5, and the status lines. No test reads or pins it (§5.9).
+
+## 10. Owner decision: §8.1 item 13 waived (2026-10-17)
+
+**The decision.** On 2026-10-17 the owner decided, explicitly:
+
+> I formally waive R-F4 design item 13 for this implementation package.
+
+Item 13 (design §8.1 row 13: the accepted F6.2 §10 amendment applied to `docs/F6.2_DESIGN.md`) is **WAIVED BY OWNER**.
+Claude records the decision at the owner's direction; this section makes no decision of its own.
+
+**History, kept:**
+- §6.1: why the amendment could not be applied within the approved package. Two frozen tests pin
+  `docs/F6.2_DESIGN.md` byte for byte, and §8.1 does not list them for change.
+- §7.1: Option B selected, 2026-10-17. F6.2 stays frozen; the R-F4 design carries the amendment text.
+- §8.1: the correction. Option B alone left the item open until its requirement was satisfied or a separate
+  owner-approved waiver or amendment was recorded. This waiver is that separate decision.
+
+**Scope.** Only item 13's outstanding requirement (the amendment applied to `docs/F6.2_DESIGN.md` §10), and only for
+this R-F4 implementation package.
+
+**Rationale.** To preserve the frozen F6.2 baseline and its hash-pinned tests, while the amendment text stays in the
+R-F4 design record (design §8, §8.1 row 13, §11).
+
+**Unchanged.** Each is identical, blob for blob, at `main` (`4646626`), at `38d2a34` and at the commit adding this
+section:
+
+| File | Blob | LF SHA-256 |
+|---|---|---|
+| `docs/F6.2_DESIGN.md` | `cfe9ec316b83…` | `4c97c6a816fe…` (the pin both frozen tests hold) |
+| `tests/test_f63_determinism.py` | `5cefec0079c0…` | `6b6567d3e378…` |
+| `tests/test_f64_unit.py` | `bc4d2017d83d…` | `f5cc9b3e84f6…` |
+
+**What the waiver does not do:**
+- it does not authorize any change to F6.2 or to its frozen tests;
+- it waives no other audit finding, package item or release gate;
+- it is not R-F4's component acceptance, the independent audit's approval, or a freeze authorization.
+
+The audit is **not complete**; R-F4 is **not** accepted or frozen.
+
+**Where it is recorded:**
+- the design: its status lines, §8.1 row 13, §8.2, §10 (milestone 3) and §11;
+- here: the status lines, §3.1 row 13, and notes under §6.1, §7.1, §8.1 and §9.
+
+`docs/MASTER_ARCHITECTURE.md` is unchanged. It does not mention item 13, and its R-F4 gate statements stay true under
+the waiver: implemented on the controlled branch; not yet independently audited after Stage 2, accepted or frozen;
+HB-Q7's gate before HB-7.
+
+**This commit** changes `docs/R_F4_DESIGN.md` and `docs/R_F4_IMPLEMENTATION.md` only. No code, migration, test or pin
+changes, and no test reads or pins either file (§5.9).
