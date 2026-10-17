@@ -10,8 +10,9 @@ keeps them apart:
              must have (cse_worker SELECT + INSERT, cse_reader SELECT) and must not have (UPDATE, DELETE, TRUNCATE;
              INSERT for the reader), a forbidden INSERT or UPDATE found whether granted on the table or on a single
              column; the guard and append-only triggers, present, enabled and exactly as 0018 creates them (schema.py:
-             the function by schema, signature and definition, the timing, no WHEN condition, arguments or column
-             list); the guard function with the caller's rights and no EXECUTE for either role
+             the function by schema, signature, definition and configuration, the timing, no WHEN condition,
+             arguments or column list), and no other trigger enabled on the tables; the guard function with the
+             caller's rights and no EXECUTE for either role
     ledger   ops.schema_migrations records 0018 at the pinned hash: 'verified', 'failed' (a problem was found), or
              'unverifiable' (this connection cannot read the ledger)
 

@@ -60,6 +60,11 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p27  audit remediation (Finding 3): the live constraints equal the preflight's definitions; a same-name
          replacement of another type, a weakened check, a changed key, a foreign key into another schema or with
          another action, a NOT VALID constraint and an extra constraint are each reported, the three checks apart
+    p28  audit remediation (Finding 4): a search_path set on the guard function, its body unchanged, lets a shadow
+         table vouch for another filing's classification; the store refuses before any insert, the preflight reports it
+    p29  audit remediation (Finding 5): an extra enabled BEFORE INSERT trigger named after the guard rewrites a row
+         the guard accepted; it, and one on another table, are refused by the store before any insert and reported
+         by the preflight; a disabled one is not counted as enabled
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -1303,13 +1308,23 @@ def test_p22_rt14_and_rt15_through_hb4s_slice_with_f4_in_the_filings_one_transac
     layers = {fid: words for fid, (_, words, _, _) in zip(fids, picked)}
     w = open_hb4(env, fids)
     su = env.conn("postgres")                                   # test-only: the top-level transaction of each write
-    H.q(su, "create table rf4_tx (relname text, txid bigint)")      # H.q commits: the slice must see it
-    H.q(su, "create function rf4_tx_log() returns trigger language plpgsql as $$ begin insert into rf4_tx values "
-            "(tg_table_name, txid_current()); return new; end $$")
+    # No trigger goes on R-F4's tables: the in-band check refuses any it does not expect (audit Finding 5). The F5
+    # run's trigger also records the F4 extraction of the same key: visible to it and inserted by a transaction still
+    # in progress, so by this one (another transaction's uncommitted rows are invisible). Its xmin is a savepoint's
+    # subtransaction, which txid_status reports as 'in progress' while the top-level transaction runs.
+    H.q(su, "create table rf4_tx (relname text, txid bigint, status text)")     # H.q commits: the slice must see it
+    H.q(su, "create function rf4_tx_log() returns trigger language plpgsql as $$ begin "
+            "insert into rf4_tx values (tg_table_name, txid_current(), null); "
+            "if tg_table_name = 'financial_extraction_runs' then "
+            "insert into rf4_tx select 'financial_f4_extractions', txid_current(), "
+            "txid_status((txid_current() >> 32 << 32) + x.xmin::text::bigint) from financial_f4_extractions x "
+            "where x.cse_filing_id = new.cse_filing_id and x.document_sha256 = new.document_sha256 and "
+            "x.word_extractor = new.word_extractor and x.f4_extractor_version = new.f4_extractor_version and "
+            "x.classification_id = new.classification_id; "
+            "end if; return new; end $$")
     H.q(su, "grant insert on rf4_tx to cse_worker")
     H.q(su, "grant execute on function rf4_tx_log() to cse_worker")
-    for t, cond in (("financial_f4_extractions", ""), ("financial_extraction_runs", ""),
-                    ("backfill_item_events", "when (new.state = 'persisted') ")):
+    for t, cond in (("financial_extraction_runs", ""), ("backfill_item_events", "when (new.state = 'persisted') ")):
         H.q(su, f"create trigger rf4_tx_{t} after insert on {t} for each row {cond}execute function rf4_tx_log()")
     originals = Originals(monkeypatch)
     cdn = H.ScriptedCDN(env.clock, {H.url_of(H.path_of(f)): H.ok_doc(f) for f in fids})
@@ -1321,11 +1336,14 @@ def test_p22_rt14_and_rt15_through_hb4s_slice_with_f4_in_the_filings_one_transac
         ev = ledger.events(w, it["id"])[-1]
         assert ev["details"]["f3"] == "inserted" and ev["details"]["f5"] == "inserted"
         assert_rt14_rt15(w, fid, originals, ev["f5_run_id"])
-    by_tx = {}
-    for rel, tx in H.q(su, "select relname, txid from rf4_tx"):
+    by_tx, f4_status = {}, []
+    for rel, tx, status in H.q(su, "select relname, txid, status from rf4_tx"):
         by_tx.setdefault(tx, []).append(rel)
+        if rel == "financial_f4_extractions":
+            f4_status.append(status)
     assert sorted(sorted(v) for v in by_tx.values()) == [sorted(["backfill_item_events", "financial_extraction_runs",
                                                                  "financial_f4_extractions"])] * len(fids)
+    assert f4_status == ["in progress"] * len(fids)
     w.rollback()
     report = verify.verify(_reader_of(env))
     assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == len(fids)
@@ -1678,3 +1696,116 @@ def test_p27_the_preflight_verifies_each_constraint_by_type_and_definition(db):
             q(su, restore_sql)
     assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS and preflight.report(m)["clean"]
     assert q(su, "select count(*) from pg_namespace where nspname = 'rf4_other'") == [(0,)]
+
+
+def guard_catalogue(su):
+    """(proconfig, body sha256) of the guard function, as the catalogue holds it."""
+    return q(su, "select p.proconfig, encode(sha256(convert_to(replace(p.prosrc, E'\\r\\n', E'\\n'), 'UTF8')), "
+                 "'hex') from pg_proc p where p.oid = 'public.financial_f4_extraction_guard()'::regprocedure")[0]
+
+
+def insert_extraction_row(w, fid, document_sha256, classification_id, word_extractor="rf4 test"):
+    """One extraction row written directly (no store, so no in-band check): what the triggers alone let through."""
+    q(w, "insert into financial_f4_extractions (cse_filing_id, document_sha256, word_extractor, f4_extractor_version, "
+         "classification_id, store_version, document_status, status_reasons, page_count, page_trust, statement_count, "
+         "column_count, row_count, cell_count, f4_content_sha256, f3_input_sha256) values (%s, %s, %s, 'f4.9', %s, "
+         "'f4.store.1', 'x', '[]', 0, '[]', 0, 0, 0, 0, %s, %s) returning classification_id",
+      (fid, document_sha256, word_extractor, classification_id, "a" * 64, "b" * 64))
+    return str(q(w, "select classification_id from financial_f4_extractions where cse_filing_id = %s and "
+                    "word_extractor = %s", (fid, word_extractor))[0][0])
+
+
+def test_p28_a_search_path_set_on_the_guard_function_is_refused_by_the_store_and_the_preflight(db, layouts):
+    """Finding 4: the guard reads report_document_classifications by an unqualified name. A function-level search_path
+    changes which table that is, with the body unchanged: here a shadow table vouches for a classification of another
+    filing. The store refuses before any insert and the preflight reports it; then everything is restored."""
+    import psycopg2
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    s = persist(w, words, 963001)
+    other = persist(w, words, 963002)                       # a classification of another filing
+    before = guard_catalogue(su)
+    assert before[0] is None                                # migration 0018 sets no configuration
+    with pytest.raises(psycopg2.errors.CheckViolation, match="is not of filing"):
+        insert_extraction_row(w, s.fid, s.ext.document_sha256, other.cid)     # the guard, as 0018 creates it
+    w.rollback()
+    q(su, "create schema rf4_other; create table rf4_other.report_document_classifications (id uuid primary key, "
+          "cse_filing_id bigint, document_sha256 text); grant usage on schema rf4_other to cse_worker; grant select on "
+          "rf4_other.report_document_classifications to cse_worker")
+    q(su, "insert into rf4_other.report_document_classifications values (%s, %s, %s)",
+      (other.cid, s.fid, s.ext.document_sha256))
+    try:
+        q(su, "alter function public.financial_f4_extraction_guard() set search_path = rf4_other, public")
+        after = guard_catalogue(su)
+        assert after == (["search_path=rf4_other, public"], before[1])       # the body is unchanged
+        # why it matters: the guard now accepts an extraction naming another filing's classification
+        assert insert_extraction_row(w, s.fid, s.ext.document_sha256, other.cid) == str(other.cid)
+        w.rollback()                                                           # nothing of it is kept
+        want = ("financial_f4_extractions: trigger trg_ff4e_guard runs public.financial_f4_extraction_guard() "
+                "configured ['search_path=rf4_other, public'] (proconfig); migration 0018 creates it with no "
+                "configuration")
+        refused_before_any_insert(w, su, words, 963003, re.escape(want))
+        assert want in preflight.object_problems(w)
+        got = preflight.report(migrator(db))
+        assert want in got["objects"] and not got["clean"] and got["file"] == [] and \
+            got["ledger"]["status"] == "verified"
+    finally:
+        try:
+            w.rollback()
+        finally:
+            q(su, "alter function public.financial_f4_extraction_guard() reset search_path; "
+                  "drop schema rf4_other cascade")
+    assert guard_catalogue(su) == before
+    assert preflight.object_problems(su) == [] and preflight.report(migrator(db))["clean"]
+    assert q(su, "select count(*) from pg_namespace where nspname = 'rf4_other'") == [(0,)]
+    assert f4_counts(su)["extractions"] == 2                                   # s and other only
+
+
+def test_p29_an_enabled_trigger_0018_does_not_create_is_refused_by_the_store_and_reported_by_the_preflight(
+        db, layouts):
+    """Finding 5: BEFORE triggers fire in name order, so a BEFORE INSERT trigger named after trg_ff4e_guard runs after
+    the guard has accepted the row and can change it: here it renames the classification to another filing's. Such a
+    trigger is refused by the store before any insert and reported by the preflight; one on another table too. A
+    disabled extra trigger does not fire in normal operation and, like a disabled expected trigger, is not counted as
+    enabled. Everything is restored."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    s = persist(w, words, 964001)
+    other = persist(w, words, 964002)
+    q(su, "create function public.rf4_rewrite_classification() returns trigger language plpgsql as $$ begin "
+          f"new.classification_id := '{other.cid}'; return new; end $$")
+    after_guard = ("financial_f4_extractions: trigger trg_ff4e_zz_after_guard (runs public.rf4_rewrite_classification, "
+                   "tgtype 7) is enabled and is not one migration 0018 creates")
+    on_cells = ("financial_f4_cells: trigger trg_ff4c_extra (runs public.f5_reject_mutation, tgtype 7) is enabled and "
+                "is not one migration 0018 creates")
+    try:
+        q(su, "create trigger trg_ff4e_zz_after_guard before insert on financial_f4_extractions for each row execute "
+              "function public.rf4_rewrite_classification()")
+        assert q(su, "select tgname from pg_trigger where tgrelid = 'public.financial_f4_extractions'::regclass and "
+                     "tgname like 'trg\\_ff4e\\_%%' and tgtype = 7 order by tgname") == \
+            [("trg_ff4e_guard",), ("trg_ff4e_zz_after_guard",)]               # fires after the guard
+        # why it matters: the guard accepts s's own classification, then the row is stored naming another filing's
+        assert insert_extraction_row(w, s.fid, s.ext.document_sha256, s.cid) == str(other.cid)
+        w.rollback()
+        refused_before_any_insert(w, su, words, 964003, re.escape(after_guard))
+        assert after_guard in preflight.object_problems(w)
+        got = preflight.report(m)
+        assert got["objects"] == [after_guard] and not got["clean"] and got["ledger"]["status"] == "verified"
+        # a disabled extra trigger does not fire in normal operation: not counted as enabled, as before
+        q(su, "alter table financial_f4_extractions disable trigger trg_ff4e_zz_after_guard")
+        assert preflight.object_problems(w) == []
+        q(su, "drop trigger trg_ff4e_zz_after_guard on financial_f4_extractions")
+        # another table, another timing, even an expected function: still not 0018's
+        q(su, "create trigger trg_ff4c_extra before insert on financial_f4_cells for each row execute function "
+              "f5_reject_mutation()")
+        refused_before_any_insert(w, su, words, 964004, re.escape(on_cells))
+        assert on_cells in preflight.object_problems(w)
+    finally:
+        try:
+            w.rollback()
+        finally:
+            q(su, "drop trigger if exists trg_ff4e_zz_after_guard on financial_f4_extractions; drop trigger if exists "
+                  "trg_ff4c_extra on financial_f4_cells; drop function public.rf4_rewrite_classification()")
+    assert preflight.object_problems(su) == [] and preflight.report(m)["clean"]
+    assert q(su, "select count(*) from pg_proc where proname = 'rf4_rewrite_classification'") == [(0,)]
+    assert f4_counts(su)["extractions"] == 2                                   # s and other only

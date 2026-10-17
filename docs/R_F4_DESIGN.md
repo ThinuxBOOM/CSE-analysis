@@ -6,11 +6,12 @@ its tests) is implemented, with its audit corrections, on the controlled branch 
 **Stage 2** (§8.2 steps 3–6: F5's `_persist` wired to R-F4, the approved frozen-test and RDV edits, the HB-1 to HB-6 pin
 cascade, the end-to-end tests, the regression controls and the records) was **authorized by the owner on 2026-10-16** and
 is implemented on the same branch: owner commit `fa464d2` (pushed), then follow-up commits listed with their evidence in
-`docs/R_F4_IMPLEMENTATION.md`. §8.1 item 13 was decided by the owner on 2026-10-17 (Option B: F6.2 stays frozen; this
-record carries the amendment text; §11). The independent audit of Stage 2 reported three findings on 2026-10-17; their
-remediation is implemented on the same branch (`docs/R_F4_IMPLEMENTATION.md` §7) and awaits the owner's independent
-review. The audit is **not** complete, and R-F4 is **not** accepted as a component or frozen. Staging, the pilot,
-production deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
+`docs/R_F4_IMPLEMENTATION.md`. For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; this
+record carries the amendment text); **item 13 remains open** (§11). The independent audit of Stage 2 reported five
+findings (Findings 1–3 on 2026-10-17, Findings 4–5 at the review of their remediation); their remediation is
+implemented on the same branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8) and awaits the owner's independent review.
+The audit is **not** complete, and R-F4 is **not** accepted as a component or frozen. Staging, the pilot, production
+deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
 of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code, migration, test or
 pin.
 
@@ -19,8 +20,8 @@ pin.
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
 | Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
 | Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
-| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13 decided 2026-10-17: Option B (§11). Not accepted |
-| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit's three findings (2026-10-17) are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7), awaiting the owner's independent review; the audit is **not complete**. Component acceptance and the freeze: **not started** |
+| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13: Option B selected 2026-10-17, the item still open (§11). Not accepted |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit's five findings (2026-10-17) are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), awaiting the owner's independent review; the audit is **not complete**. Component acceptance and the freeze: **not started** |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -261,7 +262,8 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
      expression), validated, and no constraint 0018 does not create (audit Finding 3, 2026-10-17); for `cse_worker`
      and `cse_reader` the privileges of §4.4 that each must have and must not have (a forbidden INSERT or UPDATE is
      found whether granted on the table or on a single column); the guard and append-only triggers, present, enabled
-     and exactly as 0018 creates them (the in-band check below); the guard function without `SECURITY DEFINER` and
+     and exactly as 0018 creates them, and no other trigger enabled (the in-band check below); the guard function
+     without `SECURITY DEFINER` and
      without EXECUTE for either role. The constraint definitions are compared as PostgreSQL 17 renders them
      (`pg_get_constraintdef`, search path `public`); another major version may render them differently, and the
      preflight then reports a problem rather than passing.
@@ -301,9 +303,16 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
     append-only trigger: present, enabled, and exactly as 0018 creates it (audit Finding 2, 2026-10-17): the function
     it runs by identity (schema `public`, no arguments: a same-named function in another schema is refused) and by
     definition (language, the caller's rights, and its body exactly as migration 0007 or 0018 writes it, pinned by
-    hash), its timing and events, and no WHEN condition, arguments, column list, constraint trigger or transition
-    table. Nothing is cached, so a schema change made while a process runs is seen at its next save. This is stricter
-    than the "first use for each connection" first proposed here, and is still an implementation detail.
+    hash) and configuration (`proconfig`: migrations 0007 and 0018 set none; a function-level `search_path` would
+    change which `report_document_classifications` the guard's unqualified name reads, with the body unchanged: audit
+    Finding 4), its timing and events, and no WHEN condition, arguments, column list, constraint trigger or transition
+    table; and each table's enabled triggers are exactly 0018's (audit Finding 5): BEFORE triggers fire in name order,
+    so an extra one named after the guard could change a row the guard has accepted. "Enabled" is as before: firing
+    in normal operation (`O` origin or `A` always). Of the function's catalogue entry only what changes what it does
+    when the trigger fires is compared (identity, language, body, rights, configuration); volatility, strictness,
+    cost, parallel safety, leakproofness and its owner are not (`worker/financial_f4_store/schema.py`). Nothing is
+    cached, so a schema change made while a process runs is seen at its next save. This is stricter than the "first
+    use for each connection" first proposed here, and is still an implementation detail.
 
 ## 6. Transactions, failure and retry
 
@@ -432,7 +441,7 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 | # | Document | Updates |
 |---|---|---|
-| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above. **Decided 2026-10-17, Option B (§11): not applied.** F6.2 stays frozen: `docs/F6.2_DESIGN.md` (LF SHA-256 `4c97c6a8…`) and the frozen tests that pin it (`tests/test_f63_determinism.py:251`, `tests/test_f64_unit.py:378`) are unchanged, and this record carries the amendment text |
+| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above. **Open.** On 2026-10-17 the owner selected Option B (§11): F6.2 stays frozen; `docs/F6.2_DESIGN.md` (LF SHA-256 `4c97c6a8…`) and the frozen tests that pin it (`tests/test_f63_determinism.py:251`, `tests/test_f64_unit.py:378`) are unchanged; this record carries the amendment text. That selection does not satisfy the item: it stays open until its requirement is formally satisfied or a separate owner-approved waiver or amendment of this item is recorded |
 | 14 | `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` | §4.1 F5 row; the HB-B1/HB-B9 note; §10.1; §10.2 (`STORE_VERSION`); §11.1; §11.2 and §20 (capacity); §11.5 and §27 (status); §21 (R-F4 `verify`); §22 (F5 replay from the database); §23.4 (the frozen-test edits); a new Appendix D entry; pin-only notes in the HB-1 to HB-6 freeze records |
 | 15 | `docs/MASTER_ARCHITECTURE.md` | §51 (0018), §52 and §55 |
 | 16 | `docs/ops/PHASE2_BACKFILL.md` | §6 (R-F4 `verify`), §11 (testing), §12 (migrations 0001–0018; R-F4 preflight in deployment) |
@@ -469,10 +478,11 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 8. **The Q1 release sequence** continues from §10, step 8.
 
 **Progress (2026-10-17).** Steps 1–2 (Stage 1) are done and owner-committed. Stage 2 was authorized on 2026-10-16:
-steps 3–6 are done on `claude/rf4-implementation` (`fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`); item
-13 was decided on 2026-10-17 as Option B (not applied; §11). Step 7's hand-off is that branch. The independent audit of
-Stage 2 reported three findings on 2026-10-17; their remediation is on the branch (`docs/R_F4_IMPLEMENTATION.md` §7),
-awaiting the owner's independent review. The audit is not complete; acceptance and freeze have not started.
+steps 3–6 are done on `claude/rf4-implementation` (`fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`),
+except item 13: Option B was selected on 2026-10-17 and the item **remains open** (§11). Step 7's hand-off is that
+branch. The independent audit of Stage 2 reported five findings on 2026-10-17; their remediation is on the branch
+(`docs/R_F4_IMPLEMENTATION.md` §7, §8), awaiting the owner's independent review. The audit is not complete; acceptance
+and freeze have not started.
 
 ## 9. Acceptance (RF4-M4, accepted 2026-10-14)
 
@@ -509,10 +519,10 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
 | 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
-| 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 decided: Option B (§11). Audit Findings 1–3 remediated (2026-10-17), awaiting review |
+| 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 open (Option B selected; §11). Audit Findings 1–5 remediated (2026-10-17), awaiting review |
 | 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()` (not through HB-4's slice, §6) |
 | 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
-| 6 | Independent audit of the code and evidence | **In progress, not complete.** Stage 2: three findings (2026-10-17), remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7), awaiting the owner's independent review |
+| 6 | Independent audit of the code and evidence | **In progress, not complete.** Stage 2: five findings (2026-10-17), remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), awaiting the owner's independent review |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
 | 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
@@ -557,28 +567,34 @@ RDV option R-b later.
 
 ## 11. Open items and assumptions
 
-- **§8.1 item 13: owner decision, Option B (2026-10-17).** The accepted F6.2 §10 amendment could not be applied within
-  the approved package: `docs/F6.2_DESIGN.md` is pinned byte for byte by two frozen tests, of F6.3
-  (`tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged`, line 251) and F6.4
+- **§8.1 item 13: Option B selected by the owner (2026-10-17); the item remains OPEN.** The accepted F6.2 §10 amendment
+  could not be applied within the approved package: `docs/F6.2_DESIGN.md` is pinned byte for byte by two frozen tests,
+  of F6.3 (`tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged`, line 251) and F6.4
   (`tests/test_f64_unit.py::test_u9_frozen_files_are_unchanged`, line 378), which §8.1 does not list for change. The
-  owner chose Option B: **F6.2's freeze is preserved**; `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251` and
-  `tests/test_f64_unit.py:378` are not modified, and **this record retains the amendment text** (§8). Item 13 is closed
-  by that decision, not by an edit. Before it, Stage 2 had applied neither option.
+  owner selected Option B: **F6.2's freeze is preserved**; `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251`
+  and `tests/test_f64_unit.py:378` are not modified, and **this record retains the amendment text** (§8). Selecting
+  Option B does **not** close item 13: its requirement (the amendment applied to `docs/F6.2_DESIGN.md` §10) is not
+  satisfied, and no separate owner-approved waiver of the item or amendment of §8.1 is recorded. It remains open until
+  one of those happens.
 - **Effect on acceptance.** The amendment documents F6.2's storage contract; no code or test depends on it, and R-F4's
-  behaviour is fully specified here (§4.2, §4.3). With Option B the F4 layer's storage contract is read from this
-  record, not from F6.2 §10; F6.2 §10 stays as frozen.
+  behaviour is fully specified here (§4.2, §4.3). While item 13 is open the approved §8.1 package is incomplete on it,
+  and the independent audit and component acceptance should treat it as an open package item.
 - **Independent audit of Stage 2: three findings (2026-10-17), remediated on the branch** under this record's scope,
   with no change to migration 0018 or its pin (`docs/R_F4_IMPLEMENTATION.md` §7): (1) the store verifies the persisted
   F3 classification against the `f3_input_sha256` of the one F5 consumed before any insert (§6); (2) the in-band check
   and the preflight verify each trigger's function identity and definition and the trigger's own properties (§5);
   (3) the preflight verifies each constraint's type and definition (§5). `store.py`, `schema.py` and `errors.py` are
-  pinned by HB-1, so the HB-1 to HB-6 pin cascade was run again (pin-only). The remediation awaits the owner's
-  independent review; the audit is not complete.
+  pinned by HB-1, so the HB-1 to HB-6 pin cascade was run again (pin-only). Findings 4 and 5, raised at the review
+  of that remediation, are remediated the same way (`docs/R_F4_IMPLEMENTATION.md` §8): (4) the trigger check also
+  compares each trigger function's configuration (`proconfig`) with its migration's (none), so a function-level
+  `search_path` is refused; (5) each table's enabled triggers must be exactly 0018's (§5). The remediation awaits the
+  owner's independent review; the audit is not complete.
 - **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
   0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
   concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.
-- **Next owner actions:** the independent review of the audit remediation (§10, milestone 6); then component
-  acceptance and the freeze record (milestone 7).
+- **Next owner actions:** the independent review of the audit remediation (§10, milestone 6); a decision that
+  satisfies, waives or amends §8.1 item 13 (open, above); then component acceptance and the freeze record
+  (milestone 7).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
   in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
   that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.

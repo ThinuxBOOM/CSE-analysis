@@ -6,10 +6,10 @@ migration 0018's tables.
 - One SAVEPOINT, no commit: the caller owns the transaction, as with F3's and F5's stores. On any error the savepoint
   is rolled back and the error re-raised, so the caller's transaction stays usable and decides what to roll back.
 - Before any insert, inside the savepoint, one catalogue query (schema.problems) checks that 0018's tables exist, this
-  role may SELECT and INSERT, and every guard and append-only trigger is present, enabled and exactly as 0018 creates
-  it (its function by schema, signature and definition; its timing, no WHEN condition, no arguments, no column list):
-  otherwise SchemaUnavailable and nothing is written. It runs on every save, so a schema change is never hidden by a
-  cache.
+  role may SELECT and INSERT, every guard and append-only trigger is present, enabled and exactly as 0018 creates it
+  (its function by schema, signature, definition and configuration; its timing, no WHEN condition, no arguments, no
+  column list), and no other trigger is enabled on the five tables: otherwise SchemaUnavailable and nothing is
+  written. It runs on every save, so a schema change is never hidden by a cache.
 - Then, still before any insert, the F3 classification persisted under `classification_id` is read back (0005) and must
   hash to the f3_input_sha256 of the classification F5 consumed. F3's own store keeps an earlier row whose key is equal
   and whose content differs ('already_present'), so without this check the extraction would name F3 evidence F5 did not

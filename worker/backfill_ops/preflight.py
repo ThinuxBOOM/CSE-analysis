@@ -41,7 +41,7 @@ PINNED_FILES = {
     "worker/backfill_f6/configuration.py": "56a6ad275c366598bbb91149295b93a584dd39aecaf6460925ad95d91ae56f4a",
     "worker/backfill_f6/coverage.py": "3c1df79f74a7340b433f343b3c6a370171d5f44c65266d08a0297728f1a65c20",
     "worker/backfill_f6/errors.py": "9e3d25b0853f73d78740a48fa98ad88bae818dce80b6258b3ea2c1defa348ed0",
-    "worker/backfill_f6/preflight.py": "4b27201d03a5f847ae8eb7798edd711bdd09dc4a977c6ed95c92d27ca6156069",
+    "worker/backfill_f6/preflight.py": "e0426257fc2bd2dc421807e4978264ab022ca33e27929996462d7dccf600d919",
     "worker/backfill_f6/promotion.py": "f04ce75344fc70aa76646c99f27f12ebc22c773f16506bf61a4ced67a60e22c5",
     "worker/backfill_f6/readiness.py": "96e524c0421f991cbe1a94a6aece09bdc5290e9fb3ca1521ec0f51651edae0d4",
     "worker/backfill_f6/reconcile.py": "c0631e0fcee51a21776ffceb9d18b7289b2b4476d9b8e742b2f2efd9dcedc5c1",

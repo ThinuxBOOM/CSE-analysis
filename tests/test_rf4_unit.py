@@ -27,6 +27,8 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          trigger is judged by its function's identity and definition and by its own properties (WHEN, arguments,
          columns); the preflight's constraint definitions are 0018's, by name, type, key columns and references, and
          a replaced, weakened, NOT VALID, missing or extra constraint is reported
+    u19  audit remediation (Findings 4 and 5): a trigger function's configuration (proconfig) must be its migration's
+         (none); an enabled trigger 0018 does not create is a problem, even one running an expected function
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -965,29 +967,36 @@ def test_u17_hb1_pins_the_r_f4_modules_persist_imports_and_store_version():
 
 # ============================================================================================ u18 (audit remediation)
 
-def _function_body(migration, function):
-    """The body of a trigger function exactly as its migration writes it between the dollar quotes (LF line ends)."""
+def _function_definition(migration, function):
+    """(language, SET clauses as proconfig writes them, body) of a trigger function exactly as its migration writes it:
+    everything between `returns trigger` and the dollar-quoted body is its header (LF line ends)."""
     text = open(os.path.join(REPO, "supabase", "migrations", migration), "rb").read().replace(b"\r\n", b"\n")
-    bodies = re.findall(r"create (?:or replace )?function " + function + r"\(\) returns trigger\nlanguage (\w+) as "
-                        r"\$\$(.*?)\$\$;", text.decode("utf-8"), re.S)
-    assert len(bodies) == 1, (migration, function, len(bodies))
-    return bodies[0]
+    found = re.findall(r"create (?:or replace )?function " + function + r"\(\) returns trigger\s+(.*?)\s*as "
+                       r"\$\$(.*?)\$\$;", text.decode("utf-8"), re.S)
+    assert len(found) == 1, (migration, function, len(found))
+    header, body = found[0]
+    language = re.findall(r"\blanguage (\w+)", header)
+    sets = tuple(f"{k}={v.strip()}" for k, v in re.findall(r"\bset (\w+)\s*(?:=|\bto\b)\s*([^\n]+)", header, re.I))
+    unread = re.sub(r"\blanguage \w+|\bset \w+\s*(?:=|\bto\b)\s*[^\n]+", "", header).strip()
+    assert len(language) == 1 and unread == "", (function, header)   # nothing else in the header goes unread
+    return language[0], sets, body
 
 
 def test_u18_the_trigger_functions_are_pinned_to_the_bodies_their_migrations_write():
     files = {"0007": "0007_issuers.sql", "0018": "0018_f4_structure_persistence.sql"}
     assert set(schema.FUNCTIONS) == {schema.GUARD_FUNCTION, schema.REJECT_FUNCTION}
-    for function, (migration, language, body_sha256) in schema.FUNCTIONS.items():
-        got_language, body = _function_body(files[migration], function)
+    for function, (migration, language, body_sha256, config) in schema.FUNCTIONS.items():
+        got_language, sets, body = _function_definition(files[migration], function)
         assert (got_language, hashlib.sha256(body.encode("utf-8")).hexdigest()) == (language, body_sha256), function
+        assert sets == config == (), function                 # Finding 4: neither migration sets a configuration
     assert {f for table in schema.TRIGGERS.values() for f, _ in table.values()} == set(schema.FUNCTIONS)
 
 
 def _live_trigger(function, tgtype, /, **changes):
-    migration, language, body = schema.FUNCTIONS[function]
+    migration, language, body, config = schema.FUNCTIONS[function]
     got = {"name": "t", "schema": "public", "function": function, "arguments": "", "language": language,
-           "security_definer": False, "body_sha256": body, "tgtype": tgtype, "when": None, "nargs": 0, "columns": "",
-           "constraint_trigger": False, "transition_tables": False}
+           "security_definer": False, "config": list(config) or None, "body_sha256": body, "tgtype": tgtype,
+           "when": None, "nargs": 0, "columns": "", "constraint_trigger": False, "transition_tables": False}
     got.update(changes)
     return got
 
@@ -1066,3 +1075,56 @@ def test_u18_the_preflight_reports_a_replaced_weakened_unvalidated_missing_or_ex
         assert preflight._constraint_problems(table, {**exact, **change}) == want, change
     missing = {n: v for n, v in exact.items() if n != "fk_ff4c_row"}
     assert preflight._constraint_problems(table, missing) == [f"{table}: constraint fk_ff4c_row is missing"]
+
+
+# ============================================================================================ u19 (audit remediation)
+
+def test_u19_a_trigger_functions_configuration_is_compared_with_its_migrations():
+    """Finding 4: proconfig (NULL in the catalogue when there is none) must be what the migration sets: nothing."""
+    want = (schema.GUARD_FUNCTION, schema.BEFORE_INSERT_ROW)
+    check = lambda **changes: schema._trigger_problems("financial_f4_extractions", "trg_ff4e_guard", want,
+                                                       _live_trigger(*want, **changes))
+    assert check(config=None) == [] and check(config=[]) == []
+    at = "financial_f4_extractions: trigger trg_ff4e_guard"
+    assert check(config=["search_path=rf4_other, public"]) == [
+        f"{at} runs public.financial_f4_extraction_guard() configured ['search_path=rf4_other, public'] (proconfig); "
+        "migration 0018 creates it with no configuration"]
+    assert len(check(config=["search_path=public"])) == 1          # even the default path is a change of definition
+    assert len(check(config=["work_mem=64kB"])) == 1                # any setting: the migration sets none
+
+
+class _Catalogue:
+    """schema.problems' cursor, answering its one query with the given trigger rows per table."""
+
+    def __init__(self, triggers):
+        self.triggers = triggers
+
+    def execute(self, sql, args):
+        assert args["tables"] == list(codec.TABLES)
+
+    def fetchall(self):
+        return [(t, True, True, True, self.triggers[t]) for t in codec.TABLES]
+
+
+def _exact_triggers():
+    return {t: [_live_trigger(fn, tgtype, name=name) for name, (fn, tgtype) in sorted(want.items())]
+            for t, want in schema.TRIGGERS.items()}
+
+
+def test_u19_an_enabled_trigger_0018_does_not_create_is_a_problem():
+    """Finding 5: each table's enabled triggers must be exactly 0018's. The query returns only the enabled ones (origin
+    and always), so a disabled or replica-only extra trigger is not in the rows and is not reported, as for the
+    expected triggers."""
+    assert schema.problems(_Catalogue(_exact_triggers())) == []
+    rows = _exact_triggers()
+    rows["financial_f4_extractions"].append(_live_trigger(schema.GUARD_FUNCTION, schema.BEFORE_INSERT_ROW,
+                                                          name="trg_ff4e_zz_after_the_guard", function="rf4_rewrite",
+                                                          schema="public"))
+    assert schema.problems(_Catalogue(rows)) == [
+        "financial_f4_extractions: trigger trg_ff4e_zz_after_the_guard (runs public.rf4_rewrite, tgtype 7) is enabled "
+        "and is not one migration 0018 creates"]
+    rows = _exact_triggers()
+    rows["financial_f4_cells"].append(_live_trigger(schema.REJECT_FUNCTION, schema.BEFORE_UPDATE_DELETE_ROW,
+                                                    name="trg_ff4c_extra"))     # even running an expected function
+    [problem] = schema.problems(_Catalogue(rows))
+    assert problem.startswith("financial_f4_cells: trigger trg_ff4c_extra (runs public.f5_reject_mutation, tgtype 27)")

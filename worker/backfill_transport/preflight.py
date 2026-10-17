@@ -38,7 +38,7 @@ PINNED_FILES = {
     "worker/financial_backfill/__init__.py": "975050708af3287b74f3ac22cc65d4909ba402f7734c433c31f4ee85d725fc6d",
     "worker/financial_backfill/keys.py": "016d9c2a1098d73b5cd2bd9c1e2dcb0f32dc3d9c34e75a884a7e6fd24b1e9d90",
     "worker/financial_backfill/owner.py": "94e26b5ebd1db6cf76ad4994ec66312ad3f7fd7061db826d626eb9b85fc48bc7",
-    "worker/financial_backfill/preflight.py": "4039adbef255d73fcf1c73f0bd618933aea09cbef3eaa9d99c1c110642e239c7",
+    "worker/financial_backfill/preflight.py": "09b969fbc8504f5243b488f4c903129949dfebd4d40e1f5d64f4a79205f56483",
     "worker/financial_backfill/records.py": "22e976708b9e9f4099f1b263d7ace9cf520cec8ef51cfb7b7f510b73e295fc90",
     "worker/financial_backfill/states.py": "6cd7acff3461ebc533cb7b8f55985507031ab58f173bd2bfcfba46074ac48c9a",
     "worker/financial_backfill/store.py": "4b1e9230ae9181ae899da0bfed3a620b2167337b2c5f4cc91e94fb2ad401a106",

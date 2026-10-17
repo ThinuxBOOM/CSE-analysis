@@ -22,8 +22,8 @@ class SchemaUnavailable(F4Refused):
     """Migration 0018's schema is not usable, so nothing is written (the store's in-band check, schema.problems, run
     before every save): one of the five tables is missing; the connection's role lacks SELECT or INSERT on one; or a
     guard or append-only trigger is missing, disabled (or replica-only), or differs from how 0018 creates it: another
-    function (by schema, signature, language or definition), another timing, a WHEN condition, arguments or a column
-    list."""
+    function (by schema, signature, language, definition or configuration), another timing, a WHEN condition,
+    arguments or a column list; or a trigger 0018 does not create is enabled on one of the tables."""
     kind = "schema_unavailable"
 
 

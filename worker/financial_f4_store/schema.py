@@ -6,8 +6,21 @@ cached: a schema change made while a process runs is seen by its next save.
 
 A trigger is checked as 0018 creates it, not only by name: the function it runs, by identity (schema public, no
 arguments: a same-named function in another schema is another function) and by definition (language, the caller's
-rights, and the body exactly as its migration writes it); its timing and events (tgtype); and that it has no WHEN
-condition, no arguments, no column list, and is neither a constraint trigger nor one with transition tables.
+rights, the body exactly as its migration writes it, and its configuration); its timing and events (tgtype); and that it
+has no WHEN condition, no arguments, no column list, and is neither a constraint trigger nor one with transition tables.
+Each table's enabled triggers must be exactly the ones 0018 creates: any other is a problem, since a BEFORE trigger
+firing after the guard (they fire in name order) could change a row the guard has already accepted.
+
+Of the function's catalogue entry, exactly what changes what the function does when the trigger fires is compared:
+- identity (schema, name, arguments): which function runs;
+- language and body (prosrc): what it executes;
+- security definer (prosecdef): with whose rights it reads report_document_classifications;
+- configuration (proconfig): the settings it runs under. Migrations 0007 and 0018 set none. A function-level
+  search_path in particular would change which report_document_classifications the guard's unqualified name resolves
+  to, with the body unchanged.
+Not compared, because they do not change what the function does when a trigger fires: volatility, strictness, cost,
+rows, parallel safety, leakproofness, its owner (it runs with the caller's rights) and its comment. Its EXECUTE grants
+are the preflight's (the guard function: no EXECUTE for either role).
 
 The preflight runs the same check for a named role, then the checks only it makes (privileges that must be absent, the
 guard function's rights, the constraints' definitions, the migration ledger).
@@ -19,10 +32,11 @@ REJECT_FUNCTION = "f5_reject_mutation"
 FUNCTION_SCHEMA = "public"
 
 # Each trigger function as its migration defines it: (migration, language, SHA-256 of the body exactly as written
-# between its dollar quotes, LF line ends). tests/test_rf4_unit.py derives both hashes from the migration files.
+# between its dollar quotes, LF line ends, its configuration: pg_proc.proconfig, the settings of its SET clauses).
+# tests/test_rf4_unit.py derives the hashes and the (absent) SET clauses from the migration files.
 FUNCTIONS = {
-    GUARD_FUNCTION: ("0018", "plpgsql", "8d0e0e3367b01b4c230d1ef5b41898352ab8b27d17fb362852b9018386b3a76b"),
-    REJECT_FUNCTION: ("0007", "plpgsql", "cc8e9c18d81d7bbb7d3886226d60adfe81aa9003499778d498c7f07b75e99ac8"),
+    GUARD_FUNCTION: ("0018", "plpgsql", "8d0e0e3367b01b4c230d1ef5b41898352ab8b27d17fb362852b9018386b3a76b", ()),
+    REJECT_FUNCTION: ("0007", "plpgsql", "cc8e9c18d81d7bbb7d3886226d60adfe81aa9003499778d498c7f07b75e99ac8", ()),
 }
 
 # pg_trigger.tgtype bits: 1 row, 2 before, 4 insert, 8 delete, 16 update, 32 truncate.
@@ -49,8 +63,8 @@ TRIGGERS = {
 STORE_PRIVILEGES = ("SELECT", "INSERT")
 
 # One row per table: whether it exists, the role's privileges on it, and its triggers that fire in normal operation
-# ('O' origin and 'A' always; 'D' disabled and 'R' replica-only do not), each with its function's identity and
-# definition and its own properties. A function body is hashed with CRLF line ends read as LF.
+# ('O' origin and 'A' always; 'D' disabled and 'R' replica-only do not), each with its function's identity,
+# definition and configuration and its own properties. A function body is hashed with CRLF line ends read as LF.
 _QUERY = """
 select t.name,
        c.oid is not null,
@@ -59,7 +73,7 @@ select t.name,
        coalesce((select json_agg(json_build_object(
                           'name', g.tgname, 'schema', n.nspname, 'function', p.proname,
                           'arguments', pg_get_function_identity_arguments(p.oid), 'language', l.lanname,
-                          'security_definer', p.prosecdef,
+                          'security_definer', p.prosecdef, 'config', p.proconfig,
                           'body_sha256',
                           encode(sha256(convert_to(replace(p.prosrc, E'\\r\\n', E'\\n'), 'UTF8')), 'hex'),
                           'tgtype', g.tgtype, 'when', pg_get_expr(g.tgqual, g.tgrelid), 'nargs', g.tgnargs,
@@ -85,11 +99,14 @@ def _trigger_problems(table, trigger, want, got):
     if (got["schema"], got["arguments"]) != (FUNCTION_SCHEMA, ""):
         out.append(f"{at} runs {got['schema']}.{function}({got['arguments']}), expected {FUNCTION_SCHEMA}.{function}()")
     else:
-        migration, language, body = FUNCTIONS[function]
+        migration, language, body, config = FUNCTIONS[function]
         if (got["language"], got["security_definer"], got["body_sha256"]) != (language, False, body):
             out.append(f"{at} runs {FUNCTION_SCHEMA}.{function}() defined other than in migration {migration} "
                        f"(language {got['language']}, security definer {got['security_definer']}, body sha256 "
                        f"{got['body_sha256']}; expected {language}, False, {body})")
+        if tuple(got["config"] or ()) != config:
+            out.append(f"{at} runs {FUNCTION_SCHEMA}.{function}() configured {list(got['config'] or [])} "
+                       f"(proconfig); migration {migration} creates it with {list(config) or 'no configuration'}")
     if got["when"] is not None:
         out.append(f"{at} has a WHEN condition ({got['when']}); migration 0018 creates it without one")
     if got["nargs"]:
@@ -102,8 +119,9 @@ def _trigger_problems(table, trigger, want, got):
 
 
 def problems(cur, role=None):
-    """[] when every table exists, `role` (None: the current role) has SELECT and INSERT on it, and every trigger
-    0018 creates is present, enabled and exactly as 0018 creates it (the module docstring). One catalogue query."""
+    """[] when every table exists, `role` (None: the current role) has SELECT and INSERT on it, every trigger 0018
+    creates is present, enabled and exactly as 0018 creates it, and no other trigger is enabled on it (the module
+    docstring). One catalogue query."""
     cur.execute(_QUERY, {"role": role, "tables": list(codec.TABLES)})
     who = role or "the current role"
     out = []
@@ -121,4 +139,8 @@ def problems(cur, role=None):
                 out.append(f"{name}: trigger {trigger} is missing or disabled")
             else:
                 out += _trigger_problems(name, trigger, want, got)
+        for trigger in sorted(set(live) - set(TRIGGERS[name])):
+            got = live[trigger]
+            out.append(f"{name}: trigger {trigger} (runs {got['schema']}.{got['function']}, tgtype {got['tgtype']}) is "
+                       "enabled and is not one migration 0018 creates")
     return out
