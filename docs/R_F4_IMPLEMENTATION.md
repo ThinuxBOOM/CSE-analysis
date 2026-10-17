@@ -1,10 +1,11 @@
 # R-F4: full F4 structure persistence (implementation record)
 
 **Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The
-independent audit of Stage 2 is NOT complete: its three findings (2026-10-17) are remediated in `f67c181` (§7) and await
-the owner's independent review. NOT accepted, NOT frozen.** §8.1 item 13 was decided by the owner on 2026-10-17: Option
-B, F6.2 stays frozen and the R-F4 design carries the amendment text (§7.1). Every result here is Claude's report, on
-synthetic layouts, not independently re-executed. No real-document evidence exists.
+independent audit of Stage 2 is NOT complete: its five findings (2026-10-17) are remediated in `f67c181` (Findings 1–3,
+§7) and `2bc66c1` (Findings 4–5, §8) and await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item
+13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text); **item
+13 remains open** (§8.1). Every result here is Claude's report, on synthetic layouts, not independently re-executed.
+No real-document evidence exists.
 
 **Canonical design:** [`docs/R_F4_DESIGN.md`](R_F4_DESIGN.md) (decisions RF4-M1 to RF4-M5 and release sequence Q1,
 accepted 2026-10-14). Where this record and the design differ, the design wins. This record adds implementation detail
@@ -26,17 +27,18 @@ and evidence only; it changes no decision.
 | `82b7a3e` | Claude | "p18–p24" in `tests/test_rf4_postgres.py`'s docstring and design §9 (they said p18–p23). Text only |
 | `acb3a70` | Claude | This record (sections 1–6); the design's §10 status lines. Documents only (§5.9) |
 | `f67c181` | Claude (audit remediation) | Findings 1–3 (store, in-band trigger check, preflight constraints), their tests (u18, p25–p27), the HB-1 to HB-6 re-pin, the design's record of item 13 (Option B) and of the remediation (§7) |
-| the commit adding section 7 | Claude | Section 7 and the status lines of this record. Documents only (§7.6) |
+| `db2ae2d` | Claude | Section 7 and the status lines of this record. Documents only (§7.6) |
+| `2bc66c1` | Claude (audit remediation) | Findings 4–5 (trigger functions' configuration; no unexpected enabled trigger), their tests (u19, p28, p29; u18 and p22 adjusted), the HB-1 to HB-6 re-pin, the design's correction of item 13 (open under Option B) (§8) |
+| the commit adding section 8 | Claude | Section 8, the item 13 correction and the status lines of this record. Documents only (§8.6) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
-at `f67c181`** (§7). Where they differ, §7 is current: it changes the store, the in-band check, the preflight and the
-HB-1 to HB-6 pins named in §2.
+at `f67c181`** (Findings 1–3, §7) **and at `2bc66c1`** (Findings 4–5, §8). Where they differ, the later section is
+current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
 
-**Push.** `fa464d2` is on `origin`. `248b31c`, `5e4d0c3`, `82b7a3e` and the record commit are committed on
-`claude/rf4-implementation` locally only: Claude's `git push` was refused (HTTP 403) because the Git credential on the
-machine belongs to a GitHub account without write access to the repository. The credential was not changed; the owner
-pushes.
+**Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
+without write access to the repository, and it was not changed. The owner pushes; every commit up to `db2ae2d` is on
+`origin`.
 
 ## 2. What was built
 
@@ -74,7 +76,7 @@ control trees collect identical test IDs (§5.4).
 | 8 lifecycle test | Done | the test itself; M1–M5, M7, M9 |
 | 9 RDV docstring + consistency test | Done | u17 RDV test; M14 |
 | 10–12 new files | Done (Stage 1); p24 added in Stage 2 | §3.2 |
-| **13 F6.2 §10 amendment** | **Decided 2026-10-17, Option B: not applied**; F6.2 stays frozen, the R-F4 design carries the text | §7.1 |
+| **13 F6.2 §10 amendment** | **Open.** Option B selected 2026-10-17: not applied; F6.2 stays frozen; the R-F4 design carries the text. No waiver or amendment of the item is recorded | §8.1 |
 | 14–16 Phase 2 design, MA, runbook | Done | §2; reviewed against the tree (§4) |
 | 17 R-F4 design + this record | Done | — |
 
@@ -299,7 +301,7 @@ commit changes none of them.
 
 ## 6. Blockers, open items and limitations
 
-### 6.1 §8.1 item 13 (as it stood at `82b7a3e`; decided since: §7.1)
+### 6.1 §8.1 item 13 (as it stood at `82b7a3e`; Option B selected since, the item still open: §8.1)
 
 The accepted F6.2 §10 amendment was not applied. `docs/F6.2_DESIGN.md` is pinned byte for byte (LF SHA-256
 `4c97c6a816fe…`) by two frozen tests, `tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged` and
@@ -344,8 +346,9 @@ this section changes documents only (§7.6).
 
 The owner chose Option B: **F6.2's freeze is preserved.** `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251`
 and `tests/test_f64_unit.py:378` are not modified (checked: identical to `main` at `f67c181`), and the accepted
-amendment text stays in the R-F4 design record (design §8, §8.1 row 13, §11). Item 13 is closed by that decision; §6.1
-below is superseded.
+amendment text stays in the R-F4 design record (design §8, §8.1 row 13, §11). *Corrected (§8.1): this section first
+said that item 13 was closed by that decision. It is not: selecting Option B leaves item 13 open until its requirement
+is formally satisfied or a separate owner-approved waiver or amendment is recorded.*
 
 ### 7.2 Findings and changes
 
@@ -425,3 +428,109 @@ on Windows).
 
 The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` only (`git diff --stat f67c181`). No test reads
 or pins it (§5.9).
+
+## 8. Independent-audit remediation: Findings 4 and 5, and the item 13 correction (2026-10-17)
+
+At the review of §7's remediation the reviewer reported two more source-level gaps (Findings 4 and 5) and one
+documentation error (item 13). **All of this section's work and every test below was done and run by Claude; none
+is independently re-executed or audited.** The audit is **not complete**; the reviewer inspects the pushed tree
+independently. R-F4 is **not** accepted or frozen.
+
+**Tested code commit: `2bc66c1`** (`2bc66c12116c9bba4f1d8ddb62bad785cb79b441`, parent `db2ae2d`). The commit adding
+this section changes documents only (§8.6).
+
+### 8.1 Correction: §8.1 item 13 remains open
+
+§7.1 said that item 13 was "closed by that decision". That was wrong, and is corrected (§7.1, §3.1, the status lines,
+and the design's status lines, §8.1 row 13, §8.2, §10 and §11). **The owner selected Option B on 2026-10-17:** F6.2's
+freeze is preserved; `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py:251` and `tests/test_f64_unit.py:378` are not
+modified (identical to `main` at `2bc66c1`); the amendment text stays in the R-F4 design record. **Selecting Option B
+does not close item 13.** Its requirement, the amendment applied to F6.2 §10, is not satisfied, and no separate
+owner-approved waiver of the item or amendment of the design's §8.1 is recorded. Item 13 stays **open** until one of
+those happens, and the approved package is incomplete on it until then.
+
+### 8.2 Findings and changes
+
+| Finding | Change (`2bc66c1`, `worker/financial_f4_store/schema.py`: one check, used by the store's in-band check before every save and by the preflight) |
+|---|---|
+| **4.** The trigger check did not compare the trigger functions' configuration (`pg_proc.proconfig`). The guard function reads `report_document_classifications` by an unqualified name, so a function-level `search_path` changes which table it reads with the body, and so the pinned body hash, unchanged | Each trigger function's `proconfig` is read with its other properties and must equal its migration's configuration: migrations 0007 and 0018 write no `SET` clause, so it must be empty (`NULL` in the catalogue). Any setting is a problem, a `search_path` in particular. A unit test reads the functions' `SET` clauses (none) from the migration files |
+| **5.** The check verified each expected trigger but did not reject other enabled triggers. BEFORE triggers fire in name order, so a BEFORE INSERT trigger named after `trg_ff4e_guard` runs after the guard has accepted the row and can change it | Each of the five tables' enabled triggers must be exactly the ones 0018 creates; any other enabled trigger is reported with its function and `tgtype`, in addition to every check of the expected triggers. "Enabled" is unchanged: firing in normal operation (`tgenabled` `O` origin or `A` always; `D` disabled and `R` replica-only are not), the same rule that makes a disabled expected trigger "missing or disabled" |
+
+**Which function properties are compared, and why** (`schema.py`'s docstring; the finding asked for no arbitrary
+broadening): the properties that change what the function does when its trigger fires. **Identity** (schema, name,
+arguments) decides which function runs. **Language and body** decide what it executes. **Security definer** decides
+whose rights it reads `report_document_classifications` with. **Configuration** decides the settings it runs under,
+including name resolution. **Not compared:** volatility, strictness, cost, rows, parallel safety and leakproofness,
+which do not change a trigger function's effect; its owner, which does not matter because it runs with the caller's
+rights; and its comment. Its EXECUTE grants stay with the preflight (the guard function: no EXECUTE for either role).
+
+`store.py`, `errors.py` and `preflight.py`: docstrings only, describing the extended check. **Migration 0018 and its
+pin are unchanged** (no migration change was needed: the check compares the live catalogue with what the migrations
+create). `schema.py`, `store.py` and `errors.py` are pinned by HB-1, so **the HB-1 to HB-6 pin cascade was run again**
+(pin-only; stable in two rounds, and a second run changed nothing; F5's pin unchanged at `8bdf472aec40…`):
+
+| Preflight | Pin changed | Now |
+|---|---|---|
+| HB-1 `worker/financial_backfill/preflight.py` | `worker/financial_f4_store/store.py`, `schema.py`, `errors.py` | `cc4e1f597d19…`, `b95bbc03fab5…`, `f82a79bdd3d9…` |
+| HB-2 `worker/backfill_transport/preflight.py` | HB-1's preflight | `09b969fbc850…` |
+| HB-3 `worker/backfill_discovery/preflight.py` | HB-2's preflight | `f43d3ce7a438…` |
+| HB-4 `worker/backfill_documents/preflight.py` | HB-3's preflight | `93b91e924151…` |
+| HB-5 `worker/backfill_f6/preflight.py` | HB-4's preflight | `39a0038f601e…` |
+| HB-6 `worker/backfill_ops/preflight.py` | HB-5's preflight | `e0426257fc2b…`; its own hash `dcdf4fb934df…`, pinned by nothing |
+
+The Phase 2 design's pin-only notes carry these prefixes. `git diff --stat db2ae2d 2bc66c1` lists the four R-F4
+files, the six preflights, the two R-F4 test files, the R-F4 design and the Phase 2 design; no other frozen file or test
+changed.
+
+### 8.3 Tests
+
+| Test | What it shows |
+|---|---|
+| u18 (changed) | the functions' configuration is read from the migration files' headers (no `SET` clause; nothing else in a header goes unread) and pinned as empty |
+| u19 (2 new, no database) | `_trigger_problems` reports any configuration, `search_path` or other (and none for `NULL` or empty); `problems` reports an enabled trigger 0018 does not create, even one running an expected function, and nothing for exactly 0018's set |
+| p28 (new) | the guard function as 0018 creates it refuses an extraction naming another filing's classification; after `ALTER FUNCTION … SET search_path = rf4_other, public` (the body hash unchanged) a shadow table in `rf4_other` makes the guard accept it. That insert is rolled back. The store refuses a save before any insert and the preflight reports the configuration (`object_problems` and `report`, file and ledger unaffected). Restored: `RESET search_path`, the shadow schema dropped, the catalogue as before, the preflight clean |
+| p29 (new) | a BEFORE INSERT trigger `trg_ff4e_zz_after_guard` fires after `trg_ff4e_guard` and rewrites an accepted row's `classification_id` to another filing's (the rewritten row is rolled back); the store refuses a save before any insert and the preflight reports exactly that trigger; disabled, it is not counted as enabled; a BEFORE INSERT trigger on `financial_f4_cells` running an expected function is refused and reported too. Restored: triggers and function dropped, the preflight clean |
+| p22 (changed instrumentation only) | p22 shows the F4 row, the F5 run and HB-4's `persisted` event in one transaction per filing. Its test-only `AFTER INSERT` trigger on `financial_f4_extractions` is now (correctly) an unexpected trigger, so the store refused the save and p22 failed on the first run. Its instrumentation now puts no trigger on an R-F4 table: the F5 run's trigger also records the F4 extraction of the same key, visible to it and with `txid_status` of its `xmin` `in progress`. Another transaction's uncommitted row would be invisible, so it is the same transaction; its `xmin` is the F4 store's savepoint subtransaction. The assertion is unchanged |
+
+### 8.4 Evidence (all run by Claude, 2026-10-17 UTC)
+
+Environments and commands as §5.1–§5.2 (the container `cse-p1-test:latest`, `sha256:f491c4600e90…`: Python 3.12.3,
+pytest 7.4.4, PostgreSQL 17.11, no network; Windows: Python 3.14.6, pytest 9.1.1), with the same RAM guard.
+
+| Run | Tree | Result |
+|---|---|---|
+| R-F4 PostgreSQL suite, first run (05:21–05:24Z) | the working tree, code and tests as `2bc66c1` except p22's old instrumentation | 41 passed, **p22 failed**: its test-only trigger on `financial_f4_extractions` was refused by Finding 5's check (§8.3); p22's instrumentation was then changed |
+| R-F4 PostgreSQL suite (05:26–05:29Z) | the working tree, code and tests identical to `2bc66c1` | **42 passed**, none failed or skipped (the 40 of §7 plus p28, p29) |
+| Windows: R-F4 unit, lifecycle, HB-1 to HB-6 unit, F8 static | the same | **542 passed**, 2 skipped (POSIX signals) |
+| Pins | `2bc66c1` | every preflight's check `[]`; the cascade stable on a second run; each committed blob's LF SHA-256 equals the pin that names it |
+| **Negative control**: the previous code with the new tests | `db2ae2d` + only `2bc66c1`'s two R-F4 test files | unit: **exactly the 4 new or changed tests fail** (u19 ×2 for the findings themselves; u18 ×2 because the previous `FUNCTIONS` entries have no configuration field), 236 pass; PostgreSQL: **exactly p28 and p29 fail**, 40 pass, p22's new instrumentation included. p29: `DID NOT RAISE SchemaUnavailable`, the previous check accepted the extra trigger. p28: the previous check let the save reach its insert, where the guard, reading the shadow table, refused the legitimate row (`CheckViolation`); in the same test it had accepted the illegitimate one |
+| **Control I3b**: the whole suite, 19 clusters, as §5.2 | LF clone of `2bc66c1`, clean (11:34–12:07Z; no cluster re-run) | **4,498 passed, 1 failed, 619 skipped, 2 xfailed**. Against B (§5.5): the same single failure (`test_hb2_postgres.py::test_l4_seeding_reads_both_archives`); skips outside the R-F4 files identical (Linux 85, Windows 492); the extra 522 passes are exactly the R-F4 tests (282 on Linux, 240 on Windows), the extra 42 skips the R-F4 PostgreSQL tests on Windows. Every suite that calls `_persist` passes with no skips on Linux: HB-4 PostgreSQL 48, HB-5 PostgreSQL 25, R-F4 PostgreSQL 42, the lifecycle test |
+| Collection | `2bc66c1` | 2,560 tests: §7's 2,556 plus the 4 new ones; outside the R-F4 files identical test IDs to B |
+| Unit-level mutants M1–M14 (§5.7) | copies of `2bc66c1` (05:32–05:34Z) | **14 of 14 killed**, by the same tests as before |
+| Mutants M15–M17 (§5.7) | copies of `2bc66c1`, one file changed each | **killed** (12:08–12:18Z; M16's first try stopped by the guard and re-run): M15 by p21 (both cases) and p25 (`run()`: filing 1 committed); M16 by p17; M17 by p24, p7, p10, p16, p17, p19. In each, HB-4's seven tests (p22, p23 ×5, p25 HB-4) also fail, by HB-1's pin refusing the changed file: not counted as kills |
+
+**A first attempt at the full regression (I3, 05:35–06:15Z) is not evidence.** Under heavy host memory pressure (a
+neighbouring service grew to 2.4 GB) the RAM guard stopped several clusters. Two of those stops were reported by the
+Docker client as exit 125 ("error waiting for container: unexpected EOF") rather than 137, so the driver did not re-run
+them. Docker Desktop then stopped, by no command of Claude's. The attempt was abandoned, with only L01 complete
+(47 passed). After Docker was restarted, I3b ran the whole suite again from the start on the same clone.
+
+### 8.5 Limitations
+
+- **The guard still resolves `report_document_classifications` through the inserting session's search path.** With no
+  function-level configuration (as 0018 creates it), an unqualified name follows the session's `search_path`. The
+  in-band check verifies the function's configuration, not the session's path (a role- or database-level
+  `search_path` placing another schema first). This was not part of Findings 4–5 and is **not addressed**. It could be
+  closed by the in-band check confirming that the unqualified name resolves to `public.report_document_classifications`
+  in the saving session, or by a migration qualifying the name, which this change control does not allow. It is
+  recorded here for the owner to decide.
+- **Disabled and replica-only extra triggers are not reported**, consistent with the definition of "enabled" (they do
+  not fire in normal operation). One enabled later would be refused at the next save.
+- **Not re-run for Findings 4–5:** controls B, P and S. B is unchanged; P and S concern Stage 2's pins, which this
+  cascade replaces, and M15–M17 show again that HB-1 refuses any changed pinned file.
+
+### 8.6 The record commit against the tested commit
+
+The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` and `docs/R_F4_DESIGN.md` only (`git diff
+--stat 2bc66c1`): this section, the item 13 correction and the status lines here, and in the design the count of
+findings in §11 ("five"). No test reads or pins either file (§5.9).

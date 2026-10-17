@@ -579,16 +579,16 @@ RDV option R-b later.
 - **Effect on acceptance.** The amendment documents F6.2's storage contract; no code or test depends on it, and R-F4's
   behaviour is fully specified here (§4.2, §4.3). While item 13 is open the approved §8.1 package is incomplete on it,
   and the independent audit and component acceptance should treat it as an open package item.
-- **Independent audit of Stage 2: three findings (2026-10-17), remediated on the branch** under this record's scope,
-  with no change to migration 0018 or its pin (`docs/R_F4_IMPLEMENTATION.md` §7): (1) the store verifies the persisted
-  F3 classification against the `f3_input_sha256` of the one F5 consumed before any insert (§6); (2) the in-band check
-  and the preflight verify each trigger's function identity and definition and the trigger's own properties (§5);
-  (3) the preflight verifies each constraint's type and definition (§5). `store.py`, `schema.py` and `errors.py` are
-  pinned by HB-1, so the HB-1 to HB-6 pin cascade was run again (pin-only). Findings 4 and 5, raised at the review
-  of that remediation, are remediated the same way (`docs/R_F4_IMPLEMENTATION.md` §8): (4) the trigger check also
-  compares each trigger function's configuration (`proconfig`) with its migration's (none), so a function-level
-  `search_path` is refused; (5) each table's enabled triggers must be exactly 0018's (§5). The remediation awaits the
-  owner's independent review; the audit is not complete.
+- **Independent audit of Stage 2: five findings (2026-10-17), remediated on the branch** under this record's scope, with
+  no change to migration 0018 or its pin (`docs/R_F4_IMPLEMENTATION.md` §7, §8): (1) the store verifies the persisted F3
+  classification against the `f3_input_sha256` of the one F5 consumed before any insert (§6); (2) the in-band check and
+  the preflight verify each trigger's function identity and definition and the trigger's own properties (§5); (3) the
+  preflight verifies each constraint's type and definition (§5). `store.py`, `schema.py` and `errors.py` are pinned by
+  HB-1, so the HB-1 to HB-6 pin cascade was run again (pin-only). Findings 4 and 5, raised at the review of that
+  remediation, are remediated the same way (`docs/R_F4_IMPLEMENTATION.md` §8): (4) the trigger check also compares each
+  trigger function's configuration (`proconfig`) with its migration's (none), so a function-level `search_path` is
+  refused; (5) each table's enabled triggers must be exactly 0018's (§5). The remediation awaits the owner's independent
+  review; the audit is not complete.
 - **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
   0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
   concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.
