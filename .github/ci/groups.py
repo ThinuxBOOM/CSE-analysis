@@ -9,9 +9,14 @@ part C (and shifts L14-L16) without any change here, and --check fails if a file
 Only files under tests/ are ever named. The repository root's test_cse_endpoints.py contacts CSE (live requests to
 www.cse.lk) and is never run by CI; a bare `pytest` in the repository root would collect it, so CI never runs one.
 
-    python .github/ci/groups.py L06       the group's files, one per line ("offline": every file)
-    python .github/ci/groups.py --check   verify the partition; exit 1 if it does not cover every file exactly once
-    python .github/ci/groups.py --list    every group and its files
+Beyond the partition, EXTRA groups run single tests that no partition group can run, each in its own pytest process:
+X1 is test_eod_completeness's database-view test, which needs DATABASE_URL. In a partition group that variable could
+not reach it: test_dry_run_isolation removes DATABASE_URL from the environment when it is imported (at collection).
+
+    python .github/ci/groups.py L06          the group's tests, one per line ("offline": every file)
+    python .github/ci/groups.py --check      verify the partition; exit 1 if it does not cover every file exactly once
+    python .github/ci/groups.py --list       every group and its tests
+    python .github/ci/groups.py --ci-groups  the groups ci-regression.yml must report, one per line
 """
 import os
 import sys
@@ -40,6 +45,7 @@ NAMED = {
 }
 LINUX = [f"L{n:02d}" for n in range(1, 17)]
 WINDOWS = ["W1", "W2", "W3"]
+EXTRA = {"X1": ["tests/test_eod_completeness.py::test_daily_completeness_view_distinguishes_intraday_from_eod"]}
 
 
 def path(name):
@@ -57,6 +63,7 @@ def groups():
     c = [f for f in files if f not in a and f not in b]
     out = {g: [path(n) for n in names] for g, names in NAMED.items()}
     out.update({"L14": c[0:11], "L15": c[11:22], "L16": c[22:], "W1": a, "W2": b, "W3": c, "offline": files})
+    out.update(EXTRA)
     return out
 
 
@@ -73,6 +80,10 @@ def problems():
     for f in (f for gr in g.values() for f in gr):
         if not f.startswith("tests/test_"):
             out.append(f"{f} is outside tests/")
+    for name, tests in EXTRA.items():
+        for t in tests:
+            if t.split("::")[0] not in files:
+                out.append(f"{name}: {t} names a file that does not exist")
     return out
 
 
@@ -85,6 +96,9 @@ def main(argv):
     if argv == ["--list"]:
         for name, files in groups().items():
             print(f"{name}: {' '.join(files)}")
+        return 0
+    if argv == ["--ci-groups"]:
+        print("\n".join(LINUX + list(EXTRA) + WINDOWS))
         return 0
     if len(argv) == 1 and argv[0] in groups():
         bad = problems()

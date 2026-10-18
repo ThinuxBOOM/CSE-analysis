@@ -2,15 +2,18 @@
 #
 # The established 19 groups of the earlier local evidence (docs/R_F4_IMPLEMENTATION.md section 5.2; .github/ci/groups.py):
 #   - L01-L16 on Linux: each group in its own job and its own runner, in the tracked test container
-#     (.github/ci/linux.Dockerfile: Ubuntu 24.04, Python 3.12, PostgreSQL 17 from PGDG) started with --network none,
-#     as an unprivileged user, with P1_PG_BINDIR=/usr/lib/postgresql/17/bin and the scratch cluster for the F1/F3/F5
-#     suites (.github/ci/linux_tests.sh);
+#     (.github/ci/linux.Dockerfile: Ubuntu 24.04, Python 3.12, PostgreSQL 17 from PGDG, Poppler 24.02.0) started with
+#     --network none, as an unprivileged user, with P1_PG_BINDIR=/usr/lib/postgresql/17/bin and the scratch cluster
+#     for the F1/F3/F5 suites (.github/ci/linux_tests.sh);
 #   - W1-W3 on Windows: the same files in three parts, Python 3.14 with pinned packages (.github/ci/windows-requirements.txt),
-#     CSE's host names blocked in the hosts file. PostgreSQL and POSIX-only suites skip there by their own gates.
-# Together each side runs every tests/test_*.py file exactly once: this is the full regression. The evidence-corpus
-# suites (RDV/F0, outside Git) skip in both, as they did locally. No CSE request is possible and no secret is used.
-# A final job summarises all 19 JUnit reports and separates the one recorded baseline failure from any new one.
-name: CI regression (PostgreSQL 17 + Windows, 19 groups)
+#     CSE's host names blocked in the hosts file, temporary files on the workspace's drive. PostgreSQL and POSIX-only
+#     suites skip there by their own gates.
+# Together each side runs every tests/test_*.py file exactly once: this is the full regression. One extra Linux group,
+# X1, runs the single database-view test no partition group can run (DATABASE_URL; .github/ci/groups.py). The
+# evidence-corpus and real-document suites skip everywhere. No CSE request is possible and no secret is used.
+# A final job summarises all JUnit reports; it fails on any failure, and says whether each one is the recorded
+# baseline (matched by its whole signature) or new.
+name: CI regression (PostgreSQL 17 + Windows)
 
 on:
   push:
@@ -30,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13, L14, L15, L16]
+        group: [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13, L14, L15, L16, X1]
     steps:
       - name: Check out the commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,7 +49,7 @@ jobs:
       - name: Check the test-group partition
         run: python3 .github/ci/groups.py --check
 
-      - name: Build the test container (PostgreSQL 17 from PGDG)
+      - name: Build the test container (PostgreSQL 17 from PGDG, Poppler 24.02.0)
         run: |
           for try in 1 2 3; do
             if docker build -t cse-ci-linux -f .github/ci/linux.Dockerfile .github/ci > "$OUT/docker-build.log" 2>&1; then
@@ -67,9 +70,7 @@ jobs:
 
       - name: Summarise
         if: always()
-        run: |
-          python3 .github/ci/summarize.py "$(dirname "$OUT")" "$OUT/summary.json" "${{ matrix.group }}" \
-            >> "$GITHUB_STEP_SUMMARY"
+        run: python3 .github/ci/summarize.py "$(dirname "$OUT")" "$OUT/summary.json" "${{ matrix.group }}"
 
       - name: Upload the reports and logs
         if: always()
@@ -125,14 +126,30 @@ jobs:
         run: |
           $out = Join-Path $env:RUNNER_TEMP "reports\ci-regression-$env:GROUP"
           New-Item -ItemType Directory -Force $out | Out-Null
+          # The runner's default temporary directory is on another drive than the checkout and is reached through an
+          # 8.3 short name (docs/CI_TEST_STRATEGY.md section 2.2). Temporary files go to a long-named directory on the
+          # checkout's drive instead, as on the machine the earlier Windows evidence came from; the run stops (exit 13)
+          # if that does not hold.
+          $defaultTemp = $env:TEMP
+          $workspace = (Get-Item -LiteralPath $env:GITHUB_WORKSPACE).FullName
+          $temp = (New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pytest-temp')).FullName
+          if ($temp.Substring(0, 2) -ne $workspace.Substring(0, 2) -or $temp -match '~\d') {
+            "13" | Set-Content "$out\exit_code"
+            Write-Output "::error title=Temporary directory::$temp is not on the workspace's drive ($workspace), or has a short name"
+            exit 13
+          }
+          $env:TEMP = $temp
+          $env:TMP = $temp
           $files = @(python .github/ci/groups.py $env:GROUP)
-          if ($LASTEXITCODE -ne 0) { "3" | Set-Content "$out\exit_code"; exit 3 }
+          if ($LASTEXITCODE -ne 0) { "10" | Set-Content "$out\exit_code"; exit 10 }
           $os = Get-CimInstance Win32_OperatingSystem
           $versions = @(python .github/ci/env_report.py)
           $reach = @(python .github/ci/check_cse_unreachable.py) | ForEach-Object { "  $_" }
           @("commit (github.sha): $env:GIT_SHA", "commit (head):       $env:GIT_HEAD_SHA", "group: $env:GROUP",
-            "date: $((Get-Date).ToUniversalTime().ToString('s'))Z", "os: $($os.Caption) $($os.Version)") + $versions +
-            @("cse reachability:") + $reach + @("files:") + ($files | ForEach-Object { "  $_" }) |
+            "date: $((Get-Date).ToUniversalTime().ToString('s'))Z", "os: $($os.Caption) $($os.Version)",
+            "workspace: $workspace", "temp dir (runner default): $defaultTemp") + $versions +
+            @("pdftotext: $(if (Get-Command pdftotext -ErrorAction SilentlyContinue) { 'present' } else { 'absent' })") +
+            @("cse reachability:") + $reach + @("tests:") + ($files | ForEach-Object { "  $_" }) |
             Set-Content -Encoding utf8 "$out\environment.txt"
           $env:PYTHONDONTWRITEBYTECODE = '1'
           $ErrorActionPreference = 'Continue'      # pytest's exit code decides the step, not its stderr
@@ -147,7 +164,8 @@ jobs:
         env:
           GROUP: ${{ matrix.group }}
         run: |
-          python .github/ci/summarize.py "$env:RUNNER_TEMP\reports" "$env:RUNNER_TEMP\reports\ci-regression-$env:GROUP\summary.json" $env:GROUP >> $env:GITHUB_STEP_SUMMARY
+          python .github/ci/summarize.py "$env:RUNNER_TEMP\reports" "$env:RUNNER_TEMP\reports\ci-regression-$env:GROUP\summary.json" $env:GROUP
+          exit $LASTEXITCODE
 
       - name: Upload the reports and logs
         if: always()
@@ -159,7 +177,7 @@ jobs:
           retention-days: 30
 
   summary:
-    name: Summary of the 19 groups
+    name: Summary of all groups
     needs: [linux, windows]
     if: always()
     runs-on: ubuntu-24.04
@@ -176,12 +194,10 @@ jobs:
           pattern: ci-regression-*
           path: ${{ runner.temp }}/reports
 
-      - name: Summarise all groups (fails on a failure not in the recorded baseline, or a missing report)
+      - name: Summarise all groups (fails on any failure; says which are the recorded baseline and which are new)
         run: |
-          set -o pipefail
           python3 .github/ci/summarize.py "$RUNNER_TEMP/reports" "$RUNNER_TEMP/summary.json" \
-            L01 L02 L03 L04 L05 L06 L07 L08 L09 L10 L11 L12 L13 L14 L15 L16 W1 W2 W3 \
-            | tee "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            $(python3 .github/ci/groups.py --ci-groups)
 
       - name: Upload the summary
         if: always()

@@ -58,7 +58,7 @@ jobs:
 
       - name: Summarise
         if: always()
-        run: python3 .github/ci/summarize.py "$(dirname "$OUT")" "$OUT/summary.json" offline >> "$GITHUB_STEP_SUMMARY"
+        run: python3 .github/ci/summarize.py "$(dirname "$OUT")" "$OUT/summary.json" offline
 
       - name: Upload the reports and logs
         if: always()
