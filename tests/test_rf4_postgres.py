@@ -75,6 +75,18 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
          after public is refused; the default passes
     p33  a temporary report_document_classifications, which the guard reads first, or any temporary relation, is
          refused in-band; an empty temporary schema passes
+    p34  search_path evidence: ALTER ROLE ALL SET and ALTER ROLE ... IN DATABASE ... SET, unsafe, compared with the
+         session PostgreSQL gives cse_worker: refused in-band and reported at the level PostgreSQL applies; a safe
+         higher level passes; cse_reader (NOLOGIN, entered by SET ROLE) gets none of its own settings
+    p35  a server-level search_path (ALTER SYSTEM, reload) is refused, also in a session opened before the reload, and
+         reported; client options and a database setting outrank it; a preflight connection without the server's value
+         reports undetermined, never clean
+    p36  a raw server value 'public<no-break space>, public' names a schema PostgreSQL searches before public (the
+         defect this work found and fixed: the parser read it as public, public); refused and reported
+    p37  parse_search_path agrees with PostgreSQL's own split, value by value (one documented fail-closed divergence)
+    p38  a real operator public.= ahead of pg_catalog subverts the guard; refused and reported; public missing too
+    p39  pg_temp listed first, no temporary schema, no TEMPORARY: judged without creating one (the second defect
+         this work found and fixed: the check failed untyped); a safe path saves, an unsafe one is refused
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -2019,3 +2031,376 @@ def test_p33_a_temporary_table_searched_before_public_is_refused(db, layouts):
         q(su, f"revoke temporary on database {db.name} from cse_worker")
     assert_restored(db, su, m)
     assert f4_counts(su)["extractions"] == 3                            # s, other and 968005 only
+
+
+# --------------------------------------------------------------------------- search_path evidence (2026-10-17): p34-p38
+
+class _Levels:
+    """preflight.SEARCH_PATH_LEVELS, looked up when a test runs: a tree without it fails those tests, not collection
+    (the negative control against the code before the search-path check)."""
+
+    def __getitem__(self, n):
+        return preflight.SEARCH_PATH_LEVELS[n]
+
+
+LEVEL = _Levels()
+AHEAD = "schema rf4_shadow is searched before public, whether or not it exists or holds a table now"
+UNKNOWN = ("{}: the search_path its sessions get cannot be determined from this connection: no role or database "
+           "setting applies, and this connection's own search_path is not the server's")
+
+
+def configured(role, source, path, problem):
+    """The preflight's report of the search path `role`'s sessions get."""
+    return f"{role}: the search_path its sessions get ({source}: {path!r}): {problem}"
+
+
+def session_path(c):
+    """(search_path, source) of session c, as PostgreSQL itself reports them (pg_settings)."""
+    got = q(c, "select setting, source from pg_settings where name = 'search_path'")[0]
+    c.rollback()
+    return got
+
+
+def searched(c):
+    """The schemas session c searches, in order (current_schemas(true)); read as JSON, so any name comes back
+    exactly."""
+    return q(c, "select array_to_json(current_schemas(true))")[0][0]
+
+
+def reload_until(db, su, want, timeout=30):
+    """pg_reload_conf(), then wait until a NEW cse_worker session gets `want` (search_path, source): the server has
+    read its configuration again."""
+    q(su, "select pg_reload_conf()")
+    deadline = time.monotonic() + timeout
+    while True:
+        c = S.conn(db.cluster, db.name, "cse_worker", False)
+        try:
+            got = q(c, "select setting, source from pg_settings where name = 'search_path'")[0]
+        finally:
+            c.close()
+        if got == want:
+            return
+        assert time.monotonic() < deadline, (got, want)
+        time.sleep(0.2)
+
+
+def until(c, want, timeout=30):
+    """Wait until the OPEN session c has `want` (search_path, source)."""
+    deadline = time.monotonic() + timeout
+    while (got := session_path(c)) != want:
+        assert time.monotonic() < deadline, (got, want)
+        time.sleep(0.2)
+
+
+def connect_with_options(db, user, options):
+    """A session given a search_path by the client's connection options (libpq `options`, as PGOPTIONS)."""
+    import psycopg2
+    c = psycopg2.connect(**db.cluster.conn_kwargs(db.name, user), options=options)
+    db._open.append(c)
+    return c
+
+
+def test_p34_role_in_database_and_all_roles_settings_are_refused_and_reported_at_postgresqls_precedence(db, layouts):
+    """ALTER ROLE ALL SET and ALTER ROLE ... IN DATABASE ... SET, each unsafe, each compared with the session PostgreSQL
+    actually gives cse_worker (pg_settings' value and source): the store refuses before any insert and the preflight
+    reports the level PostgreSQL applies; a safe setting at a higher level passes both. cse_reader is NOLOGIN, entered
+    by SET ROLE, which applies none of its settings: the preflight reports its own setting all the same (it cannot see
+    the settings of the logins that SET ROLE cse_reader)."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    assert_restored(db, su, m)
+    try:
+        shadow_schema(su)
+        q(su, "alter role all set search_path = rf4_shadow, public")
+        a = db.conn()
+        assert session_path(a) == ("rf4_shadow, public", "global")                     # the lowest catalogued level
+        f4_refused(a, w, words, 969001, re.escape(f"search_path 'rf4_shadow, public': {AHEAD}"))
+        got = preflight.report(m)
+        assert got["objects"] == [configured(r, LEVEL[4], "rf4_shadow, public", AHEAD)
+                                  for r in ("cse_worker", "cse_reader")], got["objects"]
+        assert got["file"] == [] and got["ledger"]["status"] == "verified" and not got["clean"]
+        # a safe setting of this database outranks the setting for all roles
+        q(su, f"alter database {db.name} set search_path = pg_catalog, public")
+        b = db.conn()
+        assert session_path(b) == ("pg_catalog, public", "database")
+        f4_saved(b, w, words, 969002)
+        assert preflight.report(m)["clean"]
+        # the role's setting in this database outranks its role setting and the database's
+        q(su, "alter role cse_worker set search_path = pg_catalog, public")
+        q(su, f"alter role cse_worker in database {db.name} set search_path = rf4_shadow, public")
+        c = db.conn()
+        assert session_path(c) == ("rf4_shadow, public", "database user")
+        f4_refused(c, w, words, 969003, re.escape(f"search_path 'rf4_shadow, public': {AHEAD}"))
+        got = preflight.report(m)
+        assert got["objects"] == [configured("cse_worker", LEVEL[1], "rf4_shadow, public", AHEAD)], got["objects"]
+        assert got["file"] == [] and got["ledger"]["status"] == "verified"           # cse_reader: the database's, safe
+        # without it, cse_worker's role setting applies
+        q(su, f"alter role cse_worker in database {db.name} reset search_path")
+        d = db.conn()
+        assert session_path(d) == ("pg_catalog, public", "user")
+        f4_saved(d, w, words, 969004)
+        assert preflight.report(m)["clean"]
+        # cse_reader's own setting reaches no session: SET ROLE applies none
+        q(su, "alter role cse_reader set search_path = rf4_shadow, public")
+        r = db.reader()
+        assert q(r, "select current_user::text, session_user::text") == [("cse_reader", "postgres")]
+        assert session_path(r) == ("pg_catalog, public", "database")                   # the login's, not cse_reader's
+        assert preflight.report(m)["objects"] == [configured("cse_reader", LEVEL[2], "rf4_shadow, public", AHEAD)]
+    finally:
+        q(su, "alter role all reset search_path; alter role cse_worker reset search_path; alter role cse_reader reset "
+              f"search_path; alter role cse_worker in database {db.name} reset search_path; alter database {db.name} "
+              "reset search_path; drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+    assert session_path(db.conn()) == ('"$user", public', "default")
+
+
+def test_p35_a_server_level_search_path_is_refused_reported_and_can_leave_the_preflight_undetermined(db, layouts):
+    """The server's own configuration (ALTER SYSTEM, then a reload) in the disposable test cluster: refused by the
+    store, also in a session opened before the reload (a reload changes an open session's path between its commands,
+    which is why the store checks at every save); reported by the preflight from a connection whose value is the
+    server's. A client's connection options outrank it (judged in-band: a safe value saves, an unsafe one is refused),
+    and so does a database setting. A preflight connection whose own value is not the server's (connection options; a
+    login with a role setting) reports the roles without a catalogued setting as undetermined, never clean. Everything
+    is restored and the restoration checked."""
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    q(w, "set search_path = public")                      # the session saving F3 for the test keeps its own path
+    w.commit()
+    assert_restored(db, su, migrator(db))
+    path, server = "rf4_shadow, public", "the server's configuration file"
+    try:
+        shadow_schema(su)
+        before = db.conn()                                                   # opened before the server's value changes
+        assert session_path(before) == ('"$user", public', "default")
+        q(su, "alter system set search_path = rf4_shadow, public")
+        reload_until(db, su, (path, "configuration file"))
+        f4_refused(db.conn(), w, words, 970001, re.escape(f"search_path 'rf4_shadow, public': {AHEAD}"))
+        until(before, (path, "configuration file"))                         # changed under the open session
+        f4_refused(before, w, words, 970002, re.escape(f"search_path 'rf4_shadow, public': {AHEAD}"))
+        m = migrator(db)
+        assert session_path(m) == (path, "configuration file")               # its own value is the server's
+        got = preflight.report(m)
+        assert got["objects"] == [configured(r, server, path, AHEAD) for r in ("cse_worker", "cse_reader")]
+        assert got["file"] == [] and got["ledger"]["status"] == "verified" and not got["clean"]
+        # a client's connection options outrank the server's value; only the in-band check sees them
+        c = connect_with_options(db, "cse_worker", "-c search_path=pg_catalog,public")
+        assert session_path(c) == ("pg_catalog,public", "client")
+        f4_saved(c, w, words, 970003)
+        u = connect_with_options(db, "cse_worker", "-c search_path=rf4_shadow,public")     # an unsafe one: refused
+        assert session_path(u) == ("rf4_shadow,public", "client")
+        f4_refused(u, w, words, 970005, re.escape(f"search_path 'rf4_shadow,public': {AHEAD}"))
+        # undetermined: the preflight's own connection does not have the server's value
+        got = preflight.report(connect_with_options(db, "cse_migrator", "-c search_path=public"))
+        assert got["objects"] == [UNKNOWN.format(r) for r in ("cse_worker", "cse_reader")], got["objects"]
+        assert got["ledger"]["status"] == "verified" and not got["clean"]
+        q(su, "alter role cse_worker set search_path = pg_catalog, public")
+        k = db.conn()                                                         # a login with a role setting of its own
+        assert session_path(k) == ("pg_catalog, public", "user")
+        assert preflight.object_problems(k) == [UNKNOWN.format("cse_reader")]  # cse_worker's: catalogued, safe
+        q(su, "alter role cse_worker reset search_path")
+        # a safe setting of this database outranks the server's
+        q(su, f"alter database {db.name} set search_path = pg_catalog, public")
+        d = db.conn()
+        assert session_path(d) == ("pg_catalog, public", "database")
+        f4_saved(d, w, words, 970004)
+        assert preflight.report(migrator(db))["clean"]
+    finally:
+        try:
+            q(su, "alter system reset search_path")
+        finally:
+            q(su, f"alter role cse_worker reset search_path; alter database {db.name} reset search_path; "
+                  "drop schema if exists rf4_shadow cascade")
+            reload_until(db, su, ('"$user", public', "default"))
+    assert q(su, "select count(*) from pg_file_settings where name = 'search_path'") == [(0,)]
+    assert_restored(db, su, migrator(db))
+
+
+def test_p36_a_raw_server_value_with_a_no_break_space_names_a_schema_searched_before_public(db, layouts):
+    """Found by this evidence work (2026-10-17). PostgreSQL keeps a no-break space inside a name; the parser treated it
+    as whitespace (Python's isspace()). A raw value in the server's postgresql.conf, as an administrator might write
+    it, 'public<no-break space>, public', makes PostgreSQL search a schema named 'public<no-break space>' before
+    public; the parser read it as public, public, so while that schema did not exist the store saved and the preflight
+    reported nothing. Now the store refuses before any insert and the preflight reports it. Once the schema exists with
+    a shadow table, PostgreSQL searches it first and the guard accepts another filing's classification. The file is
+    restored byte for byte."""
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    s = persist(w, words, 972001)
+    other = persist(w, words, 972002)
+    q(w, "set search_path = public")
+    w.commit()
+    assert_restored(db, su, migrator(db))
+    odd = "public\N{NO-BREAK SPACE}"
+    value = f"{odd}, public"
+    ahead = f"schema {odd!r} is searched before public, whether or not it exists or holds a table now"
+    conf = os.path.join(db.cluster.data, "postgresql.conf")
+    with open(conf, "rb") as f:
+        original = f.read()
+    try:
+        with open(conf, "ab") as f:
+            f.write(f"\nsearch_path = '{value}'\n".encode("utf-8"))
+        reload_until(db, su, (value, "configuration file"))
+        a = db.conn()
+        assert searched(a) == ["pg_catalog", "public"]                                 # not created yet
+        a.rollback()
+        f4_refused(a, w, words, 972003, re.escape(f"search_path {value!r}: {ahead}"))
+        got = preflight.report(migrator(db))
+        assert got["objects"] == [configured(r, "the server's configuration file", value, ahead)
+                                  for r in ("cse_worker", "cse_reader")], got["objects"]
+        assert got["file"] == [] and got["ledger"]["status"] == "verified" and not got["clean"]
+        # why it matters: once that schema exists, PostgreSQL searches it first
+        q(su, f'create schema "{odd}"; grant usage on schema "{odd}" to cse_worker; create table '
+              f'"{odd}".report_document_classifications (id uuid primary key, cse_filing_id bigint, document_sha256 '
+              f'text); grant select on "{odd}".report_document_classifications to cse_worker')
+        q(su, f'insert into "{odd}".report_document_classifications values (%s, %s, %s)',
+          (other.cid, s.fid, s.ext.document_sha256))
+        b = db.conn()
+        assert searched(b) == ["pg_catalog", odd, "public"]
+        b.rollback()
+        assert insert_extraction_row(b, s.fid, s.ext.document_sha256, other.cid) == str(other.cid)
+        b.rollback()
+        f4_refused(b, w, words, 972004, re.escape(f"search_path {value!r}: {ahead}; this session searches {odd!r} "
+                                                  "before public"))
+    finally:
+        try:
+            with open(conf, "wb") as f:
+                f.write(original)
+        finally:
+            q(su, f'drop schema if exists "{odd}" cascade')
+            reload_until(db, su, ('"$user", public', "default"))
+    with open(conf, "rb") as f:
+        assert f.read() == original
+    assert q(su, "select count(*) from pg_file_settings where name = 'search_path'") == [(0,)]
+    assert q(su, "select count(*) from pg_namespace where nspname like 'public_%%'") == [(0,)]
+    assert_restored(db, su, migrator(db))
+    assert f4_counts(su)["extractions"] == 2                                   # s and other only
+
+
+def test_p37_a_search_path_value_is_split_as_postgresql_splits_it(db):
+    """parse_search_path against PostgreSQL itself. For each value, every schema the parser names is created and usable;
+    the schemas the session then searches (current_schemas) must be exactly the parsed ones, in order. Values PostgreSQL
+    refuses are None. The one known divergence is fail-closed: an empty quoted name, accepted by PostgreSQL (no schema
+    can have it), is refused by the parser. pg_temp listed first is p39's: current_schemas cannot report it for
+    cse_worker."""
+    import psycopg2
+    from psycopg2 import sql
+    su = db.su()
+    values = ["public\N{NO-BREAK SPACE}, public", "\N{NO-BREAK SPACE}public, public", "public\x1c,public",
+              "public\x1f,public", "public\x85,public", "public\N{EM SPACE},public", "a\v,public", "b\f,public",
+              "b\r,public", "\tpublic\n", '"$user", public', "Public", '"Rf4 Q", public', "public , pg_temp",
+              '"a""b", public', "pg_catalog, public", "public, pg_catalog"]
+    special = ("$user", "pg_temp", "pg_catalog", "public")
+    created = sorted({n for v in values for n in schema.parse_search_path(v) if n not in special})
+    try:
+        for n in created:
+            q(su, sql.SQL("create schema {0}; grant usage on schema {0} to cse_worker").format(sql.Identifier(n)))
+        a = db.conn()
+        for v in values:
+            names = schema.parse_search_path(v)
+            want = [n for n in names if n not in ("$user", "pg_temp")]   # no cse_worker schema, no temporary schema
+            want = want if "pg_catalog" in want else ["pg_catalog"] + want
+            q(a, "select set_config('search_path', %s, false)", (v,))
+            assert searched(a) == want, (v, names)
+            a.rollback()
+        for v in ("public,", ",public", '"x', "a b", "a,,b"):
+            assert schema.parse_search_path(v) is None
+            with pytest.raises(psycopg2.errors.InvalidParameterValue):
+                q(a, "select set_config('search_path', %s, false)", (v,))
+            a.rollback()
+        assert schema.parse_search_path('"", public') is None                  # fail-closed, though PostgreSQL ...
+        q(a, "select set_config('search_path', %s, false)", ('"", public',))
+        assert searched(a) == ["pg_catalog", "public"]                                  # ... accepts it
+        a.rollback()
+    finally:
+        for n in created:
+            q(su, sql.SQL("drop schema if exists {}").format(sql.Identifier(n)))
+    assert q(su, "select count(*) from pg_namespace where nspname = any(%s)", (created,)) == [(0,)]
+
+
+def test_p38_a_real_operator_in_public_ahead_of_pg_catalog_subverts_the_guard_and_is_refused_and_reported(db, layouts):
+    """An operator public.=(bigint, bigint) that is always true. Under the default path pg_catalog is searched first:
+    the built-in = is used, the guard holds and the store saves. With cse_worker's search_path 'public, pg_catalog'
+    PostgreSQL picks public's =, and the guard's c.cse_filing_id = new.cse_filing_id accepts a classification of
+    another filing; the store refuses before any insert and the preflight reports pg_catalog after public. A path
+    without public is refused and reported too. Everything is restored."""
+    import psycopg2
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    s = persist(w, words, 973001)
+    other = persist(w, words, 973002)
+    assert_restored(db, su, m)
+    try:
+        q(su, "create function public.rf4_any_bigints_equal(bigint, bigint) returns boolean language sql immutable as "
+              "'select true'; create operator public.= (leftarg = bigint, rightarg = bigint, function = "
+              "public.rf4_any_bigints_equal)")
+        d = db.conn()
+        assert q(d, "select 1::bigint = 2::bigint") == [(False,)] and searched(d) == ["pg_catalog", "public"]
+        d.rollback()
+        with pytest.raises(psycopg2.errors.CheckViolation, match="is not of filing"):
+            insert_extraction_row(d, s.fid, other.ext.document_sha256, other.cid)      # the built-in =
+        d.rollback()
+        f4_saved(d, w, words, 973003)                                    # present, but not searched first: safe
+        q(su, "alter role cse_worker set search_path = public, pg_catalog")
+        a = db.conn()
+        assert q(a, "select 1::bigint = 2::bigint") == [(True,)] and searched(a) == ["public", "pg_catalog"]
+        a.rollback()
+        # why it matters: the guard now compares the filings with public's =
+        assert insert_extraction_row(a, s.fid, other.ext.document_sha256, other.cid) == str(other.cid)
+        a.rollback()
+        f4_refused(a, w, words, 973004, re.escape("search_path 'public, pg_catalog': pg_catalog comes after public"))
+        got = preflight.report(m)
+        assert got["objects"] == [configured("cse_worker", LEVEL[2], "public, pg_catalog", "pg_catalog comes after "
+                                             "public, so public's operators and functions come before the built-in "
+                                             "ones")], got["objects"]
+        assert got["file"] == [] and got["ledger"]["status"] == "verified" and not got["clean"]
+        # a path without public
+        shadow_schema(su)
+        q(su, "alter role cse_worker set search_path = rf4_shadow")
+        b = db.conn()
+        assert searched(b) == ["pg_catalog", "rf4_shadow"]
+        assert q(b, "select to_regclass('financial_f4_extractions')") == [(None,)]  # R-F4's tables are not found
+        b.rollback()
+        f4_refused(b, w, words, 973005, re.escape("search_path 'rf4_shadow': public is not in it"))
+        assert preflight.report(m)["objects"] == [configured("cse_worker", LEVEL[2], "rf4_shadow", "public is not in "
+                                                             "it, so an unqualified name resolves elsewhere or not at "
+                                                             "all")]
+    finally:
+        q(su, "alter role cse_worker reset search_path; drop operator if exists public.= (bigint, bigint); drop "
+              "function if exists public.rf4_any_bigints_equal(bigint, bigint); drop schema if exists rf4_shadow "
+              "cascade")
+    assert_restored(db, su, m)
+    assert q(su, "select count(*) from pg_operator o join pg_namespace n on n.oid = o.oprnamespace where "
+                 "n.nspname = 'public' and o.oprname = '='") == [(0,)]
+    assert f4_counts(su)["extractions"] == 3                                   # s, other and 973003 only
+
+
+def test_p39_a_path_listing_pg_temp_first_is_judged_without_creating_a_temporary_schema(db, layouts):
+    """Found by this evidence work (2026-10-17). With pg_temp listed ahead of every existing schema and no temporary
+    schema yet, PostgreSQL's current_schemas() creates one, which fails for cse_worker (no TEMPORARY in P1). The store's
+    check called it, so 'pg_temp, public', which the invariant allows, was refused with an untyped
+    InsufficientPrivilege, and 'pg_temp, rf4_shadow, public' was refused untyped too. Now the first saves without a
+    temporary schema being created, and the second is SchemaUnavailable before any insert."""
+    import psycopg2
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    assert_restored(db, su, m)
+    a = db.conn()
+    q(a, "set search_path = pg_temp, public")
+    a.commit()
+    with pytest.raises(psycopg2.errors.InsufficientPrivilege, match="temporary tables"):
+        searched(a)                                                      # PostgreSQL's own behaviour
+    a.rollback()
+    f4_saved(a, w, words, 974001)
+    assert q(a, "select pg_my_temp_schema()::integer") == [(0,)]          # none was created
+    a.rollback()
+    try:
+        shadow_schema(su)
+        b = db.conn()
+        q(b, "set search_path = pg_temp, rf4_shadow, public")
+        b.commit()
+        f4_refused(b, w, words, 974002, re.escape(f"search_path 'pg_temp, rf4_shadow, public': {AHEAD}"))
+        assert q(b, "select pg_my_temp_schema()::integer") == [(0,)]
+        b.rollback()
+    finally:
+        q(su, "drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)

@@ -42,7 +42,7 @@ PINNED_FILES = {
     "worker/backfill_discovery/f1_cycle.py": "df84134905d46189650a04127a8e95c6a5ee2d6e2a3c01a9f9f3f1465f3e0252",
     "worker/backfill_discovery/identity.py": "9a577ce41beebb8976dae00654db2db983edf9d4eaa79640330eae9f83d12457",
     "worker/backfill_discovery/plan.py": "f7874654ff64b13eee3bbbd94574b63240c88dd97c3c0097c86c90ad0f9cc477",
-    "worker/backfill_discovery/preflight.py": "6c29c0710c563d4a0672dcd13fb9e2d8134ff927956af9df661a12259444913f",
+    "worker/backfill_discovery/preflight.py": "17bab1274d849034a3a0bca2da9e60cad779accc273a1e10bef21dd91edd0425",
     "worker/backfill_discovery/security_master.py": "09608a334de951efe0d600118301320ca341f0f548335494b64b0698661304b1",
 }
 

@@ -33,6 +33,9 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          invariant (before public only pg_catalog, the session's own empty temporary schema, and "$user" while no
          schema of the role's name exists or can be created by it); the in-band check's query qualifies every
          catalogue name and operator; the preflight reads a role's search path in PostgreSQL's precedence
+    u21  search_path evidence: only PostgreSQL's own whitespace separates names (a no-break space or a control
+         character such as U+001C stays inside the name, as PostgreSQL 17 keeps it), so such a name before public is
+         judged and reported, visibly, by the in-band check and the preflight
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1235,3 +1238,54 @@ def test_u20_the_preflight_reads_a_roles_search_path_in_postgresqls_precedence()
                    '"$user" before public names an existing schema cse_worker']
     [unknown] = preflight._search_path_problems(_Catalogue2(None), "cse_worker", None)
     assert unknown.startswith("cse_worker: the search_path its sessions get cannot be determined from this connection")
+
+
+# =========================================================================================== u21 (search_path evidence)
+
+# Each split as PostgreSQL 17 splits it: a no-break space, U+001C, U+001F, U+0085 and U+2003 stay inside the name; VT,
+# FF, CR, tab and newline separate names. tests/test_rf4_postgres.py p37 checks each of these values against the
+# database itself.
+@pytest.mark.parametrize("text, want", [
+    ("public\xa0, public", ["public\xa0", "public"]), ("\xa0public, public", ["\xa0public", "public"]),
+    ("public\x1c,public", ["public\x1c", "public"]), ("public\x1f,public", ["public\x1f", "public"]),
+    ("public\x85,public", ["public\x85", "public"]), ("public\u2003,public", ["public\u2003", "public"]),
+    ("\xa0", ["\xa0"]), ("a\v,public", ["a", "public"]), ("b\f,public", ["b", "public"]),
+    ("b\r,public", ["b", "public"]), ("\tpublic\n", ["public"]), ("\v\f\r", [])])
+def test_u21_only_postgresqls_whitespace_separates_names(text, want):
+    assert schema.parse_search_path(text) == want
+
+
+def test_u21_a_name_postgresql_keeps_whole_is_judged_and_shown_whole():
+    ahead = "is searched before public, whether or not it exists or holds a table now"
+    assert schema.path_problems(["public\xa0", "public"], "cse_worker", False, False) == [
+        f"schema 'public\\xa0' {ahead}"]                                     # repr: the no-break space can be seen
+    assert schema.path_problems(["rf4_shadow", "Shadow", "", "public"], "cse_worker", False, False) == [
+        f"schema rf4_shadow {ahead}", f"schema 'Shadow' {ahead}", f"schema '' {ahead}"]
+    # the in-band check: configured but not yet searched (the schema does not exist), then searched
+    check = lambda **changes: schema.search_path_problems(_Session(**changes))
+    assert check(setting="public\xa0, public") == [f"search_path 'public\\xa0, public': schema 'public\\xa0' {ahead}"]
+    assert check(setting="public\xa0, public", schemas=["pg_catalog", "public\xa0", "public"]) == [
+        f"search_path 'public\\xa0, public': schema 'public\\xa0' {ahead}",
+        "this session searches 'public\\xa0' before public"]
+    # the preflight: a server value from the configuration file
+    got = preflight._search_path_problems(_Catalogue2(None), "cse_worker",
+                                          ("public\xa0, public", "the server's configuration file"))
+    assert got == ["cse_worker: the search_path its sessions get (the server's configuration file: "
+                   f"'public\\xa0, public'): schema 'public\\xa0' {ahead}"]
+
+
+def test_u21_current_schemas_is_not_read_where_postgresql_would_create_a_temporary_schema():
+    """current_schemas() creates the temporary schema when pg_temp is listed first and none exists (an error without
+    TEMPORARY): the query reads it only when the setting does not mention pg_temp or a temporary schema exists, and a
+    setting judged without it is judged on its parse alone (tests/test_rf4_postgres.py p39 runs it)."""
+    sql = " ".join(schema._SESSION_QUERY.split())
+    guard = sql.index("case when pg_catalog.strpos(pg_catalog.lower(pg_catalog.current_setting('search_path')), "
+                      "'pg_temp') OPERATOR(pg_catalog.=) 0 or exists (select 1 from pg_catalog.pg_namespace n where "
+                      "n.oid OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema()) then "
+                      "pg_catalog.current_schemas(true)::pg_catalog.text[] end")
+    assert sql.count("current_schemas") == 1 and guard > 0
+    check = lambda **changes: schema.search_path_problems(_Session(**changes))
+    assert check(setting="pg_temp, public", schemas=None) == []
+    assert check(setting="pg_temp, rf4_shadow, public", schemas=None) == [
+        "search_path 'pg_temp, rf4_shadow, public': schema rf4_shadow is searched before public, whether or not it "
+        "exists or holds a table now"]

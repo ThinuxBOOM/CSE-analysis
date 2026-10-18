@@ -150,18 +150,26 @@ def _trigger_problems(table, trigger, want, got):
 # the check and the insert (as they can change a trigger); the check sees it at the next save.
 SAFE_BEFORE_PUBLIC = ("pg_catalog", "pg_temp")
 USER_SCHEMA = "$user"
+# PostgreSQL's whitespace in a list of names (scanner_isspace), and no other character. Python's str.isspace() is wider
+# (a no-break space, U+001C to U+001F, U+0085, ...); PostgreSQL keeps those inside a name, so splitting on them would
+# read a raw 'public<no-break space>, public' (a configuration file, a client's options) as public, public while
+# PostgreSQL searches a schema named 'public<no-break space>' first (audit evidence, 2026-10-17).
+PG_SPACE = " \t\n\r\v\f"
 
 
 def parse_search_path(text):
     """The schema names of a search_path value, split as PostgreSQL splits it (SplitIdentifierString): comma-separated,
-    spaces around a name ignored; a double-quoted name keeps its case and "" inside it is a quote; an unquoted name is
-    lower-cased (ASCII). [] for an empty value; None for one PostgreSQL would refuse (an unterminated quote, an empty
-    name, a missing comma)."""
+    PostgreSQL's whitespace (PG_SPACE, nothing else) around a name ignored; a double-quoted name keeps its case and ""
+    inside it is a quote; an unquoted name is lower-cased (ASCII). [] for an empty value; None for one PostgreSQL would
+    refuse (an unterminated quote, an empty unquoted name, a missing comma), and for an empty quoted name (""), which
+    PostgreSQL accepts though no schema can have that name: refused all the same (fail-closed). Names are not truncated
+    to 63 bytes as PostgreSQL truncates them; a truncated name is never public, pg_catalog, pg_temp or "$user", so the
+    judgement is the same."""
     out, i, n = [], 0, len(text)
-    if not text.strip():
+    if not text.strip(PG_SPACE):
         return out
     while True:
-        while i < n and text[i].isspace():
+        while i < n and text[i] in PG_SPACE:
             i += 1
         if i < n and text[i] == '"':
             parts, j = [], i + 1
@@ -179,19 +187,26 @@ def parse_search_path(text):
             name = "".join(parts)
         else:
             j = i
-            while i < n and text[i] != "," and not text[i].isspace():
+            while i < n and text[i] != "," and text[i] not in PG_SPACE:
                 i += 1
             name = "".join(c.lower() if "A" <= c <= "Z" else c for c in text[j:i])
         if not name:
             return None
         out.append(name)
-        while i < n and text[i].isspace():
+        while i < n and text[i] in PG_SPACE:
             i += 1
         if i == n:
             return out
         if text[i] != ",":
             return None
         i += 1
+
+
+def _shown(name):
+    """A schema name as a report shows it: bare when it is a plain lower-case identifier, else its Python repr, so that
+    a character PostgreSQL keeps inside the name (a no-break space, a control character) can be seen."""
+    first, rest = "abcdefghijklmnopqrstuvwxyz_", "abcdefghijklmnopqrstuvwxyz0123456789_$"
+    return name if name and name[0] in first and all(c in rest for c in name) else repr(name)
 
 
 def path_problems(elements, role, role_schema_exists, role_may_create_schemas):
@@ -210,17 +225,25 @@ def path_problems(elements, role, role_schema_exists, role_may_create_schemas):
                 out.append(f'"$user" before public, and {role} may create a schema named {role} (CREATE on the '
                            "database)")
             continue
-        out.append(f"schema {name} is searched before public, whether or not it exists or holds a table now")
+        out.append(f"schema {_shown(name)} is searched before public, whether or not it exists or holds a table now")
     if "pg_catalog" in elements[i + 1:] and "pg_catalog" not in elements[:i]:
         out.append("pg_catalog comes after public, so public's operators and functions come before the built-in ones")
     return out
 
 
 # The saving session's own resolution, every name qualified with pg_catalog (the operators too), so that the check
-# cannot itself be redirected by the path it inspects.
+# cannot itself be redirected by the path it inspects. current_schemas() creates the session's temporary schema when
+# pg_temp is listed ahead of every existing schema and that schema does not exist yet, which fails for a role without
+# TEMPORARY (no cse_* role has it in P1): so it is not called while the setting mentions pg_temp (any case, even inside
+# another name) and the session has no temporary schema. Nothing is then searched in a temporary schema, and the parsed
+# setting is judged alone (audit evidence, 2026-10-17).
 _SESSION_QUERY = """
 select pg_catalog.current_setting('search_path'),
-       pg_catalog.current_schemas(true)::pg_catalog.text[],
+       case when pg_catalog.strpos(pg_catalog.lower(pg_catalog.current_setting('search_path')), 'pg_temp')
+                   OPERATOR(pg_catalog.=) 0
+              or exists (select 1 from pg_catalog.pg_namespace n
+                          where n.oid OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema())
+            then pg_catalog.current_schemas(true)::pg_catalog.text[] end,
        (select n.nspname::pg_catalog.text from pg_catalog.pg_namespace n
          where n.oid OPERATOR(pg_catalog.=) pg_catalog.pg_my_temp_schema()),
        current_user::pg_catalog.text,
@@ -244,10 +267,12 @@ def search_path_problems(cur):
         out = [f"search_path {setting!r} cannot be parsed"]
     else:
         out = [f"search_path {setting!r}: {p}" for p in path_problems(elements, role, role_schema, may_create)]
-    if "public" in schemas:                       # what this session does search before public, implicit schemas too
+    if schemas is None:                           # not read (the query): the parsed setting is judged alone
+        pass
+    elif "public" in schemas:                     # what this session does search before public, implicit schemas too
         extra = [s for s in schemas[:schemas.index("public")] if s not in ("pg_catalog", temp)]
         if extra:
-            out.append(f"this session searches {', '.join(extra)} before public")
+            out.append(f"this session searches {', '.join(_shown(s) for s in extra)} before public")
     elif elements and "public" in elements:
         out.append("this session does not search public (it may not use it)")
     if temp_objects:
