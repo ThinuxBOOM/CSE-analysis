@@ -1,10 +1,11 @@
 # R-F4: full F4 structure persistence (implementation record)
 
-**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The
-independent audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7),
-`2bc66c1` (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9) and await the owner's independent review.
-NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4
-design carries the amendment text) and then, the same day, formally waived the item for this implementation package:
+**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The independent
+audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7), `2bc66c1`
+(Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
+found, fixed, are `1252c56` (§11). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item
+13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then,
+the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -33,17 +34,19 @@ and evidence only; it changes no decision.
 | `8140cb2` | Claude | Section 8, the item 13 correction and the status lines of this record. Documents only (§8.6) |
 | `d6924e7` | Claude (audit remediation) | The guard's name resolution: the store's in-band search-path check and the preflight's per-role check, their tests (u20, p30–p33), the HB-1 to HB-6 re-pin, the design's §5 (§9) |
 | `38d2a34` | Claude | Section 9, the closure note under §8.5 and the status lines of this record. Documents only (§9.7) |
-| the commit adding section 10 | Claude (owner decision recorded) | The owner's waiver of §8.1 item 13: section 10, the status lines, §3.1 and the notes under §6.1, §7.1, §8.1 and §9 here; the design's record of it. Documents only (§10) |
+| `271375d` | Claude (owner decision recorded) | The owner's waiver of §8.1 item 13: section 10, the status lines, §3.1 and the notes under §6.1, §7.1, §8.1 and §9 here; the design's record of it. Documents only (§10) |
+| `1252c56` | Claude (search-path evidence) | Tests u21 and p34–p39 for §9.4's unexercised cases; defects D1 and D2, found by them, fixed in `schema.py`; the HB-1 to HB-6 re-pin (§11) |
+| the commit adding section 11 | Claude | Section 11, the notes under §9.4 and §9.6, and the status lines of this record; the design's status lines. Documents only (§11.8) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
-at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8) **and at `d6924e7`** (name resolution, §9).
-Where they differ, the later section is
-current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
+at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9) **and at
+`1252c56`** (search-path evidence, §11). Where they differ, the later section is current: they change the store, the
+in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
-`origin` (checked with `git ls-remote`, 2026-10-17).
+`origin` (checked with `git ls-remote`, 2026-10-17). A later commit is on `origin` only once the owner has pushed it.
 
 ## 2. What was built
 
@@ -634,6 +637,8 @@ Every PostgreSQL test restores in `finally` and then checks the restoration:
 
 ### 9.4 Not exercised by a test
 
+*Since exercised, except for what §11.5 lists: §11.4.*
+
 - An unsafe `ALTER ROLE … IN DATABASE … SET` (only a safe one, outranking an unsafe role setting, is tested), and
   `ALTER ROLE ALL SET`: their precedence is the query's `order by level`; the unit test covers the labels and the
   level numbers.
@@ -665,6 +670,8 @@ pytest 7.4.4, PostgreSQL 17.11, no network; Windows: Python 3.14.6, pytest 9.1.1
 No result from an earlier commit is counted for `d6924e7`. §8's results are for `2bc66c1`, §7's for `f67c181`.
 
 ### 9.6 What remains (the threat model after the fix)
+
+*Updated by §11.7.*
 
 - **Privileged changes between the check and the insert.** A superuser, or the owner of the database or of a schema,
   can create a schema named after the role, give it a table and grant its use, or change a function or trigger,
@@ -732,3 +739,152 @@ HB-Q7's gate before HB-7.
 
 **This commit** changes `docs/R_F4_DESIGN.md` and `docs/R_F4_IMPLEMENTATION.md` only. No code, migration, test or pin
 changes, and no test reads or pins either file (§5.9).
+
+## 11. Search-path test evidence: §9.4's unexercised cases, and two defects found (2026-10-17/18)
+
+The owner asked for the cases §9.4 recorded as not exercised to be tested where that can be done reliably, each against
+PostgreSQL's own behaviour rather than the implementation's assumptions. Two defects were found and fixed. **All of
+this section's work and every run below were done by Claude; none is independently re-executed or audited.** The audit
+is **not complete**; R-F4 is **not** accepted or frozen; §8.1 item 13 is waived (§10).
+
+**Tested code commit: `1252c56`** (`1252c5620410f0ef5f644343e6524885c543f395`, parent `271375d`). The commit adding this
+section changes documents only (§11.8).
+
+### 11.1 PostgreSQL's behaviour, verified first
+
+First in a throwaway PostgreSQL 17.11 instance (the test image, no network; a probe, not a test), then by the tests
+named:
+- **Precedence**, lowest to highest, with the `source` `pg_settings` reports: the server (`default` or `configuration
+  file`); all roles (`global`); the database (`database`); the role (`user`); the role in the database (`database
+  user`); the client's options (`client`); a `SET` (`session`). p34, p35.
+- **`SET ROLE` applies none of the target role's settings**, so a setting on `cse_reader` (`NOLOGIN`, entered by `SET
+  ROLE`) reaches no session. p34.
+- **A configuration reload changes the search path of sessions already open**, at their next statement, even between
+  two statements of one transaction (probe). p35 shows it reaching a session opened before the reload.
+- **PostgreSQL's whitespace in a list of names** is exactly space, tab, newline, carriage return, vertical tab and form
+  feed. A no-break space, U+001C, U+001F, U+0085 and U+2003 each stay inside the name (p37 checks each).
+- **An empty quoted name (`""`) is accepted.** p37.
+- **`current_schemas()` creates the temporary schema** when `pg_temp` is listed ahead of every existing schema and none
+  exists yet. Without `TEMPORARY` that fails. p39.
+- **An operator `public.=(bigint, bigint)` is used instead of the built-in only when `public` comes before
+  `pg_catalog`.** p38.
+
+### 11.2 Defects found and fixed (`1252c56`, `worker/financial_f4_store/schema.py` only)
+
+| Defect | Effect | Fix |
+|---|---|---|
+| **D1. Whitespace.** `parse_search_path` split names on Python's `str.isspace()`, which also matches a no-break space, U+001C to U+001F, U+0085 and other Unicode spaces. PostgreSQL keeps those inside the name | **Fail-open.** A raw value (a configuration file, a client's options, `set_config`) such as `'public<no-break space>, public'` was read as `public, public`, while PostgreSQL searches a schema named `'public<no-break space>'` first. While that schema did not exist, the store saved and the preflight reported nothing: the "not yet existing schema" case §9.2 says is refused. Once it existed, the in-band check's `current_schemas` cross-check refused it; the preflight still reported nothing. `ALTER ROLE`/`DATABASE`/`SYSTEM … SET` quote such a name, so by those routes it arrives quoted, which was handled | Names are split only on PostgreSQL's whitespace (`PG_SPACE`). A name that is not a plain lower-case identifier is reported by its Python repr, so the hidden character shows |
+| **D2. `pg_temp` first.** The in-band query called `current_schemas(true)`, which creates the temporary schema when `pg_temp` is listed ahead of every existing schema and none exists yet. No `cse_*` role has `TEMPORARY` in P1, so that fails | **Fail-closed, but untyped.** `'pg_temp, public'`, which the invariant allows, was refused with `InsufficientPrivilege` instead of saving. An unsafe `'pg_temp, rf4_shadow, public'` was refused with `InsufficientPrivilege`, not `SchemaUnavailable` | `current_schemas` is read only when the setting does not mention `pg_temp` (in any case, even inside another name) or a temporary schema exists. Otherwise nothing is searched in a temporary schema, and the parsed setting is judged alone |
+
+**Unchanged:**
+- the invariant (§9.2);
+- the preflight's code (D1's fix reaches it through the shared parser);
+- `store.py` and `errors.py`;
+- migration 0018 (`39855c0d…`);
+- `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py` and `tests/test_f64_unit.py`.
+
+No role, database or server setting is altered by the code.
+
+**Known, kept fail-closed:**
+- the parser refuses an empty quoted name (`""`), which PostgreSQL accepts but no schema can have (p37 shows both);
+- names are not truncated to 63 bytes as PostgreSQL truncates them; a truncated name is never `public`, `pg_catalog`,
+  `pg_temp` or `"$user"`, so the judgement is the same.
+
+`schema.py` is pinned by HB-1, so **the HB-1 to HB-6 pin cascade was run again**. It is pin-only:
+- it was stable after one round, and a second run changed nothing;
+- each committed blob's LF SHA-256 equals the pin that names it;
+- `store.py` (`a20060560c28…`), `errors.py` (`9cc73693aaf9…`) and F5 (`8bdf472aec40…`) are unchanged.
+
+| Preflight | Pin changed | Now |
+|---|---|---|
+| HB-1 `worker/financial_backfill/preflight.py` | `worker/financial_f4_store/schema.py` | `200d694886ca…` |
+| HB-2 `worker/backfill_transport/preflight.py` | HB-1's preflight | `dcdb14aabbc8…` |
+| HB-3 `worker/backfill_discovery/preflight.py` | HB-2's preflight | `f477c9657a25…` |
+| HB-4 `worker/backfill_documents/preflight.py` | HB-3's preflight | `17bab1274d84…` |
+| HB-5 `worker/backfill_f6/preflight.py` | HB-4's preflight | `ef165a0c85f3…` |
+| HB-6 `worker/backfill_ops/preflight.py` | HB-5's preflight | `3a23c0df30af…`; its own hash `ae4bcf5f325d…`, pinned by nothing |
+
+The Phase 2 design's pin-only notes carry these prefixes. `git diff --stat 271375d 1252c56` lists `schema.py`, the six
+preflights, the two R-F4 test files and the Phase 2 design.
+
+### 11.3 Tests
+
+| Test | Kind | What it exercises |
+|---|---|---|
+| u21 (14) | Unit: helper logic, no database | 12 values split as PostgreSQL splits them (the characters above); a name kept whole is judged and shown by its repr in `path_problems`, in the in-band check (configured but not searched, then searched) and in the preflight's report of a server value; the query reads `current_schemas` only behind its guard, and a setting judged without it is judged on its parse |
+| **p34** | Integration: PostgreSQL | `ALTER ROLE ALL SET` unsafe: the session PostgreSQL gives `cse_worker` (`global`) is refused before any insert; the preflight reports both roles at that level. A safe database setting outranks it (`database`): the save passes, the preflight is clean. An unsafe `ALTER ROLE cse_worker IN DATABASE … SET` outranks a safe role setting and the database's (`database user`): refused, reported for `cse_worker` at that level only. Without it the safe role setting applies (`user`) and passes. `cse_reader`: a session entered by `SET ROLE` gets the login's path, not `cse_reader`'s own setting, which the preflight reports all the same |
+| **p35** | Integration | `ALTER SYSTEM SET search_path` and a reload, in the disposable test cluster: a new session (`configuration file`) is refused; a session opened before the reload changes and is refused at its next save; the preflight, from a connection whose own value is the server's, reports both roles. Client options outrank it (`client`): a safe value saves, an unsafe one is refused. A preflight connection with client options of its own, and a login with a role setting of its own, report the roles without a catalogued setting as "cannot be determined", never clean. A safe database setting outranks the server's. Restored: `ALTER SYSTEM RESET`, a reload, no `search_path` in `pg_file_settings` |
+| **p36** | Integration (D1) | A raw line in the test cluster's `postgresql.conf`, `search_path = 'public<no-break space>, public'`, and a reload. PostgreSQL searches `['pg_catalog', 'public']` while the schema does not exist: the store refuses before any insert and the preflight reports both roles. Once the schema exists, with a shadow `report_document_classifications`, PostgreSQL searches it first and the guard accepts another filing's classification (rolled back); the store refuses. The file is restored byte for byte and checked |
+| **p37** | Integration | `parse_search_path` against PostgreSQL's own split. For 17 values, every schema the parser names is created; `current_schemas` must equal the parsed list. 5 values PostgreSQL refuses are `None`. `""` is accepted by PostgreSQL and refused by the parser (fail-closed, as documented) |
+| **p38** | Integration | A real operator `public.=(bigint, bigint)`, always true. Under the default path the built-in is used: the guard refuses another filing's classification and the store saves. With `cse_worker`'s role setting `'public, pg_catalog'`, PostgreSQL uses `public.=` and the guard accepts it (rolled back); the store refuses and the preflight reports "pg_catalog comes after public". `'rf4_shadow'` (no `public`): R-F4's tables are not found at all; the store refuses and the preflight reports "public is not in it" |
+| **p39** | Integration (D2) | `SET search_path = pg_temp, public`, no `TEMPORARY`: PostgreSQL's `current_schemas` fails there; the store saves and no temporary schema is created. `pg_temp, rf4_shadow, public`: `SchemaUnavailable` before any insert |
+
+Every PostgreSQL test restores in `finally`, then checks the restoration (§9.3's checks, plus each test's own).
+
+### 11.4 §9.4's cases now
+
+| §9.4 case | Now |
+|---|---|
+| An unsafe `ALTER ROLE … IN DATABASE … SET` | **Exercised:** p34 |
+| `ALTER ROLE ALL SET` | **Exercised:** p34 |
+| A server-level `search_path` from PostgreSQL's configuration | **Exercised:** p35 (`ALTER SYSTEM`, `postgresql.auto.conf`), p36 (`postgresql.conf`, a raw value) |
+| The preflight's "cannot be determined" path | **Exercised** under two realistic conditions: client options on the preflight's connection; a login with a role setting of its own (p35) |
+| The preflight's report of `pg_catalog` after `public`, and of `public` missing | **Exercised:** p38 |
+| An operator actually shadowing `=` | **Exercised:** p38 |
+| A client's connection options | **Exercised** through libpq's `options`, the mechanism `PGOPTIONS` feeds: p35 |
+
+### 11.5 Not exercised by a test
+
+- **A server value given on the command line** (`postgres -c`, source `command line`). The preflight takes only
+  `default` and `configuration file` as the server's value, so it reports this as "cannot be determined" (fail-closed).
+  Not tested: it would mean restarting the cluster all the module's tests share.
+- **A reload between the store's check and its insert.** The probe shows a reload can reach a session between two
+  statements of one transaction. It is privileged (§11.7); not tested.
+- **An operator or function of other argument types in `public` or in a schema after it.** By PostgreSQL's rules it is
+  chosen only where no exact match exists. Every comparison in the guard and in R-F4's SQL has an exact built-in match:
+  uuid, bigint, text, or an unknown literal against one of them. This rests on inspection, not on a test.
+
+### 11.6 Evidence (all run by Claude)
+
+Environments as §9.5 (the container `cse-p1-test:latest`, `sha256:f491c4600e90…`: Python 3.12.3, pytest 7.4.4,
+PostgreSQL 17.11, no network; Windows: Python 3.14.6, pytest 9.1.1), with the same RAM guard.
+
+| Run | Tree | Result |
+|---|---|---|
+| Probe (not a test; 2026-10-17) | a throwaway PostgreSQL 17.11 instance in the test image | the behaviours of §11.1: tab, newline, CR, VT and FF separate names, a no-break space and U+001C do not; `""` accepted; the `source` labels; `SET ROLE` applies no role setting; a reload reaches an open session between two statements of one transaction; `public.=` used only ahead of `pg_catalog` |
+| p34–p38, development (2026-10-17 14:50Z) | the working tree, D1's fix only | 4 passed; p37 failed with `InsufficientPrivilege` from `current_schemas`: **D2 found here**. Not evidence |
+| R-F4 PostgreSQL suite, development (2026-10-18 18:10–18:12Z) | the working tree with both fixes, before p35's unsafe client-option check was added | 52 passed. Not evidence for `1252c56` |
+| Windows: R-F4 unit, lifecycle, HB-1 to HB-6 unit, F8 static (18:06Z) | the working tree; these files identical to `1252c56` | **574 passed**, 2 skipped (POSIX signals): §9.5's 560 plus u21's 14 |
+| Pins | `1252c56` | every preflight's check `[]`; the cascade stable on a second run; each committed blob's LF SHA-256 equals the pin that names it |
+| R-F4 unit | clean LF clone of `1252c56` (18:13Z) | **272 passed** |
+| **R-F4 PostgreSQL suite** | clean LF clone of `1252c56` (18:14–18:16Z) | **52 passed**, none failed or skipped (§9's 46 plus p34–p39) |
+| **Negative control NC1** (unit): the code before this work with the new tests | `271375d` (code identical to `d6924e7`) + `1252c56`'s two R-F4 test files | **9 failed**: the 7 values Python and PostgreSQL split differently (a no-break space ×3, U+001C, U+001F, U+0085, U+2003), the name-display test and the `current_schemas` guard test. 263 passed, including the 5 values both split alike |
+| **NC1** (PostgreSQL, 18:17–18:19Z) | the same | **3 failed, 49 passed.** p36: `DID NOT RAISE SchemaUnavailable`, the previous store **saved** under `'public<no-break space>, public'` (D1). p37: the previous parser gave `['public', 'public']` where PostgreSQL searches `['pg_catalog', 'public\xa0', 'public']`. p39: `InsufficientPrivilege: permission denied to create temporary tables` (D2). p34, p35 and p38 pass: they test what `d6924e7` already did, and NC2 is their control |
+| **Negative control NC2** (unit): the code before the search-path remediation | `8140cb2` + the same two test files | **32 failed** (every u20 and u21 test: the functions do not exist), 240 passed |
+| **NC2** (PostgreSQL, 18:19–18:21Z) | the same | **10 failed, exactly p30–p39; 42 passed.** p32, p34, p35, p36, p38 and p39: `DID NOT RAISE SchemaUnavailable`, the store saved under each unsafe configuration. p33: `UndefinedColumn`, the F3 read-back read the shadow table. p37: no `parse_search_path`. p30 and p31 failed with their reason lines outside the log's kept tail; §9.5 records their reasons on this code |
+| **Control I5**: the whole suite, 19 clusters, as §5.2 | clean LF clone of `1252c56` (18:21–18:46Z; every cluster on its first try; no RAM-guard stop, no retry) | **4,572 passed, 1 failed, 629 skipped, 2 xfailed.** Against I4 (§9.5): the same single failure (`test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, the baseline's); every cluster identical except L16 (+20 passes: u21 and p34–p39) and W3 (+14 passes: u21; +6 skips: p34–p39 on Windows); skips outside the R-F4 files identical (616). HB-4 (48) and HB-5 (25) integration suites unchanged; the F6.3 and F6.4 frozen-file tests, which pin `docs/F6.2_DESIGN.md`, pass (L08, L10) |
+| Collection | `1252c56` against `d6924e7` | 2,602 tests: the 2,582 of §9.5 plus the 20 new ones; none removed; outside the R-F4 files, identical test IDs |
+
+**Not re-run:**
+- controls B, P and S. B is unchanged; P and S concern Stage 2's pins, which this cascade replaces.
+- mutants M1–M17 (§5.7). They target F5's wiring, the store and HB-1's refusal of a changed pinned file, none changed
+  here but the pin values. D1's and D2's own negative controls are NC1 and NC2.
+
+No result from an earlier commit is counted for `1252c56`. §9's results are for `d6924e7`.
+
+### 11.7 What remains (the threat model after this work)
+
+- **Privileged changes between the check and the insert.** As §9.6, and including a configuration reload, which
+  reaches sessions already open between two statements of one transaction. The next save sees it.
+- **`cse_reader`'s sessions.** `cse_reader` is `NOLOGIN` and entered by `SET ROLE`, which applies none of its settings.
+  The preflight's check for it covers the settings every login gets (the database's, all roles', the server's) and
+  also reports `cse_reader`'s own role settings, which reach no session. The settings of the logins that `SET ROLE
+  cse_reader` are not checked, and their sessions are not checked in-band (§9.6). `verify` writes nothing.
+- **Outside R-F4's save:** unchanged (§9.6).
+- **Version.** The rules verified here are PostgreSQL 17's.
+
+### 11.8 The record commit against the tested commit
+
+The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` and `docs/R_F4_DESIGN.md` only (`git diff --stat
+1252c56`): this section, the commits table and the status lines here, and the design's status lines. No test reads or
+pins either file (§5.9).
