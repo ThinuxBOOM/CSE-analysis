@@ -60,7 +60,7 @@ FROZEN_FILES = {
     "worker/financial_f4_store/__init__.py": "951277dbd022bf2d74f32ebe017d414d3d4c6f260692955b4572e9e0bc0c87f1",
     "worker/financial_f4_store/codec.py": "506f6c9a40ed3dba0f9f089cfc758d70154210944aef5e990cb0cfbb1fda1b69",
     "worker/financial_f4_store/errors.py": "9cc73693aaf96d75bfb926bb55497499f5f181dec880ba43271c45456e49f31e",
-    "worker/financial_f4_store/reader.py": "2f3b78879685489402fff94b8a5e96592c6df45d3d633a92279da3b88a6d1475",
+    "worker/financial_f4_store/reader.py": "6db7aef2e1ad97e52c6bf75529fb9c25dde60440641e1886a40ec05e0ba2ccd8",
     "worker/financial_f4_store/schema.py": "200d694886cad26c703601b9f72571dbdcd477766fda070bc893342bada14dda",
     "worker/financial_f4_store/store.py": "a20060560c2884f5d09814d02586dadcb3848a8d9ae0a0018857bc6148e53d94",
     "worker/financial_truth/__init__.py": "f1cb369cb3a82a4920d3f9d4a15f896c5bbcdcc870a04b1bae3857caa2cb7492",

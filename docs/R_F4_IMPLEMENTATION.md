@@ -3,9 +3,10 @@
 **Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The independent
 audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7), `2bc66c1`
 (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
-found, fixed, are `1252c56` (§11). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item
-13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then,
-the same day, formally waived the item for this implementation package:
+found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
+snapshot) is remediated in the commit adding §12. All await the owner's independent review. NOT accepted, NOT frozen.**
+For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment
+text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -36,13 +37,15 @@ and evidence only; it changes no decision.
 | `38d2a34` | Claude | Section 9, the closure note under §8.5 and the status lines of this record. Documents only (§9.7) |
 | `271375d` | Claude (owner decision recorded) | The owner's waiver of §8.1 item 13: section 10, the status lines, §3.1 and the notes under §6.1, §7.1, §8.1 and §9 here; the design's record of it. Documents only (§10) |
 | `1252c56` | Claude (search-path evidence) | Tests u21 and p34–p39 for §9.4's unexercised cases; defects D1 and D2, found by them, fixed in `schema.py`; the HB-1 to HB-6 re-pin (§11) |
-| the commit adding section 11 | Claude | Section 11, the notes under §9.4 and §9.6, and the status lines of this record; the design's status lines. Documents only (§11.8) |
+| `b88f5f7` | Claude | Section 11, the notes under §9.4 and §9.6, and the status lines of this record; the design's status lines. Documents only (§11.8) |
+| `ae26d68`, `4be6fa9`, `1ad5cc6` | Claude | GitHub Actions CI and its strategy (`docs/CI_TEST_STRATEGY.md`); no R-F4 code, test or record change |
+| the commit adding section 12 | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9) **and at
-`1252c56`** (search-path evidence, §11). Where they differ, the later section is current: they change the store, the
-in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
+`1252c56`** (search-path evidence, §11), **and at the commit adding §12** (finding RF4-A1). Where they differ, the later
+section is current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -682,6 +685,7 @@ No result from an earlier commit is counted for `d6924e7`. §8's results are for
   and reads before `_persist` (`load_filings_from_db`).
 - **`verify`.** Sessions running `verify` and the reader are not checked in-band. The preflight checks `cse_reader`'s
   configured path, but not a reader session's own `SET` or connection options.
+  *Closed in-band by §12 (finding RF4-A1): the reader and `verify` now check the session itself.*
 - **Version.** The invariant follows PostgreSQL 17's documented name-resolution rules; the parser mirrors
   `SplitIdentifierString` for ASCII names. Any non-ASCII schema name before `public` is refused regardless, so its
   case folding does not matter for safety.
@@ -880,6 +884,8 @@ No result from an earlier commit is counted for `1252c56`. §9's results are for
   The preflight's check for it covers the settings every login gets (the database's, all roles', the server's) and
   also reports `cse_reader`'s own role settings, which reach no session. The settings of the logins that `SET ROLE
   cse_reader` are not checked, and their sessions are not checked in-band (§9.6). `verify` writes nothing.
+  *The sessions are now checked in-band by the reader and `verify` (§12, tested by p40 and p41); the preflight still
+  sees configured settings only (§12.8).*
 - **Outside R-F4's save:** unchanged (§9.6).
 - **Version.** The rules verified here are PostgreSQL 17's.
 
@@ -888,3 +894,176 @@ No result from an earlier commit is counted for `1252c56`. §9's results are for
 The commit adding this section changes `docs/R_F4_IMPLEMENTATION.md` and `docs/R_F4_DESIGN.md` only (`git diff --stat
 1252c56`): this section, the commits table and the status lines here, and the design's status lines. No test reads or
 pins either file (§5.9).
+
+## 12. Audit finding RF4-A1: the reader's and `verify`'s name resolution; `verify`'s snapshot (2026-10-20)
+
+**The finding.** The owner's independent review of `4be6fa9` (Finding RF4-A1, 2026-10-20) found three gaps:
+- **The reader and `verify` did not check name resolution.** The writer checks the session's name resolution before
+  its unqualified queries (§9); the reader and `verify` did not, before their own.
+- **The limitation was already recorded (§9.6, §11.7).** `cse_reader` is entered by `SET ROLE`, which applies none of
+  its settings, and the sessions that enter it were not checked in-band.
+- **Why it is material.** `verify` exists to re-prove saved evidence. An unsafe caller's search path could redirect its
+  reads to shadow objects and make its result untrustworthy.
+
+The owner also asked that `verify` read one consistent snapshot.
+
+**All of this section's work and every test below was done and run by Claude; none is independently re-executed or
+audited.** The audit is **not complete**; R-F4 is **not** accepted or frozen; §8.1 item 13 stays waived as recorded in
+§10, and nothing here widens that waiver.
+
+**Code and record in one commit.** The fix, its tests, the pin cascade and this section are one commit (parent
+`1ad5cc6`), so this record cannot name its own hash. The next documentation change will name it.
+
+### 12.1 What issues unqualified queries
+
+| Entry point | Unqualified queries |
+|---|---|
+| `verify.verify` | its two enumerations: `financial_f4_extractions`, `financial_extraction_runs`; then the reader, per item |
+| `reader.extraction_row`, `extraction_id_for`, `load_extraction` | `financial_f4_extractions`, `financial_f4_statements`, `financial_f4_columns`, `financial_f4_rows`, `financial_f4_cells` |
+| `reader.load_classification` (F3) | `report_document_classifications`, `report_statement_periods`, `report_classification_evidence` |
+| `reader.run_key`, `evidence_for_run`, `rebuild_f5` (F5) | `financial_extraction_runs`, then the F4 and F3 tables above |
+
+Before this change, none of them checked the session's name resolution, and `verify`'s transaction was `READ ONLY`
+at PostgreSQL's default READ COMMITTED isolation, so each query saw the database at a different moment.
+
+### 12.2 Reproduction: the previous code with the new tests (PostgreSQL 17.11)
+
+Run in a clean LF tree of `1ad5cc6`, with only this section's two test files added. Exactly the four new tests fail;
+the module's other 52 pass:
+
+| Test | What the previous code did |
+|---|---|
+| p40 | A `cse_reader` session with its own `search_path` of `rf4_shadow, public`, where `rf4_shadow` holds empty copies of `financial_f4_extractions`, `financial_extraction_runs` and `report_document_classifications`. The real data holds a corrupt extraction, which a safe session reports. `verify` returned **`{'clean': True, 'extractions': 0, 'problems': []}`**: the shadowed read turned a failing verification into a clean one |
+| p41 | A login with an unsafe role setting of its own, after `SET ROLE cse_reader`, kept its search path; the preflight (which checks `cse_reader`'s configuration) was clean; `verify` reported no problem |
+| p42 | No snapshot record (`KeyError: 'snapshot'`): the transaction was READ COMMITTED |
+| p43 | Another transaction committed a filing after `verify` listed the extractions: the report counted **1 extraction but rebuilt 2 runs**, a state that never existed at any single moment |
+
+The unit tests show the same. On the previous code exactly the four u22 tests fail, and the other 272 pass.
+
+### 12.3 The fix (`worker/financial_f4_store/reader.py`, `verify.py`)
+
+**The reader.** Every public function now checks the current session first:
+- the functions are `extraction_row`, `extraction_id_for`, `load_extraction`, `load_classification`, `run_key`,
+  `evidence_for_run` and `rebuild_f5`;
+- the check is `require_safe_resolution`, the writer's own check (`schema.search_path_problems`, unchanged): one
+  catalogue query, every name and operator qualified with `pg_catalog`;
+- it raises `SchemaUnavailable` before the function's first unqualified query;
+- internal helpers do not repeat the check.
+
+**What the check judges.** The session itself, not a role's configuration. A login that enters `cse_reader` by
+`SET ROLE` is judged by its own search path and temporary schema. The check reads the catalogue only, so it needs no
+write privilege.
+
+**`verify`.**
+- **Transaction settings.** Its transaction is set to `REPEATABLE READ, READ ONLY` by its first statement, before any
+  query.
+- **The check comes first.** The name-resolution check is the first query, and so takes the snapshot. On an unsafe
+  session `verify` returns a refused report (`clean: false`, one problem of kind `name_resolution`, nothing read) and
+  rolls back.
+- **Then the enumerations**, as before.
+- **A refusal mid-run.** If a reader call refuses during the run, for example because a configuration reload changed
+  the session's path, `verify` stops and reports it, never clean.
+- **The snapshot is recorded.** The report has a `snapshot` entry: isolation, read only, and the transaction's time.
+
+**Unchanged:**
+- the writer (`store.py`) and its guard;
+- `schema.py`, `errors.py` and the CLI;
+- migration 0018.
+
+The command stays read-only.
+
+### 12.4 One snapshot
+
+Under REPEATABLE READ, every query of `verify` sees the database as it was at its first query:
+- the enumerations;
+- the F4 read-backs;
+- the F3 read-backs;
+- the F5 rebuilds.
+
+A change committed by another transaction during the run is not in the report. It is not silently treated as clean
+evidence either: the report records its snapshot time, and the next `verify` reads it. p43 shows both:
+- a filing committed mid-run is absent from this report and present in the next;
+- a row appended mid-run is not read now, and is reported as `incomplete` (for the extraction and for the run that
+  rebuilds from it) by the next.
+
+### 12.5 Tests
+
+| Test | Kind | What it shows |
+|---|---|---|
+| u22 (4) | Unit, no database | `verify`'s first statement sets REPEATABLE READ, READ ONLY; its first query is the name-resolution check; no unqualified query precedes it; an unsafe session gets a refused report with nothing read; each public reader entry point runs only the check before raising; a refusal during `verify` ends it unclean |
+| **p40** | PostgreSQL | The unsafe `cse_reader` session of §12.2: PostgreSQL's own resolution there answers 0 extractions while `public` has 2. `verify` refuses, reading nothing. All seven public reader entry points raise `SchemaUnavailable`. With `SELECT` revoked on the shadows, so any read of one would fail, the refusal still comes first. Restored, the real corrupt extraction is reported again |
+| **p41** | PostgreSQL | The SET ROLE cases: a login whose role setting is `rf4_shadow, public` keeps it after `SET ROLE cse_reader` (`current_user` `cse_reader`, `session_user` the login), while the preflight is clean. Also a session whose temporary schema holds a shadow table readable by `cse_reader`. `verify` and the reader refuse both. The role, its grants and the schema are removed and the removal checked |
+| **p42** | PostgreSQL | The safe path: `verify` clean (1 extraction, 1 run, 1 rebuild) and the reader reads. Inside `verify`'s transaction, observed mid-run, the isolation is `repeatable read` and read only is `on`, and an `INSERT` by `cse_worker` (which may insert) is refused (`ReadOnlySqlTransaction`). Table counts are unchanged |
+| **p43** | PostgreSQL | One snapshot under a concurrent commit (§12.4) |
+
+Every PostgreSQL test restores what it changed in `finally` and checks the restoration (§9.3's checks).
+
+### 12.6 Pins (HB-1 to HB-6 cascade)
+
+`reader.py` is pinned by HB-1, so **the HB-1 to HB-6 pin cascade was run again**. It is pin-only:
+- it was stable after one round, and a second run changed nothing;
+- each preflight's own check is `[]`;
+- each pin equals the LF SHA-256 of the file it names;
+- `store.py` (`a20060560c28…`), `schema.py` (`200d694886ca…`), `errors.py` (`9cc73693aaf9…`) and F5 (`8bdf472aec40…`)
+  are unchanged.
+
+`verify.py` is not pinned.
+
+| Preflight | Pin changed | Now |
+|---|---|---|
+| HB-1 `worker/financial_backfill/preflight.py` | `worker/financial_f4_store/reader.py` | `6db7aef2e1ad…` |
+| HB-2 `worker/backfill_transport/preflight.py` | HB-1's preflight | `bea9f43be920…` |
+| HB-3 `worker/backfill_discovery/preflight.py` | HB-2's preflight | `2a70eb110062…` |
+| HB-4 `worker/backfill_documents/preflight.py` | HB-3's preflight | `7ef41029098b…` |
+| HB-5 `worker/backfill_f6/preflight.py` | HB-4's preflight | `f5170b2a59d0…` |
+| HB-6 `worker/backfill_ops/preflight.py` | HB-5's preflight | `29320e6aaa65…`; its own hash `d0429416087d…`, pinned by nothing |
+
+The Phase 2 design's pin-only notes carry these prefixes.
+
+### 12.7 Evidence (run by Claude, 2026-10-19/20 UTC)
+
+| Run | Tree | Result |
+|---|---|---|
+| Windows: R-F4 unit, lifecycle, HB-1 to HB-6 unit, F8 static | the working tree, identical to this commit's code and tests | **578 passed**, 2 skipped (POSIX signals): §11.6's 574 plus u22's 4 |
+| Pins | this commit | every preflight's check `[]`; the cascade stable; every pin equals its file |
+| **R-F4 PostgreSQL suite** (container `cse-p1-test:latest`, PostgreSQL 17.11, `--network none`) | clean LF tree, identical to this commit's code and tests | **56 passed** (§11's 52 plus p40–p43) |
+| **HB-4 and HB-5 integration** | the same | **73 passed** (48 and 25): `_persist` reaches the reader through the store's read-backs, unchanged in behaviour |
+| **Negative control** | `1ad5cc6` plus only this section's two test files | PostgreSQL: **exactly p40–p43 fail**, 52 pass (§12.2). Unit: **exactly the four u22 tests fail**, 272 pass |
+| GitHub Actions | this commit, once the owner has pushed it | Not run when this section was written (Claude does not push). The owner's push starts `ci-fast.yml` and `ci-regression.yml`. Their results are to be recorded in a later documentation change, not assumed here |
+
+### 12.8 What remains (the threat model after RF4-A1)
+
+**Closed by test evidence:**
+- reader and `verify` sessions are checked in-band, including sessions that enter `cse_reader` by `SET ROLE`
+  (p40, p41);
+- `verify` reads one snapshot (p43) in a read-only transaction (p42).
+
+**What remains:**
+- **Privileged changes between a check and the read it guards.** A configuration reload between a reader function's
+  check and its queries is not seen by that call; the next call's check sees it. `verify` reports such a change as a
+  refusal if a later reader call sees it. The same limit as every in-band check here (§9.6, §11.7).
+- **The preflight still checks configured settings only.** It sees `cse_reader`'s own role settings, which reach no
+  session, and not those of the logins that enter `cse_reader`. The in-band checks of §9 and §12 are what judge
+  sessions.
+- **A long `verify` holds one snapshot** for its whole run. That is the price of consistency (PostgreSQL keeps the row
+  versions it may read). A change committed during the run is in the next run's report, not this one's.
+- **Components outside R-F4's writer, reader and `verify`** are not covered by these checks: F6.4's `verify`, HB-4's
+  ledger writes, F1, and the reads before `_persist` (§9.6).
+- **Version.** PostgreSQL 17's rules, as verified in §11.
+
+### 12.9 Protected files and boundaries
+
+Unchanged by this commit, compared with its parent and, for the frozen F6.2 files, with `main`:
+- `supabase/migrations/0018_f4_structure_persistence.sql` (LF SHA-256 `39855c0d…`);
+- `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py`, `tests/test_f64_unit.py`;
+- the two one-off CSE workflows;
+- the CI infrastructure (`.github/`), including the HB-2 baseline entry of `.github/ci/summarize.py`.
+
+No test assertion was weakened, and no test was skipped or marked xfail. The commit changes:
+- `reader.py` and `verify.py`;
+- the two R-F4 test files;
+- the six preflights (pins only);
+- the Phase 2 design's pin notes;
+- the R-F4 design, this record, and `docs/CI_TEST_STRATEGY.md` §11's statement of the reader limitation.
+
+It is not acceptance, a freeze, a merge or a release decision.

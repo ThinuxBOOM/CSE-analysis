@@ -36,6 +36,10 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
     u21  search_path evidence: only PostgreSQL's own whitespace separates names (a no-break space or a control
          character such as U+001C stays inside the name, as PostgreSQL 17 keeps it), so such a name before public is
          judged and reported, visibly, by the in-band check and the preflight
+    u22  audit finding RF4-A1: verify sets REPEATABLE READ, READ ONLY before its first query and checks the
+         session's name resolution before any unqualified query (an unsafe session: refused, nothing read);
+         every public reader entry point checks before its first unqualified query; a refusal during verify
+         ends it unclean
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1289,3 +1293,107 @@ def test_u21_current_schemas_is_not_read_where_postgresql_would_create_a_tempora
     assert check(setting="pg_temp, rf4_shadow, public", schemas=None) == [
         "search_path 'pg_temp, rf4_shadow, public': schema rf4_shadow is searched before public, whether or not it "
         "exists or holds a table now"]
+
+
+# ======================================================================== u22 (audit finding RF4-A1, 2026-10-20)
+
+from datetime import datetime, timezone  # noqa: E402
+
+SAFE_SESSION = ('"$user", public', ["pg_catalog", "public"], None, "cse_reader", False, False, 0)
+UNSAFE_SESSION = ("rf4_shadow, public", ["pg_catalog", "rf4_shadow", "public"], None, "cse_reader", False, False, 0)
+
+
+class _Recording:
+    """A connection whose cursors record every statement. The name-resolution query is answered from `sessions` (one
+    row per check, in order); verify's snapshot query as a repeatable-read, read-only transaction; verify's enumeration
+    of extractions with `extractions`; anything else with no rows."""
+
+    def __init__(self, *sessions, extractions=()):
+        self.sessions, self.sql, self.extractions = list(sessions), [], list(extractions)
+
+    def get_transaction_status(self):
+        import psycopg2.extensions
+        return psycopg2.extensions.TRANSACTION_STATUS_IDLE
+
+    def rollback(self):
+        self.sql.append("ROLLBACK")
+
+    def cursor(self):
+        conn = self
+
+        class Cursor:
+            last = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, sql, args=None):
+                conn.sql.append(sql)
+                self.last = sql
+
+            def fetchone(self):
+                if self.last == schema._SESSION_QUERY:
+                    return conn.sessions.pop(0)
+                if "transaction_isolation" in self.last:
+                    return "repeatable read", "on", datetime(2026, 10, 20, tzinfo=timezone.utc)
+                return None
+
+            def fetchall(self):
+                return conn.extractions if "financial_f4_extractions order by id" in self.last else []
+        return Cursor()
+
+    def unqualified(self):
+        """The statements that name an R-F4, F3 or F5 table without a schema."""
+        tables = ("financial_f4_", "financial_extraction_runs", "report_document_classifications",
+                  "report_statement_periods", "report_classification_evidence")
+        return [s for s in self.sql if any(t in s for t in tables)]
+
+
+def test_u22_verify_sets_one_read_only_repeatable_read_snapshot_and_checks_the_session_before_reading():
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION)
+    report = verify.verify(conn)
+    assert conn.sql[0] == "set transaction isolation level repeatable read, read only"        # before any query
+    assert conn.sql[1] == schema._SESSION_QUERY                                                # the check, first query
+    first_read = next(i for i, s in enumerate(conn.sql) if s in conn.unqualified())
+    assert first_read > 1 and conn.sql[-1] == "ROLLBACK"
+    assert report["clean"] and report["snapshot"] == {"isolation": "repeatable read", "read_only": True,
+                                                      "taken_at": "2026-10-20T00:00:00+00:00"}
+
+
+def test_u22_verify_refuses_an_unsafe_session_before_any_unqualified_query():
+    from worker.financial_f4_store import verify
+    conn = _Recording(UNSAFE_SESSION)
+    report = verify.verify(conn)
+    assert conn.unqualified() == [] and conn.sql[-1] == "ROLLBACK"
+    assert not report["clean"] and (report["extractions"], report["runs"]) == (0, 0)
+    assert report["problems"] == [{"kind": "name_resolution", "detail": "search_path 'rf4_shadow, public': schema "
+                                   "rf4_shadow is searched before public, whether or not it exists or holds a table "
+                                   "now; this session searches rf4_shadow before public"}]
+
+
+def test_u22_every_public_reader_entry_point_checks_the_session_before_its_first_unqualified_query():
+    from worker.financial_f4_store.errors import SchemaUnavailable
+    key = {k: "x" for k in reader.RUN_KEY}
+    for call in (lambda c: reader.extraction_row(c, "e"), lambda c: reader.extraction_id_for(c, key),
+                 lambda c: reader.load_extraction(c, "e"), lambda c: reader.load_classification(c, "c"),
+                 lambda c: reader.run_key(c, "r"), lambda c: reader.evidence_for_run(c, "r"),
+                 lambda c: reader.rebuild_f5(c, "r")):
+        conn = _Recording(UNSAFE_SESSION)
+        with pytest.raises(SchemaUnavailable, match="rf4_shadow"):
+            call(conn)
+        assert conn.sql == [schema._SESSION_QUERY]                       # the check only: nothing was read
+
+
+def test_u22_a_refusal_during_verify_ends_it_unclean():
+    """The session's resolution can change during a run (a configuration reload reaches open sessions): the reader's
+    own check refuses, and verify reports it, never clean."""
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION, UNSAFE_SESSION, extractions=[("e1", "c1", "f" * 64)])
+    report = verify.verify(conn)
+    assert not report["clean"] and report["extractions"] == 1
+    assert [p["kind"] for p in report["problems"]] == ["name_resolution"]
+    assert report["problems"][0]["after"] == {"extractions": 1, "runs": 0}

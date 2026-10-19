@@ -87,6 +87,15 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p38  a real operator public.= ahead of pg_catalog subverts the guard; refused and reported; public missing too
     p39  pg_temp listed first, no temporary schema, no TEMPORARY: judged without creating one (the second defect
          this work found and fixed: the check failed untyped); a safe path saves, an unsafe one is refused
+    p40  audit finding RF4-A1: a reader session with an unsafe search path, where empty shadow tables would hide a
+         corrupt extraction from verify and make F3 evidence look missing: verify refuses (not clean, nothing
+         read) and every public reader entry point raises SchemaUnavailable before an unqualified query
+    p41  a login entering cse_reader by SET ROLE keeps its own unsafe path, or a temporary shadow table; both
+         refused, while the preflight (cse_reader's configuration) stays clean
+    p42  the safe path: verify clean, the reader reads; verify's transaction is REPEATABLE READ and READ ONLY,
+         and a write inside it is refused even for cse_worker
+    p43  verify reads one snapshot while another transaction commits a filing or appends a row; the next
+         verify sees both
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -2404,3 +2413,220 @@ def test_p39_a_path_listing_pg_temp_first_is_judged_without_creating_a_temporary
     finally:
         q(su, "drop schema if exists rf4_shadow cascade")
     assert_restored(db, su, m)
+
+
+# ------------------------------------------------------------- audit finding RF4-A1 (2026-10-20): the reader and verify
+
+READER_SHADOWED = ("financial_f4_extractions", "financial_extraction_runs", "report_document_classifications")
+ENUMERATION = "from financial_f4_extractions order by id"                         # verify's first unqualified query
+
+
+def reader_shadows(su, tables=READER_SHADOWED, select=True):
+    """rf4_shadow with an empty copy (LIKE public's) of each of `tables`, usable by cse_reader, readable unless
+    select=False."""
+    shadow_schema(su)
+    for t in tables:
+        q(su, f"create table rf4_shadow.{t} (like public.{t})")
+        if select:
+            q(su, f"grant select on rf4_shadow.{t} to cse_reader")
+
+
+def reader_with_path(db, path):
+    """A session that enters cse_reader by SET ROLE (as db.reader()) and then sets its own search path."""
+    r = db.reader()
+    q(r, f"set search_path = {path}")
+    r.commit()
+    return r
+
+
+def hook_cursor(marker, hook):
+    """A cursor class (a real psycopg2 cursor, so the reader's per-cursor JSON decoding works) that calls hook(conn)
+    once, right after the first statement containing `marker` has run."""
+    import psycopg2.extensions
+
+    class HookCursor(psycopg2.extensions.cursor):
+        pending = [hook]
+
+        def execute(self, sql, args=None):
+            out = super().execute(sql, args)
+            if self.pending and marker in str(sql):
+                self.pending.pop()(self.connection)
+            return out
+    return HookCursor
+
+
+def tamper_a_cell(su, eid):
+    q(su, "set session_replication_role = replica")                              # superuser only: triggers off
+    try:
+        q(su, "update financial_f4_cells k set raw_value = raw_value || '!' from financial_f4_statements s where "
+              "s.id = k.statement_id and s.extraction_id = %s and k.seq = 0", (eid,))
+    finally:
+        q(su, "set session_replication_role = origin")
+
+
+def kinds_of(report):
+    return {(p["kind"], p.get("extraction_id") or p.get("run_id")) for p in report["problems"]}
+
+
+def test_p40_an_unsafe_reader_path_is_refused_before_a_shadow_can_change_verify_or_the_reader(db, layouts):
+    """RF4-A1. A reader session whose own search path puts rf4_shadow ahead of public: PostgreSQL then answers verify's
+    and the reader's unqualified names from empty shadow copies, which would hide a corrupt extraction (verify clean,
+    nothing found) and make saved F3 evidence look missing. verify refuses (not clean, nothing read) and every public
+    reader entry point raises SchemaUnavailable, before any unqualified query; without SELECT on the shadows (so that
+    reading one would fail) the refusal still comes first. Restored afterwards, the real problem is found again."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    good = persist(w, words, 990001)
+    bad = persist(w, words, 990002)
+    tamper_a_cell(su, bad.eid)
+    assert ("corrupt", str(bad.eid)) in kinds_of(verify.verify(db.reader()))   # what a safe session finds
+    assert_restored(db, su, m)
+    try:
+        reader_shadows(su)
+        r = reader_with_path(db, "rf4_shadow, public")
+        # PostgreSQL's own resolution in that session: the shadows answer the unqualified names
+        assert q(r, "select count(*) from financial_f4_extractions") == [(0,)]
+        assert q(r, "select count(*) from public.financial_f4_extractions") == [(2,)]
+        r.rollback()
+        report = verify.verify(r)
+        assert not report["clean"] and (report["extractions"], report["runs"]) == (0, 0), report
+        assert [p["kind"] for p in report["problems"]] == ["name_resolution"], report["problems"]
+        assert "schema rf4_shadow is searched before public" in report["problems"][0]["detail"]
+        key = reader.run_key(db.reader(), good.run_id)                          # read in a safe session
+        for call in (lambda: reader.extraction_row(r, good.eid), lambda: reader.extraction_id_for(r, key),
+                     lambda: reader.load_extraction(r, good.eid), lambda: reader.load_classification(r, good.cid),
+                     lambda: reader.run_key(r, good.run_id), lambda: reader.evidence_for_run(r, good.run_id),
+                     lambda: reader.rebuild_f5(r, good.run_id)):
+            with pytest.raises(SchemaUnavailable, match="rf4_shadow"):
+                call()
+            r.rollback()
+        # without SELECT on the shadows a read of one would fail: the refusal comes before any
+        q(su, "revoke select on all tables in schema rf4_shadow from cse_reader")
+        report = verify.verify(reader_with_path(db, "rf4_shadow, public"))
+        assert [p["kind"] for p in report["problems"]] == ["name_resolution"] and not report["clean"]
+    finally:
+        q(su, "drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+    assert ("corrupt", str(bad.eid)) in kinds_of(verify.verify(db.reader()))
+
+
+def test_p41_a_session_entering_cse_reader_by_set_role_is_judged_by_its_own_path_and_temporary_schema(db, layouts):
+    """RF4-A1. SET ROLE cse_reader applies none of cse_reader's settings: a login with an unsafe search path of its own
+    keeps it after SET ROLE, and the preflight, which checks cse_reader's configuration, cannot see it. A session whose
+    temporary schema holds a shadow table read by cse_reader is the same. verify and the reader judge the session
+    itself and refuse both. Everything is restored."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    good = persist(w, words, 991001)
+    assert_restored(db, su, m)
+    try:
+        reader_shadows(su)
+        q(su, "create role rf4_reader_login login; grant cse_reader to rf4_reader_login; "
+              f"grant connect on database {db.name} to rf4_reader_login; "
+              "alter role rf4_reader_login set search_path = rf4_shadow, public")
+        c = db.cluster.connect(dbname=db.name, user="rf4_reader_login")
+        db._open.append(c)
+        c.autocommit = True
+        q(c, "set role cse_reader")
+        c.autocommit = False
+        assert q(c, "select current_user::text, session_user::text, current_setting('search_path')") == \
+            [("cse_reader", "rf4_reader_login", "rf4_shadow, public")]           # the login's path, kept
+        assert q(c, "select count(*) from financial_f4_extractions") == [(0,)]   # the shadow answers
+        c.rollback()
+        assert preflight.report(m)["clean"]                   # cse_reader's own configuration is safe
+        report = verify.verify(c)
+        assert [p["kind"] for p in report["problems"]] == ["name_resolution"] and not report["clean"]
+        with pytest.raises(SchemaUnavailable, match="rf4_shadow"):
+            reader.load_extraction(c, good.eid)
+        c.rollback()
+        c.close()
+        # a temporary shadow made by the login before it enters cse_reader
+        t = db.cluster.connect(dbname=db.name, user="postgres")
+        db._open.append(t)
+        t.autocommit = True
+        q(t, "create temporary table financial_f4_extractions (like public.financial_f4_extractions); "
+             "grant select on financial_f4_extractions to cse_reader; set role cse_reader")
+        t.autocommit = False
+        assert q(t, "select count(*) from financial_f4_extractions") == [(0,)]   # the temporary table answers
+        t.rollback()
+        report = verify.verify(t)
+        assert [p["kind"] for p in report["problems"]] == ["name_resolution"] and not report["clean"]
+        assert "temporary schema" in report["problems"][0]["detail"]
+        t.close()
+    finally:
+        q(su, f"revoke connect on database {db.name} from rf4_reader_login; drop role if exists rf4_reader_login; "
+              "drop schema if exists rf4_shadow cascade")
+    assert_restored(db, su, m)
+    assert q(su, "select count(*) from pg_roles where rolname = 'rf4_reader_login'") == [(0,)]
+    assert verify.verify(db.reader())["clean"]
+
+
+def test_p42_a_safe_path_verifies_in_one_read_only_repeatable_read_transaction(db, layouts):
+    """The safe path works: verify is clean and the reader reads, as cse_reader. verify's transaction is REPEATABLE
+    READ and READ ONLY, set before its first query: inside it, PostgreSQL refuses a write even from cse_worker, which
+    is allowed to insert. verify writes nothing."""
+    import psycopg2
+    w = db.conn()
+    good = persist(w, a_layout_with_cells(layouts), 992001)
+    r = db.reader()
+    report = verify.verify(r)
+    assert report["clean"] and (report["extractions"], report["runs"], report["rebuilt"]) == (1, 1, 1), report
+    assert report["snapshot"]["isolation"] == "repeatable read" and report["snapshot"]["read_only"] is True
+    assert codec.f4_content_sha256(reader.load_extraction(r, good.eid)) == codec.f4_content_sha256(good.ext)
+    r.rollback()
+    seen = {}
+
+    def probe(conn):
+        with conn.cursor() as c:
+            c.execute("select current_setting('transaction_isolation'), current_setting('transaction_read_only')")
+            seen["transaction"] = c.fetchone()
+            c.execute("savepoint rf4_probe")
+            try:
+                c.execute("insert into financial_f4_rows default values")
+            except psycopg2.errors.ReadOnlySqlTransaction as exc:
+                seen["write"] = type(exc).__name__
+            c.execute("rollback to savepoint rf4_probe")
+    wk = db.conn()                                                               # cse_worker: INSERT is granted
+    wk.cursor_factory = hook_cursor(ENUMERATION, probe)
+    before = f4_counts(db.su())
+    report = verify.verify(wk)
+    assert seen == {"transaction": ("repeatable read", "on"), "write": "ReadOnlySqlTransaction"}, seen
+    assert report["clean"] and f4_counts(db.su()) == before
+
+
+def test_p43_verify_reads_one_snapshot_while_another_transaction_commits(db, layouts):
+    """While verify runs, another transaction commits a new filing (F3, F4 and F5) after verify has listed the
+    extractions, and in a second run appends a row to an extraction verify will read. verify reports the database as
+    it was at its snapshot: 1 extraction and 1 run, not 1 and 2; the appended row is not read. Neither change is taken
+    as clean evidence of the new state: the next verify, at a later snapshot, sees the new filing and reports the
+    appended row as incomplete (the extraction, and the run whose rebuild reads it)."""
+    words = a_layout_with_cells(layouts)
+    w = db.conn()
+    first = persist(w, words, 993001)
+
+    def commit_a_filing(_conn):
+        persist(db.conn(), words, 993002)
+    r = db.reader()
+    r.cursor_factory = hook_cursor(ENUMERATION, commit_a_filing)
+    report = verify.verify(r)
+    assert (report["extractions"], report["runs"], report["clean"]) == (1, 1, True), report
+    later = verify.verify(db.reader())
+    assert (later["extractions"], later["runs"], later["clean"]) == (2, 2, True), later
+    assert report["snapshot"]["taken_at"] < later["snapshot"]["taken_at"]
+
+    sid = q(w, "select id from financial_f4_statements where extraction_id = %s order by statement_index limit 1",
+            (first.eid,))[0][0]
+    w.commit()
+
+    def append_a_row(_conn):
+        a = db.conn()
+        q(a, "insert into financial_f4_rows (statement_id, seq, row_index, page, label_raw, label_normalized, y0, y1, "
+             "line_count, wrapped, kind, status, reasons) values (%s, 9999, 9999, 1, 'x', 'x', '1', '2', 1, false, "
+             "'values', 'ok', '[]')", (sid,))
+        a.commit()
+    r = db.reader()
+    r.cursor_factory = hook_cursor(ENUMERATION, append_a_row)
+    during = verify.verify(r)
+    assert during["clean"] and (during["extractions"], during["runs"]) == (2, 2), during
+    after = verify.verify(db.reader())
+    assert kinds_of(after) == {("incomplete", str(first.eid)), ("incomplete", str(first.run_id))}, after["problems"]

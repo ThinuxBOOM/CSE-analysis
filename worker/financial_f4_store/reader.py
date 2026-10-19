@@ -7,6 +7,14 @@ F5 is rebuilt by its own frozen builder, unchanged, under the declared reconstru
 default decimal context, the one the production pipeline extracts under. F5 outputs the stored parsed_value as it is;
 its own consistency check re-parses raw_value, and when that check refuses (an extraction made under another context,
 on a negative longer than the precision) the rebuild is `f5_rebuild_refused`, never a different result.
+
+Name resolution (audit finding RF4-A1, 2026-10-20). Every query here names its tables without a schema, as the writer
+does, so the session's search path and temporary schema decide what it reads. Every public function therefore checks
+the CURRENT session first, with the writer's own check (schema.search_path_problems: one catalogue query, every name
+and operator in it qualified with pg_catalog), and raises SchemaUnavailable before its first unqualified query when
+the session could resolve a name outside public and pg_catalog. The session is checked, not a role's configuration: a
+session that enters cse_reader by SET ROLE keeps the search path and temporary schema of the login that opened it.
+The check reads the catalogue only, so read-only sessions and roles can run it.
 """
 import decimal
 
@@ -15,8 +23,8 @@ import psycopg2.extras
 from .. import financial_candidates as f5
 from .. import statement_extraction as se
 from ..report_classification_store import CLASSIFICATION_COLUMNS, EVIDENCE_COLUMNS, PERIOD_COLUMNS
-from . import STORE_VERSION, codec
-from .errors import EvidenceRefused
+from . import STORE_VERSION, codec, schema
+from .errors import EvidenceRefused, SchemaUnavailable
 
 SUPPORTED = {(STORE_VERSION, se.F4_EXTRACTOR_VERSION)}        # (store_version, f4_extractor_version) this code reads
 RECONSTRUCTION_CONTEXT = decimal.Context(
@@ -39,9 +47,22 @@ def _iso(v):
     return v.isoformat() if hasattr(v, "isoformat") else v
 
 
+def require_safe_resolution(conn):
+    """SchemaUnavailable unless the current session's name resolution meets R-F4's invariant (module docstring)."""
+    with conn.cursor() as cur:
+        problems = schema.search_path_problems(cur)
+    if problems:
+        raise SchemaUnavailable("; ".join(problems))
+
+
 # ================================================================================================ the extraction
 
 def extraction_row(conn, extraction_id):
+    require_safe_resolution(conn)
+    return _extraction_row(conn, extraction_id)
+
+
+def _extraction_row(conn, extraction_id):
     with conn.cursor() as cur:
         got = _rows(cur, "select * from financial_f4_extractions where id = %s", (str(extraction_id),))
     if not got:
@@ -52,6 +73,11 @@ def extraction_row(conn, extraction_id):
 def extraction_id_for(conn, key):
     """The extraction of an F5 run's key {cse_filing_id, document_sha256, word_extractor, f4_extractor_version,
     classification_id}, or None."""
+    require_safe_resolution(conn)
+    return _extraction_id_for(conn, key)
+
+
+def _extraction_id_for(conn, key):
     with conn.cursor() as cur:
         cur.execute("select id from financial_f4_extractions where cse_filing_id = %s and document_sha256 = %s and "
                     "word_extractor = %s and f4_extractor_version = %s and classification_id = %s",
@@ -67,6 +93,11 @@ def load_extraction(conn, extraction_id):
     Saved evidence that cannot even be decoded is `corrupt` too: a ValueError while reading it (a jsonb integer of more
     than codec.MAX_INT_DIGITS digits, say) or an ArithmeticError (decimal). Only those, and only here, per extraction:
     a database error or any other exception (a programming error) still propagates."""
+    require_safe_resolution(conn)
+    return _load_extraction_checked(conn, extraction_id)
+
+
+def _load_extraction_checked(conn, extraction_id):
     try:
         return _load_extraction(conn, extraction_id)
     except (ValueError, ArithmeticError) as exc:
@@ -75,7 +106,7 @@ def load_extraction(conn, extraction_id):
 
 
 def _load_extraction(conn, extraction_id):
-    e = extraction_row(conn, extraction_id)
+    e = _extraction_row(conn, extraction_id)
     if (e["store_version"], e["f4_extractor_version"]) not in SUPPORTED:
         raise EvidenceRefused("version_incompatible",
                               f"extraction {extraction_id}: store {e['store_version']} / F4 {e['f4_extractor_version']}"
@@ -106,6 +137,11 @@ def _load_extraction(conn, extraction_id):
 def load_classification(conn, classification_id):
     """The F3 classification from migration 0005's three tables, in codec.f3_projection's shape (dates as ISO
     strings): every F3 field F5's builder reads. 0005 has no frozen loader; this one reads it and changes nothing."""
+    require_safe_resolution(conn)
+    return _load_classification(conn, classification_id)
+
+
+def _load_classification(conn, classification_id):
     cid = str(classification_id)
     with conn.cursor() as cur:
         got = _rows(cur, f"select {', '.join(CLASSIFICATION_COLUMNS)} from report_document_classifications "
@@ -131,6 +167,11 @@ def load_classification(conn, classification_id):
 # ================================================================================================ F5 rebuild
 
 def run_key(conn, run_id):
+    require_safe_resolution(conn)
+    return _run_key(conn, run_id)
+
+
+def _run_key(conn, run_id):
     with conn.cursor() as cur:
         got = _rows(cur, f"select {', '.join(RUN_KEY)}, content_sha256 from financial_extraction_runs where id = %s",
                     (str(run_id),))
@@ -141,13 +182,18 @@ def run_key(conn, run_id):
 
 def evidence_for_run(conn, run_id):
     """(extraction id, the F4 extraction, the F3 classification, the run row) of an F5 run, every check applied."""
-    run = run_key(conn, run_id)
-    eid = extraction_id_for(conn, run)
+    require_safe_resolution(conn)
+    return _evidence_for_run(conn, run_id)
+
+
+def _evidence_for_run(conn, run_id):
+    run = _run_key(conn, run_id)
+    eid = _extraction_id_for(conn, run)
     if eid is None:
         raise EvidenceRefused("missing", f"F5 run {run_id} has no saved F4 extraction")
-    ext = load_extraction(conn, eid)
-    cls = load_classification(conn, run["classification_id"])
-    if codec.f3_input_sha256(cls) != extraction_row(conn, eid)["f3_input_sha256"]:
+    ext = _load_extraction_checked(conn, eid)
+    cls = _load_classification(conn, run["classification_id"])
+    if codec.f3_input_sha256(cls) != _extraction_row(conn, eid)["f3_input_sha256"]:
         raise EvidenceRefused("corrupt", f"extraction {eid}: the F3 classification read back differs from the input "
                                          f"F5 consumed (f3_input_sha256)")
     return eid, ext, cls, run
@@ -156,7 +202,8 @@ def evidence_for_run(conn, run_id):
 def rebuild_f5(conn, run_id):
     """(the F5 result rebuilt from saved F3 and F4 evidence, the run's stored content_sha256). F5's own builder,
     under RECONSTRUCTION_CONTEXT; its refusal is f5_rebuild_refused."""
-    _, ext, cls, run = evidence_for_run(conn, run_id)
+    require_safe_resolution(conn)
+    _, ext, cls, run = _evidence_for_run(conn, run_id)
     try:
         with decimal.localcontext(RECONSTRUCTION_CONTEXT):
             result = f5.build(ext, cls)

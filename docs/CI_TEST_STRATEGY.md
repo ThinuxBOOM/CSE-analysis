@@ -538,7 +538,9 @@ Passing CI on a commit does not remove any limitation recorded in `docs/R_F4_IMP
 - **Privileged changes between the store's in-band check and its insert** (including a configuration reload, which
   reaches sessions already open) are not tested and cannot be closed by a check.
 - **`cse_reader`'s sessions.** `SET ROLE cse_reader` applies none of `cse_reader`'s own settings. The logins that
-  enter it are not checked by the preflight, and reader sessions are not checked in-band.
+  enter it are not checked by the preflight. Since finding RF4-A1 (`docs/R_F4_IMPLEMENTATION.md` §12) the reader
+  and `verify` check each session's own name resolution in-band (tests p40, p41). A change between a check and the
+  read it guards is still not seen by that read.
 - **Components outside R-F4's save** are not covered by R-F4's checks (HB-4's ledger writes, F1, the reads before
   `_persist`).
 - **PostgreSQL version.** The name-resolution behaviour verified is PostgreSQL 17's, and CI runs PostgreSQL 17 only.
