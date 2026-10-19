@@ -103,7 +103,7 @@ routes 0; connect to 192.0.2.1: ENETUNREACH: no network`.
 | Temporary files | `TEMP` and `TMP` point to `%RUNNER_TEMP%\pytest-temp`, a long-named directory on the checkout's drive. The step stops (exit 13) if that directory is on another drive or has a short-name component. The runner's default `TEMP` is recorded as `temp dir (runner default)`. Why: §7.2 |
 | Network | The runner **has** a network. CSE's host names (`www.cse.lk`, `cdn.cse.lk`, `cse.lk`) are pointed at `0.0.0.0` / `::` in the hosts file before any test, and `check_cse_unreachable.py` must confirm it or the job stops. This boundary covers CSE **by name only**: the Windows runs are not network-isolated as the Linux container is. The test files are the same ones that pass on Linux with no network at all, and CSE is reached by name throughout the code |
 | Run | in the checkout, `PYTHONDONTWRITEBYTECODE=1`, as the earlier Windows runs |
-| Not available | PostgreSQL, the scratch databases, POSIX signals: those suites skip by their own gates, as they did locally. Poppler is not installed. The local Windows machine had another `pdftotext` (xpdf), so one `test_report_classification` test ran there and may skip on the runner; `environment.txt` records which |
+| Not available | PostgreSQL, the scratch databases, POSIX signals: those suites skip by their own gates, as they did locally. CI installs no Poppler. The runner image has a `pdftotext` of its own (run 39178257944 recorded it as present), as did the local Windows machine, so `test_report_classification`'s one `pdftotext` test runs on both; the tests gated on the pinned Poppler 24.02.0 skip on both |
 
 ### 2.3 Differences from the earlier local runs
 
@@ -409,10 +409,12 @@ caused by where the hosted runner keeps its temporary files.
 path with no short names (§2.2). That is the layout the earlier Windows evidence ran in. The assertions are
 unchanged; nothing is skipped or reclassified.
 
-**What still has to be confirmed.** The runner's actual default `TEMP` (drive and spelling) was not visible to the
-author: its job logs and artifacts need a signed-in account. Every Windows run now records it as
-`temp dir (runner default)`, next to the workspace path, in `environment.txt` and in the job's public notice. The
-next run shows whether it is the cause found locally.
+**Confirmed by the runner's own record (run 39178257944, §9).** The Windows jobs' public notices show:
+- the runner's default `TEMP` is `C:\Users\RUNNER~1\AppData\Local\Temp`: on drive C:, through an 8.3 short name;
+- the checkout is `D:\a\CSE-analysis\CSE-analysis`.
+
+These are exactly the two conditions that reproduced W1 and W3 locally. With `TEMP` at `D:\a\_temp\pytest-temp`,
+W1 (266 passed, 218 skipped) and W3 (963 passed, 259 skipped) pass, equal to the last local run I5.
 
 ### 7.3 xfails and skips
 
@@ -487,10 +489,25 @@ The container was built from the tracked Dockerfile (Poppler 24.02.0-1ubuntu9.10
 |---|---|---|---|
 | `ae26d68` (first CI commit) | fast [39162102872](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39162102872) | success | offline |
 | `ae26d68` | regression [39162102932](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39162102932) | failure | Linux 15 of 16 passed, L02 failed (the baseline); Windows W2 passed, W1 and W3 failed (§7.2); summary failed |
+| `4be6fa9` (Windows temp layout, signature-bound baseline, Poppler, X1) | fast [39178258034](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39178258034) | success | offline |
+| `4be6fa9` | regression [39178257944](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39178257944) | failure, verdict `baseline-only` | every group passed except L02, whose one failure is the recorded baseline, matched by its whole signature. The summary therefore fails, as it must while any test fails. Counts: below |
 
-The author could read job conclusions and annotations through the public API. Job logs and artifact downloads need
-a signed-in account. The W1 and W3 failure messages are the owner's reading of the runner logs; their mechanisms
-were reproduced locally.
+**Run 39178257944, as its summary notice reports.**
+
+| Groups | Result |
+|---|---|
+| L01–L13, L15 | identical to the last local run I5 |
+| L14 | 256 passed, 1 skipped |
+| L16 | 589 passed, 35 skipped |
+| X1 | 1 passed |
+| W1, W2, W3 | 266 / 218, 829 / 67, 963 / 259 (passed / skipped): identical to I5 |
+
+These equal the local validation of the same commit (§8). On Linux, Poppler reported `pdftotext version 24.02.0`. The
+Windows runner had Python 3.14.8 and a `pdftotext` of its own.
+
+**What the author could read.** Job conclusions and annotations, through the public API. Job logs and artifact
+downloads need a signed-in account. The W1 and W3 failure messages of the first run are the owner's reading of its
+logs; their causes were reproduced locally and then confirmed by the second run's own record (§7.2).
 
 ## 10. Security and boundaries
 
