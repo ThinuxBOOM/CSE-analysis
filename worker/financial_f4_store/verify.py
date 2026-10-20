@@ -12,7 +12,20 @@ change, even one a role with INSERT would be allowed, is refused by PostgreSQL i
 One snapshot (audit finding RF4-A1, 2026-10-20). The transaction is REPEATABLE READ, set before its first query, so the
 enumeration, the F4 read-backs, the F3 read-backs and the F5 rebuilds all see the database as it was at that query,
 whatever another transaction commits meanwhile. A change committed during the run is not in this report; the next
-verify sees it. The report records the snapshot (`snapshot`): its isolation, that it was read only, and its time.
+verify sees it. A connection in autocommit mode is refused: there every statement is its own transaction, with its own
+snapshot, even when the session's defaults make each one REPEATABLE READ and READ ONLY.
+
+The report's `snapshot` records:
+- `isolation` and `read_only`: the transaction's settings, as PostgreSQL reports them;
+- `pg_snapshot`: the snapshot itself, pg_current_snapshot() as text (xmin:xmax:in-progress transaction ids). Under
+  REPEATABLE READ every statement of the transaction has this snapshot. It identifies which transactions' changes the
+  report saw: pg_visible_in_snapshot(xid, pg_snapshot) tells, for any transaction id, whether verify read its work;
+- `transaction_started_at`: transaction_timestamp(), when PostgreSQL received the BEGIN of verify's transaction. The
+  snapshot is taken later, at the transaction's first query; PostgreSQL records no time for that, so this is a lower
+  bound on the snapshot's time, not the snapshot's time and not its identity.
+
+A failure ends the run with the failure itself: the transaction is rolled back, and if the rollback fails too (the
+connection was lost, say), the caller still gets the first failure, with the rollback's error as a note on it.
 
 Name resolution (audit finding RF4-A1). The enumeration names its tables without a schema, as the reader does. Before
 it, the session's own name resolution is checked (schema.search_path_problems, the writer's check, unchanged); a
@@ -27,48 +40,63 @@ from .errors import EvidenceRefused, SchemaUnavailable
 
 _SNAPSHOT = """select pg_catalog.current_setting('transaction_isolation'),
                       pg_catalog.current_setting('transaction_read_only'),
+                      pg_catalog.pg_current_snapshot()::pg_catalog.text,
                       pg_catalog.transaction_timestamp()"""
 
 
 def verify(conn, *, rebuild=True, limit=None):
     """The report {store_version, snapshot, extractions, runs, rebuilt, problems: [{kind, ...}], clean}. `conn` must
-    have no open transaction; verify rolls its own read-only transaction back."""
+    not be in autocommit mode and must have no open transaction; verify rolls its own read-only transaction back."""
+    if conn.autocommit:
+        raise ValueError("verify needs a connection outside autocommit mode: there each statement is its own "
+                         "transaction, with its own snapshot")
     if conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
         raise ValueError("verify needs a connection with no open transaction")
     report = {"store_version": STORE_VERSION, "snapshot": None, "extractions": 0, "runs": 0, "rebuilt": 0,
               "problems": []}
     try:
-        with conn.cursor() as cur:
-            cur.execute("set transaction isolation level repeatable read, read only")      # before any query
-            unsafe = schema.search_path_problems(cur)          # pg_catalog-qualified: the snapshot's first query
-            cur.execute(_SNAPSHOT)
-            isolation, read_only, taken_at = cur.fetchone()
-            report["snapshot"] = {"isolation": isolation, "read_only": read_only == "on",
-                                  "taken_at": taken_at.isoformat()}
-            if (isolation, read_only) != ("repeatable read", "on"):
-                raise RuntimeError(f"verify's transaction is {isolation}, read_only={read_only}")
-            if unsafe:
-                report["problems"].append({"kind": "name_resolution", "detail": "; ".join(unsafe)})
-                return _finish(report)
-            cur.execute("select id, classification_id, f3_input_sha256 from financial_f4_extractions order by id"
-                        + (" limit %s" % int(limit) if limit else ""))
-            extractions = cur.fetchall()
-            cur.execute("select id from financial_extraction_runs order by id" + (" limit %s" % int(limit) if limit
-                                                                                  else ""))
-            runs = [r[0] for r in cur.fetchall()]
-        try:
-            _check(conn, report, extractions, runs, rebuild)
-        except SchemaUnavailable as exc:                   # the session's resolution changed during the run
-            report["problems"].append({"kind": "name_resolution", "detail": exc.detail,
-                                       "after": {"extractions": report["extractions"], "runs": report["runs"]}})
-    finally:
-        conn.rollback()
-    return _finish(report)
-
-
-def _finish(report):
+        _verify(conn, report, rebuild, limit)
+    except BaseException as exc:
+        _roll_back_after(conn, exc)
+        raise
+    conn.rollback()
     report["clean"] = not report["problems"]
     return report
+
+
+def _roll_back_after(conn, failure):
+    """Roll back after `failure` without hiding it: a rollback that fails too (on a lost connection psycopg2 raises
+    InterfaceError) becomes a note on `failure`, which the caller still gets."""
+    try:
+        conn.rollback()
+    except Exception as exc:
+        failure.add_note(f"verify's rollback also failed: {type(exc).__name__}: {exc}")
+
+
+def _verify(conn, report, rebuild, limit):
+    with conn.cursor() as cur:
+        cur.execute("set transaction isolation level repeatable read, read only")          # before any query
+        unsafe = schema.search_path_problems(cur)              # pg_catalog-qualified: the snapshot's first query
+        cur.execute(_SNAPSHOT)
+        isolation, read_only, pg_snapshot, started = cur.fetchone()
+        report["snapshot"] = {"isolation": isolation, "read_only": read_only == "on", "pg_snapshot": pg_snapshot,
+                              "transaction_started_at": started.isoformat()}
+        if (isolation, read_only) != ("repeatable read", "on"):
+            raise RuntimeError(f"verify's transaction is {isolation}, read_only={read_only}")
+        if unsafe:
+            report["problems"].append({"kind": "name_resolution", "detail": "; ".join(unsafe)})
+            return
+        cur.execute("select id, classification_id, f3_input_sha256 from financial_f4_extractions order by id"
+                    + (" limit %s" % int(limit) if limit else ""))
+        extractions = cur.fetchall()
+        cur.execute("select id from financial_extraction_runs order by id" + (" limit %s" % int(limit) if limit
+                                                                              else ""))
+        runs = [r[0] for r in cur.fetchall()]
+    try:
+        _check(conn, report, extractions, runs, rebuild)
+    except SchemaUnavailable as exc:                       # the session's resolution changed during the run
+        report["problems"].append({"kind": "name_resolution", "detail": exc.detail,
+                                   "after": {"extractions": report["extractions"], "runs": report["runs"]}})
 
 
 def _check(conn, report, extractions, runs, rebuild):

@@ -4,9 +4,10 @@
 audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7), `2bc66c1`
 (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
 found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
-snapshot) is remediated in the commit adding §12. All await the owner's independent review. NOT accepted, NOT frozen.**
-For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment
-text) and then, the same day, formally waived the item for this implementation package:
+snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in the commit
+adding §13. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected
+Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally
+waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -39,13 +40,15 @@ and evidence only; it changes no decision.
 | `1252c56` | Claude (search-path evidence) | Tests u21 and p34–p39 for §9.4's unexercised cases; defects D1 and D2, found by them, fixed in `schema.py`; the HB-1 to HB-6 re-pin (§11) |
 | `b88f5f7` | Claude | Section 11, the notes under §9.4 and §9.6, and the status lines of this record; the design's status lines. Documents only (§11.8) |
 | `ae26d68`, `4be6fa9`, `1ad5cc6` | Claude | GitHub Actions CI and its strategy (`docs/CI_TEST_STRATEGY.md`); no R-F4 code, test or record change |
-| the commit adding section 12 | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
+| `95da822` | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
+| the commit adding section 13 | Claude (the owner's review of `95da822`) | `verify.py`: the snapshot's identity (`pg_snapshot`) and the transaction's start (`transaction_started_at`, was `taken_at`) recorded apart; autocommit connections refused; a failure raised as itself when the rollback fails too; tests u23 and p44–p46, u22 and p43 moved to the new keys; the design's §5 and §11; section 13 and the notes in §12; `docs/CI_TEST_STRATEGY.md` §9 (run 3) (§13) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9) **and at
-`1252c56`** (search-path evidence, §11), **and at the commit adding §12** (finding RF4-A1). Where they differ, the later
-section is current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
+`1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12) **and at the commit adding §13**
+(`verify`'s snapshot metadata). Where they differ, the later section is current: they change the store, the in-band
+check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -912,7 +915,8 @@ audited.** The audit is **not complete**; R-F4 is **not** accepted or frozen; §
 §10, and nothing here widens that waiver.
 
 **Code and record in one commit.** The fix, its tests, the pin cascade and this section are one commit (parent
-`1ad5cc6`), so this record cannot name its own hash. The next documentation change will name it.
+`1ad5cc6`), so this record cannot name its own hash. The next documentation change will name it. *It is `95da822`
+(§13).*
 
 ### 12.1 What issues unqualified queries
 
@@ -964,6 +968,8 @@ write privilege.
 - **A refusal mid-run.** If a reader call refuses during the run, for example because a configuration reload changed
   the session's path, `verify` stops and reports it, never clean.
 - **The snapshot is recorded.** The report has a `snapshot` entry: isolation, read only, and the transaction's time.
+  *§13 names that time for what it is, `transaction_started_at` (it was `taken_at`), and adds the snapshot's identity,
+  `pg_snapshot`.*
 
 **Unchanged:**
 - the writer (`store.py`) and its guard;
@@ -985,6 +991,9 @@ evidence either: the report records its snapshot time, and the next `verify` rea
 - a filing committed mid-run is absent from this report and present in the next;
 - a row appended mid-run is not read now, and is reported as `incomplete` (for the extraction and for the run that
   rebuilds from it) by the next.
+
+*The "snapshot time" was the transaction's start (`transaction_timestamp()`), which comes before the snapshot. §13
+records the snapshot's identity and names the time as the transaction's start.*
 
 ### 12.5 Tests
 
@@ -1029,7 +1038,7 @@ The Phase 2 design's pin-only notes carry these prefixes.
 | **R-F4 PostgreSQL suite** (container `cse-p1-test:latest`, PostgreSQL 17.11, `--network none`) | clean LF tree, identical to this commit's code and tests | **56 passed** (§11's 52 plus p40–p43) |
 | **HB-4 and HB-5 integration** | the same | **73 passed** (48 and 25): `_persist` reaches the reader through the store's read-backs, unchanged in behaviour |
 | **Negative control** | `1ad5cc6` plus only this section's two test files | PostgreSQL: **exactly p40–p43 fail**, 52 pass (§12.2). Unit: **exactly the four u22 tests fail**, 272 pass |
-| GitHub Actions | this commit, once the owner has pushed it | Not run when this section was written (Claude does not push). The owner's push starts `ci-fast.yml` and `ci-regression.yml`. Their results are to be recorded in a later documentation change, not assumed here |
+| GitHub Actions | this commit, once the owner has pushed it | Not run when this section was written (Claude does not push). The owner's push starts `ci-fast.yml` and `ci-regression.yml`. Their results are to be recorded in a later documentation change, not assumed here. *Recorded in §13.6: regression run 39343322989, verdict `baseline-only`* |
 
 ### 12.8 What remains (the threat model after RF4-A1)
 
@@ -1065,5 +1074,183 @@ No test assertion was weakened, and no test was skipped or marked xfail. The com
 - the six preflights (pins only);
 - the Phase 2 design's pin notes;
 - the R-F4 design, this record, and `docs/CI_TEST_STRATEGY.md` §11's statement of the reader limitation.
+
+It is not acceptance, a freeze, a merge or a release decision.
+
+## 13. `verify`'s snapshot metadata and failure paths (2026-10-20)
+
+**The request.** The owner's review of `95da822` (2026-10-20) found that `snapshot.taken_at` was PostgreSQL's
+`transaction_timestamp()`: the transaction's start, not the snapshot. The owner asked for three things:
+- record the snapshot's identity, if practical, and name the time for what it is;
+- check `verify` and the reader's guard for audit readiness, on five questions (§13.3);
+- fix only concrete defects, and record what remains.
+
+**All of this section's work and every test below was done and run by Claude; none is independently re-executed or
+audited.** The audit is **not complete**; R-F4 is **not** accepted or frozen; §8.1 item 13 stays waived as recorded in
+§10, and nothing here widens that waiver.
+
+**Code and record in one commit.** The fix, its tests and this section are one commit (parent `95da822`, the commit
+of §12), so this record cannot name its own hash. The next documentation change will name it.
+
+### 13.1 PostgreSQL's behaviour, verified first
+
+This was a probe, not a test:
+- PostgreSQL 17.11 and psycopg2 2.9.10, in a throwaway cluster in the test image, with no network;
+- its script is outside Git.
+
+| Question | Observed |
+|---|---|
+| What is `transaction_timestamp()`? | The time the server received the transaction's `BEGIN`. The probe paused 1 s between `SET TRANSACTION` and the first query; that query's `statement_timestamp()` was 1.0006 s later. The snapshot is taken at the first query, so `taken_at` came before the snapshot by however long the client took to send that query |
+| Does `pg_current_snapshot()` identify the snapshot? | Yes. In a REPEATABLE READ, READ ONLY transaction it was `741:741:` at the first query and still after another transaction (xid 741) committed. `pg_visible_in_snapshot(741, '741:741:')` was false. The next transaction's snapshot, `742:742:`, saw it. The read-only transaction was never assigned an id of its own |
+| Autocommit | psycopg2's `set_session(isolation_level='REPEATABLE READ', readonly=True, autocommit=True)` sets the session's defaults, so every statement is its own REPEATABLE READ, read-only transaction. `SET TRANSACTION` only warned ("can only be used in transaction blocks"), and `current_setting` reported `repeatable read` and `on`. Each statement had its own snapshot and transaction start, and a commit between two statements was seen by the second |
+| A lost connection | After `pg_terminate_backend`, the next statement raised `OperationalError` and psycopg2 marked the connection closed (`closed` = 2). `rollback()` then raised `InterfaceError: connection already closed` |
+
+### 13.2 The snapshot metadata
+
+The report's `snapshot` was `{isolation, read_only, taken_at}`, with `taken_at` set from `transaction_timestamp()`.
+That name claimed a precision PostgreSQL does not provide. The time is when `BEGIN` arrived, and PostgreSQL records no
+time at all for the snapshot.
+
+The entry is now:
+
+| Key | What it is | Source |
+|---|---|---|
+| `isolation`, `read_only` | The transaction's settings, as PostgreSQL reports them. Unchanged | `current_setting` |
+| `pg_snapshot` | The snapshot's identity: `xmin:xmax:in-progress transaction ids`. Under REPEATABLE READ every statement of the transaction has it. `pg_visible_in_snapshot(xid, pg_snapshot)` tells, for any transaction, whether `verify` read its work | `pg_current_snapshot()`, as text |
+| `transaction_started_at` | When the server received `verify`'s `BEGIN`. It is a lower bound on the snapshot's time: not that time, and not the snapshot's identity | `transaction_timestamp()` |
+
+**How it is read.** One column each, all `pg_catalog`-qualified, in the transaction's second query. That query comes
+after the name-resolution check and before any unqualified read. The `taken_at` key is gone: nothing read it, and the
+CLI prints the report as it is.
+
+**What `pg_snapshot` is not:**
+- **Not a unique run id.** Two runs between which no transaction was assigned an id have equal snapshots, because
+  they saw the same committed state.
+- **Not complete.** It lists top-level transaction ids only, as PostgreSQL documents.
+- **Not reusable.** It cannot reopen the snapshot later: PostgreSQL's exported snapshots last only as long as their
+  transaction.
+
+### 13.3 The audit-readiness pass
+
+| Question | Result | Tests |
+|---|---|---|
+| Does every query that contributes to the result run under the intended snapshot? | **Defect D3: an autocommit connection.** There every statement is its own transaction. With REPEATABLE READ, read-only session defaults the isolation check passed, and the report named one REPEATABLE READ snapshot while every read had its own. **Fixed:** refused before any statement, with a `ValueError`, like the existing refusal of an open transaction. The CLI's connection is not in autocommit mode. Inside a transaction block it holds by construction: `verify` and every reader call use the one connection, nothing commits, and REPEATABLE READ keeps the first query's snapshot | u23, p44, p45 |
+| Is unsafe name resolution rejected before any unqualified R-F4 query? | **Yes**, unchanged since §12. `verify`'s check is its first query, and each public reader function checks before its first unqualified query. The new snapshot query is fully qualified. Registering the JSON decoders sends nothing to the server | u22, p40, p41, and p44's statement order |
+| Can a later reader refusal or exception ever produce `clean: true`? | **No.** A `SchemaUnavailable` during the run becomes a `name_resolution` problem, and an `EvidenceRefused` a problem of its own kind. Any other exception propagates, and no report is returned. `clean` is computed only for a completed run, after its rollback | u22, u23, p46 |
+| Does the metadata distinguish transaction time, snapshot identity and outcome? | **It did not** (`taken_at`, §13.2). Fixed. The outcome is `clean` and `problems`, unchanged | u23, p43, p44 |
+| Do failure paths roll back and release resources without masking the original failure? | **Defect D4.** `finally: conn.rollback()` ran after every failure. On a lost connection that rollback raised `InterfaceError`, which replaced the `OperationalError` that had actually happened (the first survived only as its `__context__`). **Fixed:** after a failure, a failing rollback becomes a note on the first failure, and the first failure is raised. After a completed run a failing rollback is raised, and no report is returned. Cursors are closed by their `with` blocks; closing a client-side cursor sends nothing, so it cannot fail on a lost connection. `verify` does not own the connection: its caller closes it, and the CLI does so in `finally` | u23, p46 |
+
+### 13.4 The fix (`worker/financial_f4_store/verify.py` only)
+
+- **The snapshot query** adds `pg_catalog.pg_current_snapshot()::pg_catalog.text`, and `taken_at` becomes
+  `transaction_started_at`.
+- **Autocommit.** `verify` refuses an autocommit connection (`ValueError`) before it sends anything.
+- **Failure paths.** The run is in `_verify`:
+  - after a failure, `verify` rolls back through `_roll_back_after`, which turns a failed rollback into a note
+    (`add_note`, Python 3.11 and later; the supported runtimes are 3.12 and 3.14) and raises the original failure again;
+  - after a completed run, it rolls back and then sets `clean`.
+
+**Unchanged:**
+- `REPEATABLE READ, READ ONLY` is still set by the first statement, and the name-resolution check is still the first
+  query;
+- the enumerations and the per-item checks (`_check`);
+- the reader, `schema.py`, `store.py` and `errors.py`;
+- the CLI;
+- migration 0018.
+
+The command stays read-only. `verify.py` is not pinned, so no pin changed: 129 pins were checked against their files,
+with 0 mismatches.
+
+### 13.5 Tests
+
+| Test | Kind | What it shows |
+|---|---|---|
+| u22 (first test) | Unit, no database | Its expected `snapshot` now has `pg_snapshot` and `transaction_started_at` instead of `taken_at`. Nothing else in it changed |
+| **u23** (4) | Unit, no database | **The query:** reads each value in its own column, in the order `verify` unpacks them, as the transaction's second query. **The names:** the one time is named as the transaction's start, and no key (`taken_at`, `snapshot_at`, `snapshot_time`, `time`) calls a time the snapshot's. **Autocommit:** refused before any statement. **A lost connection:** the `OperationalError` is raised as itself with the rollback's `InterfaceError` noted on it, and a failure with a working rollback is raised unnoted. **A rollback that fails after a completed run** is raised, and no report is returned |
+| p43 | PostgreSQL | Its `taken_at` comparison now compares `transaction_started_at`, and it also asserts that the two runs' snapshots differ (the commit came between them) |
+| **p44** | PostgreSQL | After every statement `verify` runs, the same connection's snapshot, transaction start and settings are the report's. That covers the check, the snapshot query, both enumerations, every reader check and every F4, F3 and F5 table read. A filing committed by another transaction after the enumeration is not visible in the reported snapshot (`pg_visible_in_snapshot` is false), while the earlier filing's transaction is. The next `verify`'s snapshot sees both |
+| **p45** | PostgreSQL | It first shows PostgreSQL's behaviour in an autocommit session with REPEATABLE READ, read-only defaults (§13.1). `verify` then refuses that session before sending a statement, and the filing a hook would have committed mid-run is never written |
+| **p46** | PostgreSQL | Its session is terminated mid-run: `verify` raises the `OperationalError`, not the rollback's `InterfaceError`, which is noted on it. No report is returned. A new session's `verify` is clean |
+
+Every PostgreSQL test cleans up after itself: each runs in its own scratch database, and p45's session settings end
+with its connection.
+
+### 13.6 Evidence (run by Claude, 2026-10-20 UTC)
+
+| Run | Tree | Result |
+|---|---|---|
+| Probe (§13.1) | none; a throwaway cluster | as tabled in §13.1 |
+| **R-F4 PostgreSQL and unit modules** (container `cse-p1-test:latest`, PostgreSQL 17.11, Python 3.12.3, `--network none`) | clean LF tree of `95da822` plus this section's `verify.py` and two test files, identical to this commit's code and tests | **339 passed**, 0 failed: §12's 56 PostgreSQL tests plus p44–p46, and the 280 unit tests. An earlier attempt was stopped by the host-RAM guard (below 5% free) before any result and is not counted |
+| **Negative control** | `95da822` plus only this section's two test files | **11 failed**, 328 passed: p43–p46, u22's 3 and u23's 4. Details below |
+| Windows, Python 3.14.6 | the working tree, identical to this commit's code and tests | `tests/test_rf4_unit.py` and `tests/test_rf4_postgres.py`: **280 passed**, 59 skipped (the PostgreSQL module, which needs Linux) |
+| Pins | this commit | 129 pins in every `worker/**/preflight.py` checked against their files: 0 mismatches |
+
+**What the previous code did** (the negative control):
+
+| Test | The previous code |
+|---|---|
+| p45 | Ran on the autocommit session and returned **`{'extractions': 2, 'runs': 3, 'rebuilt': 3, 'problems': [], 'clean': True}`** with `snapshot` reporting `repeatable read` and read only. Its reads came from different snapshots: a filing committed after the extraction enumeration was counted as a run but not as an extraction, and the report called it clean |
+| p46 | Raised `InterfaceError('connection already closed')` from its rollback instead of the `OperationalError` the lost session caused |
+| p43, p44 | `KeyError: 'transaction_started_at'`; the snapshot had `taken_at` and no `pg_snapshot` |
+| u23 (4) | Each differs in the behaviour it tests: the old query, no autocommit refusal, and the rollback's `InterfaceError` raised in place of the failure. In the fourth test, the rollback's error carried an earlier failure as its context |
+| u22 (3) | These fail because the shared fake now answers the snapshot query with four columns, which the previous code unpacks into three (`ValueError`). This is an artifact of the fake, not of the behaviour u22 tests: u22's own negative control is §12's, against `1ad5cc6` |
+
+**GitHub Actions for `95da822` (§12's commit),** pushed by the owner. The results come from the runs' public job
+conclusions and check-run annotations:
+
+| Workflow | Run | Conclusion | Results |
+|---|---|---|---|
+| `ci-fast.yml` | [39343323028](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39343323028) | success | offline: 2073 passed, 537 skipped |
+| `ci-regression.yml` | [39343322989](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39343322989) | failure, verdict `baseline-only` | Every group passed except L02: 240 passed, 1 failed, the recorded HB-2 baseline (`docs/CI_TEST_STRATEGY.md` §7.1), matched by its signature. The summary fails, as it must while any test fails |
+
+**Against run 39178257944 (`4be6fa9`):**
+- **L16** is 597 passed and 35 skipped, against 589 and 35: the 8 new tests, p40–p43 and u22's 4.
+- **W3** is 967 passed and 263 skipped, against 963 and 259: u22's 4 pass on Windows, and p40–p43 skip there (no
+  PostgreSQL).
+- **Offline** is 2073 passed and 537 skipped, against 2069 and 533 in fast run 39178258034: u22's 4 pass, and
+  p40–p43 skip (that group has no PostgreSQL).
+- **Every other group** is identical.
+
+This is §12's evidence on CI; §12.7's GitHub Actions row is answered here.
+
+**GitHub Actions for this section's commit:** not run when this section was written. Claude does not push; the owner's
+push starts both workflows. Their results are to be recorded in a later documentation change, not assumed here.
+
+### 13.7 What remains
+
+- **The snapshot's time.** PostgreSQL records no time for a snapshot. `transaction_started_at` is a lower bound, and
+  the snapshot is taken at the transaction's first query, which `verify` sends straight after its `SET TRANSACTION`.
+  The report claims no closer time than that.
+- **`pg_snapshot` identifies visibility, not a run** (§13.2). It is evidence of which committed transactions `verify`
+  read. To tell two runs apart, use `transaction_started_at`.
+- **The clock.** `transaction_started_at` is the database server's wall clock, so it moves if that clock is stepped.
+- **§12.8's limits stand:**
+  - a privileged change between a check and the read it guards;
+  - the preflight sees configured settings only;
+  - a long `verify` holds one snapshot;
+  - the components outside R-F4's writer, reader and `verify`;
+  - PostgreSQL 17's rules.
+- **One transaction on the server.** `verify` relies on PostgreSQL keeping its connection's transaction on one server
+  session. A connection pooler that splits a transaction across server sessions is outside what it can detect.
+
+### 13.8 Protected files and boundaries
+
+These are unchanged by this commit, compared with its parent and, for the frozen F6.2 files, with `main`:
+- `supabase/migrations/0018_f4_structure_persistence.sql`;
+- `docs/F6.2_DESIGN.md`, `tests/test_f63_determinism.py`, `tests/test_f64_unit.py`;
+- the two one-off CSE workflows;
+- the CI infrastructure (`.github/`), including the HB-2 baseline entry of `.github/ci/summarize.py`;
+- every preflight and pin.
+
+No test was skipped or marked xfail. Two existing assertions changed, both to the new key names and both made stricter:
+- u22's expected snapshot;
+- p43's time comparison, which now also compares the snapshots.
+
+The commit changes:
+- `verify.py`;
+- the two R-F4 test files;
+- this record;
+- the R-F4 design's §5 and status lines;
+- `docs/CI_TEST_STRATEGY.md` §9 (run 3).
 
 It is not acceptance, a freeze, a merge or a release decision.

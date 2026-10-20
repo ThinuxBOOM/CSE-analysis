@@ -96,6 +96,13 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
          and a write inside it is refused even for cse_worker
     p43  verify reads one snapshot while another transaction commits a filing or appends a row; the next
          verify sees both
+    p44  verify's snapshot metadata: every statement verify runs (the check, the enumerations, every F4, F3 and
+         F5 read) has the reported pg_snapshot, transaction start and settings; the snapshot does not see a
+         transaction committed mid-run (pg_visible_in_snapshot), the next verify's does
+    p45  an autocommit session whose defaults make every statement REPEATABLE READ and READ ONLY gives each
+         statement its own snapshot (PostgreSQL's behaviour, shown); verify refuses it before sending anything
+    p46  the session is terminated mid-run: verify raises the OperationalError, not the rollback's
+         InterfaceError, which is noted on it; nothing is reported clean
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -2612,7 +2619,8 @@ def test_p43_verify_reads_one_snapshot_while_another_transaction_commits(db, lay
     assert (report["extractions"], report["runs"], report["clean"]) == (1, 1, True), report
     later = verify.verify(db.reader())
     assert (later["extractions"], later["runs"], later["clean"]) == (2, 2, True), later
-    assert report["snapshot"]["taken_at"] < later["snapshot"]["taken_at"]
+    assert report["snapshot"]["transaction_started_at"] < later["snapshot"]["transaction_started_at"]
+    assert report["snapshot"]["pg_snapshot"] != later["snapshot"]["pg_snapshot"]       # the commit came between
 
     sid = q(w, "select id from financial_f4_statements where extraction_id = %s order by statement_index limit 1",
             (first.eid,))[0][0]
@@ -2630,3 +2638,137 @@ def test_p43_verify_reads_one_snapshot_while_another_transaction_commits(db, lay
     assert during["clean"] and (during["extractions"], during["runs"]) == (2, 2), during
     after = verify.verify(db.reader())
     assert kinds_of(after) == {("incomplete", str(first.eid)), ("incomplete", str(first.run_id))}, after["problems"]
+
+
+# ----------------------------------------------- verify's snapshot metadata and failure paths (2026-10-20, after RF4-A1)
+
+TABLES_READ = ("financial_f4_extractions", "financial_f4_statements", "financial_f4_columns", "financial_f4_rows",
+               "financial_f4_cells", "report_document_classifications", "report_statement_periods",
+               "report_classification_evidence", "financial_extraction_runs")
+STATE = ("select pg_catalog.pg_current_snapshot()::pg_catalog.text, pg_catalog.transaction_timestamp(), "
+         "pg_catalog.current_setting('transaction_isolation'), pg_catalog.current_setting('transaction_read_only')")
+
+
+def recording_cursor(seen, *, state=False, marker=None, hook=None):
+    """A cursor class (a real psycopg2 cursor) that appends every statement it runs to `seen`. With state=True each
+    entry is (statement, snapshot, transaction start, isolation, read only), read right after the statement by a
+    separate plain cursor of the same connection, so in the same transaction (not after SET TRANSACTION, which must
+    precede every query). hook(conn) runs once, after the first statement containing `marker`."""
+    import psycopg2.extensions
+
+    class Recording(psycopg2.extensions.cursor):
+        pending = [hook] if hook else []
+
+        def execute(self, sql, args=None):
+            out = super().execute(sql, args)
+            if not state:
+                seen.append(str(sql))
+            elif not str(sql).startswith("set transaction"):
+                side = psycopg2.extensions.cursor(self.connection)
+                try:
+                    side.execute(STATE)
+                    seen.append((str(sql), *side.fetchone()))
+                finally:
+                    side.close()
+            if self.pending and marker in str(sql):
+                self.pending.pop()(self.connection)
+            return out
+    return Recording
+
+
+def persist_noting_xid(w, words, fid):
+    """persist()'s rows (F3, F4, F5) saved in one transaction; that transaction's id (xid8, as text)."""
+    cls, ext, res = R.chain(words, fid, None)
+    seed_filing(w, fid)
+    xid = q(w, "select pg_current_xact_id()::text")[0][0]
+    save_in_persist_order(w, cls, ext, res)
+    return xid
+
+
+def test_p44_every_statement_of_verify_runs_under_the_snapshot_its_report_names(db, layouts):
+    """The report's pg_snapshot is the snapshot of every statement verify runs: recorded after each one (the check,
+    the snapshot query, both enumerations, every reader check and every F4, F3 and F5 read), on the same connection,
+    the snapshot, the transaction's start and its settings equal the report's, every time. It identifies what verify
+    saw: a filing committed by another transaction after the enumeration is not visible in it
+    (pg_visible_in_snapshot), the earlier filing is, and the next verify's snapshot sees both. transaction_started_at
+    is the transaction's start, the same for every statement; the snapshot is named by its identity, not a time."""
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    first = persist_noting_xid(w, words, 994001)
+    mid = {}
+
+    def commit_a_filing(_conn):
+        mid["xid"] = persist_noting_xid(db.conn(), words, 994002)
+    seen = []
+    r = db.reader()
+    r.cursor_factory = recording_cursor(seen, state=True, marker=ENUMERATION, hook=commit_a_filing)
+    report = verify.verify(r)
+    assert (report["extractions"], report["runs"], report["rebuilt"], report["clean"]) == (1, 1, 1, True), report
+    snap = report["snapshot"]
+    assert set(snap) == {"isolation", "read_only", "pg_snapshot", "transaction_started_at"}, snap
+    assert {(s, t.isoformat(), i, ro) for _, s, t, i, ro in seen} == {
+        (snap["pg_snapshot"], snap["transaction_started_at"], "repeatable read", "on")}, seen
+    statements = [s for s, *_ in seen]
+    assert statements[:2] == [schema._SESSION_QUERY, verify._SNAPSHOT] and "xid" in mid
+    assert {t for t in TABLES_READ if any(t in s for s in statements)} == set(TABLES_READ)
+    assert statements.count(schema._SESSION_QUERY) >= 3                     # verify's check and the reader's
+    assert q(su, "select pg_visible_in_snapshot(%s::xid8, %s::pg_snapshot), "
+                 "pg_visible_in_snapshot(%s::xid8, %s::pg_snapshot)",
+             (first, snap["pg_snapshot"], mid["xid"], snap["pg_snapshot"])) == [(True, False)]
+    later = verify.verify(db.reader())
+    assert (later["extractions"], later["runs"], later["clean"]) == (2, 2, True), later
+    assert q(su, "select pg_visible_in_snapshot(%s::xid8, %s::pg_snapshot)",
+             (mid["xid"], later["snapshot"]["pg_snapshot"])) == [(True,)]
+    assert snap["transaction_started_at"] < later["snapshot"]["transaction_started_at"]
+
+
+def test_p45_an_autocommit_session_is_refused_before_verify_sends_a_statement(db, layouts):
+    """psycopg2's set_session(REPEATABLE READ, read only, autocommit) sets the session's defaults, and PostgreSQL then
+    runs every statement as its own transaction: SET TRANSACTION only warns, current_setting reports 'repeatable read'
+    and 'on', and a commit between two statements is seen by the second, under a new snapshot. verify's isolation check
+    could not tell; verify refuses the connection before it sends any statement (the previous code ran, its reads at
+    several snapshots, a filing committed mid-run counted as a run but not as an extraction)."""
+    words = a_layout_with_cells(layouts)
+    persist(db.conn(), words, 995001)
+    r = db.reader()
+    r.set_session(isolation_level="REPEATABLE READ", readonly=True, autocommit=True)
+    before = q(r, "select current_setting('transaction_isolation'), current_setting('transaction_read_only'), "
+                  "pg_current_snapshot()::text")[0]
+    xid = persist_noting_xid(db.conn(), words, 995002)
+    after = q(r, "select pg_current_snapshot()::text, pg_visible_in_snapshot(%s::xid8, pg_current_snapshot())",
+              (xid,))[0]
+    assert before[:2] == ("repeatable read", "on") and after[0] != before[2] and after[1] is True, (before, after)
+    q(r, "set transaction isolation level repeatable read, read only")
+    assert r.notices[-1].startswith("WARNING:  SET TRANSACTION can only be used in transaction blocks")
+    seen = []
+    r.cursor_factory = recording_cursor(seen, marker=ENUMERATION,
+                                        hook=lambda _conn: persist(db.conn(), words, 995003))
+    try:
+        report = verify.verify(r)
+    except ValueError as exc:
+        assert "autocommit" in str(exc)
+    else:
+        pytest.fail(f"verify ran on an autocommit connection: {report}")
+    assert seen == [] and f4_counts(db.su())["extractions"] == 2
+
+
+def test_p46_a_session_ended_mid_run_raises_its_own_error_not_the_rollbacks(db, layouts):
+    """The server ends verify's session mid-run (pg_terminate_backend; an administrator or a restart does the same):
+    the next statement raises OperationalError and psycopg2 marks the connection closed, so the rollback that follows
+    raises InterfaceError ('connection already closed'). verify raises the OperationalError, the failure that
+    happened, with the rollback's error noted on it; it returns no report, so nothing is called clean. A new
+    session's verify is clean."""
+    import psycopg2
+    persist(db.conn(), a_layout_with_cells(layouts), 996001)
+    su = db.su()
+
+    def terminate(conn):
+        assert q(su, "select pg_terminate_backend(%s, 10000)", (conn.get_backend_pid(),)) == [(True,)]
+    r = db.reader()
+    r.cursor_factory = hook_cursor(ENUMERATION, terminate)
+    with pytest.raises(psycopg2.Error) as got:
+        verify.verify(r)
+    assert isinstance(got.value, psycopg2.OperationalError), repr(got.value)
+    assert r.closed and getattr(got.value, "__notes__", None) == [
+        "verify's rollback also failed: InterfaceError: connection already closed"], got.value
+    assert verify.verify(db.reader())["clean"]

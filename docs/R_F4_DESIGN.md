@@ -11,8 +11,9 @@ record carries the amendment text) and then, the same day, formally waived the i
 **item 13 is WAIVED BY OWNER** (§11). The independent audit of Stage 2 reported five
 findings (Findings 1–3 on 2026-10-17, Findings 4–5 at the review of their remediation); their remediation is
 implemented on the same branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's unqualified name
-resolution with its test evidence (§9, §11) and finding RF4-A1, the reader's and `verify`'s name resolution and
-`verify`'s snapshot (§12); all await the owner's independent review.
+resolution with its test evidence (§9, §11), finding RF4-A1, the reader's and `verify`'s name resolution and
+`verify`'s snapshot (§12), and `verify`'s snapshot metadata and failure paths (§13); all await the owner's independent
+review.
 The audit is **not** complete, and R-F4 is **not** accepted as a component or frozen. Staging, the pilot, production
 deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
 of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code, migration, test or
@@ -24,7 +25,7 @@ pin.
 | Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
 | Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
 | Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13: Option B selected, then the item waived by the owner, 2026-10-17 (§11). Not accepted |
-| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit's five findings (2026-10-17) are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's name resolution, with its test evidence (§9, §11), and finding RF4-A1 (§12), awaiting the owner's independent review; the audit is **not complete**. Component acceptance and the freeze: **not started** |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit's five findings (2026-10-17) are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's name resolution, with its test evidence (§9, §11), finding RF4-A1 (§12) and `verify`'s snapshot metadata (§13), awaiting the owner's independent review; the audit is **not complete**. Component acceptance and the freeze: **not started** |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -254,7 +255,11 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
   - F5 runs that have no F4 extraction.
 
   It runs in one transaction set to `REPEATABLE READ, READ ONLY` before its first query. So the enumeration and every
-  read-back see one snapshot, which its report records, and PostgreSQL refuses any write.
+  read-back see one snapshot, and PostgreSQL refuses any write. The report names that snapshot by its identity
+  (`pg_snapshot`: PostgreSQL's `pg_current_snapshot()`) and records apart when the transaction began
+  (`transaction_started_at`), a lower bound on the snapshot's time, not its time. A connection in autocommit mode is
+  refused, and a failure is raised as itself even when the rollback after it fails too
+  (`docs/R_F4_IMPLEMENTATION.md` §13).
 
   **Audit finding RF4-A1 (2026-10-20).** Before its first unqualified query, `verify` checks the current session's
   name resolution with the writer's check (the in-band bullet below). On an unsafe session it returns a refused,
@@ -505,8 +510,8 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 13, which is not applied: the owner selected Option B and then **waived** the item for this package on 2026-10-17 (§11).
 Step 7's hand-off is that branch. The independent audit of Stage 2 reported five findings on 2026-10-17; their
 remediation is on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8; the guard's name resolution: §9, §11; finding
-RF4-A1: §12), awaiting the owner's independent review. The audit is not complete; acceptance and freeze have not
-started.
+RF4-A1: §12; `verify`'s snapshot metadata: §13), awaiting the owner's independent review. The audit is not complete;
+acceptance and freeze have not started.
 
 ## 9. Acceptance (RF4-M4, accepted 2026-10-14)
 
@@ -546,7 +551,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 waived by the owner, 2026-10-17 (Option B selected first; §11). Audit Findings 1–5 remediated (2026-10-17), awaiting review |
 | 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()` (not through HB-4's slice, §6) |
 | 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
-| 6 | Independent audit of the code and evidence | **In progress, not complete.** Stage 2: five findings (2026-10-17), remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's name resolution, with its test evidence (§9, §11), and finding RF4-A1 (§12), awaiting the owner's independent review |
+| 6 | Independent audit of the code and evidence | **In progress, not complete.** Stage 2: five findings (2026-10-17), remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's name resolution, with its test evidence (§9, §11), finding RF4-A1 (§12) and `verify`'s snapshot metadata (§13), awaiting the owner's independent review |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
 | 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
@@ -630,7 +635,9 @@ RDV option R-b later.
   (`docs/R_F4_IMPLEMENTATION.md` §9, §11). Finding RF4-A1 (2026-10-20, the owner's review of `4be6fa9`) is
   remediated the same way: the reader and `verify` check the session's own name resolution before their unqualified
   queries, and `verify` reads one REPEATABLE READ, READ ONLY snapshot (`docs/R_F4_IMPLEMENTATION.md` §12). The
-  remediation awaits the owner's independent review; the audit is not complete.
+  owner's review of `95da822` led to §13: the snapshot's identity and the transaction's start time recorded apart,
+  autocommit connections refused, and a failure never replaced by the rollback's error. The remediation awaits the
+  owner's independent review; the audit is not complete.
 - **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
   0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
   concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.

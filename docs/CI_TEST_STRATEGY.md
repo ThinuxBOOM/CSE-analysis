@@ -491,6 +491,8 @@ The container was built from the tracked Dockerfile (Poppler 24.02.0-1ubuntu9.10
 | `ae26d68` | regression [39162102932](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39162102932) | failure | Linux 15 of 16 passed, L02 failed (the baseline); Windows W2 passed, W1 and W3 failed (§7.2); summary failed |
 | `4be6fa9` (Windows temp layout, signature-bound baseline, Poppler, X1) | fast [39178258034](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39178258034) | success | offline |
 | `4be6fa9` | regression [39178257944](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39178257944) | failure, verdict `baseline-only` | every group passed except L02, whose one failure is the recorded baseline, matched by its whole signature. The summary therefore fails, as it must while any test fails. Counts: below |
+| `95da822` (R-F4 finding RF4-A1) | fast [39343323028](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39343323028) | success | offline: 2073 passed, 537 skipped |
+| `95da822` | regression [39343322989](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39343322989) | failure, verdict `baseline-only` | as at `4be6fa9`: every group passed except L02, the baseline matched by its signature. L16 (597 passed, 35 skipped) and W3 (967 passed, 263 skipped) carry the commit's 8 new R-F4 tests (`docs/R_F4_IMPLEMENTATION.md` §13.6); every other group is identical |
 
 **Run 39178257944, as its summary notice reports.**
 

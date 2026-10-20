@@ -40,6 +40,10 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          session's name resolution before any unqualified query (an unsafe session: refused, nothing read);
          every public reader entry point checks before its first unqualified query; a refusal during verify
          ends it unclean
+    u23  verify's snapshot metadata: the snapshot's identity (pg_current_snapshot) and the transaction's start time
+         are recorded apart and named for what they are (no time is called the snapshot's); an autocommit
+         connection is refused before any statement; a failure is raised as itself when the rollback fails too,
+         and never becomes a report
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1301,12 +1305,15 @@ from datetime import datetime, timezone  # noqa: E402
 
 SAFE_SESSION = ('"$user", public', ["pg_catalog", "public"], None, "cse_reader", False, False, 0)
 UNSAFE_SESSION = ("rf4_shadow, public", ["pg_catalog", "rf4_shadow", "public"], None, "cse_reader", False, False, 0)
+# verify's snapshot query, answered: isolation, read only, pg_current_snapshot() as text, transaction_timestamp()
+SNAPSHOT_ROW = ("repeatable read", "on", "741:745:742,743", datetime(2026, 10, 20, tzinfo=timezone.utc))
 
 
 class _Recording:
     """A connection whose cursors record every statement. The name-resolution query is answered from `sessions` (one
-    row per check, in order); verify's snapshot query as a repeatable-read, read-only transaction; verify's enumeration
-    of extractions with `extractions`; anything else with no rows."""
+    row per check, in order); verify's snapshot query as a repeatable-read, read-only transaction (SNAPSHOT_ROW);
+    verify's enumeration of extractions with `extractions`; anything else with no rows."""
+    autocommit = False
 
     def __init__(self, *sessions, extractions=()):
         self.sessions, self.sql, self.extractions = list(sessions), [], list(extractions)
@@ -1338,7 +1345,7 @@ class _Recording:
                 if self.last == schema._SESSION_QUERY:
                     return conn.sessions.pop(0)
                 if "transaction_isolation" in self.last:
-                    return "repeatable read", "on", datetime(2026, 10, 20, tzinfo=timezone.utc)
+                    return SNAPSHOT_ROW
                 return None
 
             def fetchall(self):
@@ -1361,7 +1368,8 @@ def test_u22_verify_sets_one_read_only_repeatable_read_snapshot_and_checks_the_s
     first_read = next(i for i, s in enumerate(conn.sql) if s in conn.unqualified())
     assert first_read > 1 and conn.sql[-1] == "ROLLBACK"
     assert report["clean"] and report["snapshot"] == {"isolation": "repeatable read", "read_only": True,
-                                                      "taken_at": "2026-10-20T00:00:00+00:00"}
+                                                      "pg_snapshot": "741:745:742,743",
+                                                      "transaction_started_at": "2026-10-20T00:00:00+00:00"}
 
 
 def test_u22_verify_refuses_an_unsafe_session_before_any_unqualified_query():
@@ -1397,3 +1405,102 @@ def test_u22_a_refusal_during_verify_ends_it_unclean():
     assert not report["clean"] and report["extractions"] == 1
     assert [p["kind"] for p in report["problems"]] == ["name_resolution"]
     assert report["problems"][0]["after"] == {"extractions": 1, "runs": 0}
+
+
+# ===================================================================== u23 (verify's snapshot metadata, 2026-10-20)
+
+PG_SNAPSHOT_TEXT = re.compile(r"\d+:\d+:(\d+(,\d+)*)?")         # pg_snapshot's text form: xmin:xmax:xip_list
+
+
+def test_u23_the_snapshot_identity_and_the_transaction_start_are_recorded_apart_and_named_for_what_they_are():
+    """The snapshot is identified by pg_current_snapshot(); transaction_timestamp() is when the transaction began (its
+    BEGIN), earlier than the snapshot, which PostgreSQL takes at the first query and does not timestamp. Each is
+    read from its own column, in the order verify unpacks them, in the transaction's second query (after the check,
+    before any unqualified read), and no time is reported under a name that calls it the snapshot's."""
+    from worker.financial_f4_store import verify
+    sql = " ".join(verify._SNAPSHOT.split())
+    assert sql == ("select pg_catalog.current_setting('transaction_isolation'), "
+                   "pg_catalog.current_setting('transaction_read_only'), "
+                   "pg_catalog.pg_current_snapshot()::pg_catalog.text, pg_catalog.transaction_timestamp()")
+    conn = _Recording(SAFE_SESSION)
+    snapshot = verify.verify(conn)["snapshot"]
+    assert conn.sql[:3] == ["set transaction isolation level repeatable read, read only", schema._SESSION_QUERY,
+                            verify._SNAPSHOT]
+    assert snapshot == {"isolation": "repeatable read", "read_only": True, "pg_snapshot": SNAPSHOT_ROW[2],
+                        "transaction_started_at": SNAPSHOT_ROW[3].isoformat()}
+    assert PG_SNAPSHOT_TEXT.fullmatch(snapshot["pg_snapshot"])
+    assert not PG_SNAPSHOT_TEXT.fullmatch(snapshot["transaction_started_at"])
+    times = [k for k, v in snapshot.items() if isinstance(v, str) and re.match(r"\d{4}-\d\d-\d\dT", v)]
+    assert times == ["transaction_started_at"]                                   # the one time, named as a start
+    assert not {"taken_at", "snapshot_at", "snapshot_time", "time"} & set(snapshot)
+
+
+def test_u23_an_autocommit_connection_is_refused_before_any_statement():
+    """In autocommit each statement is its own transaction: SET TRANSACTION only warns, and session defaults can make
+    every statement REPEATABLE READ and READ ONLY, so the isolation check would pass while each read had its own
+    snapshot (tests/test_rf4_postgres.py p45). verify refuses such a connection before it sends anything."""
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION)
+    conn.autocommit = True
+    with pytest.raises(ValueError, match="autocommit"):
+        verify.verify(conn)
+    assert conn.sql == []
+
+
+class _Failing(_Recording):
+    """_Recording whose statement containing `fail_at` raises `failure`, and whose rollback raises `rollback_error`
+    (when given), after recording it."""
+
+    def __init__(self, *sessions, fail_at=None, failure=None, rollback_error=None, extractions=()):
+        super().__init__(*sessions, extractions=extractions)
+        self.fail_at, self.failure, self.rollback_error = fail_at, failure, rollback_error
+
+    def rollback(self):
+        super().rollback()
+        if self.rollback_error is not None:
+            raise self.rollback_error
+
+    def cursor(self):
+        cur, conn = super().cursor(), self
+        execute = cur.execute
+
+        def failing(sql, args=None):
+            execute(sql, args)
+            if conn.fail_at and conn.fail_at in sql:
+                raise conn.failure
+        cur.execute = failing
+        return cur
+
+
+def test_u23_a_failure_is_raised_as_itself_when_the_rollback_fails_too():
+    """A connection lost mid-run: the statement raises OperationalError, and psycopg2 then refuses the rollback with
+    InterfaceError ('connection already closed'; tests/test_rf4_postgres.py p46 shows both). The caller gets the
+    OperationalError, the first failure, with the rollback's error noted on it; no report."""
+    import psycopg2
+    from worker.financial_f4_store import verify
+    lost = psycopg2.OperationalError("server closed the connection unexpectedly")
+    conn = _Failing(SAFE_SESSION, fail_at="financial_f4_extractions order by id", failure=lost,
+                    rollback_error=psycopg2.InterfaceError("connection already closed"))
+    with pytest.raises(psycopg2.OperationalError) as got:
+        verify.verify(conn)
+    assert got.value is lost and conn.sql[-1] == "ROLLBACK"
+    assert got.value.__notes__ == ["verify's rollback also failed: InterfaceError: connection already closed"]
+    # a failure with a working rollback is raised as itself, rolled back, unnoted
+    boom = RuntimeError("a programming error")
+    conn = _Failing(SAFE_SESSION, fail_at="financial_extraction_runs order by id", failure=boom)
+    with pytest.raises(RuntimeError) as got:
+        verify.verify(conn)
+    assert got.value is boom and conn.sql[-1] == "ROLLBACK" and not getattr(boom, "__notes__", None)
+
+
+def test_u23_a_rollback_failure_after_a_complete_run_is_raised_and_never_becomes_a_report():
+    """The run completed (both enumerations ran, nothing failed) and only the rollback fails: its error is raised,
+    alone, and no report is returned."""
+    import psycopg2
+    from worker.financial_f4_store import verify
+    closed = psycopg2.InterfaceError("connection already closed")
+    conn = _Failing(SAFE_SESSION, rollback_error=closed)
+    with pytest.raises(psycopg2.InterfaceError) as got:
+        verify.verify(conn)
+    assert got.value is closed and got.value.__context__ is None                # the only failure
+    assert any("financial_extraction_runs order by id" in s for s in conn.sql) and conn.sql[-1] == "ROLLBACK"
