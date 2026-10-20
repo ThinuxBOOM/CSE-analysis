@@ -4,8 +4,8 @@
 audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3, §7), `2bc66c1`
 (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
 found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
-snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in the commit
-adding §13. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected
+snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
+(§13). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected
 Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally
 waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
@@ -41,13 +41,14 @@ and evidence only; it changes no decision.
 | `b88f5f7` | Claude | Section 11, the notes under §9.4 and §9.6, and the status lines of this record; the design's status lines. Documents only (§11.8) |
 | `ae26d68`, `4be6fa9`, `1ad5cc6` | Claude | GitHub Actions CI and its strategy (`docs/CI_TEST_STRATEGY.md`); no R-F4 code, test or record change |
 | `95da822` | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
-| the commit adding section 13 | Claude (the owner's review of `95da822`) | `verify.py`: the snapshot's identity (`pg_snapshot`) and the transaction's start (`transaction_started_at`, was `taken_at`) recorded apart; autocommit connections refused; a failure raised as itself when the rollback fails too; tests u23 and p44–p46, u22 and p43 moved to the new keys; the design's §5 and §11; section 13 and the notes in §12; `docs/CI_TEST_STRATEGY.md` §9 (run 3) (§13) |
+| `144a213` | Claude (the owner's review of `95da822`) | `verify.py`: the snapshot's identity (`pg_snapshot`) and the transaction's start (`transaction_started_at`, was `taken_at`) recorded apart; autocommit connections refused; a failure raised as itself when the rollback fails too; tests u23 and p44–p46, u22 and p43 moved to the new keys; the design's §5 and §11; section 13 and the notes in §12; `docs/CI_TEST_STRATEGY.md` §9 (run 3) (§13) |
+| the commit adding §13.9 | Claude | Documents only: §13.7's run-identity wording corrected; `144a213`'s GitHub Actions results in §13.6 and `docs/CI_TEST_STRATEGY.md` §9; this table and the status lines (§13.9) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9) **and at
-`1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12) **and at the commit adding §13**
-(`verify`'s snapshot metadata). Where they differ, the later section is current: they change the store, the in-band
+`1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12) **and at `144a213`**
+(`verify`'s snapshot metadata, §13). Where they differ, the later section is current: they change the store, the in-band
 check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
@@ -1090,7 +1091,8 @@ audited.** The audit is **not complete**; R-F4 is **not** accepted or frozen; §
 §10, and nothing here widens that waiver.
 
 **Code and record in one commit.** The fix, its tests and this section are one commit (parent `95da822`, the commit
-of §12), so this record cannot name its own hash. The next documentation change will name it.
+of §12), so this record cannot name its own hash. The next documentation change will name it. *It is `144a213`
+(§13.9).*
 
 ### 13.1 PostgreSQL's behaviour, verified first
 
@@ -1216,13 +1218,38 @@ This is §12's evidence on CI; §12.7's GitHub Actions row is answered here.
 **GitHub Actions for this section's commit:** not run when this section was written. Claude does not push; the owner's
 push starts both workflows. Their results are to be recorded in a later documentation change, not assumed here.
 
+**GitHub Actions for `144a213` (this section's commit), recorded afterwards (§13.9).** The owner pushed it on
+2026-10-20. These are GitHub's runs, not Claude's local runs (the first table above). The figures come from their
+public job conclusions and check-run annotations, as Claude read them:
+
+| Workflow | Run | Conclusion | Results |
+|---|---|---|---|
+| `ci-fast.yml` | [39348121060](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39348121060) | success | offline: 2,077 passed, 540 skipped, 0 failed |
+| `ci-regression.yml` | [39348121004](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39348121004) | **failure**, verdict `baseline-only` | 4,606 passed, **1 failed**, 626 skipped, 2 xfailed. The one failure is `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` in L02, the recorded HB-2 baseline (`docs/CI_TEST_STRATEGY.md` §7.1), matched by its signature. The workflow fails, as it must while any test fails: **the regression suite did not pass** |
+
+**How the regression totals are counted.** They sum the 20 groups in the summary's notice: L01–L16 and X1 on Linux,
+and W1–W3 on Windows. Linux and Windows each run every test file, so a test is counted once per platform it ran on.
+X1 runs one database-view test that L14 skips (`docs/CI_TEST_STRATEGY.md` §4).
+
+**Against run 39343322989 (`95da822`):**
+- **L16** is 604 passed and 35 skipped, against 597 and 35: this commit's 7 new tests, u23's 4 and p44–p46.
+- **W3** is 971 passed and 266 skipped, against 967 and 263: u23's 4 pass on Windows, and p44–p46 skip there (no
+  PostgreSQL).
+- **Offline** is 2,077 passed and 540 skipped, against 2,073 and 537: the same 4 pass and 3 skip.
+- **Every other group** is identical, L02 included (240 passed, 1 failed).
+
 ### 13.7 What remains
 
-- **The snapshot's time.** PostgreSQL records no time for a snapshot. `transaction_started_at` is a lower bound, and
-  the snapshot is taken at the transaction's first query, which `verify` sends straight after its `SET TRANSACTION`.
-  The report claims no closer time than that.
-- **`pg_snapshot` identifies visibility, not a run** (§13.2). It is evidence of which committed transactions `verify`
-  read. To tell two runs apart, use `transaction_started_at`.
+- **The snapshot's time.** PostgreSQL provides no snapshot-acquisition timestamp through the mechanism used here:
+  `pg_current_snapshot()` reports visibility only, and `transaction_timestamp()` reports the transaction's start.
+  `transaction_started_at` is a lower bound: the snapshot is taken at the transaction's first query, which `verify`
+  sends straight after its `SET TRANSACTION`. The report claims no closer time than that.
+- **Run identity: the report has no unique run identifier.**
+  - **`pg_snapshot`** identifies the snapshot's visibility, which committed transactions `verify` read (§13.2). It does
+    not identify a verification run: two runs that saw the same committed state report the same snapshot.
+  - **`transaction_started_at`** is useful metadata, but it is not guaranteed unique and is not a run identifier: two
+    transactions can report the same start time, and the server's clock can be stepped.
+  - **A unique run identifier** would need a separate, explicit identifier, if one is needed. None is added here.
 - **The clock.** `transaction_started_at` is the database server's wall clock, so it moves if that clock is stepped.
 - **§12.8's limits stand:**
   - a privileged change between a check and the read it guards;
@@ -1254,3 +1281,25 @@ The commit changes:
 - `docs/CI_TEST_STRATEGY.md` §9 (run 3).
 
 It is not acceptance, a freeze, a merge or a release decision.
+
+### 13.9 Documentation follow-up: run identity, and `144a213`'s GitHub Actions results (2026-10-20)
+
+**Documents only.** The commit adding this subsection changes `docs/R_F4_IMPLEMENTATION.md` and
+`docs/CI_TEST_STRATEGY.md` only (`git diff --stat 144a213`). It changes no code, test, migration, workflow or pin. No
+test reads or pins either file; the CI scripts name the CI strategy in their docstrings only. No test was run for it.
+
+At the owner's request:
+- **§13.7's run-identity wording is corrected.** It said "To tell two runs apart, use `transaction_started_at`", which
+  overstated what that timestamp guarantees. §13.7 now says four things:
+  - `pg_snapshot` identifies visibility, not a run;
+  - `transaction_started_at` is not guaranteed unique and is no run identifier;
+  - PostgreSQL provides no snapshot-acquisition timestamp through the mechanism used here;
+  - a unique run identifier would need a separate, explicit identifier.
+
+  No run-identifier feature is added.
+- **`144a213`'s GitHub Actions results are recorded** in §13.6 and in `docs/CI_TEST_STRATEGY.md` §9. They are GitHub's
+  runs, kept apart from Claude's local runs. The regression workflow failed on the recorded HB-2 baseline alone; it did
+  not pass.
+- **The commits table and the status lines** name `144a213`.
+
+The independent audit is the owner's and is not conducted here. It is not complete; R-F4 is not accepted or frozen.
