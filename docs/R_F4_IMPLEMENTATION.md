@@ -1587,6 +1587,19 @@ security cannot hide the configuration from it.
 | **Negative control**, Windows: `b89cdec`'s code with this section's unit test file | **Exactly u26's 3 tests fail**; the other 303 pass |
 | PostgreSQL: p51, p52, and every other PostgreSQL test under the new table check | **Not run locally.** Their first run is GitHub Actions: group L16 (Linux, PostgreSQL 17), skipped in W3 and offline. To be recorded once it has run, not assumed here |
 
+*The first GitHub Actions run of `493bf73`* (regression
+[39437370773](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39437370773)) *hung in L16, which stopped
+reporting progress for more than 12 minutes; that job's timeout is 60 minutes. The cause, read from the test, not from
+the run's log (which needs a signed-in account):*
+- *`persist()` ends by reading the new extraction's id on the worker connection, which leaves that connection idle in
+  a transaction holding a lock on `financial_f4_extractions`;*
+- *p52's second case then waits for ever to alter that table.*
+
+*This is a defect of the test, not of R-F4. The next commit fixes it:*
+- *p52 rolls the worker connection back after saving, and rolls each reader back before every restoring `ALTER`;*
+- *p51 and p52 set a 10-second `lock_timeout` on the superuser session, so a lock wait fails the test instead of
+  hanging the job.*
+
 ### 16.5 What remains
 
 - **Partitions.** Attaching a table as a partition is not exercised against PostgreSQL. u26 covers its report;

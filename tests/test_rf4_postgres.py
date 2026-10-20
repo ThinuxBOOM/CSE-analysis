@@ -3080,6 +3080,15 @@ def rls_enabled(t):
             "without a policy), so verify and the reader could miss evidence; expected disabled")
 
 
+def rollback_quietly(c):
+    """End `c`'s transaction, if it has one, so its locks cannot block a restoring ALTER TABLE."""
+    if c is not None and not c.closed:
+        try:
+            c.rollback()
+        except Exception:  # noqa: BLE001 - a broken connection holds no locks
+            pass
+
+
 def no_table_drift(su):
     """Every checked table is ordinary and permanent, without row-level security, policy, partitioning or
     inheritance (read with the preflight's own query); no policy anywhere in the database and no rf4_ relation."""
@@ -3098,7 +3107,7 @@ def test_p51_the_preflight_refuses_row_level_security_persistence_and_inheritanc
     each is undone in `finally`, and no policy, table or altered persistence is left behind. Attaching a table as a
     partition is not exercised here (u26 covers its report)."""
     su, m = db.su(), migrator(db)
-    q(su, "set search_path = public")
+    q(su, "set search_path = public; set lock_timeout = '10s'")    # a lock wait fails the test, never hangs it
     no_table_drift(su)
     assert preflight.report(m)["clean"]
     c, s, r, runs = "financial_f4_cells", "financial_f4_statements", "financial_f4_rows", "financial_extraction_runs"
@@ -3142,8 +3151,11 @@ def test_p52_row_level_security_can_hide_evidence_from_verify_and_the_preflight_
     refuses both: verify is to be run only after it is clean. Restored in `finally`; clean before and after."""
     words = a_layout_with_cells(layouts)
     w, su, m = db.conn(), db.su(), migrator(db)
+    q(su, "set lock_timeout = '10s'")                   # a lock wait below fails the test, never hangs it
     a, b, _ = (persist(w, words, 998001 + i) for i in range(3))
+    w.rollback()            # persist's read-back left a transaction open, locking the tables the ALTERs below change
     ext, runs = "financial_f4_extractions", "financial_extraction_runs"
+    r = None
     assert preflight.report(m)["clean"] and verify.verify(db.reader())["clean"]
     q(su, "set session_replication_role = replica")                      # superuser only: triggers off
     try:
@@ -3165,6 +3177,7 @@ def test_p52_row_level_security_can_hide_evidence_from_verify_and_the_preflight_
                                   "expected none"], got["objects"]
         assert not got["clean"] and got["file"] == [] and got["ledger"]["status"] == "verified"
     finally:
+        rollback_quietly(r)                                             # its locks would block the restore
         q(su, f"drop policy if exists rf4_hide on {runs}; alter table {runs} disable row level security")
     assert preflight.report(m)["clean"]
     tamper_a_cell(su, a.eid)
@@ -3180,6 +3193,7 @@ def test_p52_row_level_security_can_hide_evidence_from_verify_and_the_preflight_
         got = preflight.report(m)
         assert got["objects"] == [rls_enabled(ext), rls_enabled(runs)] and not got["clean"], got["objects"]
     finally:
+        rollback_quietly(r)
         q(su, f"alter table {ext} disable row level security; alter table {runs} disable row level security")
     assert preflight.report(m)["clean"]
     q(su, "set search_path = public")
