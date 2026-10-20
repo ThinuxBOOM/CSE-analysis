@@ -103,6 +103,13 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
          statement its own snapshot (PostgreSQL's behaviour, shown); verify refuses it before sending anything
     p46  the session is terminated mid-run: verify raises the OperationalError, not the rollback's
          InterfaceError, which is noted on it; nothing is reported clean
+    p47  HB-4's slice and F5's run() persist one filing at once (each order): the second waits on the first's
+         uncommitted rows, then finds F3, F4 and F5 already present; one set of rows, no deadlock; HB-4's item
+         persisted under one claim and one download, its lease released; while HB-4 holds the filing a second
+         HB-4 slice cannot start (SliceBusy) and requests nothing
+    p48  HB-4 on a database without 0018: R-F4's refusal rolls the whole filing back (no F3 or F5 row, issuer
+         links unchanged) and HB-4 records retry_wait or failed through its own path; with 0018 applied, the retry
+         saves once
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -2772,3 +2779,169 @@ def test_p46_a_session_ended_mid_run_raises_its_own_error_not_the_rollbacks(db, 
     assert r.closed and getattr(got.value, "__notes__", None) == [
         "verify's rollback also failed: InterfaceError: connection already closed"], got.value
     assert verify.verify(db.reader())["clean"]
+
+
+# ------------------------------------------- HB-4 integration gaps (docs/R_F4_IMPLEMENTATION.md section 6.2, design 6)
+
+def lock_wait(su, pid, alive):
+    """True once session `pid` waits on a lock (a row another transaction holds, as pg_stat_activity shows it); False
+    if alive() turns false or 30 seconds pass first. `su` is an autocommit superuser session."""
+    for _ in range(600):
+        if q(su, "select wait_event_type from pg_stat_activity where pid = %s", (pid,))[0][0] == "Lock":
+            return True
+        if not alive():
+            return False
+        time.sleep(0.05)
+    return False
+
+
+@pytest.mark.parametrize("first", ["hb4", "run"])
+def test_p47_hb4s_slice_and_f5s_run_persisting_one_filing_at_once(env, layouts, monkeypatch, first):
+    """HB-4's slice and F5's run() persist the same filing at once, each on its own connection. `first` holds its
+    filing transaction open after its F3, F4 and F5 saves; the other then waits on those uncommitted rows (a lock wait
+    in pg_stat_activity) and, once the first commits, finds F3, F4 and F5 already present (identical evidence: HB-4's
+    d2). One set of rows, no deadlock, nothing committed while the first held; HB-4's item is persisted under one claim
+    and one download and its lease released as completed; verify is clean. While HB-4 holds its filing, a second HB-4
+    slice cannot start: P2's global lock is held for the whole slice, so it is SliceBusy, recorded as a busy wakeup,
+    with no request and no claim."""
+    from worker.backfill_discovery import accounting
+    from worker.backfill_transport.errors import SliceBusy
+    fid = 988001
+    words = a_layout_with_cells(layouts)
+    w = open_hb4(env, [fid])
+    by = ByDocument({fid: words})
+    url = H.url_of(H.path_of(fid))
+    cdn = H.ScriptedCDN(env.clock, {url: H.ok_doc(fid)})
+    hb4_conn, run_conn, su = env.conn(), env.conn(), env.conn("postgres")
+    su.autocommit = True
+    holder, waiter = (hb4_conn, run_conn) if first == "hb4" else (run_conn, hb4_conn)
+    held, release = threading.Event(), threading.Event()
+    got = {}
+
+    def run_f5_now():
+        try:
+            got["run"] = run_f5(run_conn, [fid], {fid: words}, fetcher=FakeFetcher({url: _ok(fid)}))[0]
+        except BaseException as exc:  # noqa: BLE001 - reported below
+            got["run"] = exc
+
+    def watch_the_waiter(alive):
+        got["waited"] = lock_wait(su, waiter.get_backend_pid(), alive)
+        got["committed_meanwhile"] = rows_of(su, [fid])
+    runner = threading.Thread(target=run_f5_now)
+    watcher = threading.Thread(target=lambda: (watch_the_waiter(lambda: True), release.set()))
+
+    def while_hb4_holds():                                  # main thread, inside HB-4's open filing transaction
+        cdn2 = H.ScriptedCDN(env.clock, {url: H.ok_doc(fid)})
+        with pytest.raises(SliceBusy):
+            env.slice(cdn2, install_sigterm=False, extract_text=by.text, extract_words=by.words).__enter__()
+        got["second_slice_requests"] = len(cdn2.calls)
+        runner.start()
+        watch_the_waiter(runner.is_alive)
+    real_f5_save = PostgresCandidateStore.save
+
+    def f5_save(self, result, cid, link=None):
+        out = real_f5_save(self, result, cid, link)
+        if self.conn is holder and not held.is_set():       # the first: F3, F4 and F5 saved, not yet committed
+            held.set()
+            if first == "hb4":
+                while_hb4_holds()
+            else:
+                assert release.wait(60)
+        return out
+    monkeypatch.setattr(PostgresCandidateStore, "save", f5_save)
+    ds = env.slice(cdn, conn=hb4_conn, extract_text=by.text, extract_words=by.words)
+    err = None
+    try:
+        if first == "run":
+            runner.start()
+            assert held.wait(60), got
+            watcher.start()
+        with ds:
+            ds.run()
+    except BaseException as exc:  # noqa: BLE001 - asserted below
+        err = exc
+    finally:
+        release.set()
+        for t in (runner, watcher):
+            if t.ident is not None:
+                t.join(60)
+    assert not runner.is_alive() and not watcher.is_alive()
+    assert err is None and not isinstance(got["run"], BaseException), (err, got)
+    assert got["waited"] is True and got["committed_meanwhile"] == (0, 0, 0), got
+    it = H.item_of(w, fid)
+    ev = ledger.events(w, it["id"])[-1]
+    run_stored = [(r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) for r in got["run"]["records"]]
+    if first == "hb4":
+        assert run_stored == [("already_present",) * 3] and (ev["details"]["f3"], ev["details"]["f5"]) == \
+            ("inserted", "inserted"), (run_stored, ev)
+        assert got["second_slice_requests"] == 0
+        assert q(su, "select count(*) from backfill_wakeups where state = 'skipped' and result = 'busy'") == [(1,)]
+    else:
+        assert run_stored == [("inserted",) * 3] and (ev["details"]["f3"], ev["details"]["f5"]) == \
+            ("already_present", "already_present"), (run_stored, ev)
+    assert (ev["state"], ev["action"]) == ("persisted", "record") and H.state(w, it) == "persisted"
+    assert accounting.claims(w, it["id"]) == 1 and len(cdn.calls) == 1
+    assert H.lease_row(w, ds.sl.lease_id) == ("released", "completed")
+    assert rows_of(su, [fid]) == (1, 1, 1) and f4_counts(su)["extractions"] == 1
+    assert q(su, "select id::text from financial_extraction_runs where cse_filing_id = %s", (fid,)) == \
+        [(str(ev["f5_run_id"]),)]
+    report = verify.verify(_reader_of(env))
+    assert report["clean"] and report["extractions"] == report["runs"] == report["rebuilt"] == 1, report
+
+
+def env_without_0018(cluster, tmp_path, monkeypatch):
+    """HB-4's test environment on a database migrated through P1's runner to 0017 only (as p9 builds it)."""
+    name = f"rf4_{uuid.uuid4().hex[:10]}"
+    cluster.psql("postgres", "-v", "ON_ERROR_STOP=1", "-v", f"dbname={name}", "-f", S.BOOTSTRAP)
+    m = cluster.connect(dbname=name, user="cse_migrator")
+    try:
+        out = mig.apply(m, mig.discover(S.MIGDIR), target=17, log=lambda _: None)
+        assert out["applied"][-1] == "0017_f8_asof_configuration.sql"
+    finally:
+        m.close()
+    with monkeypatch.context() as m:
+        m.setattr(S, "fresh_db", lambda _cluster: name)
+        return H.Env(cluster, tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize("mx, final", [(3, "retry_wait"), (1, "failed")])
+def test_p48_hb4_on_a_database_without_0018_rolls_the_filing_back_and_records_it(
+        cluster, tmp_path, monkeypatch, layouts, mx, final):
+    """No frozen preflight checks 0018 (design section 7), so HB-4 runs on a database without it. Inside the filing's
+    one transaction F3's save and the issuer link succeed, then R-F4's in-band check refuses (SchemaUnavailable, naming
+    0018): the whole filing rolls back (no F3 or F5 row; the filing's issuer links exactly as HB-3's identity pass left
+    them in the setup; R-F4's tables do not exist) and HB-4 records it through its own path, retry_wait or failed, with
+    the reason; one claim, one download, the lease released. With 0018 applied (the operational prerequisite), the
+    retry downloads once more and saves F3, F4 and F5 once."""
+    from worker.backfill_discovery import accounting
+    e = env_without_0018(cluster, tmp_path, monkeypatch)
+    try:
+        fid = 989001
+        w = open_hb4(e, [fid], item_max_attempts=mx)
+        assert q(w, "select to_regclass('public.financial_f4_extractions') is null") == [(True,)]
+        links = "select id, status, basis from filing_issuer_links where cse_filing_id = %s order by id"
+        linked = q(w, links, (fid,))                                  # HB-3's identity pass linked the filing
+        w.rollback()
+        by = ByDocument({fid: a_layout_with_cells(layouts)})
+        cdn = H.ScriptedCDN(e.clock, {H.url_of(H.path_of(fid)): H.ok_doc(fid)})
+        ds, err = hb4_slice(e, cdn, by)
+        it = H.item_of(w, fid)
+        ev = ledger.events(w, it["id"])[-1]
+        assert err is None and (ev["state"], ev["action"]) == (final, "record"), ev
+        assert "rolled back" in ev["reason"] and "SchemaUnavailable" in ev["reason"] and "0018" in ev["reason"], ev
+        assert (H.f3_rows(w, fid), H.f5_rows(w, fid)) == (0, 0)
+        assert q(w, links, (fid,)) == linked                          # the filing's links as the setup left them
+        assert accounting.claims(w, it["id"]) == 1 and len(cdn.calls) == 1
+        assert H.lease_row(w, ds.sl.lease_id) == ("released", "completed")
+        w.rollback()
+        if final == "failed":
+            return
+        assert mig.apply(e.owner_conn(), mig.discover(S.MIGDIR), log=lambda _: None)["applied"] == \
+            [preflight.MIGRATION]
+        ds, err = hb4_slice(e, cdn, by)                                  # the retry: one more download, saved once
+        assert err is None and H.state(w, it) == "persisted" and len(cdn.calls) == 2
+        assert rows_of(w, [fid]) == (1, 1, 1) and f4_counts(w)["extractions"] == 1
+        w.rollback()
+        assert verify.verify(_reader_of(e))["clean"]
+    finally:
+        e.close()

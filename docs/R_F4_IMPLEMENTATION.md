@@ -43,6 +43,7 @@ and evidence only; it changes no decision.
 | `95da822` | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
 | `144a213` | Claude (the owner's review of `95da822`) | `verify.py`: the snapshot's identity (`pg_snapshot`) and the transaction's start (`transaction_started_at`, was `taken_at`) recorded apart; autocommit connections refused; a failure raised as itself when the rollback fails too; tests u23 and p44–p46, u22 and p43 moved to the new keys; the design's §5 and §11; section 13 and the notes in §12; `docs/CI_TEST_STRATEGY.md` §9 (run 3) (§13) |
 | the commit adding §13.9 | Claude | Documents only: §13.7's run-identity wording corrected; `144a213`'s GitHub Actions results in §13.6 and `docs/CI_TEST_STRATEGY.md` §9; this table and the status lines (§13.9) |
+| the commit adding section 14 | Claude (the owner's audit request) | Tests p47 and p48 for §6.2's two HB-4 integration gaps; section 14 and the notes under §6.2. Tests and documents only (§14) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -333,8 +334,10 @@ amendment text. The independent audit should treat it as an open package item.
 
 - **Concurrency through HB-4's slice**, or an HB-4 slice and a manual `run()` saving the same filing at once: not
   tested (design §6). HB-4 claims each item under its slice's lease; p10 and p24 cover the store and `run()`.
+  *Tested since by p47 (§14).*
 - **HB-4 against a database without 0018:** not tested end to end. The runbook's statement rests on HB-4's
   `except Exception` around `_persist` and the store's in-band refusal (p9, p12), not on a test.
+  *Tested since by p48 (§14).*
 - **Real documents:** none. Every result is on synthetic layouts; the RDV/F0 evidence is lost, so its suites skip in
   every control. R-F4's real-document verification belongs to pilot acceptance (design §10).
 - **Per-test results** are counted per cluster (`-q`), not listed per test; S's reasons were read one by one (§5.6).
@@ -1315,3 +1318,61 @@ The ambiguous "No test was run for it" in the first paragraph was corrected, and
 documentation commit (documents only, with no local test command).
 
 The independent audit is the owner's and is not conducted here. It is not complete; R-F4 is not accepted or frozen.
+
+## 14. §6.2's HB-4 integration gaps: concurrency, and a database without 0018 (2026-10-20)
+
+**The request.** The owner's independent source-level review (2026-10-20) named the two HB-4 gaps that §6.2 and design
+§6 acknowledge. It asked whether existing tests already establish them and, where they don't, for the smallest
+targeted PostgreSQL tests.
+
+**All of this section's work and every run below was done by Claude; none is independently re-executed or
+audited.** The audit is **not complete**; R-F4 is **not** accepted or frozen. **Tests and documents only.** The commit
+adding this section changes `tests/test_rf4_postgres.py` and this record: no application code, migration, CI file or
+pin.
+
+### 14.1 What existing tests already established
+
+| Invariant | Existing evidence | Gap |
+|---|---|---|
+| Two HB-4 slices on one filing | A document slice opens through HB-2's `open_slice`, which takes P2's session-level global lock and holds it until the slice closes (`worker/backfill_transport/slice.py:122`). HB-2's l1: a second real slice is `SliceBusy`, recorded as a busy wakeup, with one active lease. HB-4's l2: a document slice refused that way makes no request and claims nothing | No test refused a second HB-4 slice while the first held a filing open. p47 adds that as a check, not a separate test |
+| An HB-4 slice and F5's `run()` on one filing | `run()` takes no global lock. p10 covers the store, and p24 covers `run()` against `run()` | Untested: **p47** |
+| HB-4 on a database without 0018 | p9: the store alone, on a 0017 database, refuses with `SchemaUnavailable`. p12: the in-band refusals. p23: HB-4 rolls a filing back and records it, for a scripted failure | The real refusal through HB-4 was untested: **p48** |
+
+### 14.2 Tests
+
+| Test | What it shows |
+|---|---|
+| **p47** `[hb4]`, `[run]` | HB-4's slice and F5's `run()` persist one filing at once, each on its own connection. The parameter names which one holds its filing transaction open after its F3, F4 and F5 saves (a test-only wrapper around F5's store save, as in p24). **The second waits:** it waits on those uncommitted rows, a lock wait in `pg_stat_activity` that the test requires, while nothing is committed. **When the first commits:** the second finds F3, F4 and F5 already present, and neither side deadlocks. **Afterwards:** one set of rows; HB-4's item `persisted` under one claim and one download; its lease `released` / `completed`; the ledger event naming the stored F5 run; `verify` clean. **The extra check in `[hb4]`:** while HB-4 holds the filing, a second HB-4 slice is `SliceBusy`, recorded as a busy wakeup, with no request |
+| **p48** `[3-retry_wait]`, `[1-failed]` | HB-4's test environment on a database built to 0017 by the bootstrap and P1's runner, as in p9. No frozen preflight checks 0018 (design §7), so the slice runs. **The refusal:** inside the filing's one transaction, R-F4's in-band check refuses with `SchemaUnavailable`, naming 0018. **The rollback:** the whole filing rolls back; there is no F3 or F5 row, and the filing's issuer links are exactly as HB-3's identity pass left them in the set-up. **The record:** HB-4 records `retry_wait`, or `failed` at the last claim, with that reason; one claim, one download, the lease released. **The retry:** with 0018 applied, it downloads once more and saves F3, F4 and F5 once; `verify` is clean |
+
+### 14.3 Results (run by Claude, 2026-10-20)
+
+The PostgreSQL runs used:
+- the container `cse-p1-test:latest`: PostgreSQL 17.11, Python 3.12.3, psycopg2 2.9.10, `--network none`;
+- the runner's throwaway cluster;
+- a clean LF tree of `280057b` plus the new test file, identical to this commit's.
+
+| Command | Result |
+|---|---|
+| `pytest -v -rfEs tests/test_rf4_postgres.py::test_p47_hb4s_slice_and_f5s_run_persisting_one_filing_at_once tests/test_rf4_postgres.py::test_p48_hb4_on_a_database_without_0018_rolls_the_filing_back_and_records_it` | **4 passed** |
+| `pytest -q -rfEs tests/test_rf4_postgres.py tests/test_rf4_unit.py` | **343 passed**: 63 PostgreSQL (§13's 59 plus p47 and p48's 4) and 280 unit; 0 failed, 0 skipped |
+| Windows, Python 3.14.6: `pytest -q tests/test_rf4_postgres.py tests/test_rf4_unit.py` | 280 passed, 63 skipped (the PostgreSQL module, which needs Linux) |
+
+**A first p48 run failed in both cases, on an assertion of the test itself.** The test expected no issuer link for the
+filing. But HB-3's identity pass links every in-window filing during the set-up, and `_persist`'s `link_filing`
+inserts with `on conflict do nothing`. The assertion now compares the links with the set-up's. **No application defect
+was found.**
+
+**No negative control.** These tests check existing behaviour, so there is no earlier code to contrast. p47 cannot
+pass without real contention, because it requires the observed lock wait.
+
+**GitHub Actions** had not run on this section's commit when it was written: Claude does not push.
+
+### 14.4 What remains
+
+- **p47's coverage.** It saves one filing, holds once in each order, and holds after the F5 save. Both callers persist
+  through F5's `_persist`, in the same order (F3, link, F4, F5), so the first conflicting insert is always F3's. HB-4's
+  ledger event comes after that order.
+- **Two HB-4 slices** cannot run at once at all: the second is refused before any work, whatever its filing. That is
+  P2's global lock, which this R-F4 work does not change.
+- **Design §6** still says these two cases are not tested. It is not edited here.
