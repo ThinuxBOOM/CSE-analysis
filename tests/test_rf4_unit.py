@@ -44,6 +44,12 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          are recorded apart and named for what they are (no time is called the snapshot's); an autocommit
          connection is refused before any statement; a failure is raised as itself when the rollback fails too,
          and never becomes a report
+    u24  verify's scope: a full scan (no limit) is the only one that can be clean; a limit N >= 1 is a partial
+         scan, reported as such and never clean, even when nothing is found or N covers every row; any other limit
+         is a ValueError before any statement; the command's --limit is a usage error (exit 2) before any
+         connection, and a partial scan exits 1
+    u25  the preflight's column definitions are 0018's (derived from the migration's text); every kind of column
+         drift (missing, extra, type, NOT NULL, default, identity, generation, collation) is reported
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1504,3 +1510,142 @@ def test_u23_a_rollback_failure_after_a_complete_run_is_raised_and_never_becomes
         verify.verify(conn)
     assert got.value is closed and got.value.__context__ is None                # the only failure
     assert any("financial_extraction_runs order by id" in s for s in conn.sql) and conn.sql[-1] == "ROLLBACK"
+
+
+# ============================================================================= u24 (verify's scope, 2026-10-20)
+
+def test_u24_a_full_scan_is_complete_and_only_a_full_scan_can_be_clean():
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION)
+    report = verify.verify(conn)
+    assert report["scope"] == {"complete": True, "limit": None} and report["clean"]
+    assert [s for s in conn.sql if " limit " in s] == []
+
+
+@pytest.mark.parametrize("n", [1, 3, 10 ** 6])
+def test_u24_a_limited_scan_is_partial_and_never_clean_even_when_it_finds_nothing(n):
+    """A limit as large as the tables, or larger, is still partial: verify does not count what it did not read."""
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION)
+    report = verify.verify(conn, limit=n)
+    assert report["problems"] == [] and report["clean"] is False, report
+    assert (report["scope"]["complete"], report["scope"]["limit"]) == (False, n)
+    assert report["scope"]["detail"].startswith(f"a partial scan: only the first {n} extraction(s) and the first {n} "
+                                                f"F5 run(s), by id, were checked")
+    assert [s.rsplit(" from ", 1)[1] for s in conn.sql if " order by id" in s] == [
+        f"financial_f4_extractions order by id limit {n}", f"financial_extraction_runs order by id limit {n}"]
+
+
+@pytest.mark.parametrize("bad", [0, -1, -10, True, False, 1.5, 2.0, "3", b"1", [1]])
+def test_u24_any_other_limit_is_refused_before_any_statement(bad):
+    from worker.financial_f4_store import verify
+    conn = _Recording(SAFE_SESSION)
+    with pytest.raises(ValueError, match="limit must be None"):
+        verify.verify(conn, limit=bad)
+    assert conn.sql == []
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "abc", "1.5", ""])
+def test_u24_the_commands_limit_must_be_an_integer_of_at_least_1_before_any_connection(value, monkeypatch, capsys):
+    from worker import db as worker_db
+    from worker.financial_f4_store import __main__ as cli
+    monkeypatch.setattr(worker_db, "get_connection", lambda: pytest.fail("the command connected"))
+    with pytest.raises(SystemExit) as e:
+        cli.main(["verify", f"--limit={value}"])
+    assert e.value.code == 2 and "--limit: must be an integer of at least 1" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argv, code, complete", [(["verify"], 0, True), (["verify", "--limit", "2"], 1, False)])
+def test_u24_the_command_exits_0_only_for_a_clean_full_scan(argv, code, complete, monkeypatch, capsys):
+    """The command's exit status over the real verify (the database faked): a full scan finding nothing exits 0; a
+    partial scan finding nothing exits 1, its report saying it is partial (tests/test_rf4_postgres.py p49 runs it on
+    PostgreSQL with unchecked corrupt evidence)."""
+    from worker import db as worker_db
+    from worker.financial_f4_store import __main__ as cli
+    conn = _Recording(SAFE_SESSION)
+    conn.close = lambda: None
+    monkeypatch.setattr(worker_db, "get_connection", lambda: conn)
+    assert cli.main(argv) == code
+    report = json.loads(capsys.readouterr().out)
+    assert report["scope"]["complete"] is complete and report["clean"] is (code == 0) and report["problems"] == []
+
+
+# ===================================================================== u25 (the preflight's columns, 2026-10-20)
+
+def migration_columns():
+    """Each table's columns as migration 0018 writes them, in order: the lines of its `create table` before its first
+    `constraint`. NOT NULL when written `not null` or `primary key`; the default as written; the type as PostgreSQL 17's
+    format_type renders the migration's spelling (timestamptz is `timestamp with time zone`, the others are as
+    written)."""
+    code = re.sub(r"--[^\n]*", "", open(MIGRATION, encoding="utf-8").read())
+    rendered = {"timestamptz": "timestamp with time zone"}
+    out = {}
+    for table, body in re.findall(r"create table (\w+) \((.*?)\n\);", code, re.S):
+        columns = out[table] = {}
+        for line in body.split("\n"):
+            line = line.strip().rstrip(",")
+            if not line:
+                continue
+            if line.startswith("constraint "):
+                break
+            name, typ, rest = re.fullmatch(r"(\w+) (\S+)(.*)", line).groups()
+            default = re.search(r"\bdefault (.+?)(?= references\b|$)", rest)
+            columns[name] = (rendered.get(typ, typ), "not null" in rest or "primary key" in rest,
+                             default.group(1) if default else None)
+    return out
+
+
+def test_u25_the_preflights_column_definitions_are_0018s():
+    derived = migration_columns()
+    assert derived == preflight.COLUMN_DEFINITIONS and set(derived) == set(codec.TABLES)
+    assert {t: list(c) for t, c in derived.items()} == {t: list(c) for t, c in preflight.COLUMN_DEFINITIONS.items()}
+    assert sum(map(len, derived.values())) == 103                           # nothing skipped by the parse
+    assert {typ for c in derived.values() for typ, _, _ in c.values()} == {
+        "uuid", "bigint", "text", "integer", "jsonb", "timestamp with time zone", "integer[]", "boolean"}
+
+
+COLUMN_FIELDS = ("name", "type", "not_null", "default", "identity", "generated", "collation")
+
+
+def _live_columns(table, **changes):
+    """_COLUMNS_QUERY's rows for `table` as 0018 creates it, with {column: {field: value}} changed."""
+    rows = []
+    for name, (typ, not_null, default) in preflight.COLUMN_DEFINITIONS[table].items():
+        row = dict(zip(COLUMN_FIELDS, (name, typ, not_null, default, "", "", None)), **changes.get(name, {}))
+        rows.append(tuple(row[f] for f in COLUMN_FIELDS))
+    return rows
+
+
+def test_u25_the_preflight_reports_every_kind_of_column_drift():
+    t = "financial_f4_extractions"
+    at = f"{t}: column"
+    assert preflight._column_problems(t, _live_columns(t)) == []
+    cases = [
+        ({"f4_content_sha256": {"not_null": False}}, [f"{at} f4_content_sha256 is nullable, expected NOT NULL"]),
+        ({"classifier_version": {"not_null": True}}, [f"{at} classifier_version is NOT NULL, expected nullable"]),
+        ({"page_count": {"type": "bigint"}}, [f"{at} page_count is bigint, expected integer"]),
+        ({"word_extractor": {"type": "character varying(160)"}},
+         [f"{at} word_extractor is character varying(160), expected text"]),
+        ({"recorded_at": {"default": None}}, [f"{at} recorded_at has default none, expected now()"]),
+        ({"store_version": {"default": "'f4.store.1'::text"}},
+         [f"{at} store_version has default 'f4.store.1'::text, expected none"]),
+        ({"cell_count": {"identity": "d"}},
+         [f"{at} cell_count is an identity column (GENERATED BY DEFAULT AS IDENTITY); migration 0018 creates none"]),
+        ({"cell_count": {"generated": "s", "default": "(row_count * column_count)"}},
+         [f"{at} cell_count is generated (GENERATED ALWAYS AS ((row_count * column_count))); migration 0018 generates "
+          "no column"]),
+        ({"word_extractor": {"collation": "C"}}, [f"{at} word_extractor has collation C, not its type's default"]),
+        ({"page_count": {"type": "bigint", "not_null": False}},                 # every difference of a column
+         [f"{at} page_count is bigint, expected integer", f"{at} page_count is nullable, expected NOT NULL"]),
+    ]
+    for changes, want in cases:
+        assert preflight._column_problems(t, _live_columns(t, **changes)) == want, changes
+    rows = _live_columns(t)
+    assert preflight._column_problems(t, [r for r in rows if r[0] != "f3_input_sha256"]) == [
+        f"{at} f3_input_sha256 is missing"]
+    assert preflight._column_problems(t, rows + [("rf4_extra", "text", False, None, "", "", None)]) == [
+        f"{at} rf4_extra (text) is not one migration 0018 creates"]
+    renamed = [("note_ref" if r[0] == "f3_document_type" else r[0], *r[1:]) for r in rows]
+    assert preflight._column_problems(t, renamed) == [f"{at} f3_document_type is missing",
+                                                      f"{at} note_ref (text) is not one migration 0018 creates"]
+    assert preflight._column_problems(t, list(reversed(rows))) == []          # compared by name, not position

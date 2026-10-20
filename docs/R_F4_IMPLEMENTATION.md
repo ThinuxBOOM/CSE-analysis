@@ -5,9 +5,10 @@ audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f
 (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
 found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
 snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
-(§13). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected
-Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally
-waived the item for this implementation package:
+(§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are in the
+commit adding §15. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner
+selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day,
+formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -42,15 +43,18 @@ and evidence only; it changes no decision.
 | `ae26d68`, `4be6fa9`, `1ad5cc6` | Claude | GitHub Actions CI and its strategy (`docs/CI_TEST_STRATEGY.md`); no R-F4 code, test or record change |
 | `95da822` | Claude (audit remediation RF4-A1) | `reader.py` and `verify.py`: the session's name resolution checked before every unqualified read, `verify` in one REPEATABLE READ, READ ONLY snapshot; tests u22 and p40–p43; the HB-1 to HB-6 re-pin; the design's §5 and §11; section 12 and the notes under §9.6 and §11.7 (§12) |
 | `144a213` | Claude (the owner's review of `95da822`) | `verify.py`: the snapshot's identity (`pg_snapshot`) and the transaction's start (`transaction_started_at`, was `taken_at`) recorded apart; autocommit connections refused; a failure raised as itself when the rollback fails too; tests u23 and p44–p46, u22 and p43 moved to the new keys; the design's §5 and §11; section 13 and the notes in §12; `docs/CI_TEST_STRATEGY.md` §9 (run 3) (§13) |
-| the commit adding §13.9 | Claude | Documents only: §13.7's run-identity wording corrected; `144a213`'s GitHub Actions results in §13.6 and `docs/CI_TEST_STRATEGY.md` §9; this table and the status lines (§13.9) |
-| the commit adding section 14 | Claude (the owner's audit request) | Tests p47 and p48 for §6.2's two HB-4 integration gaps; section 14 and the notes under §6.2. Tests and documents only (§14) |
+| `7e7e331` | Claude | Documents only: §13.7's run-identity wording corrected; `144a213`'s GitHub Actions results in §13.6 and `docs/CI_TEST_STRATEGY.md` §9; this table and the status lines (§13.9) |
+| `cbcf8d6` | Claude (the owner's audit request) | Tests p47 and p48 for §6.2's two HB-4 integration gaps; section 14 and the notes under §6.2. Tests and documents only (§14) |
+| `280057b`, `25c0390` | Claude | Documents only: §13.9's wording and `7e7e331`'s GitHub Actions results; the design's §6 status note and §14.2's retry scope |
+| the commit adding section 15 | Claude (the owner's review, 2026-10-20) | `verify.py` and `__main__.py`: a limited `verify` is partial (`scope`) and never clean, a limit below 1 refused; `preflight.py`: every column checked; tests u24, u25, p49 and p50; the p47/p48 reconciliation of the design and this record (§15) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
-at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9) **and at
-`1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12) **and at `144a213`**
-(`verify`'s snapshot metadata, §13). Where they differ, the later section is current: they change the store, the in-band
-check, the preflight and the HB-1 to HB-6 pins named in §2.
+at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9), **at
+`1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12), **at `144a213`** (`verify`'s snapshot
+metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14) **and at the commit adding §15** (`verify`'s scope, the
+preflight's columns). Where they differ, the later section is current: they change the store, the in-band check, the
+preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -112,15 +116,18 @@ fallback.
 | **Rollback and retry, HB-4** | p23: a fault in the F4 save, in the F5 save after it, in the ledger event, and NaN | Nothing committed; `retry_wait` or `failed` recorded; the retry downloads once more and saves once |
 | **Rollback and retry, `run()`** | p21: a scripted F4 failure and NaN, at filing *k* = 2 of 3 | `run()` raises; filing 1 is uncommitted too; a rerun saves every filing once |
 | **Idempotency** | p7, p17 (store); p19 (`run()`) | `already_present` for F3, F4 and F5; F4's only when the saved extraction reads back intact (p17) |
-| **Concurrency** | p10 (store, same key); p24 (`run()`, same filing) | One set of rows, no deadlock. **Through HB-4's slice: not tested** (§6.2) |
+| **Concurrency** | p10 (store, same key); p24 (`run()`, same filing); p47 (HB-4's slice and `run()`, same filing; added 2026-10-20, §14) | One set of rows, no deadlock. Two HB-4 slices cannot run at once: P2's global lock (§14.1). Through HB-4's slice it was not tested at `82b7a3e` (§6.2) |
 | **Pre-R-F4 runs** | p11 (`missing`); p19 | F4 only by downloading the document again |
 | **Tamper and versions** | p11 (`incomplete`, `corrupt`, `version_incompatible`, `f5_mismatch`); p15; p17 | `verify` read-only as the reader |
-| **Migration** | p1 (0001–0018 at the pinned hash); p9 (no 0018: refused in-band before any insert; 0017 → 0018; an edited or missing 0018 is a preflight problem); p11 | |
+| **Migration** | p1 (0001–0018 at the pinned hash); p9 (no 0018: refused in-band before any insert; 0017 → 0018; an edited or missing 0018 is a preflight problem); p11; p48 (HB-4 on a database without 0018; added 2026-10-20, §14) | |
 | **Access rules** | p2; p13 (privileges granted on single columns) | |
-| **R-F4 preflight** | p1, p9, p12, p13 | File, ledger and objects reported apart; never clean while the ledger is unverifiable (`cse_worker`); the store's in-band check refuses before any insert and is not cached (p12) |
+| **R-F4 preflight** | p1, p9, p12, p13; p27 (constraints, §7); p50 (columns, §15) | File, ledger and objects reported apart; never clean while the ledger is unverifiable (`cse_worker`); the store's in-band check refuses before any insert and is not cached (p12) |
 | **Regression controls** | B, P, S, I | §5.5, §5.6 |
 | **Mutation testing** | M1–M17 | §5.7 |
 | **Real documents** | — | At pilot acceptance (design §10, milestone 12). None exist; nothing here is real-document evidence |
+
+*Rows naming later tests (p27, p47, p48, p50) were updated after control I and are not part of it: their
+evidence is in the sections they name.*
 
 **Result (control I, `82b7a3e`):** every test above passed on Linux: the two R-F4 files gave 269 passed, none failed
 or skipped (cluster L16: 532 passed against B's 263, exactly the 35 + 234 collected R-F4 IDs, and no R-F4 test in any
@@ -143,6 +150,7 @@ Every Stage 2 change (`git diff 6834280 82b7a3e`, 15 files) was read against the
   filing's save is refused (`SchemaUnavailable`) and recorded as a failure" follows from HB-4 catching any `Exception`
   around `_persist` (`worker/backfill_documents/worker.py:455-459`) and the store's in-band check (Stage 1, p9, p12);
   no test runs HB-4 against a database without 0018.
+  *p48 tests it since (§14).*
 - **Findings during the review, corrected:** the design's Stage 2 status still said "uncommitted" after `fa464d2`
   (`248b31c`); F5's `--write-db` help omitted 0018 (`248b31c`); design §6's caller-level concurrency, assigned to Stage
   2, had no test (`5e4d0c3`, p24); the test-range text said p18–p23 (`82b7a3e`). No implementation defect was found.
@@ -1368,6 +1376,13 @@ pass without real contention, because it requires the observed lock wait.
 
 **GitHub Actions** had not run on this section's commit when it was written: Claude does not push.
 
+*Recorded afterwards (§15), from the runs' public job conclusions and check-run annotations, as Claude read them:
+`cbcf8d6`'s fast run [39417081221](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39417081221) succeeded
+(offline: 2,077 passed, 544 skipped). Its regression run
+[39417081306](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39417081306) **failed**, verdict
+`baseline-only`: 4,610 passed, 1 failed (the HB-2 baseline), 630 skipped, 2 xfailed. L16, where p47 and p48 run, had
+608 passed against 604 before: their 4 cases.*
+
 ### 14.4 What remains
 
 - **p47's coverage.** It saves one filing, holds once in each order, and holds after the F5 save. Both callers persist
@@ -1376,3 +1391,109 @@ pass without real contention, because it requires the observed lock wait.
 - **Two HB-4 slices** cannot run at once at all: the second is refused before any work, whatever its filing. That is
   P2's global lock, which this R-F4 work does not change.
 - **Design §6** still says these two cases are not tested. It is not edited here.
+  *Since `25c0390` it keeps that sentence as history, with a dated status note naming p47 and p48.*
+
+## 15. `verify`'s scope and the preflight's columns (2026-10-20)
+
+**The request.** The owner's independent review (2026-10-20) found two issues and one documentation inconsistency:
+- **A limited `verify` could report clean.** `verify(conn, limit=N)` checked only the first N extractions and the
+  first N F5 runs, but could still return `clean: true`, and `verify --limit N` then exited 0.
+- **The preflight did not check columns.** Its object check compared named constraints but not the column layout. On
+  PostgreSQL 17, `NOT NULL` is a column property, not a `pg_constraint` row, so a dropped `NOT NULL` went unseen.
+- **The acceptance documents** did not reflect p47 and p48 consistently.
+
+**All of this section's work was done by Claude, and the runs below are Claude's.** The PostgreSQL tests were **not
+run locally**: the owner asked for GitHub Actions to provide that evidence. The audit is **not complete**; R-F4 is
+**not** accepted or frozen.
+
+**What did not change:**
+- **Pins:** none. `verify.py`, `preflight.py` and `__main__.py` are not pinned; HB-1 pins `__init__`, `codec`,
+  `errors`, `reader`, `schema` and `store`.
+- **Unchanged files:** migration 0018, the store, the reader, `schema.py` and the frozen F6.2 files.
+
+### 15.1 What the previous code did (read from the code)
+
+| Issue | The previous code |
+|---|---|
+| A limited scan reported clean | `verify` enumerated `… order by id limit N` and set `clean` from its problems alone. So N intact rows, with corrupt evidence after them, gave `clean: true`, and the command exited 0 |
+| `limit=0` | `if limit` read 0 as no limit: a full scan, without saying so |
+| A negative limit | It reached PostgreSQL as `LIMIT -1`, which PostgreSQL rejects with an error, not a report |
+| Column drift | The object check read `pg_constraint` (`contype <> 'n'`) only. A dropped `NOT NULL`, another type, default, identity or collation, or a missing or extra column all left the preflight clean |
+
+### 15.2 The fixes
+
+**`verify`** (`worker/financial_f4_store/verify.py`) and its command (`__main__.py`). The report gains `scope`:
+
+| `limit` | Meaning | `scope` | Can be clean | The command |
+|---|---|---|---|---|
+| `None` (no `--limit`) | A full scan | `{"complete": true, "limit": null}` | Yes, when nothing is found | Exit 0 when clean, else 1 |
+| An int N ≥ 1 | A partial scan: the first N extractions and the first N F5 runs, by id | `complete: false`, `limit: N`, and a `detail` saying so | **Never**, even when nothing is found or N covers every row | Exit 1 |
+| 0, a negative number, a bool, a float, a string | Refused | none | none | `ValueError` before any statement. The command: a usage error, exit 2, before any connection |
+
+Everything else is unchanged:
+- full scans;
+- the snapshot, read-only and name-resolution guarantees (§12, §13).
+
+**The preflight** (`worker/financial_f4_store/preflight.py`):
+- **The expected columns.** `COLUMN_DEFINITIONS` holds every column 0018 creates, in its order: its type as
+  PostgreSQL 17's `format_type` renders it, `NOT NULL`, and its default as `pg_get_expr` renders it.
+- **The live columns.** For each table, after the constraint check, `_COLUMNS_QUERY` reads them from `pg_attribute`
+  (dropped columns excluded), and `_column_problems` compares them **by name**.
+- **What it reports:**
+  - a missing or extra column;
+  - another type;
+  - a dropped or added `NOT NULL`;
+  - another default;
+  - an identity or a generated column;
+  - a collation other than the type's default.
+- **Where it reports them:** in `objects`. The file, objects and ledger results stay apart, and a found problem keeps
+  the preflight from being clean.
+- **How the map is tied to 0018:**
+  - u25 derives it from 0018's text;
+  - p50 compares it with a database migrated by P1's runner.
+
+### 15.3 Tests
+
+| Test | Kind | What it shows |
+|---|---|---|
+| **u24** (21 cases) | Unit | **Scans:** only a full scan can be clean; a limit of 1, 3 or 10⁶ is partial and never clean, and the enumerations carry `limit N`. **Refused limits:** 0, −1, −10, `True`, `False`, 1.5, 2.0, `"3"`, `b"1"` and `[1]` raise `ValueError` before any statement. **The command's `--limit`:** `0`, `-1`, `abc`, `1.5` and an empty value are a usage error (exit 2) before any connection. **Exit codes:** over the real `verify` with a faked database, a clean full scan exits 0 and a partial scan finding nothing exits 1 |
+| **u25** (2) | Unit | **The map:** `COLUMN_DEFINITIONS` equals the columns derived from 0018's text: 103 columns, in order, with their types, `NOT NULL` and defaults. **The comparison:** `_column_problems` reports every kind of drift above, and several at once; a renamed column is a missing one plus an extra one; columns are compared by name, not position |
+| **p49** | PostgreSQL | Three filings; the evidence outside what `limit=1` reads has a corrupt cell. **The partial scan:** it finds nothing, is not clean, and the command exits 1. **The full scan:** it finds the corruption, and the command exits 1. **Before the tampering:** a clean full scan exits 0, and a limit covering every row is still partial. **Bad limits:** 0 and −1 are refused before anything is sent, and the command exits 2 |
+| **p50** | PostgreSQL | **The baseline:** the live columns equal the map. **The changes, each restored in `finally`:** a dropped `NOT NULL` on `financial_f4_extractions.f4_content_sha256` (the content seal) and on `financial_f4_cells.statement_id`; a type changed to `varchar(160)` and to `integer`; a dropped default; an identity added; collation `"C"`; a renamed column; an extra column. **For each:** the constraints still equal 0018's (the constraint check alone sees nothing); the preflight reports exactly the expected problems in `objects`; the file is clean and the ledger verified. **At the end:** every column and constraint is 0018's, and the preflight is clean |
+
+### 15.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6: `pytest -q tests/test_rf4_unit.py tests/test_rf4_postgres.py` | **303 passed** (the 280 before plus u24 and u25's 23), 65 skipped (the PostgreSQL module, p49 and p50 included) |
+| **Negative control**, Windows: `25c0390`'s code with this section's unit test file | **Exactly the 23 new cases fail**; the other 280 pass. In 2 cases, `--limit 0` and `--limit -1`, the previous command connected to the database. In 3, `abc`, `1.5` and the empty value, it already exited 2 (argparse's `int`), so those fail on the message only |
+| PostgreSQL: p49, p50, and every other PostgreSQL test under the new column check | **Not run locally.** Their first run is GitHub Actions: group L16 (Linux, PostgreSQL 17), skipped in W3 and offline. To be recorded once it has run, not assumed here |
+
+### 15.5 What remains
+
+- **PostgreSQL 17's rendering.** The expected types and defaults are as PostgreSQL 17 renders them (`format_type`,
+  `pg_get_expr`). Another major version may render them differently; the preflight then reports a problem rather than
+  passing. Before p50's CI run, nothing has executed them against PostgreSQL in this work.
+- **The store's in-band check** (`schema.py`, pinned by HB-1) does not check columns. Column drift is the preflight's,
+  at its checkpoints, not seen at save time.
+- **Not checked by the preflight:**
+  - a table's persistence (`UNLOGGED`);
+  - row-level security: a policy could hide rows from `verify`, so this is worth a later check;
+  - its relation kind or partitioning;
+  - storage and statistics settings;
+  - column order, which is compared by name only.
+- **A partial scan** is a spot check, never a verification. It does not report how many rows it left unchecked.
+
+### 15.6 Documents reconciled
+
+- **The R-F4 design:**
+  - its status lines, and §5 (`verify`'s scope, the preflight's columns);
+  - §6's status note, which points to p47 and p48's limits (§14.4);
+  - §8's progress paragraph, §9's preflight row, §10's milestones 4 and 6, and §11's audit bullet.
+- **This record:**
+  - its status lines, its commits table and the tested-at paragraph;
+  - §3's matrix rows (concurrency, migration, preflight), labelled as later than control I;
+  - §4's note, `cbcf8d6`'s GitHub Actions results (§14.3), and §14.4's design line.
+
+Historical statements stay as written, with dated notes. Nothing here claims an independent run, the audit's
+completion, acceptance or a freeze.

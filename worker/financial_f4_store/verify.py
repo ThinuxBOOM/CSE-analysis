@@ -9,6 +9,12 @@ R-F4's `verify` (docs/R_F4_DESIGN.md section 5), modelled on F6.4's: re-proves w
 A problem is reported, never repaired. It runs in one READ ONLY transaction, so the reader role can run it, and every
 change, even one a role with INSERT would be allowed, is refused by PostgreSQL itself.
 
+Scope (2026-10-20). `limit=None`, the default, is a full scan: every extraction and every F5 run. Only a full scan can
+be clean. A limit N (an int of at least 1) checks only the first N extractions and the first N F5 runs, by id: a
+partial scan, whose report says so (`scope`: complete false) and is never clean, whatever it finds, even when N covers
+every row (verify does not count what it did not read). Any other limit (0, a negative number, a bool, a float, a
+string) is a ValueError before anything is sent.
+
 One snapshot (audit finding RF4-A1, 2026-10-20). The transaction is REPEATABLE READ, set before its first query, so the
 enumeration, the F4 read-backs, the F3 read-backs and the F5 rebuilds all see the database as it was at that query,
 whatever another transaction commits meanwhile. A change committed during the run is not in this report; the next
@@ -45,23 +51,36 @@ _SNAPSHOT = """select pg_catalog.current_setting('transaction_isolation'),
 
 
 def verify(conn, *, rebuild=True, limit=None):
-    """The report {store_version, snapshot, extractions, runs, rebuilt, problems: [{kind, ...}], clean}. `conn` must
-    not be in autocommit mode and must have no open transaction; verify rolls its own read-only transaction back."""
+    """The report {store_version, scope, snapshot, extractions, runs, rebuilt, problems: [{kind, ...}], clean}. `conn`
+    must not be in autocommit mode and must have no open transaction; verify rolls its own read-only transaction back.
+    `limit`: None for a full scan, or an int N >= 1 for a partial scan, never clean (module docstring)."""
+    scope = _scope(limit)
     if conn.autocommit:
         raise ValueError("verify needs a connection outside autocommit mode: there each statement is its own "
                          "transaction, with its own snapshot")
     if conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
         raise ValueError("verify needs a connection with no open transaction")
-    report = {"store_version": STORE_VERSION, "snapshot": None, "extractions": 0, "runs": 0, "rebuilt": 0,
-              "problems": []}
+    report = {"store_version": STORE_VERSION, "scope": scope, "snapshot": None, "extractions": 0, "runs": 0,
+              "rebuilt": 0, "problems": []}
     try:
         _verify(conn, report, rebuild, limit)
     except BaseException as exc:
         _roll_back_after(conn, exc)
         raise
     conn.rollback()
-    report["clean"] = not report["problems"]
+    report["clean"] = scope["complete"] and not report["problems"]
     return report
+
+
+def _scope(limit):
+    """The report's `scope`, or ValueError: a limit of None is a full scan, an int N >= 1 (not a bool) a partial one."""
+    if limit is None:
+        return {"complete": True, "limit": None}
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError(f"verify's limit must be None (a full scan) or an integer of at least 1, not {limit!r}")
+    return {"complete": False, "limit": limit,
+            "detail": f"a partial scan: only the first {limit} extraction(s) and the first {limit} F5 run(s), by id, "
+                      "were checked; the rest of the database was not, so this report is never clean"}
 
 
 def _roll_back_after(conn, failure):
@@ -86,11 +105,10 @@ def _verify(conn, report, rebuild, limit):
         if unsafe:
             report["problems"].append({"kind": "name_resolution", "detail": "; ".join(unsafe)})
             return
-        cur.execute("select id, classification_id, f3_input_sha256 from financial_f4_extractions order by id"
-                    + (" limit %s" % int(limit) if limit else ""))
+        only = "" if limit is None else " limit %d" % limit                 # an int >= 1 (_scope)
+        cur.execute("select id, classification_id, f3_input_sha256 from financial_f4_extractions order by id" + only)
         extractions = cur.fetchall()
-        cur.execute("select id from financial_extraction_runs order by id" + (" limit %s" % int(limit) if limit
-                                                                              else ""))
+        cur.execute("select id from financial_extraction_runs order by id" + only)
         runs = [r[0] for r in cur.fetchall()]
     try:
         _check(conn, report, extractions, runs, rebuild)

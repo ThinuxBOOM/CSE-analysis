@@ -110,6 +110,12 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p48  HB-4 on a database without 0018: R-F4's refusal rolls the whole filing back (no F3 or F5 row, issuer
          links unchanged) and HB-4 records retry_wait or failed through its own path; with 0018 applied, the retry
          saves once
+    p49  a limited verify (--limit N) whose first N extractions and runs are intact while unchecked evidence is
+         corrupt: partial, never clean, and the command exits 1; a full scan finds the corruption; a limit covering
+         every row is still partial; 0 and negative limits are refused (ValueError, usage error exit 2)
+    p50  the preflight's columns: 0018's live columns equal its map; a dropped NOT NULL on a critical column, a
+         changed type, default, identity, collation, a renamed or an extra column are each reported (the constraint
+         check alone sees none of them), the three checks apart; everything restored
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -2945,3 +2951,113 @@ def test_p48_hb4_on_a_database_without_0018_rolls_the_filing_back_and_records_it
         assert verify.verify(_reader_of(e))["clean"]
     finally:
         e.close()
+
+
+# --------------------------------------------------------------- verify's scope; the preflight's columns (2026-10-20)
+
+def test_p49_a_limited_verify_is_partial_never_clean_and_the_command_exits_1(db, layouts, monkeypatch, capsys):
+    """verify(limit=N) checks the first N extractions and the first N F5 runs, by id. Here they are intact while a
+    filing outside them has a corrupt cell: the partial scan finds nothing, yet is not clean (scope: complete false)
+    and the command exits 1, never 0. A full scan finds the corruption. A limit covering every row is still partial.
+    A limit of 0 or below is refused before anything is sent (ValueError), and by the command as a usage error (2)."""
+    import psycopg2.extensions
+    from worker import db as worker_db
+    from worker.financial_f4_store import __main__ as cli
+    words = a_layout_with_cells(layouts)
+    w, su = db.conn(), db.su()
+    saved = [persist(w, words, 997101 + i) for i in range(3)]
+    monkeypatch.setattr(worker_db, "get_connection", db.reader)
+    assert cli.main(["verify"]) == 0                                      # a clean full scan: the only exit 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["clean"] and out["scope"] == {"complete": True, "limit": None} and out["extractions"] == 3, out
+    every = verify.verify(db.reader(), limit=3)                           # covers every row: still partial
+    assert (every["extractions"], every["runs"], every["problems"], every["clean"]) == (3, 3, [], False), every
+    assert every["scope"]["complete"] is False and every["scope"]["limit"] == 3
+    first_eid = q(su, "select id::text from financial_f4_extractions order by id limit 1")[0][0]
+    first_run = q(su, "select id::text from financial_extraction_runs order by id limit 1")[0][0]
+    bad = next(s for s in saved if str(s.eid) != first_eid and str(s.run_id) != first_run)
+    tamper_a_cell(su, bad.eid)                                            # outside what limit=1 reads
+    partial = verify.verify(db.reader(), limit=1)
+    assert (partial["extractions"], partial["runs"], partial["problems"]) == (1, 1, []), partial
+    assert partial["clean"] is False and (partial["scope"]["complete"], partial["scope"]["limit"]) == (False, 1)
+    assert cli.main(["verify", "--limit", "1"]) == 1
+    out = json.loads(capsys.readouterr().out)
+    assert out["problems"] == [] and out["clean"] is False and out["scope"]["complete"] is False, out
+    full = verify.verify(db.reader())
+    assert ("corrupt", str(bad.eid)) in kinds_of(full) and not full["clean"] and full["scope"]["complete"], full
+    assert cli.main(["verify"]) == 1
+    capsys.readouterr()
+    for limit in (0, -1):
+        r = db.reader()
+        with pytest.raises(ValueError, match="limit must be None"):
+            verify.verify(r, limit=limit)
+        assert r.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_IDLE     # nothing was sent
+        with pytest.raises(SystemExit) as e:
+            cli.main(["verify", f"--limit={limit}"])
+        assert e.value.code == 2
+    capsys.readouterr()
+
+
+def live_columns(su):
+    """Each table's live columns {name: (type, NOT NULL, default)}, read with the preflight's own query; none is an
+    identity or generated column or has another collation."""
+    out = {}
+    for t in codec.TABLES:
+        rows = q(su, preflight._COLUMNS_QUERY, (f"public.{t}",))
+        assert [r for r in rows if (r[4], r[5], r[6]) != ("", "", None)] == [], (t, rows)
+        out[t] = {n: (typ, not_null, default) for n, typ, not_null, default, _, _, _ in rows}
+    return out
+
+
+def test_p50_the_preflight_reports_column_drift_that_no_constraint_shows(db):
+    """On PostgreSQL 17 NOT NULL is a column property, not a pg_constraint row, so a dropped NOT NULL on a critical
+    column (the extraction's content seal, a cell's statement) leaves every constraint as 0018 creates it, as do a
+    changed type, default, identity or collation and a renamed or an extra column. The preflight reports each,
+    exactly, in its object check (the file and the ledger still pass: the three checks stay apart), and is not clean.
+    Each change is undone in `finally`; at the end every column and constraint is 0018's and the preflight is clean."""
+    su, m = db.su(), migrator(db)
+    q(su, "set search_path = public")
+    assert live_columns(su) == preflight.COLUMN_DEFINITIONS                   # 0018 as P1's runner applies it
+    assert preflight.report(m)["clean"]
+    e, s, k, r, c = (f"financial_f4_{x}" for x in ("extractions", "statements", "columns", "rows", "cells"))
+    cases = [  # (break, restore, exactly what the preflight must report)
+        (f"alter table {e} alter column f4_content_sha256 drop not null",
+         f"alter table {e} alter column f4_content_sha256 set not null",
+         [f"{e}: column f4_content_sha256 is nullable, expected NOT NULL"]),
+        (f"alter table {c} alter column statement_id drop not null",
+         f"alter table {c} alter column statement_id set not null",
+         [f"{c}: column statement_id is nullable, expected NOT NULL"]),
+        (f"alter table {k} alter column header_raw type varchar(160)",          # F6.2's former 160-character clip
+         f"alter table {k} alter column header_raw type text",
+         [f"{k}: column header_raw is character varying(160), expected text"]),
+        (f"alter table {c} alter column scale type integer",
+         f"alter table {c} alter column scale type bigint",
+         [f"{c}: column scale is integer, expected bigint"]),
+        (f"alter table {e} alter column recorded_at drop default",
+         f"alter table {e} alter column recorded_at set default now()",
+         [f"{e}: column recorded_at has default none, expected now()"]),
+        (f"alter table {s} alter column statement_index add generated by default as identity",
+         f"alter table {s} alter column statement_index drop identity",
+         [f"{s}: column statement_index is an identity column (GENERATED BY DEFAULT AS IDENTITY); migration 0018 "
+          "creates none"]),
+        (f'alter table {e} alter column word_extractor type text collate "C"',
+         f"alter table {e} alter column word_extractor type text",              # the type's default collation again
+         [f"{e}: column word_extractor has collation C, not its type's default"]),
+        (f"alter table {r} rename column note_ref_raw to note_ref",
+         f"alter table {r} rename column note_ref to note_ref_raw",
+         [f"{r}: column note_ref_raw is missing", f"{r}: column note_ref (text) is not one migration 0018 creates"]),
+        (f"alter table {r} add column rf4_extra text",
+         f"alter table {r} drop column rf4_extra",
+         [f"{r}: column rf4_extra (text) is not one migration 0018 creates"]),
+    ]
+    for break_sql, restore_sql, want in cases:
+        q(su, break_sql)                                                  # as the superuser
+        try:
+            assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS, break_sql   # no constraint shows it
+            got = preflight.report(m)
+            assert got["objects"] == want and not got["clean"], (break_sql, got["objects"])
+            assert got["file"] == [] and got["ledger"]["status"] == "verified"     # the three checks stay apart
+        finally:
+            q(su, restore_sql)
+    assert live_columns(su) == preflight.COLUMN_DEFINITIONS
+    assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS and preflight.report(m)["clean"]
