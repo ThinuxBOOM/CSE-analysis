@@ -1286,7 +1286,8 @@ It is not acceptance, a freeze, a merge or a release decision.
 
 **Documents only.** The commit adding this subsection changes `docs/R_F4_IMPLEMENTATION.md` and
 `docs/CI_TEST_STRATEGY.md` only (`git diff --stat 144a213`). It changes no code, test, migration, workflow or pin. No
-test reads or pins either file; the CI scripts name the CI strategy in their docstrings only. No test was run for it.
+test reads or pins either file; the CI scripts name the CI strategy in their docstrings only. Claude ran no local test
+command for it. GitHub Actions did run on it once the owner pushed it (below).
 
 At the owner's request:
 - **§13.7's run-identity wording is corrected.** It said "To tell two runs apart, use `transaction_started_at`", which
@@ -1301,5 +1302,16 @@ At the owner's request:
   runs, kept apart from Claude's local runs. The regression workflow failed on the recorded HB-2 baseline alone; it did
   not pass.
 - **The commits table and the status lines** name `144a213`.
+
+**GitHub Actions for `7e7e331`, the commit adding this subsection.** These figures come from the runs' public job
+conclusions and check-run annotations, as Claude read them. They are GitHub's runs, not local tests:
+
+| Workflow | Run | Conclusion | Results |
+|---|---|---|---|
+| `ci-fast.yml` | [39349252617](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39349252617) | success | offline: 2,077 passed, 540 skipped, 0 failed |
+| `ci-regression.yml` | [39349252593](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39349252593) | **failure**, verdict `baseline-only` | 4,606 passed, **1 failed**, 626 skipped, 2 xfailed, summed over the 20 groups as in §13.6. The one failure is the recorded HB-2 baseline `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`. **The regression workflow failed; it did not pass** |
+
+The ambiguous "No test was run for it" in the first paragraph was corrected, and this table added, by the next
+documentation commit (documents only, with no local test command).
 
 The independent audit is the owner's and is not conducted here. It is not complete; R-F4 is not accepted or frozen.
