@@ -122,10 +122,22 @@ the pilot sample for HB-S3, the checkpoint and block for HB-S4, `--confirm-stop-
 P1 is unchanged (nightly dumps, off-site sync, weekly restore checks). Before HB-S4, after every 2,000 documents and at
 the end, the owner runs a manual dump and a restore check, runs `cse-financial verify` and `cse-backfill verify` on the
 restored copy, and records the checkpoint **in the next HB-S4 arming decision** (the P1 backup-ledger run ids). The
-worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49). On a
-build that includes R-F4, the checkpoint also runs R-F4's `verify` on the restored copy, read-only, as the reader role
-(`python -m worker.financial_f4_store verify`; exit 0 only when every extraction's seals and every F5 rebuild hold;
-`docs/R_F4_DESIGN.md` §5, §10).
+worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49).
+
+On a build that includes R-F4, the checkpoint also runs R-F4's two checks **on the restored copy**, in the order of
+section 12, steps 2–5. Each command is pointed at the restored copy, not at production: `DATABASE_URL` for a reader
+login, or `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME` for `--migration-role`.
+1. **The R-F4 preflight**, by a route that can read the restored copy's migration ledger (section 12, step 2).
+   Continue only on exit 0 with `"clean": true`.
+2. **Then the full R-F4 `verify`** (no `--limit`), read-only, as the reader role:
+   `python -m worker.financial_f4_store verify`. Continue only on exit 0 with `"clean": true` and
+   `"scope": {"complete": true, …}`. Exit 0 means every extraction's seals and every F5 rebuild hold
+   (`docs/R_F4_DESIGN.md` §5, §10).
+
+The preflight comes first because `verify` reads only what its role can see: row-level security on a table it reads
+can hide evidence from it, and the preflight refuses that configuration (`docs/R_F4_DESIGN.md` §5). A limited scan, an
+unverifiable ledger or any nonzero exit does not pass the checkpoint: record the checkpoint in the next HB-S4 arming
+decision only after both checks are clean.
 
 ## 7. The pilot sample and report
 
@@ -219,20 +231,36 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
   implemented (Stages 1 and 2) on the branch `claude/rf4-implementation` and is **not** yet independently audited after
   Stage 2, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen before Docker
   staging. Stage 2 wires F5's `_persist` to it, so such a build **needs** migration 0018: without it every filing's
-  save is refused (`SchemaUnavailable`) and recorded as a failure. On such a build, migration 0018 is applied through
-  P1's runner, and **before proceeding** the
-  owner runs the R-F4 preflight, which checks three things separately: the checked-out 0018 against the code's pin,
-  the migration ledger's 0018 entry and hash, and the live tables, constraints, privileges and triggers. The ledger
-  must be verified by a route that can read it:
-  - the migration role (owner-level):
-    `sudo -u cse-migrator env PYTHONPATH=/opt/cse/app CSE_DB_USER=cse_migrator python3 -m worker.financial_f4_store preflight --migration-role`;
-  - or, with `DATABASE_URL` set to it, a login that inherits `cse_reader`'s privileges or whose session sets role
-    `cse_reader` (none is provisioned yet). A member that does neither gets `unverifiable`, which is not a pass.
+  save is refused (`SchemaUnavailable`) and recorded as a failure. On such a build the owner runs, **in this order**,
+  each step only after the one before it passed:
+  1. **Migration 0018**, through P1's runner (the authorized migration process), after 0001–0017.
+  2. **The R-F4 preflight**, on a connection that can verify the migration ledger. It checks three things separately:
+     - the checked-out 0018 against the code's pin;
+     - the migration ledger's 0018 entry and hash;
+     - the live objects: tables, columns, constraints, privileges, triggers, and the table properties (row-level
+       security, persistence, kind, inheritance) of 0018's tables and of the F3 and F5 tables `verify` reads.
 
-  Proceed only on exit 0 (`"clean": true`). Exit 1 is a problem to fix. Exit 2 means the ledger could not be read
-  (`"status": "unverifiable"`, as for a `cse_worker` connection, which has no access to `ops`): it is **not** a pass.
-  Re-run by one of the routes above. P1's `cse-ops migrate verify` compares the ledger with the checked-out files only,
-  not with R-F4's pin.
+     The ledger must be verified by a route that can read it:
+     - the migration role (owner-level):
+       `sudo -u cse-migrator env PYTHONPATH=/opt/cse/app CSE_DB_USER=cse_migrator python3 -m worker.financial_f4_store preflight --migration-role`;
+     - or, with `DATABASE_URL` set to it, a login that inherits `cse_reader`'s privileges or whose session sets role
+       `cse_reader` (none is provisioned yet). A member that does neither gets `unverifiable`, which is not a pass.
+  3. **Continue only on exit 0 with `"clean": true`.** Exit 1 is a problem to fix. Exit 2 means the ledger could not
+     be read (`"status": "unverifiable"`, as for a `cse_worker` connection, which has no access to `ops`): it is
+     **not** a pass. Re-run by one of the routes above. P1's `cse-ops migrate verify` compares the ledger with the
+     checked-out files only, not with R-F4's pin.
+  4. **The full R-F4 `verify`**: no `--limit`, read-only, as the reader role, with `DATABASE_URL` set to a login that
+     inherits `cse_reader`'s privileges or whose session sets role `cse_reader` (none is provisioned yet):
+     `python -m worker.financial_f4_store verify`. It comes after the preflight because it reads only what its role
+     can see: row-level security on a table it reads can hide evidence from it, and step 2 refuses that
+     (`docs/R_F4_DESIGN.md` §5).
+  5. **Continue only on exit 0 with `"clean": true` and `"scope": {"complete": true, …}`.** None of the following is
+     acceptance:
+     - a limited scan (`--limit N` is partial, never clean, and exits 1);
+     - an unverifiable ledger in step 3;
+     - any nonzero exit.
+
+  The same two checks, in the same order, run on the restored copy at every backup checkpoint (section 6).
 - NTP time synchronisation, and approved outbound network access to CSE's API and CDN only.
 - P1's private spool and backup root; the dedicated temporary root with at least 464 MB free; Poppler 24.02.0; at least
   20 GiB free on the database disk (the runner refuses below it), and room at the dump destination for the growing dumps.

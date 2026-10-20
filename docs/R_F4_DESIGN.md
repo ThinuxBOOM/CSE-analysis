@@ -14,7 +14,8 @@ implemented on the same branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are 
 resolution with its test evidence (§9, §11), finding RF4-A1, the reader's and `verify`'s name resolution and
 `verify`'s snapshot (§12), `verify`'s snapshot metadata and failure paths (§13), the HB-4 integration tests (§14),
 `verify`'s scope and the preflight's column check (§15), and the preflight's table properties with `verify` under
-row-level security (§16); all await the owner's independent review.
+row-level security (§16), and the runbook's preflight-then-`verify` order (§17); all await the owner's
+independent review.
 The audit is **not** complete, and R-F4 is **not** accepted as a component or frozen. Staging, the pilot, production
 deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
 of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code, migration, test or
@@ -280,7 +281,9 @@ setting. The JSON writer reproduces `json.dumps` character for character, so the
   The session itself is judged: a login that enters `cse_reader` by `SET ROLE` keeps its own search path and
   temporary schema (`docs/R_F4_IMPLEMENTATION.md` §12).
 
-  A runbook §6 step adds it to each checkpoint, on the restored copy.
+  The runbook runs it at deployment (§12) and on each checkpoint's restored copy (§6), each time after a clean
+  preflight and as a full scan; a limited scan, an unverifiable ledger or a nonzero exit is not acceptance
+  (2026-10-20, `docs/R_F4_IMPLEMENTATION.md` §17).
 - **R-F4 preflight** is new, in the package (`python -m worker.financial_f4_store preflight`). It makes three
   **separate** checks and reports each on its own; one never stands in for another:
   1. **file**: the checked-out `0018_f4_structure_persistence.sql` is identical (LF-normalised, as P1's runner hashes

@@ -53,6 +53,9 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
     u26  the preflight's table properties: READ_TABLES are exactly the tables the reader and verify read that 0018
          does not create; row-level security (enabled, forced, policies), persistence, relation kind, partitioning
          and inheritance each reported; the catalogue query qualifies every name with pg_catalog
+    u27  the Phase 2 runbook's R-F4 order: at deployment migration 0018, the preflight on a ledger-verifying route,
+         continue only when clean, the full verify as the reader, continue only when clean and complete; the same
+         two checks in the same order on each checkpoint's restored copy
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1711,3 +1714,44 @@ def test_u26_the_table_query_names_every_catalogue_object_with_pg_catalog():
         bare = re.findall(rf"(?<![\w.]){name}\b", sql)
         assert bare == [], (name, sql)
     assert "=" not in sql.replace("operator(pg_catalog.=)", "")
+
+
+# ======================================================= u27 (the runbook's R-F4 order, 2026-10-20)
+
+RUNBOOK = os.path.join(REPO, "docs", "ops", "PHASE2_BACKFILL.md")
+
+
+def runbook_section(text, number):
+    """Section `number` of the runbook: from its "## N. " heading to the next "## " heading."""
+    start = text.index(f"\n## {number}. ")
+    end = text.find("\n## ", start + 1)
+    return text[start:] if end == -1 else text[start:end]
+
+
+def in_order(text, *phrases):
+    """Each phrase is in `text`, after the one before it."""
+    at = [text.index(p) for p in phrases]
+    assert at == sorted(at), list(zip(phrases, at))
+
+
+def test_u27_the_runbook_runs_the_preflight_before_the_full_verify_at_deployment_and_on_restored_copies():
+    """docs/ops/PHASE2_BACKFILL.md, R-F4's passages only (HB-6's own text is tests/test_hb6_unit.py's, unchanged).
+    At deployment (section 12): migration 0018; then the preflight on a route that can verify the ledger; continue only
+    on exit 0 and clean; then the full verify (no --limit) as the reader; continue only on exit 0, clean and a complete
+    scope, a limited scan, an unverifiable ledger or any nonzero exit being no acceptance. At each backup checkpoint
+    (section 6): the same two checks, in the same order, on the restored copy, before the checkpoint is recorded."""
+    book = open(RUNBOOK, encoding="utf-8").read().replace("\r\n", "\n")
+    deploy = runbook_section(book, 12)
+    in_order(deploy, "1. **Migration 0018**", "2. **The R-F4 preflight**, on a connection that can verify the migration "
+             "ledger", "preflight --migration-role", '3. **Continue only on exit 0 with `"clean": true`.**',
+             "4. **The full R-F4 `verify`**: no `--limit`, read-only, as the reader role",
+             "python -m worker.financial_f4_store verify",
+             '5. **Continue only on exit 0 with `"clean": true` and `"scope": {"complete": true, …}`.**',
+             "a limited scan", "an unverifiable ledger in step 3", "any nonzero exit",
+             "The same two checks, in the same order, run on the restored copy at every backup checkpoint")
+    checkpoint = runbook_section(book, 6)
+    in_order(checkpoint, "R-F4's two checks **on the restored copy**", "1. **The R-F4 preflight**",
+             'Continue only on exit 0 with `"clean": true`.', "2. **Then the full R-F4 `verify`** (no `--limit`)",
+             '`"scope": {"complete": true, …}`', "record the checkpoint in the next HB-S4 arming\ndecision only after "
+             "both checks are clean")
+    assert checkpoint.count("--limit") == 1                              # only to say a checkpoint uses none

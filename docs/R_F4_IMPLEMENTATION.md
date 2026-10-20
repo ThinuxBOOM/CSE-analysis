@@ -6,10 +6,10 @@ audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f
 found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
 snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
 (§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
-(§15); the preflight's table properties, with `verify` under row-level security, are in the commit adding §16. All await
-the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17
-(F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally waived the item for
-this implementation package:
+(§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
+runbook's preflight-then-`verify` order is in the commit adding §17. All await the owner's independent review. NOT
+accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design
+carries the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -48,15 +48,18 @@ and evidence only; it changes no decision.
 | `cbcf8d6` | Claude (the owner's audit request) | Tests p47 and p48 for §6.2's two HB-4 integration gaps; section 14 and the notes under §6.2. Tests and documents only (§14) |
 | `280057b`, `25c0390` | Claude | Documents only: §13.9's wording and `7e7e331`'s GitHub Actions results; the design's §6 status note and §14.2's retry scope |
 | `b89cdec` | Claude (the owner's review, 2026-10-20) | `verify.py` and `__main__.py`: a limited `verify` is partial (`scope`) and never clean, a limit below 1 refused; `preflight.py`: every column checked; tests u24, u25, p49 and p50; the p47/p48 reconciliation of the design and this record (§15) |
-| the commit adding section 16 | Claude (the independent audit, 2026-10-20) | `preflight.py`: each table's row-level security (enabled, forced, policies), persistence, kind, partitioning and inheritance, for 0018's tables and the F3 and F5 tables the reader and `verify` read; tests u26, p51 and p52 (`verify` under row-level security); the design's §5 and status; section 16 (§16) |
+| `493bf73` | Claude (the independent audit, 2026-10-20) | `preflight.py`: each table's row-level security (enabled, forced, policies), persistence, kind, partitioning and inheritance, for 0018's tables and the F3 and F5 tables the reader and `verify` read; tests u26, p51 and p52 (`verify` under row-level security); the design's §5 and status; section 16 (§16) |
+| `7d58604` | owner commit of Claude's fix | p52's lock wait (it hung `493bf73`'s first L16 run): the worker and readers rolled back before each `ALTER`, a 10-second `lock_timeout` in p51 and p52; §16.4's note (§16.4) |
+| the commit adding section 17 | Claude (owner-directed, 2026-10-20) | The Phase 2 runbook's R-F4 passages (§6, §12): the preflight, then the full `verify`, at deployment and on each checkpoint's restored copy; test u27; the design's §5 line and status; section 17. No pin changes (§17) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9), **at
 `1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12), **at `144a213`** (`verify`'s snapshot
-metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14) **at `b89cdec`** (`verify`'s scope, the preflight's columns,
-§15) **and at the commit adding §16** (table properties). Where they differ, the later section is current: they change
-the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
+metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14), **at `b89cdec`** (`verify`'s scope, the preflight's columns,
+§15) **at `7d58604`** (table properties, §16) **and at the commit adding §17** (the runbook's order). Where they differ,
+the later section is current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in
+§2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -1600,13 +1603,24 @@ the run's log (which needs a signed-in account):*
 - *p51 and p52 set a 10-second `lock_timeout` on the superuser session, so a lock wait fails the test instead of
   hanging the job.*
 
+*`493bf73`'s regression run was then cancelled. The fix was committed by the owner as `7d58604`. Its GitHub Actions
+runs, read by Claude from their public job conclusions and check-run annotations:*
+- *fast [39440065453](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39440065453): success (offline: 2,103
+  passed, 548 skipped);*
+- *regression [39440065242](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39440065242): **failed**, verdict
+  `baseline-only`: 4,666 passed, 1 failed (the HB-2 baseline), 634 skipped, 2 xfailed.*
+
+*L16, where p51 and p52 run and every PostgreSQL test runs under the table check, had 638 passed and 35 skipped, in
+1 minute 45 seconds; W3 had 997 passed and 274 skipped. This is the first PostgreSQL evidence for p51 and p52.*
+
 ### 16.5 What remains
 
 - **Partitions.** Attaching a table as a partition is not exercised against PostgreSQL. u26 covers its report;
   undoing an attach in the catalogue was not tried without a local run.
 - **A point in time.** Row-level security enabled after a clean preflight and before `verify` is not seen. Run both
   at the same checkpoint, preflight first. **Recommended to the owner, not made here:** the checkpoint step of
-  `docs/ops/PHASE2_BACKFILL.md` §6 should say so. That runbook is HB-6's frozen document.
+  `docs/ops/PHASE2_BACKFILL.md` §6 should say so. That runbook is HB-6's frozen document. *Made since, at the owner's
+  direction, in its R-F4 passages (§17).*
 - **Other tables** that `verify` does not read are not checked: `report_filings`, the issuer links, and 0008's other
   F5 tables.
 - **Role attributes.** These are not checked. A role with `BYPASSRLS` sees every row, so it cannot hide any; the
@@ -1625,3 +1639,70 @@ the run's log (which needs a signed-in account):*
   - `b89cdec`'s GitHub Actions results (§15.4) and a note under §15.5.
 
 Nothing here claims an independent run, the audit's completion, acceptance or a freeze.
+
+## 17. The runbook's R-F4 order: the preflight, then the full `verify` (2026-10-20)
+
+**The request.** An owner-directed documentation change, 2026-10-20. The operational invariant:
+1. apply migration 0018 through the authorized migration process;
+2. run the R-F4 preflight on a connection that can verify the migration ledger;
+3. continue only if it exits 0 with `clean: true`;
+4. run the full, unlimited `verify` on a reader connection;
+5. continue only if it is clean (a limited scan, an unverifiable ledger or any nonzero exit is not acceptance);
+6. at backup checkpoints, make the same checks on the restored database, in that order.
+
+**All of this section's work was done by Claude.** The audit is **not complete**; R-F4 is **not** accepted or frozen.
+
+### 17.1 Change control and pins (inspected first)
+
+**The runbook is frozen with HB-6.** `docs/ops/PHASE2_BACKFILL.md` is part of HB-6's frozen deliverable (the Phase 2
+design, HB-6 implementation status).
+
+**Its R-F4 passages are R-F4's own.** The accepted R-F4 design lists them in its approved package (design §8.1,
+item 16: runbook §6, R-F4's `verify`; §11, testing; §12, the migrations and R-F4's preflight in deployment). That
+change control is how `c5b1c12`, `b00affc` and `fa464d2` changed them. This change, at the owner's direction:
+- touches only those R-F4 passages, in §6 and §12;
+- leaves HB-6's own text, its behaviour and its code unchanged.
+
+**No pin changes.** None of the six Phase 2 preflights (HB-1 to HB-6) pins any `docs/` or `ops/` file: each one's
+`FROZEN_FILES` was read. The only test that reads the runbook is HB-6's frozen
+`tests/test_hb6_unit.py::test_u3_the_runbook_and_owner_decision_hb6_1`:
+- it checks for phrases, and every one is still present;
+- it is not edited;
+- it passed on Windows after the change.
+
+There is no pin cascade.
+
+### 17.2 What changed
+
+| Where | Now |
+|---|---|
+| Runbook §12, R-F4 | Numbered, each step only after the one before passed: (1) migration 0018 through P1's runner; (2) the preflight, by a route that verifies the ledger (the migration role, or a reader login); (3) continue only on exit 0 with `"clean": true`, exit 2 (`unverifiable`) not being a pass; (4) the full `verify`, no `--limit`, as the reader role, after the preflight because `verify` reads only what its role can see; (5) continue only on exit 0, `"clean": true` and a complete `scope`. A limited scan, an unverifiable ledger or any nonzero exit is not acceptance |
+| Runbook §6, checkpoints | The same two checks, in the same order, on the restored copy. The commands are pointed at it with `DATABASE_URL` or `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME`, the settings they read. The checkpoint is recorded in the next HB-S4 arming decision only after both are clean |
+| R-F4 design §5 | The runbook step now names the order and both places |
+
+### 17.3 Test
+
+**u27** (`tests/test_rf4_unit.py`, R-F4's own, not frozen) reads the runbook. It asserts, in order:
+- **§12's five steps**, then the three things that are not acceptance, then the pointer to the checkpoints;
+- **§6's restored-copy sequence:** the preflight, then the full `verify`, then the recording of the checkpoint
+  only after both are clean.
+
+It also asserts that §6 never uses `--limit`. It cannot enforce what an operator does; it keeps the written order from
+drifting.
+
+### 17.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6, run by Claude: `tests/test_rf4_unit.py` and `tests/test_rf4_postgres.py` | 307 passed (the 306 before plus u27), 67 skipped (the PostgreSQL module) |
+| Windows, run by Claude: `tests/test_hb6_unit.py -k u3` (HB-6's frozen runbook test) | 1 passed |
+| **Negative control**, Windows: `7d58604`'s tree, with this section's unit test file and the runbook unedited | **Exactly u27 fails**; the other 306 pass |
+| GitHub Actions for this section's commit | Not run when written. Claude does not push. To be recorded once it has run, not assumed here |
+
+### 17.5 What remains
+
+- **No reader login yet.** None is provisioned (an open P1 item). Until one is, step 4, and the preflight's reader
+  route, cannot run in production. The preflight's migration-role route does not need one.
+- **The restored copy.** Reaching it is P1's procedure. P1's routine restore check deletes its throwaway cluster when
+  it ends; this runbook does not invent the steps to keep one running.
+- **The order is a procedure.** HB-6's `arm` does not check R-F4 (runbook §5); the owner confirms it.
