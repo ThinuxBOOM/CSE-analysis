@@ -5,10 +5,11 @@ audit of Stage 2 is NOT complete: its findings (2026-10-17) are remediated in `f
 (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
 found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `verify`'s name resolution, and `verify`'s
 snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
-(§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are in the
-commit adding §15. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner
-selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day,
-formally waived the item for this implementation package:
+(§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
+(§15); the preflight's table properties, with `verify` under row-level security, are in the commit adding §16. All await
+the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17
+(F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally waived the item for
+this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -46,15 +47,16 @@ and evidence only; it changes no decision.
 | `7e7e331` | Claude | Documents only: §13.7's run-identity wording corrected; `144a213`'s GitHub Actions results in §13.6 and `docs/CI_TEST_STRATEGY.md` §9; this table and the status lines (§13.9) |
 | `cbcf8d6` | Claude (the owner's audit request) | Tests p47 and p48 for §6.2's two HB-4 integration gaps; section 14 and the notes under §6.2. Tests and documents only (§14) |
 | `280057b`, `25c0390` | Claude | Documents only: §13.9's wording and `7e7e331`'s GitHub Actions results; the design's §6 status note and §14.2's retry scope |
-| the commit adding section 15 | Claude (the owner's review, 2026-10-20) | `verify.py` and `__main__.py`: a limited `verify` is partial (`scope`) and never clean, a limit below 1 refused; `preflight.py`: every column checked; tests u24, u25, p49 and p50; the p47/p48 reconciliation of the design and this record (§15) |
+| `b89cdec` | Claude (the owner's review, 2026-10-20) | `verify.py` and `__main__.py`: a limited `verify` is partial (`scope`) and never clean, a limit below 1 refused; `preflight.py`: every column checked; tests u24, u25, p49 and p50; the p47/p48 reconciliation of the design and this record (§15) |
+| the commit adding section 16 | Claude (the independent audit, 2026-10-20) | `preflight.py`: each table's row-level security (enabled, forced, policies), persistence, kind, partitioning and inheritance, for 0018's tables and the F3 and F5 tables the reader and `verify` read; tests u26, p51 and p52 (`verify` under row-level security); the design's §5 and status; section 16 (§16) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9), **at
 `1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12), **at `144a213`** (`verify`'s snapshot
-metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14) **and at the commit adding §15** (`verify`'s scope, the
-preflight's columns). Where they differ, the later section is current: they change the store, the in-band check, the
-preflight and the HB-1 to HB-6 pins named in §2.
+metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14) **at `b89cdec`** (`verify`'s scope, the preflight's columns,
+§15) **and at the commit adding §16** (table properties). Where they differ, the later section is current: they change
+the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -121,12 +123,12 @@ fallback.
 | **Tamper and versions** | p11 (`incomplete`, `corrupt`, `version_incompatible`, `f5_mismatch`); p15; p17 | `verify` read-only as the reader |
 | **Migration** | p1 (0001–0018 at the pinned hash); p9 (no 0018: refused in-band before any insert; 0017 → 0018; an edited or missing 0018 is a preflight problem); p11; p48 (HB-4 on a database without 0018; added 2026-10-20, §14) | |
 | **Access rules** | p2; p13 (privileges granted on single columns) | |
-| **R-F4 preflight** | p1, p9, p12, p13; p27 (constraints, §7); p50 (columns, §15) | File, ledger and objects reported apart; never clean while the ledger is unverifiable (`cse_worker`); the store's in-band check refuses before any insert and is not cached (p12) |
+| **R-F4 preflight** | p1, p9, p12, p13; p27 (constraints, §7); p50 (columns, §15); p51, p52 (table properties, row-level security, §16) | File, ledger and objects reported apart; never clean while the ledger is unverifiable (`cse_worker`); the store's in-band check refuses before any insert and is not cached (p12) |
 | **Regression controls** | B, P, S, I | §5.5, §5.6 |
 | **Mutation testing** | M1–M17 | §5.7 |
 | **Real documents** | — | At pilot acceptance (design §10, milestone 12). None exist; nothing here is real-document evidence |
 
-*Rows naming later tests (p27, p47, p48, p50) were updated after control I and are not part of it: their
+*Rows naming later tests (p27, p47, p48, p50, p51, p52) were updated after control I and are not part of it: their
 evidence is in the sections they name.*
 
 **Result (control I, `82b7a3e`):** every test above passed on Linux: the two R-F4 files gave 269 passed, none failed
@@ -1469,6 +1471,14 @@ Everything else is unchanged:
 | **Negative control**, Windows: `25c0390`'s code with this section's unit test file | **Exactly the 23 new cases fail**; the other 280 pass. In 2 cases, `--limit 0` and `--limit -1`, the previous command connected to the database. In 3, `abc`, `1.5` and the empty value, it already exited 2 (argparse's `int`), so those fail on the message only |
 | PostgreSQL: p49, p50, and every other PostgreSQL test under the new column check | **Not run locally.** Their first run is GitHub Actions: group L16 (Linux, PostgreSQL 17), skipped in W3 and offline. To be recorded once it has run, not assumed here |
 
+*Recorded afterwards (§16), from the runs' public job conclusions and check-run annotations, as Claude read them:
+`b89cdec`'s fast run [39432751883](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39432751883) succeeded
+(offline: 2,100 passed, 546 skipped). Its regression run
+[39432751841](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39432751841) **failed**, verdict
+`baseline-only`: 4,658 passed, 1 failed (the HB-2 baseline), 632 skipped, 2 xfailed. In L16, where p49, p50 and the
+module's other PostgreSQL tests run under the column check, 633 passed and 35 skipped; W3 had 994 passed and 272
+skipped.*
+
 ### 15.5 What remains
 
 - **PostgreSQL 17's rendering.** The expected types and defaults are as PostgreSQL 17 renders them (`format_type`,
@@ -1482,6 +1492,9 @@ Everything else is unchanged:
   - its relation kind or partitioning;
   - storage and statistics settings;
   - column order, which is compared by name only.
+
+  *§16 checks persistence, row-level security, relation kind, partitioning and inheritance since; storage settings
+  and column order stay unchecked.*
 - **A partial scan** is a spot check, never a verification. It does not report how many rows it left unchecked.
 
 ### 15.6 Documents reconciled
@@ -1497,3 +1510,105 @@ Everything else is unchanged:
 
 Historical statements stay as written, with dated notes. Nothing here claims an independent run, the audit's
 completion, acceptance or a freeze.
+
+## 16. Table properties, and `verify` under row-level security (2026-10-20)
+
+**The request.** The independent audit (2026-10-20) found two schema-integrity gaps. The preflight did not check
+table-level properties: row-level security (enabled or forced), persistence, relation kind and partitioning. It also
+asked whether `verify` can report clean when its role cannot see all the evidence.
+
+**All of this section's work was done by Claude, and the runs below are Claude's.** The PostgreSQL tests were **not
+run locally**: the owner asked for GitHub Actions to provide that evidence. The audit is **not complete**; R-F4 is
+**not** accepted or frozen.
+
+**What did not change:**
+- `verify`, the reader, the store and `schema.py`;
+- migration 0018;
+- any pin (`preflight.py` is not pinned).
+
+### 16.1 `verify` under row-level security
+
+`verify` reads what its role can see. `cse_reader` is `NOBYPASSRLS`, as the bootstrap creates every role, so
+row-level security applies to it when it is entered by `SET ROLE`, as the reader is. p52 asserts the first two rows
+below; its first run is GitHub Actions:
+
+| Configuration | What `cse_reader` sees | `verify` |
+|---|---|---|
+| A policy on `financial_extraction_runs` (F5's table, 0008, not one of 0018's) hiding the one run whose stored `content_sha256` is wrong | 3 extractions, 2 runs | **Clean** (3 extractions, 2 runs, no problem). The bad run is never rebuilt |
+| Row-level security without a policy on `financial_f4_extractions` and `financial_extraction_runs` | Nothing | **Clean** (0 and 0), with a corrupt extraction stored |
+| Row-level security on `financial_f4_extractions` only. Read from the code, not tested | Some extractions, or none; every run | Not clean: each hidden extraction's run is reported `missing`. The kind is wrong, but the report is not clean |
+
+So, by the code and PostgreSQL's row-security rules, `verify` **can** report clean when its role cannot see all the
+evidence. p52 is the test of it; until its run, this rests on reading the code.
+
+`verify` is not changed:
+- it is not a repair;
+- it cannot see what its role cannot;
+- reading as another role would change its role model.
+
+Instead, the preflight refuses these configurations, and **`verify` is to be run only after the preflight is clean**.
+`preflight.py`'s docstring and the design's §5 say so. The preflight reads the catalogue, not the rows, so row-level
+security cannot hide the configuration from it.
+
+### 16.2 The fix (`worker/financial_f4_store/preflight.py` only)
+
+- **`_TABLE_QUERY`** reads, per table:
+  - its kind (`relkind`) and persistence (`relpersistence`);
+  - row-level security, enabled and forced (`relrowsecurity`, `relforcerowsecurity`);
+  - whether it is a partition (`relispartition`);
+  - its inheritance parents and children (`pg_inherits`);
+  - its policies (`pg_policy`).
+
+  Every name and operator in it is `pg_catalog`-qualified.
+- **`_table_problems`** refuses anything but an ordinary, permanent table with no row-level security, policy,
+  partitioning or inheritance. None of migrations 0005, 0008 or 0018 sets any of these.
+- **Where:** the problems go in `objects`; the file, objects and ledger results stay apart.
+- **Which tables:**
+  - the five 0018 tables;
+  - `READ_TABLES`, the F3 and F5 tables the reader and `verify` read: `report_document_classifications`,
+    `report_statement_periods`, `report_classification_evidence` and `financial_extraction_runs`.
+
+  **This goes beyond the five tables the request named.** p52's first configuration uses F5's run table alone, which
+  a five-table check would not see. u26 derives `READ_TABLES` from `reader.py` and `verify.py`.
+
+### 16.3 Tests
+
+| Test | Kind | What it shows |
+|---|---|---|
+| **u26** (3) | Unit | **`READ_TABLES`** are exactly the tables `reader.py` and `verify.py` read that 0018 does not create. **Each property** is reported: row-level security enabled or forced, policies, `UNLOGGED`, temporary, a partitioned table, a view, a foreign table, a partition, an inheritance parent, child tables, and several at once. **The query** names every catalogue object with `pg_catalog` |
+| **p51** | PostgreSQL | **The changes:** row-level security enabled (cells, and F5's run table); row-level security forced (statements); a policy with row-level security off (rows); `UNLOGGED` (cells, which no table references); a child table (`rf4_child` inherits cells); an inheritance parent (cells inherits an empty `rf4_parent`). **For each:** it is refused exactly in `objects`, the file is clean and the ledger verified, and the preflight is clean again after it. **Before and after:** every checked table is ordinary and permanent, read with the preflight's own query; there is no policy in the database and no `rf4_` relation |
+| **p52** | PostgreSQL | **The setup:** three filings; then F5 run B's `content_sha256` overwritten and extraction A's cell tampered with. With everything visible, `verify` finds each. **Under row-level security:** §16.1's two configurations make `cse_reader`'s `verify` clean. The test first asserts the restriction is real: `cse_reader`'s count is lower than the superuser's. **The preflight** refuses both, exactly. **Afterwards:** the preflight is clean and nothing is left behind; a full `verify` finds A and B again |
+
+### 16.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6: `pytest -q tests/test_rf4_unit.py tests/test_rf4_postgres.py` | **306 passed** (the 303 before plus u26's 3), 67 skipped (the PostgreSQL module, p51 and p52 included) |
+| **Negative control**, Windows: `b89cdec`'s code with this section's unit test file | **Exactly u26's 3 tests fail**; the other 303 pass |
+| PostgreSQL: p51, p52, and every other PostgreSQL test under the new table check | **Not run locally.** Their first run is GitHub Actions: group L16 (Linux, PostgreSQL 17), skipped in W3 and offline. To be recorded once it has run, not assumed here |
+
+### 16.5 What remains
+
+- **Partitions.** Attaching a table as a partition is not exercised against PostgreSQL. u26 covers its report;
+  undoing an attach in the catalogue was not tried without a local run.
+- **A point in time.** Row-level security enabled after a clean preflight and before `verify` is not seen. Run both
+  at the same checkpoint, preflight first. **Recommended to the owner, not made here:** the checkpoint step of
+  `docs/ops/PHASE2_BACKFILL.md` §6 should say so. That runbook is HB-6's frozen document.
+- **Other tables** that `verify` does not read are not checked: `report_filings`, the issuer links, and 0008's other
+  F5 tables.
+- **Role attributes.** These are not checked. A role with `BYPASSRLS` sees every row, so it cannot hide any; the
+  table owner bypasses row-level security unless it is forced, which is checked.
+- **Version.** PostgreSQL 17's catalogue.
+
+### 16.6 Documents
+
+- **The R-F4 design:**
+  - its status lines;
+  - §5: `verify` runs only after a clean preflight, and the preflight's table properties;
+  - §8's progress paragraph, §9's preflight row, §10's milestone 6, and §11's audit bullet.
+- **This record:**
+  - its status lines, commits table and tested-at paragraph;
+  - §3's preflight row and its note;
+  - `b89cdec`'s GitHub Actions results (§15.4) and a note under §15.5.
+
+Nothing here claims an independent run, the audit's completion, acceptance or a freeze.

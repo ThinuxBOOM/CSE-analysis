@@ -116,6 +116,12 @@ document slice, both unchanged and both reaching R-F4 through `_persist`'s fallb
     p50  the preflight's columns: 0018's live columns equal its map; a dropped NOT NULL on a critical column, a
          changed type, default, identity, collation, a renamed or an extra column are each reported (the constraint
          check alone sees none of them), the three checks apart; everything restored
+    p51  the preflight's table properties: row-level security enabled or forced, a policy, UNLOGGED, a child table
+         and an inheritance parent, on 0018's tables and on F5's run table, are each refused, the three checks
+         apart; clean before and after each; nothing left behind
+    p52  row-level security can hide evidence from verify: a policy on F5's run table hiding a bad run, or no
+         policy on 0018's extractions and the run table, and verify (as the restricted cse_reader) reports clean;
+         the preflight refuses both, so verify runs only after it is clean; verify itself is unchanged
 Synthetic word layers only: NOT real-document validation.
 
     P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_postgres.py
@@ -3061,3 +3067,122 @@ def test_p50_the_preflight_reports_column_drift_that_no_constraint_shows(db):
             q(su, restore_sql)
     assert live_columns(su) == preflight.COLUMN_DEFINITIONS
     assert live_constraints(su) == preflight.CONSTRAINT_DEFINITIONS and preflight.report(m)["clean"]
+
+
+# -------------------------------------------------------- table properties; row-level security and verify (2026-10-20)
+
+CHECKED_TABLES = codec.TABLES + preflight.READ_TABLES
+ORDINARY_TABLE = ("r", "p", False, False, False, [], [], [])   # kind, persistence, RLS, forced, partition, parents, ...
+
+
+def rls_enabled(t):
+    return (f"{t} has row-level security enabled: a role it applies to sees only the rows its policies allow (none "
+            "without a policy), so verify and the reader could miss evidence; expected disabled")
+
+
+def no_table_drift(su):
+    """Every checked table is ordinary and permanent, without row-level security, policy, partitioning or
+    inheritance (read with the preflight's own query); no policy anywhere in the database and no rf4_ relation."""
+    assert {t: q(su, preflight._TABLE_QUERY, (f"public.{t}",))[0] for t in CHECKED_TABLES} == \
+        dict.fromkeys(CHECKED_TABLES, ORDINARY_TABLE)
+    assert q(su, "select count(*) from pg_policy") == [(0,)]
+    assert q(su, "select relname from pg_class where relname like 'rf4\\_%%'") == []
+
+
+def test_p51_the_preflight_refuses_row_level_security_persistence_and_inheritance_drift(db):
+    """Migrations 0005, 0008 and 0018 create ordinary, permanent tables with no row-level security, policy,
+    partitioning or inheritance. Enabling or forcing row-level security, a policy (even with row-level security off),
+    UNLOGGED, a child table (a read of the parent includes the child's rows) and an inheritance parent, on 0018's
+    tables or on F5's run table that verify reads, are each refused by the preflight, exactly, in its object check;
+    the file and the ledger still pass (the three checks apart). The database is clean before and after each change;
+    each is undone in `finally`, and no policy, table or altered persistence is left behind. Attaching a table as a
+    partition is not exercised here (u26 covers its report)."""
+    su, m = db.su(), migrator(db)
+    q(su, "set search_path = public")
+    no_table_drift(su)
+    assert preflight.report(m)["clean"]
+    c, s, r, runs = "financial_f4_cells", "financial_f4_statements", "financial_f4_rows", "financial_extraction_runs"
+    cases = [  # (break, restore, exactly what the preflight must report)
+        (f"alter table {c} enable row level security", f"alter table {c} disable row level security",
+         [rls_enabled(c)]),
+        (f"alter table {s} force row level security", f"alter table {s} no force row level security",
+         [f"{s} forces row-level security on its owner; expected not"]),
+        (f"create policy rf4_policy on {r} for select using (true)", f"drop policy rf4_policy on {r}",
+         [f"{r} has row-level security policy(ies) rf4_policy; expected none"]),
+        (f"alter table {runs} enable row level security", f"alter table {runs} disable row level security",
+         [rls_enabled(runs)]),                                            # F5's table (0008), read by verify
+        (f"alter table {c} set unlogged", f"alter table {c} set logged",      # nothing references the cells
+         [f"{c} is UNLOGGED (emptied after a crash, never replicated), expected permanent"]),
+        (f"create table rf4_child () inherits ({c})", "drop table rf4_child",
+         [f"{c} has child table(s) rf4_child, whose rows a read of {c} includes; expected none"]),
+        (f"create table rf4_parent (); alter table {c} inherit rf4_parent",
+         f"alter table {c} no inherit rf4_parent; drop table rf4_parent",
+         [f"{c} inherits from rf4_parent; expected neither"]),
+    ]
+    for break_sql, restore_sql, want in cases:
+        q(su, break_sql)                                                  # as the superuser
+        try:
+            got = preflight.report(m)
+            assert got["objects"] == want and not got["clean"], (break_sql, got["objects"])
+            assert got["file"] == [] and got["ledger"]["status"] == "verified"     # the three checks stay apart
+        finally:
+            q(su, restore_sql)
+        assert preflight.report(m)["clean"], restore_sql                  # clean again after each
+    no_table_drift(su)
+
+
+def test_p52_row_level_security_can_hide_evidence_from_verify_and_the_preflight_refuses_it(db, layouts):
+    """verify reads what its role can see. cse_reader (NOBYPASSRLS, entered by SET ROLE as the reader is) is genuinely
+    restricted by row-level security: a policy hides rows from it, and without a policy it sees none, while the
+    superuser sees them all. Two configurations make verify report clean while evidence it never read is bad:
+    (1) a policy on F5's run table (0008, not one of 0018's) hides the one run whose stored content_sha256 is wrong:
+    verify checks 3 extractions and 2 runs and is clean; (2) row-level security without a policy on 0018's
+    extractions and on the run table: verify sees nothing and is clean, with a corrupt extraction stored. verify is
+    unchanged (not a repair; it cannot see what its role cannot). The preflight reads the catalogue, not the rows, and
+    refuses both: verify is to be run only after it is clean. Restored in `finally`; clean before and after."""
+    words = a_layout_with_cells(layouts)
+    w, su, m = db.conn(), db.su(), migrator(db)
+    a, b, _ = (persist(w, words, 998001 + i) for i in range(3))
+    ext, runs = "financial_f4_extractions", "financial_extraction_runs"
+    assert preflight.report(m)["clean"] and verify.verify(db.reader())["clean"]
+    q(su, "set session_replication_role = replica")                      # superuser only: triggers off
+    try:
+        q(su, f"update {runs} set content_sha256 = %s where id = %s", ("0" * 64, b.run_id))
+    finally:
+        q(su, "set session_replication_role = origin")
+    assert kinds_of(verify.verify(db.reader())) == {("f5_mismatch", str(b.run_id))}      # all visible: found
+    try:   # (1) a policy hides b's run from cse_reader
+        q(su, f"alter table {runs} enable row level security; create policy rf4_hide on {runs} for select to "
+              f"cse_reader using (cse_filing_id <> {int(b.fid)})")
+        r = db.reader()
+        assert q(r, f"select count(*) from {runs}") == [(2,)] and q(su, f"select count(*) from {runs}") == [(3,)]
+        r.rollback()
+        report = verify.verify(r)
+        assert (report["extractions"], report["runs"], report["problems"], report["clean"]) == (3, 2, [], True), \
+            report                                                       # clean, with b's bad run unchecked
+        got = preflight.report(m)
+        assert got["objects"] == [rls_enabled(runs), f"{runs} has row-level security policy(ies) rf4_hide; "
+                                  "expected none"], got["objects"]
+        assert not got["clean"] and got["file"] == [] and got["ledger"]["status"] == "verified"
+    finally:
+        q(su, f"drop policy if exists rf4_hide on {runs}; alter table {runs} disable row level security")
+    assert preflight.report(m)["clean"]
+    tamper_a_cell(su, a.eid)
+    assert ("corrupt", str(a.eid)) in kinds_of(verify.verify(db.reader()))                  # all visible: found
+    try:   # (2) row-level security without a policy: cse_reader sees no extraction and no run
+        q(su, f"alter table {ext} enable row level security; alter table {runs} enable row level security")
+        r = db.reader()
+        assert q(r, f"select count(*) from {ext}") == [(0,)] and q(su, f"select count(*) from {ext}") == [(3,)]
+        r.rollback()
+        report = verify.verify(r)
+        assert (report["extractions"], report["runs"], report["problems"], report["clean"]) == (0, 0, [], True), \
+            report                                                       # clean, having read nothing
+        got = preflight.report(m)
+        assert got["objects"] == [rls_enabled(ext), rls_enabled(runs)] and not got["clean"], got["objects"]
+    finally:
+        q(su, f"alter table {ext} disable row level security; alter table {runs} disable row level security")
+    assert preflight.report(m)["clean"]
+    q(su, "set search_path = public")
+    no_table_drift(su)
+    full = kinds_of(verify.verify(db.reader()))                         # what verify missed, seen again
+    assert ("corrupt", str(a.eid)) in full and ("f5_mismatch", str(b.run_id)) in full

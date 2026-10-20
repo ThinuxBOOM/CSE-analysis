@@ -50,6 +50,9 @@ canonical hashes, the F3 projection, the declared reconstruction context and the
          connection, and a partial scan exits 1
     u25  the preflight's column definitions are 0018's (derived from the migration's text); every kind of column
          drift (missing, extra, type, NOT NULL, default, identity, generation, collation) is reported
+    u26  the preflight's table properties: READ_TABLES are exactly the tables the reader and verify read that 0018
+         does not create; row-level security (enabled, forced, policies), persistence, relation kind, partitioning
+         and inheritance each reported; the catalogue query qualifies every name with pg_catalog
 Synthetic layouts only: this is not real-document validation.
 """
 import ast
@@ -1649,3 +1652,62 @@ def test_u25_the_preflight_reports_every_kind_of_column_drift():
     assert preflight._column_problems(t, renamed) == [f"{at} f3_document_type is missing",
                                                       f"{at} note_ref (text) is not one migration 0018 creates"]
     assert preflight._column_problems(t, list(reversed(rows))) == []          # compared by name, not position
+
+
+# ============================================================ u26 (the preflight's table properties, 2026-10-20)
+
+def test_u26_the_preflight_checks_every_table_the_reader_and_verify_read():
+    """READ_TABLES are exactly the tables reader.py and verify.py read (named in a FROM or JOIN, or as a quoted name
+    the reader puts there) that 0018 does not create: a table they read but the preflight did not check could hide
+    evidence from verify (tests/test_rf4_postgres.py p52 shows it for F5's run table)."""
+    read = set()
+    for name in ("reader.py", "verify.py"):
+        src = open(os.path.join(PACKAGE, name), encoding="utf-8").read()
+        named = re.findall(r"\b(?:from|join) (\w+)", src) + re.findall(r"[\"'](\w+)[\"']", src)
+        read |= {t for t in named if t.startswith(("financial_", "report_"))}
+    assert read - set(codec.TABLES) == set(preflight.READ_TABLES)
+    assert set(codec.TABLES) <= read and not set(preflight.READ_TABLES) & set(codec.TABLES)
+
+
+ORDINARY = ("r", "p", False, False, False, [], [], [])          # kind, persistence, RLS, forced, partition, ...
+
+
+def _table(**changes):
+    fields = ("kind", "persistence", "rls", "forced", "partition", "parents", "children", "policies")
+    return tuple(changes.get(f, v) for f, v in zip(fields, ORDINARY))
+
+
+def test_u26_every_table_property_drift_is_reported():
+    t = "financial_f4_cells"
+    assert preflight._table_problems(t, ORDINARY) == []
+    rls = (f"{t} has row-level security enabled: a role it applies to sees only the rows its policies allow (none "
+           "without a policy), so verify and the reader could miss evidence; expected disabled")
+    cases = [
+        (_table(rls=True), [rls]),
+        (_table(forced=True), [f"{t} forces row-level security on its owner; expected not"]),
+        (_table(policies=["rf4_a", "rf4_b"]), [f"{t} has row-level security policy(ies) rf4_a, rf4_b; expected none"]),
+        (_table(rls=True, forced=True, policies=["rf4_a"]),
+         [rls, f"{t} forces row-level security on its owner; expected not",
+          f"{t} has row-level security policy(ies) rf4_a; expected none"]),
+        (_table(persistence="u"), [f"{t} is UNLOGGED (emptied after a crash, never replicated), expected permanent"]),
+        (_table(persistence="t"), [f"{t} is temporary, expected permanent"]),
+        (_table(kind="p", children=["rf4_part"]),
+         [f"{t} is a partitioned table, expected an ordinary table",
+          f"{t} has child table(s) rf4_part, whose rows a read of {t} includes; expected none"]),
+        (_table(kind="v"), [f"{t} is a view, expected an ordinary table"]),
+        (_table(kind="f"), [f"{t} is a foreign table, expected an ordinary table"]),
+        (_table(partition=True, parents=["rf4_parted"]), [f"{t} is a partition of rf4_parted; expected neither"]),
+        (_table(parents=["rf4_parent"]), [f"{t} inherits from rf4_parent; expected neither"]),
+        (_table(children=["rf4_child", "other.rf4_child"]),
+         [f"{t} has child table(s) rf4_child, other.rf4_child, whose rows a read of {t} includes; expected none"]),
+    ]
+    for row, want in cases:
+        assert preflight._table_problems(t, row) == want, row
+
+
+def test_u26_the_table_query_names_every_catalogue_object_with_pg_catalog():
+    sql = " ".join(preflight._TABLE_QUERY.split())
+    for name in ("pg_class", "pg_inherits", "pg_policy", "regclass", "text"):
+        bare = re.findall(rf"(?<![\w.]){name}\b", sql)
+        assert bare == [], (name, sql)
+    assert "=" not in sql.replace("operator(pg_catalog.=)", "")
