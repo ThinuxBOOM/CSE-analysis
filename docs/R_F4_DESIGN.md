@@ -366,6 +366,15 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
   connection. The second waits on the first's uncommitted rows (at its first conflicting insert, F3's), then finds F3,
   F4 and F5 already present: one set of rows, no deadlock. **Not tested:** concurrency through HB-4's slice (HB-4
   claims each item under its slice's lease), or an HB-4 slice and a manual `run()` saving the same filing at once.
+- **Status note (2026-10-20).** The "Not tested" above records the state when it was written. HB-4 on a database
+  without 0018 was untested then too (`docs/R_F4_IMPLEMENTATION.md` §6.2). Both are tested since, in
+  `tests/test_rf4_postgres.py` (`docs/R_F4_IMPLEMENTATION.md` §14):
+  - **p47:** an HB-4 slice and F5's `run()` save one filing at once, in each order, and a second HB-4 slice is refused
+    while the first holds the filing;
+  - **p48:** HB-4 on a database without 0018 rolls the filing back and records `retry_wait` or `failed`.
+
+  These results are evidence only: Claude-reported local runs, and GitHub Actions results. They are not an
+  independent audit, and not R-F4's acceptance.
 
 ## 7. Migration and version policy
 
