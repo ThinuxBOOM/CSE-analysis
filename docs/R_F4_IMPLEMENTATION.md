@@ -1699,6 +1699,25 @@ drifting.
 | **Negative control**, Windows: `7d58604`'s tree, with this section's unit test file and the runbook unedited | **Exactly u27 fails**; the other 306 pass |
 | GitHub Actions for this section's commit | Not run when written. Claude does not push. To be recorded once it has run, not assumed here |
 
+**GitHub Actions for this section's commit, `a78dbc91eaffd098d9ee24d83b834af920aaf086`, recorded afterwards
+(2026-10-21).** The owner pushed it. The figures come from the runs' public job conclusions and check-run annotations,
+as Claude read them. These are GitHub's runs, apart from Claude's local runs in the table above:
+
+| Workflow | Run | Conclusion | Results |
+|---|---|---|---|
+| `ci-fast.yml` | [39447817175](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39447817175) | **success** | offline: 2,104 passed, 548 skipped, 0 failed |
+| `ci-regression.yml` | [39447816544](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39447816544) | **failure** (verdict `baseline-only`) | 4,668 passed, **1 failed**, 634 skipped, 2 xfailed, summed over the 20 groups (Linux and Windows each run every file) |
+
+**The regression workflow failed overall; it was not green.** 19 of its 21 jobs succeeded:
+- **L02** failed on the recorded HB-2 baseline, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`
+  (240 passed, 1 failed; `docs/CI_TEST_STRATEGY.md` §7.1), matched by its signature;
+- **the summary job** therefore failed, as it must while any test fails.
+
+**L16**, where R-F4's PostgreSQL and unit tests run (u27 included), passed as a group: 639 passed, 35 skipped. That is
+one passing PostgreSQL test group, not a passing regression suite. **W3** had 998 passed and 274 skipped. Against
+`7d58604`'s runs, the offline, L16 and W3 groups each had one more passing test, u27, and every other group was
+unchanged.
+
 ### 17.5 What remains
 
 - **No reader login yet.** None is provisioned (an open P1 item). Until one is, step 4, and the preflight's reader
