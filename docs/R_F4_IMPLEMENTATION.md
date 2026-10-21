@@ -53,7 +53,8 @@ and evidence only; it changes no decision.
 | `7d58604` | owner commit of Claude's fix | p52's lock wait (it hung `493bf73`'s first L16 run): the worker and readers rolled back before each `ALTER`, a 10-second `lock_timeout` in p51 and p52; §16.4's note (§16.4) |
 | `a78dbc9` | Claude (owner-directed, 2026-10-20) | The Phase 2 runbook's R-F4 passages (§6, §12): the preflight, then the full `verify`, at deployment and on each checkpoint's restored copy; test u27; the design's §5 line and status; section 17. No pin changes (§17) |
 | `0a901dc` | Claude | Documents only: `a78dbc9`'s GitHub Actions results in §17.4 |
-| the commit adding section 18 | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
+| `6246bc6` | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
+| the commit adding §18.7 | Claude | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -1865,3 +1866,43 @@ owner's. HB-2's code, its tests and the signature are unchanged.
 - **M1–M17** have not run at the current head. Their targets are unchanged since `d6924e7` except for pin values.
 - **The scope of these mutants.** One mutant per change is evidence that the named tests detect that fault. It is not
   proof that they detect every fault in the change.
+
+### 18.7 The first X2 run, and the fix (2026-10-21)
+
+**The run.** The owner pushed `6246bc6`. Its GitHub Actions runs, read by Claude from their public job conclusions and
+check-run annotations:
+- fast [39524854293](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39524854293): success (offline: 2,105
+  passed, 567 skipped, as §18.4 expected);
+- regression [39524854318](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39524854318): **failed**, verdict
+  `missing-reports`.
+
+**X2 produced no mutation evidence.** It **exceeded its job's 60-minute limit and was cancelled**, with no JUnit report.
+
+**The other groups were as expected:**
+- L02: the recorded HB-2 baseline only (240 passed, 1 failed);
+- L16: 640 passed, 54 skipped;
+- W3: 999 passed, 293 skipped;
+- L14 and L15: unchanged;
+- the 20 other groups together: 4,670 passed, 1 failed, 672 skipped, 2 xfailed.
+
+**The cause, read from the tests (X2's log needs a signed-in account), was a defect in p40's clean-up.** The mutants
+were not slow:
+- **MR1 and MR2** disable the reader's guard, and p40's first reader call then reads the empty shadow tables instead
+  of refusing. That fails the test, as it should, but leaves the reader's transaction open, holding locks on the
+  shadows.
+- **p40's `finally`** then runs `DROP SCHEMA rf4_shadow CASCADE`, which waits for ever on that transaction. p52's first
+  run hung the same way (§16.4).
+- **The cost:** each of those child runs waited for its 30-minute limit, and together they used up the hour.
+- **p41 has the same flaw.** A regression of the guard would therefore have hung L16 itself, not failed it.
+
+**The fix:**
+- **p40 and p41** roll their reader sessions back before the clean-up, and set a 10-second `lock_timeout` on the
+  superuser session.
+- **The harness** gives every child PostgreSQL session a one-minute `lock_timeout` (`PGOPTIONS`), and each child run
+  10 minutes instead of 30. A hang then fails its own mutant, not the whole group.
+
+The mutants, their named tests and the control are unchanged. Windows, run by Claude: 308 passed, 86 skipped; the
+unit-half sanity check unchanged (§18.4).
+
+**X2's first complete run will be that of the commit adding this subsection. It is to be recorded once it has run, not
+assumed here.**

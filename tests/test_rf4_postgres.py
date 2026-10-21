@@ -2507,6 +2507,8 @@ def test_p40_an_unsafe_reader_path_is_refused_before_a_shadow_can_change_verify_
     tamper_a_cell(su, bad.eid)
     assert ("corrupt", str(bad.eid)) in kinds_of(verify.verify(db.reader()))   # what a safe session finds
     assert_restored(db, su, m)
+    q(su, "set lock_timeout = '10s'")                   # a lock wait below fails the test, never hangs it
+    r = None
     try:
         reader_shadows(su)
         r = reader_with_path(db, "rf4_shadow, public")
@@ -2531,6 +2533,7 @@ def test_p40_an_unsafe_reader_path_is_refused_before_a_shadow_can_change_verify_
         report = verify.verify(reader_with_path(db, "rf4_shadow, public"))
         assert [p["kind"] for p in report["problems"]] == ["name_resolution"] and not report["clean"]
     finally:
+        rollback_quietly(r)               # a read that was not refused leaves its locks on the shadows: release them
         q(su, "drop schema if exists rf4_shadow cascade")
     assert_restored(db, su, m)
     assert ("corrupt", str(bad.eid)) in kinds_of(verify.verify(db.reader()))
@@ -2545,6 +2548,8 @@ def test_p41_a_session_entering_cse_reader_by_set_role_is_judged_by_its_own_path
     w, su, m = db.conn(), db.su(), migrator(db)
     good = persist(w, words, 991001)
     assert_restored(db, su, m)
+    q(su, "set lock_timeout = '10s'")                   # a lock wait below fails the test, never hangs it
+    c = t = None
     try:
         reader_shadows(su)
         q(su, "create role rf4_reader_login login; grant cse_reader to rf4_reader_login; "
@@ -2580,6 +2585,8 @@ def test_p41_a_session_entering_cse_reader_by_set_role_is_judged_by_its_own_path
         assert "temporary schema" in report["problems"][0]["detail"]
         t.close()
     finally:
+        for session in (c, t):            # a read that was not refused leaves its locks on the shadows: release them
+            rollback_quietly(session)
         q(su, f"revoke connect on database {db.name} from rf4_reader_login; drop role if exists rf4_reader_login; "
               "drop schema if exists rf4_shadow cascade")
     assert_restored(db, su, m)

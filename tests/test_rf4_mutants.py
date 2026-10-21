@@ -13,7 +13,8 @@ Each mutant plants one fault: one exact substitution, found exactly once, in a c
 then run in a fresh pytest process against the copy. The mutant is killed only when that process ends with test
 failures (exit 1) and every named test is among them. A control runs every named test against the unchanged copy
 first, and all must pass, so a kill is the fault's and not the environment's. The copy is restored after each mutant,
-and no bytecode is written, so a stale .pyc never stands in for a restored file.
+and no bytecode is written, so a stale .pyc never stands in for a restored file. Each child run has 10 minutes, and its
+PostgreSQL sessions a one-minute lock timeout (PGOPTIONS), so a hang fails its mutant instead of the whole group.
 
 The planted runs need PostgreSQL 17 (P1_PG_BINDIR, Linux) and RF4_MUTANTS=1. CI's group X2 sets both
 (.github/ci/groups.py, .github/ci/linux_tests.sh); elsewhere they skip. They never change the working tree, and their
@@ -142,12 +143,15 @@ def tree(tmp_path_factory):
 
 def run_tests(tree, tests):
     """pytest on `tests` in `tree`, in a fresh process; (exit code, the set of failed test ids, the output's tail)."""
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    # every PostgreSQL session the child opens gives up on a lock after a minute: a test whose clean-up would wait on a
+    # lock under a mutant fails instead of holding the whole group until its job limit (the first X2 run, 2026-10-21)
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+               PGOPTIONS=(os.environ.get("PGOPTIONS", "") + " -c lock_timeout=60s").strip())
     env.pop("RF4_MUTANTS", None)
     basetemp = os.path.join(os.path.dirname(tree), "child-basetemp")       # the child's own; never inside the copy
     proc = subprocess.run([sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q", "-rf",
                            f"--basetemp={basetemp}", *tests], cwd=tree, env=env, capture_output=True, text=True,
-                          timeout=1800)
+                          timeout=600)
     out = proc.stdout + proc.stderr
     failed = {m.group(1) for m in re.finditer(r"^FAILED (\S+?)(?:\[.*?\])?(?: - .*)?$", out, re.M)}
     return proc.returncode, failed, out[-3000:]
