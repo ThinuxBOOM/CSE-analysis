@@ -7,10 +7,10 @@ found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `veri
 snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
 (§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
 (§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
-runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are in
-the commit adding §18. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner
-selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day,
-formally waived the item for this implementation package:
+runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
+`6246bc6` and `8431e8e` (§18). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item
+13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and
+then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -54,7 +54,8 @@ and evidence only; it changes no decision.
 | `a78dbc9` | Claude (owner-directed, 2026-10-20) | The Phase 2 runbook's R-F4 passages (§6, §12): the preflight, then the full `verify`, at deployment and on each checkpoint's restored copy; test u27; the design's §5 line and status; section 17. No pin changes (§17) |
 | `0a901dc` | Claude | Documents only: `a78dbc9`'s GitHub Actions results in §17.4 |
 | `6246bc6` | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
-| the commit adding §18.7 | Claude | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
+| `8431e8e` | Claude (the owner's "commit") | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
+| the commit adding §18.8 | Claude | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -1831,7 +1832,7 @@ planted runs skip:
 |---|---|
 | Windows, Python 3.14.6, run by Claude: `pytest tests/test_rf4_mutants.py` | 1 passed (the applicability test), 19 skipped (the planted runs) |
 | A local sanity check, Windows, run by Claude, **not counted**. A scratch script, not committed: each mutant planted in a copy, with **only its unit-test killers** run | Control: the unit killers pass on the unchanged copy. The 15 mutants that have unit killers were killed by them. MS2, MP2 and MP4 have PostgreSQL killers only, so they were not run. No PostgreSQL killer was run locally |
-| GitHub Actions for this section's commit | Not run when written: Claude does not push. Expected after a push: X2 20 passed (the applicability test, the control and 18 mutants); L16, W3 and offline each 1 more passed and 19 more skipped. **To be recorded once it has run, not assumed here** |
+| GitHub Actions for this section's commit | Not run when written: Claude does not push. Expected after a push: X2 20 passed (the applicability test, the control and 18 mutants); L16, W3 and offline each 1 more passed and 19 more skipped. Recorded afterwards: at `6246bc6` X2 hung and was cancelled at its job limit (§18.7); at `8431e8e`, **X2 20 passed**, and L16, W3 and offline each 1 more passed and 19 more skipped (§18.8) |
 
 ### 18.5 The L02 baseline (latest regression run, inspected)
 
@@ -1849,8 +1850,8 @@ failure. `baseline_match` reports that only when every part matches:
 - the assertion `assert (N is not None and N < 60)`;
 - N within an hour of the time since the fake clock's fixed 2026-10-03 03:00 UTC.
 
-**Nothing has changed.** `summarize.py` last changed in `4be6fa9`, and `tests/test_hb2_postgres.py` and
-`tests/hb2_fakes.py` in `1896280`.
+**Nothing has changed.** `summarize.py` last changed in `4be6fa9`, `tests/test_hb2_postgres.py` in `1896280` and
+`tests/hb2_fakes.py` in `3a7512c` (§18.8 corrects the last).
 
 **It is the same known baseline, not a changed failure.** N itself is in the job's log and artifacts, which need a
 signed-in account, so it rests on the summary's check. **It is not waived or accepted here:** that decision is the
@@ -1858,7 +1859,8 @@ owner's. HB-2's code, its tests and the signature are unchanged.
 
 ### 18.6 What remains unverified
 
-- **This section's GitHub Actions run**, X2 included (§18.4).
+- **X2's per-mutant output.** Its log and JUnit report need a signed-in account and were not read; §18.8 rests on
+  the group's public counts and the kill rule (§18.2).
 - **Code before the later changes** has never had a planted-fault test, only negative controls:
   - `d6924e7`'s own name-resolution code (`schema.search_path_problems`, and the preflight's per-role search path);
   - Findings 1–5's checks (`f67c181`, `2bc66c1`: the persisted-F3 check, the trigger identity and configuration, the
@@ -1904,5 +1906,47 @@ were not slow:
 The mutants, their named tests and the control are unchanged. Windows, run by Claude: 308 passed, 86 skipped; the
 unit-half sanity check unchanged (§18.4).
 
-**X2's first complete run will be that of the commit adding this subsection. It is to be recorded once it has run, not
-assumed here.**
+**X2's first complete run, `8431e8e`'s, is recorded in §18.8.**
+
+### 18.8 X2's first complete run (2026-10-21)
+
+**The run.** The owner pushed `8431e8e` (`8431e8e81396825b4b9e4cf33e05d7aec14d5b5c`). Its GitHub Actions runs, read by
+Claude from their public job conclusions and check-run annotations:
+- fast [39595194662](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39595194662): success (offline: 2,105
+  passed, 567 skipped);
+- regression [39595194699](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39595194699): **failed**, verdict
+  `baseline-only`. 20 of its 21 test jobs succeeded; L02 and the summary job failed.
+
+**X2: 20 passed, exit 0**, in an 80-second test step: the applicability test, the control and the 18 mutants of §18.2.
+A mutant's test passes only when its fault is killed: the child run exits 1 and every named test is among its
+failures (§18.2). So each of the 18 planted faults was detected by all of its named tests, the PostgreSQL ones
+included, on PostgreSQL 17, after the control had shown the same tests pass on the unchanged copy.
+
+**The groups that also hold the file** each have 1 more passed (the applicability test) and 19 more skipped (the
+planted runs) than at `0a901dc` (§18.5's run), as §18.4 expected:
+
+| Group | `0a901dc` | `8431e8e` |
+|---|---|---|
+| L16 | 639 passed, 35 skipped | 640 passed, 54 skipped |
+| W3 | 998 passed, 274 skipped | 999 passed, 293 skipped |
+| offline | 2,104 passed, 548 skipped | 2,105 passed, 567 skipped |
+
+L16 runs `tests/test_rf4_postgres.py`, whose only skip is for a missing PostgreSQL, and had no failures: p40 and p41
+pass with their new clean-up (§18.7).
+
+**L02 is the same known baseline.** It had 240 passed and 1 failed, and the summary job again reported the failure as
+"the recorded baseline failure": its full signature matched (§18.5). It is **not** waived or accepted here; that
+decision is the owner's.
+
+**All 21 groups together:** 4,690 passed, 1 failed (the baseline), 672 skipped, 2 xfailed.
+
+**A correction to §18.5.** `tests/hb2_fakes.py` last changed in `3a7512c`, HB-2's own commit, not in `1896280`, its
+fix; `tests/test_hb2_postgres.py` last changed in `1896280`. Both precede the baseline's fixed clock (2026-10-03), and
+neither has changed since. The conclusion is unchanged.
+
+**What this shows, and what it does not:**
+- It shows that each planted fault of §18.2 is detected by its named tests at `8431e8e`.
+- It does not show the per-mutant output (§18.6).
+- §18.6's other limits stand. The mutants are hand-chosen, so this is not a full mutation sweep. M1–M17 have not been
+  re-run, and the earlier code (`d6924e7`'s name resolution, Findings 1–5's checks) still has no planted faults.
+- The audit is **not complete**; R-F4 is **not** accepted or frozen.
