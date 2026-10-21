@@ -8,9 +8,10 @@ snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and fa
 (§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
 (§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
 runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
-`6246bc6` and `8431e8e` (§18). All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item
-13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and
-then, the same day, formally waived the item for this implementation package:
+`6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19.
+All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B
+on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally
+waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -55,7 +56,8 @@ and evidence only; it changes no decision.
 | `0a901dc` | Claude | Documents only: `a78dbc9`'s GitHub Actions results in §17.4 |
 | `6246bc6` | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
 | `8431e8e` | Claude (the owner's "commit") | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
-| the commit adding §18.8 | Claude | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
+| `ef4e0e7` | Claude (the owner's "commit") | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
+| the commit adding section 19 | Claude (the owner's request, 2026-10-21) | Documents only: the acceptance matrix at `ef4e0e7`, each row from the tests' bodies; the HB-5 Windows report-path defect investigated (HB-5 unchanged); the L02 baseline as a failed test matching its signature; the gaps X2 leaves (§19) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -1950,3 +1952,206 @@ neither has changed since. The conclusion is unchanged.
 - §18.6's other limits stand. The mutants are hand-chosen, so this is not a full mutation sweep. M1–M17 have not been
   re-run, and the earlier code (`d6924e7`'s name resolution, Findings 1–5's checks) still has no planted faults.
 - The audit is **not complete**; R-F4 is **not** accepted or frozen.
+
+## 19. Acceptance matrix at the remote head; the Windows report-path defect; the gaps X2 leaves (2026-10-21)
+
+**The request.** The owner asked for five things:
+- a requirement-by-requirement acceptance matrix, each row citing its tests, read from their bodies, with the commit
+  and GitHub Actions run that executed them and whether the evidence is current, Claude-reported only, or missing;
+- an investigation of the Windows HB-5 `write_json` defect, with HB-5 unchanged;
+- the L02 baseline, recorded accurately;
+- the audit gaps that X2 leaves, with the smallest tests or review evidence that would close them;
+- this record, updated with verifiable facts only.
+
+**All of this section's work was done by Claude.** **Status: NOT ACCEPTED / NOT FROZEN.** The audit is not complete.
+
+**What changed:** this record only. There are no changes to:
+- application code, tests or CI;
+- migration 0018;
+- any HB-1 to HB-6 file;
+- any pin (129 checked, 0 mismatches).
+
+CSE was not contacted.
+
+### 19.1 The head and its GitHub Actions runs
+
+**The remote head of `claude/rf4-implementation`** is `ef4e0e7` (`ef4e0e7de3e5991e1c8abd207f7728b7dde75604`), equal to
+the local branch. It changed this record only. Its code and tests are therefore `8431e8e`'s (§18.7, §18.8). Its runs,
+read by Claude from their public job conclusions and check-run annotations:
+- fast [39596949830](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39596949830): success; offline: 2,105
+  passed, 567 skipped;
+- regression [39596949806](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39596949806): **failed**, verdict
+  `baseline-only`:
+  - every group was as at `8431e8e`: X2 20 passed; L16 640 passed, 54 skipped; W3 999 passed, 293 skipped;
+  - L02 240 passed, **1 failed**;
+  - all 21 groups together: 4,690 passed, 1 failed, 672 skipped, 2 xfailed.
+
+**L02 (the HB-2 baseline).** At `ef4e0e7`, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` **failed**.
+The summary job reported it as "the recorded baseline failure":
+- that means its full signature matched (§18.5): the test, the group, a failure, line 588, the assertion, and the
+  elapsed time from the fixed 2026-10-03 clock;
+- the run's verdict is therefore `baseline-only`, and the workflow is **failed**, not green.
+
+It is recorded here as a failed test that matches the recorded signature. It is **not** waived or accepted. Its
+signature, HB-2's code and its tests are unchanged. Whether to accept a documented exception is the owner's decision.
+
+### 19.2 How each test is shown to have run in GitHub Actions
+
+The job logs and JUnit reports need a signed-in account and were not read. Per-test evidence is therefore derived
+from the public counts and the skip conditions in the code:
+- **L16 holds the R-F4 files.** `tests/test_rf4_postgres.py` (67 collected items), `tests/test_rf4_unit.py` (307) and
+  `tests/test_rf4_mutants.py` (20), among 14 files.
+- **L16's files collect 694 items.** Claude counted them with `--collect-only` on Windows. That equals L16's 640 passed
+  plus 54 skipped at `ef4e0e7`.
+- **L16's 54 skips are all accounted for:**
+  - 26 in `tests/test_report_classification_real.py` (module skip unless `F3_REAL_DOCUMENTS=1`);
+  - 9 in `tests/test_statement_extraction_real.py` (unless `F4_REAL_DOCUMENTS=1`);
+  - 19 planted runs (`RF4_MUTANTS=1` in X2 only).
+
+  The CI scripts set neither real-document variable.
+- **No other R-F4 skip applies.** `tests/test_rf4_postgres.py` has one skip condition, module-wide (no `P1_PG_BINDIR`,
+  or not POSIX); `.github/ci/linux_tests.sh` exports `P1_PG_BINDIR`. `tests/test_rf4_unit.py` has no skip.
+- **L16 had no failure.**
+
+**So all 374 R-F4 items passed in L16 at `ef4e0e7`** (67 PostgreSQL and 307 unit). The unit file also ran clean in
+`offline` (fast run) and in W3 (Windows, Python 3.14.8); in those two the PostgreSQL file skips. X2's control also ran
+each mutant's named tests on the unchanged copy.
+
+**The limit:** this is a derivation from counts and code, not a per-test report (§19.5, gap 8).
+
+**Abbreviations used below:**
+- **GA-P:** job L16 of regression 39596949806 at `ef4e0e7`.
+- **GA-U:** job `offline` of fast 39596949830, and jobs L16 and W3 of regression 39596949806, at `ef4e0e7`.
+
+### 19.3 The matrix
+
+**Evidence:**
+- **Current:** ran and passed in GitHub Actions at the remote head (§19.2).
+- **Claude-reported only:** Claude's local runs, never in GitHub Actions.
+- **Missing:** no test or run.
+
+"Added in" is the commit that added the test. p40 and p41 were last changed in `8431e8e`; both ran at `ef4e0e7`.
+
+| Requirement | Tests, as their bodies show | Added in | Run | Evidence | Limits found by reading |
+|---|---|---|---|---|---|
+| **RT-14** end-to-end rebuild (design §9) | **p3:** every synthetic layout (≥45, `R.harvest()`: every word layer F4's own tests extract) is saved, then `reader.rebuild_f5` must hash equal to the stored and the in-memory result. **p18:** the same through F5's `run()`: the real F2 lifecycle, a fake fetcher, `main()`'s four stores so R-F4 is reached by `_persist`'s fallback, the in-memory originals captured by wrapping `extract_document` and `f5.build`. **p22:** HB-4's slice, 4 layouts; a test trigger also shows that each filing's F4, F5 and ledger rows were written in one top-level transaction. Each ends with a clean `verify` (`rebuilt` equals the count). `rebuild_f5` reads the run's key, loads the extraction with its checks, reads F3 back, compares its `f3_input_sha256`, then runs `f5.build` under `RECONSTRUCTION_CONTEXT` | p3 `77cfb84`; p18, p22 `fa464d2` | GA-P | **Current** | Through HB-4, 4 of ≥45 layouts, and not the constructed cases (RT-3, RT-4). HB-4 calls the same `f5cli._persist` and `make_consumer` (`worker/backfill_documents/worker.py:334`, `:410`), so the encoding path is the one p3 and p18 cover for every layout (§19.5, gap 9) |
+| **RT-15** structural fidelity | `tests/rf4_support.py` `diff`: `type(a) is type(b)` (so int vs bool, list vs tuple, `None` vs `''`), every dataclass field, `Decimal.as_tuple()`, float `struct.pack(">d")` bits, list length and order, dict key sets. **p3**, **p18**, **p22:** F4 read back against the original. **p3** also compares the F3 projection; p18 and p22 compare F3 by the `f3_input_sha256` check inside the rebuild. **u1:** codec round trip | u1, p3 `77cfb84`; p18, p22 `fa464d2` | GA-P; u1 GA-U | **Current** | F3 field by field at the store level (p3); through the callers by hash only |
+| **Rollback and retry, HB-4** | **p23**, 5 cases: the F4 save raises (attempts 3: `retry_wait`; attempts 1: `failed`); the F5 save raises after a completed F4 save; the `persisted` ledger event raises; NaN in F4's output (`failed`). Each: the reason says "rolled back"; F3, F4 and F5 rows are `(0, 0, 0)`; then the retry downloads once more (`cdn.calls == 2`) and saves `(1, 1, 1)`; `verify` clean | `fa464d2` | GA-P | **Current** | "Inside the F4 save" replaces the save whole, so no partial F4 row exists through HB-4. A partial insert undone is shown at the store level (p8), and a whole filing undone after a completed F4 save by p23's second case |
+| **Rollback and retry, `run()`** | **p21**, 2 cases: a scripted F4 failure at filing *k* = 2 of 3, and NaN at filing 2. `run()` raises; after the caller's rollback filing 1 is uncommitted too (`(0, 0, 0)`); a rerun saves every filing once; `verify` clean | `fa464d2` | GA-P | **Current** | — |
+| Rollback inside the store | **p8:** a NOT NULL violation in the cells' insert, after the columns and rows: no extraction, the transaction still usable (savepoint); a read-back that differs: `corrupt`, nothing kept; the caller's rollback removes its F3 row | `77cfb84` | GA-P | **Current** | — |
+| **Idempotency** | **p7:** a re-save is `already_present`; changed content raises `ConflictingEvidence`; counts unchanged. **p17:** `already_present` only when the saved extraction reads back intact; otherwise `incomplete`, `corrupt` or `version_incompatible`, with nothing written. **p19:** a second `run()` of the same batch: all three `already_present`, downloaded again (2 calls), no row twice | p7 `77cfb84`; p17 `8f1f9fd`; p19 `fa464d2` | GA-P | **Current** | A re-run through HB-4 does not occur: a persisted item is never claimed again (design §6) |
+| **Concurrency** | **p10:** two connections save one key; the second waits (still alive after 1 s), then gets `already_present`; one set of rows. **p24:** two `run()`s of one filing; B's lock wait is seen in `pg_stat_activity`; nothing committed meanwhile; A `inserted`, B `already_present`; `verify` clean. **p47** (×2, each order): HB-4's slice and `run()`; the same assertions, plus one claim, one download, the lease released `completed`; while HB-4 holds the filing, a second slice is `SliceBusy` with no request | p10 `77cfb84`; p24 `5e4d0c3`; p47 `cbcf8d6` | GA-P | **Current** | Two HB-4 slices at once cannot occur (P2's global lock, shown by p47). One filing per test |
+| **Pre-R-F4 recovery** | **p19:** F3, the link and F5 saved without F4 (the pre-R-F4 order, emulated with the stores); `verify` reports `missing`; a governed re-download through `run()` saves F4, with F3 and F5 `already_present` and 1 download; `verify` clean. **p11:** `missing` among `verify`'s kinds | p19 `fa464d2`; p11 `77cfb84` | GA-P | **Current** (through `run()`) | Through HB-4 not tested: HB-4 never re-claims a persisted item (§19.5, gap 10) |
+| **p47** | As in the Concurrency row | `cbcf8d6` | GA-P | **Current** | §14.4 |
+| **p48** (×2) | HB-4 on a database migrated to 0017 only. F3's save and the link succeed inside the filing's transaction; R-F4's in-band check then raises `SchemaUnavailable` naming 0018; the whole filing rolls back (no F3 or F5 row; links as the setup left them); `retry_wait` or `failed` with the reason; one claim, one download, the lease released. After 0018 is applied, the retry saves `(1, 1, 1)`; `verify` clean | `cbcf8d6` | GA-P | **Current** | — |
+| **p49** | `verify(limit=N)` is partial and never clean, even when it covers every row (`limit=3` of 3) or finds nothing; a corrupt cell outside `limit=1` is unseen there; the command exits 1, and 0 only for a clean full scan; the full scan finds the fault; a limit of 0 or −1 raises `ValueError` before any statement (the session stays idle) and is a usage error (2) for the command | `b89cdec` | GA-P (and X2's control) | **Current**; MV7, MV8, MC1 killed in X2 | — |
+| **p50** | Column drift with every constraint intact: a dropped NOT NULL, a changed type, default, identity or collation, a renamed or an extra column. Each is reported exactly in the object check, with the file and the ledger still passing. Undone in `finally`; clean at the end | `b89cdec` | GA-P (and X2's control) | **Current**; MP1, MP2 killed | — |
+| **p51** | Row-level security enabled or forced, a policy, UNLOGGED, a child table, an inheritance parent, on 0018's tables and on F5's run table: each reported exactly; file and ledger pass; clean again after each | `493bf73` | GA-P (and X2's control) | **Current**; MP3, MP4, MP5 killed | Attaching a table as a partition is not exercised (u26 checks its report only) |
+| **p52** | Under row-level security, `verify` (as `cse_reader`, NOBYPASSRLS) is clean while bad evidence exists: a policy hides a run with a wrong hash (3 extractions, 2 runs, clean); with no policy it reads nothing (0, 0, clean). The preflight refuses both. After the restore, a full `verify` finds both faults | `493bf73` | GA-P (and X2's control) | **Current**; MP3, MP4 killed | `verify` itself cannot see row-level security. The protection is the order (preflight first), which u27 checks in the runbook's text only |
+| The store's in-band check | Refused before any insert: no 0018 (**p9**); a broken trigger or privilege, checked on every save, never cached (**p12**); a trigger altered beyond its name (**p26**); a function-level search path (**p28**); an extra enabled trigger (**p29**) | p9 `77cfb84`; p12 `dc6302d`; p26 `f67c181`; p28, p29 `2bc66c1` | GA-P | **Current** | No planted fault for p26, p28 or p29's checks (§19.5, gaps 5–6) |
+| Name resolution (store and preflight) | **p30–p39:** role-level, database-level, session and `$user` settings; a temporary table; settings for a role in a database and for all roles; a server-level setting; a no-break space; PostgreSQL's own splitting; an operator in `public` ahead of `pg_catalog`; `pg_temp` first without creating a temporary schema. **u20, u21** | p30–p33, u20 `d6924e7`; p34–p39, u21 `1252c56` | GA-P; u20, u21 GA-U | **Current**; MS1 (D1) and MS2 (D2) killed in X2 | `d6924e7`'s own checks (`schema.path_problems`, `search_path_problems`, the preflight's per-role search path) have no planted fault (§19.5, gap 7) |
+| The preflight | **p1** (passes for both roles at 0018's pin); **p9** (an edited or missing 0018 in the checkout); **p13** ×5 (the ledger verified only by a role that can read it; a tampered or misnumbered entry; object problems per role; privileges granted on single columns; the command exits 0, 1 or 2); **p27** (constraints by type and definition); p50–p52. **u18, u19, u25, u26** | p1, p9 `77cfb84`; p13 `b00affc`/`dc6302d`; p27 `f67c181`; u18 `f67c181`; u19 `2bc66c1`; u25 `b89cdec`; u26 `493bf73` | GA-P; u-tests GA-U | **Current**; MP1–MP5 killed | No planted fault for the constraint, trigger or ledger checks (§19.5, gap 6) |
+| The reader | **p40:** a reader session with a shadow schema ahead of `public` is refused by every reader entry point and by `verify`, before a shadow can change what they return. **p41:** a login entering `cse_reader` by `SET ROLE` is judged by its own path and temporary schema. **u22:** every public entry point checks the session before its first unqualified query | `95da822` (p40, p41 changed in `8431e8e`) | GA-P (and X2's control) | **Current**; MR1, MR2 killed | — |
+| `verify` | **p11** (every kind of bad evidence, read-only as the reader); **p15**; **p42** (one read-only REPEATABLE READ transaction); **p43** (one snapshot while another transaction commits); **p44** (every statement under the snapshot it reports); **p45** (autocommit refused before any statement); **p46** (a session ended mid-run raises its own error); p49, p52. **u22–u24** | p11 `77cfb84`; p15 `b00affc`; p42, p43 `95da822`; p44–p46 `144a213`; u22 `95da822`; u23 `144a213`; u24 `b89cdec` | GA-P; u-tests GA-U | **Current**; MV1–MV8, MC1 killed | — |
+| The persisted-F3 check (audit Finding 1) | **p25** ×3. The store refuses (`ConflictingEvidence`) before any insert when the F3 row persisted under the id hashes other than what F5 consumed, and `verify` reports such history. `run()` raises with its whole batch uncommitted. HB-4 rolls back and records `retry_wait` | `f67c181` | GA-P | **Current** | No planted fault (§19.5, gap 3) |
+| Access rules (design §4.4) | **p2:** `cse_worker` has SELECT and INSERT, `cse_reader` SELECT, on the 5 tables; an update, a delete and a truncate are refused, for the worker by privilege and for the superuser by the append-only triggers; the reader reads but cannot insert; the classification guard. **p13:** privileges granted on single columns reported | `77cfb84`; `b00affc` | GA-P | **Current** | — |
+| **Operational runbook** (`docs/ops/PHASE2_BACKFILL.md` §12, §6) | **u27** checks the text only: at deployment, 0018, then the preflight on a route that can verify the ledger, continue only on exit 0 and clean, then the full `verify` (no `--limit`) as the reader; the same order on each checkpoint's restored copy. The commands the runbook relies on are tested: the preflight's exit codes and `--migration-role` (**p13**); `verify`'s exits and `--limit` (**p49**, **u24**) | u27 `a78dbc9` | u27 GA-U; p13, p49 GA-P | **Current** for the text and the commands; **Missing** for an execution | Never run on a deployment or a restored backup (staging not authorized). No login to enter `cse_reader` is provisioned (P1's open item). The tests enter it by `SET ROLE` from a superuser session |
+
+**The other rows of design §9:**
+
+| Requirement | Tests | Evidence |
+|---|---|---|
+| RT-3 decimals | u2; p4 (three contexts; negative control: `numeric`); p20 (`run()`, three contexts; precision 5 gives `f5_rebuild_refused`) | **Current** (GA-P, GA-U) |
+| RT-4 floats and types | u3; p5 (negative controls: `float8`, plain `jsonb`); NaN through p21 and p23 | **Current** |
+| RT-8 / RT-12 refusals | u4, u5, u8, u14, u15; p6, p14 | **Current** |
+| Tamper and versions | p11 (`corrupt`, `incomplete`, `version_incompatible`, F3 hash, `f5_mismatch`, `missing`), p15, p17 | **Current** |
+| Migration | p1, p9 (×2), p48 | **Current** |
+| Regression controls B, P, S, I | §5.5, §5.6 (at `82b7a3e`), re-run at `f67c181`, `2bc66c1`, `d6924e7` | **Claude-reported only.** The full GitHub Actions regression at `ef4e0e7` is the current counterpart of I, with verdict `baseline-only`; it is not compared with a B run in GitHub Actions |
+| Mutation testing | X2: 18 mutants for the changes after `d6924e7` (§18) | **Current** (X2 at `8431e8e` and `ef4e0e7`). M1–M17: **Claude-reported only** (last at `d6924e7`, §5.7) |
+| Real documents | — | **Missing**, by design: at pilot acceptance (design §10) |
+
+### 19.4 The Windows report-path defect (HB-5 `write_json`)
+
+**The code path.** `worker/backfill_f6/reports.py:30-40`, `write_json` (HB-5, `4d28663`, frozen). It realpaths the
+repository (line 32) and the target (line 33), then refuses a target inside the repository with
+`os.path.commonpath([repo, target]) == repo` (line 34). Only then does it open the file (line 37). Its callers are
+HB-6's report exports:
+- `worker/backfill_ops/cli.py:227` (`pilot-sample`);
+- `worker/backfill_ops/reports.py:29` (the coverage export);
+- `worker/backfill_ops/reports.py:38` and `:40` (`write_all`, the pilot report).
+
+HB-6's preflight requires its own `reports.py` to call `write_json` (`COMPOSITION`,
+`worker/backfill_ops/preflight.py:85`) and checks `write_json`'s parameters (`:214`).
+
+**The mechanism.** On Windows, `ntpath.commonpath` raises `ValueError: Paths don't have the same drive` for two paths
+on different drives, before any comparison. A target outside the repository on another drive is therefore not
+written, and the error is an untyped `ValueError`, not HB-5's `F6Refused`. It fails closed: nothing is written, inside
+the repository or out. On POSIX, two absolute paths always share at least `/`, so it cannot raise.
+
+**Reproduction.** Claude ran it on Windows (Python 3.14.6, 2026-10-21), with the repository on C: and D: as the other
+drive. A scratch script changed nothing in the repository; every directory it made was a `TemporaryDirectory`, removed
+afterwards. Results:
+1. `ntpath.commonpath([r"C:\repo", r"D:\out\r.json"])`: `ValueError: Paths don't have the same drive`.
+2. `write_json` with a target on D: raised that `ValueError`, and the file was not written.
+3. `write_json` with a target on C:, outside the repository, wrote it.
+4. **The existing frozen test**, unchanged:
+   `tests/test_hb5_unit.py::test_u20_reports_are_written_only_outside_the_repository_to_a_new_file`
+   - with pytest's `--basetemp` on D:, **1 failed**, at `worker\backfill_f6\reports.py:34`, with `ValueError: Paths
+     don't have the same drive`;
+   - with it on C:, **1 passed**.
+
+**In GitHub Actions** the same test failed in W1 of the first regression run,
+[39162102932](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39162102932) (`ae26d68`, 2026-10-18). There the
+runner's `TEMP` was on C: and the checkout on D: (`docs/CI_TEST_STRATEGY.md` §7.2). Since `4be6fa9` the Windows jobs
+keep `TEMP` on the checkout's drive, and W1 passes. That CI change avoids the condition; it does not fix the code.
+
+**The classification:**
+- **Not a false positive.** It follows from `ntpath.commonpath` itself, and the frozen test reproduces it.
+- **Not an R-F4 acceptance blocker:**
+  - R-F4's package imports nothing from `backfill_f6` or `backfill_ops` and calls no report writer;
+  - R-F4's unit tests pass on Windows (W3), and all its tests on Linux (L16);
+  - the defect predates R-F4 (`4d28663`, 2026-10-07), and R-F4 has not changed `reports.py`.
+- **A separate HB-5 defect, not a release blocker on the documented production platform.** The runbook's host is the
+  local Ubuntu 24.04 server (`docs/ops/PHASE2_BACKFILL.md:228`; systemd, §9), where this cannot occur. It would block a
+  release only if the owner makes Windows a supported platform for HB-5 or HB-6 report export.
+- **A fix needs HB-5 change control**, and an HB-6 pin cascade (§7.2 of the CI strategy names the change). That is the
+  owner's decision.
+
+Nothing in HB-5's code, tests or pins was changed.
+
+### 19.5 The gaps X2 leaves, and the smallest closure (recommended, not done)
+
+| # | Gap | Material | Smallest closure |
+|---|---|---|---|
+| 1 | M15–M17 (`_persist` committing per filing; the duplicate-key read-back skipped; `on conflict` lost) are Claude-reported only, last at `d6924e7`. Their targets are unchanged since: `worker/extract_financial_candidates.py` and `store.py` have no change after `d6924e7`, and the HB-1 to HB-6 preflights changed pin values only (`git diff d6924e7 ef4e0e7`) | Yes: the transaction and duplicate semantics | Three mutants in `tests/test_rf4_mutants.py`, so they run in X2: killers p21, p17, p24 |
+| 2 | M1–M14 (wiring and pins) are Claude-reported only | Lower: the wiring is unchanged, and u17 and the lifecycle test run in GitHub Actions | Optional: M1, M7, M8 (distinct faults, killers the lifecycle test and u17) |
+| 3 | The store's persisted-F3 check (`store.py`, the `persisted != row["f3_input_sha256"]` test) has no planted fault | Yes: audit Finding 1 | One mutant (the condition never true): killers p25 ×3 |
+| 4 | The reader's F3 check in `_evidence_for_run` (`reader.py:196`) has no planted fault | Yes: it is what makes RT-14 compare F3 | One mutant: killer p11 (the F3 hash tamper reported `corrupt`) |
+| 5 | The trigger checks in `schema._trigger_problems` (the function body, its configuration) and the extra-trigger check have no planted fault | Yes: tamper protection | Two or three mutants: killers p26/u18, p28/u19, p29/u19 |
+| 6 | The preflight's constraint check (`preflight._constraint_problems`) and the ledger check have no planted fault | Yes | One or two mutants: killers p27/u18, p13 |
+| 7 | `d6924e7`'s name-resolution checks have no planted fault: a schema before `public`, `pg_catalog` after `public`, the session's temporary objects, and the preflight's per-role path | Yes | Three or four mutants: killers p30/p31/u20, p38, p33, p34/p35 |
+| 8 | Per-test outcomes in GitHub Actions are derived from counts (§19.2) | Evidence quality | Review evidence, no change: the owner, signed in, reads the JUnit reports of L16 and X2 in run 39596949806's artifacts |
+| 9 | RT-14 through HB-4 covers 4 layouts, not the constructed cases | No: the same `_persist` (`worker.py:334`) | Review evidence only (code identity); no new test |
+| 10 | Pre-R-F4 recovery through HB-4 is not tested | No, under the Q1 sequence: R-F4 is frozen before staging, and HB-4 cannot persist without 0018 (p48), so no HB-4 rows from before R-F4 can exist | None needed |
+| 11 | Attaching a table as a partition is not exercised against a live database | Minor | Optional: one more p51 case |
+| 12 | The runbook's checks have never been executed; no login to enter `cse_reader` is provisioned | Yes, for operation | At staging, after the owner's authorization; plus the owner's decision on a reader login (P1) |
+| 13 | Real documents | Yes, by design later | At pilot acceptance (design §10) |
+
+**The recommended package** is gaps 1 and 3–7: about 12 more mutants in the existing X2 file. That needs no CI change.
+X2's 19 child runs took 80 seconds, so the addition would cost roughly a minute. It is **not done here**: this task
+changes this record only. It waits for the owner's authorization.
+
+### 19.6 Remaining blockers
+
+**For acceptance:**
+- the owner's independent audit, which is not complete;
+- the owner's decision on the L02 baseline (§19.1);
+- the gaps of §19.5 that the owner or the auditor requires closed before acceptance.
+
+**Before operation:** a login to enter `cse_reader` (P1's open item), and the runbook's checks run at staging.
+
+**At pilot acceptance:** the real-document verification.
+
+**Not an R-F4 blocker:** the HB-5 Windows defect (§19.4).
+
+**Status: NOT ACCEPTED / NOT FROZEN.**
