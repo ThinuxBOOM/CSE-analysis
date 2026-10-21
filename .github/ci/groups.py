@@ -12,6 +12,8 @@ www.cse.lk) and is never run by CI; a bare `pytest` in the repository root would
 Beyond the partition, EXTRA groups run single tests that no partition group can run, each in its own pytest process:
 X1 is test_eod_completeness's database-view test, which needs DATABASE_URL. In a partition group that variable could
 not reach it: test_dry_run_isolation removes DATABASE_URL from the environment when it is imported (at collection).
+X2 is R-F4's planted-fault (mutation) tests, which run only with RF4_MUTANTS=1 (linux_tests.sh sets it for X2 alone):
+in its partition group (L16) the file's planted runs skip, and only its applicability check runs.
 
     python .github/ci/groups.py L06          the group's tests, one per line ("offline": every file)
     python .github/ci/groups.py --check      verify the partition; exit 1 if it does not cover every file exactly once
@@ -45,7 +47,8 @@ NAMED = {
 }
 LINUX = [f"L{n:02d}" for n in range(1, 17)]
 WINDOWS = ["W1", "W2", "W3"]
-EXTRA = {"X1": ["tests/test_eod_completeness.py::test_daily_completeness_view_distinguishes_intraday_from_eod"]}
+EXTRA = {"X1": ["tests/test_eod_completeness.py::test_daily_completeness_view_distinguishes_intraday_from_eod"],
+         "X2": ["tests/test_rf4_mutants.py"]}
 
 
 def path(name):

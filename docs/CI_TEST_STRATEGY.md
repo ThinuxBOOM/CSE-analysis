@@ -26,7 +26,7 @@ None of these is an independent re-execution.
 | File | Name | Triggers | Runners | Runs |
 |---|---|---|---|---|
 | `.github/workflows/ci-fast.yml` | CI fast (offline suite) | push to `claude/rf4-implementation`; pull request to `main`; `workflow_dispatch` | `ubuntu-24.04` (one job) | every `tests/test_*.py` file in one pytest run, in the Linux test container with no network and no database configured: the offline-safe tests execute, the PostgreSQL, database-URL and evidence suites skip by their own gates (§5, A) |
-| `.github/workflows/ci-regression.yml` | CI regression (PostgreSQL 17 + Windows) | the same | `ubuntu-24.04` × 17 (L01–L16, X1), `windows-2025` × 3 (W1–W3), then `ubuntu-24.04` (summary) | the established 19 groups (§4), the full regression: every test file once on Linux with PostgreSQL 17, Poppler 24.02.0 and the scratch databases, and once on Windows. One extra Linux group, X1, runs a database-view test no partition group can run. Then a summary of every JUnit report |
+| `.github/workflows/ci-regression.yml` | CI regression (PostgreSQL 17 + Windows) | the same | `ubuntu-24.04` × 18 (L01–L16, X1, X2), `windows-2025` × 3 (W1–W3), then `ubuntu-24.04` (summary) | the established 19 groups (§4), the full regression: every test file once on Linux with PostgreSQL 17, Poppler 24.02.0 and the scratch databases, and once on Windows. Two extra Linux groups: X1 runs a database-view test no partition group can run, and X2 R-F4's planted-fault (mutation) tests (added 2026-10-21). Then a summary of every JUnit report |
 
 - **Full regression automatically.** The full suite runs on every push to the branch and on every pull request to
   `main`. Nothing is left to a manual run. The evidence-corpus and real-document suites are not executed by either
@@ -86,7 +86,9 @@ routes 0; connect to 192.0.2.1: ENETUNREACH: no network`.
   - `F3_TEST_DATABASE_URL` and `F5_TEST_DATABASE_URL`: the cluster's superuser. Those suites create their own
     databases and roles;
   - group X1 only: `DATABASE_URL` set to `f1scratch` as the superuser. Its test reads the `daily_completeness` view,
-    which the documented worker grants do not cover, and it rolls back everything it writes.
+    which the documented worker grants do not cover, and it rolls back everything it writes;
+  - group X2 only: `RF4_MUTANTS=1`. `tests/test_rf4_mutants.py` then plants each fault in a copy of the checkout and
+    runs the named R-F4 tests against it in child pytest processes, in the same container, with no network.
 - **Isolation.**
   - Each group runs in its own job, on its own runner, in its own container.
   - Inside a group there is one pytest process, and its clusters run one after another.
@@ -121,7 +123,7 @@ routes 0; connect to 192.0.2.1: ENETUNREACH: no network`.
 | Where | Command |
 |---|---|
 | Partition check (every job) | `python3 .github/ci/groups.py --check` |
-| A group's tests | `python .github/ci/groups.py <L01…L16 \| X1 \| W1…W3 \| offline>` (one per line, all under `tests/`) |
+| A group's tests | `python .github/ci/groups.py <L01…L16 \| X1 \| X2 \| W1…W3 \| offline>` (one per line, all under `tests/`) |
 | The groups a full run must report | `python .github/ci/groups.py --ci-groups` |
 | Linux, in the container | `python3 -m pytest -p no:cacheprovider -q -rfEs --junitxml=/out/junit.xml -o junit_suite_name=<group> <tests>` |
 | Windows | `python -m pytest -p no:cacheprovider -q -rfEs --junitxml=<reports>\junit.xml -o junit_suite_name=<group> <tests>` |
@@ -168,6 +170,7 @@ The 19 groups of the earlier full runs (controls I4 and I5; `docs/R_F4_IMPLEMENT
 | L14, L15, L16 | part C: every other file, in byte order, in slices of 11 (L16 holds `test_rf4_postgres` and `test_rf4_unit`) |
 | W1, W2, W3 | part A (the HB files of L01–L07), part B (the files of L08–L13), part C |
 | X1 (extra) | `test_eod_completeness.py::test_daily_completeness_view_distinguishes_intraday_from_eod`, in its own pytest run with `DATABASE_URL` (§2.1). It cannot run in a partition group: `test_dry_run_isolation.py` deletes `DATABASE_URL` from the environment when it is imported, which happens at collection. In L14 the same test still skips |
+| X2 (extra) | `tests/test_rf4_mutants.py` with `RF4_MUTANTS=1` (§2.1): a control, then each R-F4 mutant planted in a copy of the checkout and killed only if its named tests fail (`docs/R_F4_IMPLEMENTATION.md` §18). In its partition group, L16, the planted runs skip and only the file's applicability check runs |
 
 **What `groups.py --check` enforces.**
 - Each side runs every `tests/test_*.py` file exactly once. The check fails if a file is missing, repeated, or
@@ -181,7 +184,7 @@ The 19 groups of the earlier full runs (controls I4 and I5; `docs/R_F4_IMPLEMENT
 | Class | Meaning | Suites |
 |---|---|---|
 | **A** | Automatic CI: offline-safe | Every test that needs no database, no evidence corpus and no network. They execute in the fast workflow and again in their regression group |
-| **B** | CI with explicit setup | The PostgreSQL 17 suites (`P1_PG_BINDIR`), the scratch-database suites (F1/F3/F5 URLs; `DATABASE_URL` in X1), `restic` (P1's off-site test), the tests gated on the pinned Poppler, and the Windows runs |
+| **B** | CI with explicit setup | The PostgreSQL 17 suites (`P1_PG_BINDIR`), the scratch-database suites (F1/F3/F5 URLs; `DATABASE_URL` in X1; `RF4_MUTANTS` in X2), `restic` (P1's off-site test), the tests gated on the pinned Poppler, and the Windows runs |
 | **C** | Manual, owner-run or opt-in: not run by CI | The real-document suites, the RDV/F0 evidence suites, the root `test_cse_endpoints.py`, the one-off investigation workflows, and the container provisioning probes |
 | **D** | Dual-run: in CI, and again by the owner at release or audit time | The R-F4 PostgreSQL suite, the HB-4 and HB-5 integration suites, and the pin- and frozen-file tests |
 

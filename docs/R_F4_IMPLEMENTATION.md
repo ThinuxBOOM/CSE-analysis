@@ -7,9 +7,10 @@ found, fixed, are `1252c56` (§11); audit finding RF4-A1 (the reader's and `veri
 snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and failure paths are corrected in `144a213`
 (§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
 (§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
-runbook's preflight-then-`verify` order is in the commit adding §17. All await the owner's independent review. NOT
-accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design
-carries the amendment text) and then, the same day, formally waived the item for this implementation package:
+runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are in
+the commit adding §18. All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner
+selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day,
+formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -50,16 +51,18 @@ and evidence only; it changes no decision.
 | `b89cdec` | Claude (the owner's review, 2026-10-20) | `verify.py` and `__main__.py`: a limited `verify` is partial (`scope`) and never clean, a limit below 1 refused; `preflight.py`: every column checked; tests u24, u25, p49 and p50; the p47/p48 reconciliation of the design and this record (§15) |
 | `493bf73` | Claude (the independent audit, 2026-10-20) | `preflight.py`: each table's row-level security (enabled, forced, policies), persistence, kind, partitioning and inheritance, for 0018's tables and the F3 and F5 tables the reader and `verify` read; tests u26, p51 and p52 (`verify` under row-level security); the design's §5 and status; section 16 (§16) |
 | `7d58604` | owner commit of Claude's fix | p52's lock wait (it hung `493bf73`'s first L16 run): the worker and readers rolled back before each `ALTER`, a 10-second `lock_timeout` in p51 and p52; §16.4's note (§16.4) |
-| the commit adding section 17 | Claude (owner-directed, 2026-10-20) | The Phase 2 runbook's R-F4 passages (§6, §12): the preflight, then the full `verify`, at deployment and on each checkpoint's restored copy; test u27; the design's §5 line and status; section 17. No pin changes (§17) |
+| `a78dbc9` | Claude (owner-directed, 2026-10-20) | The Phase 2 runbook's R-F4 passages (§6, §12): the preflight, then the full `verify`, at deployment and on each checkpoint's restored copy; test u27; the design's §5 line and status; section 17. No pin changes (§17) |
+| `0a901dc` | Claude | Documents only: `a78dbc9`'s GitHub Actions results in §17.4 |
+| the commit adding section 18 | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
 at `f67c181`** (Findings 1–3, §7), **at `2bc66c1`** (Findings 4–5, §8), **at `d6924e7`** (name resolution, §9), **at
 `1252c56`** (search-path evidence, §11), **at `95da822`** (finding RF4-A1, §12), **at `144a213`** (`verify`'s snapshot
 metadata, §13), **at `cbcf8d6`** (HB-4 integration, §14), **at `b89cdec`** (`verify`'s scope, the preflight's columns,
-§15) **at `7d58604`** (table properties, §16) **and at the commit adding §17** (the runbook's order). Where they differ,
-the later section is current: they change the store, the in-band check, the preflight and the HB-1 to HB-6 pins named in
-§2.
+§15), **at `7d58604`** (table properties, §16), **at `a78dbc9`** (the runbook's order, §17) **and at the commit adding
+§18** (planted faults). Where they differ, the later section is current: they change the store, the in-band check, the
+preflight and the HB-1 to HB-6 pins named in §2.
 
 **Push.** Claude's `git push` is refused (HTTP 403): the Git credential on the machine belongs to a GitHub account
 without write access to the repository, and it was not changed. The owner pushes; every commit up to `38d2a34` is on
@@ -1725,3 +1728,140 @@ unchanged.
 - **The restored copy.** Reaching it is P1's procedure. P1's routine restore check deletes its throwaway cluster when
   it ends; this runbook does not invent the steps to keep one running.
 - **The order is a procedure.** HB-6's `arm` does not check R-F4 (runbook §5); the owner confirms it.
+
+## 18. Planted-fault tests for the changes after `d6924e7`; the L02 baseline (2026-10-21)
+
+**The request.** The owner asked for three things:
+- establish which planted-fault (mutation) tests last ran, and which later changes to `schema.py`, `reader.py`,
+  `verify.py` and `preflight.py` no planted fault covers at the current head;
+- cover those gaps with the minimum targeted tests, run in GitHub Actions;
+- compare the latest L02 failure with the recorded baseline signature.
+
+**All of this section's work was done by Claude.** The audit is **not complete**; R-F4 is **not** accepted or frozen.
+**What changed:** tests and CI only, with no application code, migration, HB-1 to HB-6 file or pin.
+
+### 18.1 What ran last, and what it covers
+
+**M1–M17 (§5.7) last ran at `d6924e7`.** M1–M14 ran on copies of it, on Windows; M15–M17 ran in the container. They
+were Claude's local runs (§9.5), and 17 of 17 were killed. They target:
+- F5's wiring (`_persist`, `make_consumer`);
+- the store's duplicate-key read-back and `on conflict`;
+- `run()`'s single commit;
+- HB-1's pin closure;
+- the RDV harness.
+
+At `1252c56` they were not re-run (§11.6), and they have not run since.
+
+**What changed afterwards in the four files**, with no planted fault for any of it:
+
+| File | Commits | Changes |
+|---|---|---|
+| `schema.py` | `1252c56` | D1 (only PostgreSQL's whitespace separates names); D2 (`current_schemas()` not read where it would create a temporary schema) |
+| `reader.py` | `95da822` | The name-resolution guard on every public entry point |
+| `verify.py` | `95da822`, `144a213`, `b89cdec` | The unsafe-session refusal, one REPEATABLE READ snapshot and the mid-run refusal; the snapshot's identity, the autocommit refusal and the unmasked failure; the scope of a limited scan and the limit's validation |
+| `preflight.py` | `b89cdec`, `493bf73` | The column check; the table-property check (row-level security, persistence, kind, inheritance, `READ_TABLES`) |
+| `__main__.py` | `b89cdec` | `--limit` below 1 is a usage error |
+
+`store.py` has not changed since `d6924e7`. Each later change had a negative control when it was made: the earlier
+code with the new tests (§11.6, §12.7, §13.6, §15.4, §16.4). Those were Claude's local runs at the time; none is a
+planted fault in the current code.
+
+### 18.2 The mutants (`tests/test_rf4_mutants.py`)
+
+**How a mutant runs.** Each is one exact substitution, found exactly once, in a copy of the repository. Its named
+tests then run in a fresh pytest process against the copy. It is **killed** only when that process exits 1 (test
+failures, not a collection or usage error) and every named test is among the failures.
+
+**The control.** It runs first and runs every named test on the unchanged copy: all must pass, or the mutants fail
+as unattributable.
+
+**Bytecode.** None is written, so a stale `.pyc` never stands in for a restored file.
+
+**The applicability test.** It runs everywhere and checks that every substitution still applies exactly once and
+every named test exists. So a code change that moves a mutation point fails visibly, instead of leaving a mutant that
+applies nowhere.
+
+| Mutant | Reverts | Planted fault | Named tests (all must fail) |
+|---|---|---|---|
+| MS1 | `1252c56` D1 | `PG_SPACE` also counts a no-break space | u21 (whitespace), p36 |
+| MS2 | `1252c56` D2 | the guard always reads `current_schemas()` | p39 |
+| MR1 | `95da822` | `require_safe_resolution` never refuses | u22 (entry points), p40 |
+| MR2 | `95da822` | `load_classification` skips the check | u22 (entry points), p40 |
+| MV1 | `95da822` | `verify` reads on an unsafe session | u22 (refuses an unsafe session), p40 |
+| MV2 | `95da822` | READ COMMITTED instead of REPEATABLE READ | u22 (one snapshot), p42 |
+| MV3 | `95da822` | a refusal during the run is dropped | u22 (a refusal ends it unclean) |
+| MV4 | `144a213` | an autocommit connection is accepted | u23 (autocommit), p45 |
+| MV5 | `144a213` | the rollback's error masks the failure | u23 (the failure as itself), p46 |
+| MV6 | `144a213` | `pg_snapshot` holds the start time | u23 (identity and time apart), p44 |
+| MV7 | `b89cdec` | a partial scan can be clean | u24 (limited scan), p49 |
+| MV8 | `b89cdec` | a limit of 0 is accepted | u24 (other limits), p49 |
+| MC1 | `b89cdec` | the command accepts `--limit 0` | u24 (the command's limit), p49 |
+| MP1 | `b89cdec` | a dropped `NOT NULL` is not reported | u25 (column drift), p50 |
+| MP2 | `b89cdec` | the object check reads no columns | p50 |
+| MP3 | `493bf73` | row-level security is not reported | u26 (table drift), p51, p52 |
+| MP4 | `493bf73` | `READ_TABLES` are not checked | p51, p52 |
+| MP5 | `493bf73` | a table that is not permanent is not reported | u26 (table drift), p51 |
+
+**18 mutants, one or more per later change.** This is **not a full mutation sweep**:
+- the mutants are hand-chosen;
+- no generator or exhaustive operator set was used;
+- equivalent mutants were not explored;
+- M1–M17 are not repeated here.
+
+### 18.3 Where they run: CI group X2 (a CI-only addition)
+
+The planted runs need PostgreSQL 17 and `RF4_MUTANTS=1`. They now run as a dedicated group, X2, in
+`ci-regression.yml`, in the same container with no network: `check_no_network.py` and `check_cse_unreachable.py` run
+first, as for every group. Four changes:
+- `.github/ci/groups.py`: `EXTRA["X2"]`;
+- `.github/ci/linux_tests.sh`: `RF4_MUTANTS=1` for X2 alone;
+- the workflow's matrix: X2;
+- `docs/CI_TEST_STRATEGY.md`.
+
+The summary job expects X2's report, because it reads the groups from `groups.py --ci-groups`. Elsewhere the file's
+planted runs skip:
+- in L16, its partition group (L14 and L15 are unchanged);
+- in W3;
+- in the fast workflow.
+
+### 18.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6, run by Claude: `pytest tests/test_rf4_mutants.py` | 1 passed (the applicability test), 19 skipped (the planted runs) |
+| A local sanity check, Windows, run by Claude, **not counted**. A scratch script, not committed: each mutant planted in a copy, with **only its unit-test killers** run | Control: the unit killers pass on the unchanged copy. The 15 mutants that have unit killers were killed by them. MS2, MP2 and MP4 have PostgreSQL killers only, so they were not run. No PostgreSQL killer was run locally |
+| GitHub Actions for this section's commit | Not run when written: Claude does not push. Expected after a push: X2 20 passed (the applicability test, the control and 18 mutants); L16, W3 and offline each 1 more passed and 19 more skipped. **To be recorded once it has run, not assumed here** |
+
+### 18.5 The L02 baseline (latest regression run, inspected)
+
+**The run:** regression [39522737402](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39522737402), at
+`0a901dc`, 2026-10-21. It **failed**, verdict `baseline-only`. 19 of its 21 jobs succeeded; L02 (240 passed, 1 failed)
+and the summary job failed.
+
+**The summary job's own check matched the recorded signature** (`.github/ci/summarize.py` `KNOWN_BASELINE`;
+`docs/CI_TEST_STRATEGY.md` §7.1). It reported the failure as a warning, "the recorded baseline failure", not as a new
+failure. `baseline_match` reports that only when every part matches:
+- the test, `test_l4_seeding_reads_both_archives`;
+- the group, L02;
+- a failure, not an error;
+- the line, `tests/test_hb2_postgres.py:588`;
+- the assertion `assert (N is not None and N < 60)`;
+- N within an hour of the time since the fake clock's fixed 2026-10-03 03:00 UTC.
+
+**Nothing has changed.** `summarize.py` last changed in `4be6fa9`, and `tests/test_hb2_postgres.py` and
+`tests/hb2_fakes.py` in `1896280`.
+
+**It is the same known baseline, not a changed failure.** N itself is in the job's log and artifacts, which need a
+signed-in account, so it rests on the summary's check. **It is not waived or accepted here:** that decision is the
+owner's. HB-2's code, its tests and the signature are unchanged.
+
+### 18.6 What remains unverified
+
+- **This section's GitHub Actions run**, X2 included (§18.4).
+- **Code before the later changes** has never had a planted-fault test, only negative controls:
+  - `d6924e7`'s own name-resolution code (`schema.search_path_problems`, and the preflight's per-role search path);
+  - Findings 1–5's checks (`f67c181`, `2bc66c1`: the persisted-F3 check, the trigger identity and configuration, the
+    constraint definitions).
+- **M1–M17** have not run at the current head. Their targets are unchanged since `d6924e7` except for pin values.
+- **The scope of these mutants.** One mutant per change is evidence that the named tests detect that fault. It is not
+  proof that they detect every fault in the change.

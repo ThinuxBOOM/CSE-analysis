@@ -9,6 +9,8 @@
 #     free port, removed by the suite);
 #   - for group X1 only, DATABASE_URL to `f1scratch` as the cluster's superuser (the view test it runs reads
 #     daily_completeness, which the documented worker grants do not cover; it rolls everything back);
+#   - for group X2 only, RF4_MUTANTS=1: R-F4's planted-fault tests (tests/test_rf4_mutants.py), which plant each fault
+#     in a copy of the checkout and run the R-F4 suites against it in child pytest processes, here, with no network;
 #   - pytest on the group's tests (.github/ci/groups.py), with a JUnit report.
 # Group "offline" sets none of the database variables: every file runs, and the PostgreSQL and database-URL suites
 # skip by their gates.
@@ -80,6 +82,10 @@ if [ "$group" != offline ]; then
     if [ "$group" = X1 ]; then
         export DATABASE_URL="postgresql://$me@127.0.0.1:5433/f1scratch"
         note "X1: DATABASE_URL=$DATABASE_URL"
+    fi
+    if [ "$group" = X2 ]; then
+        export RF4_MUTANTS=1
+        note "X2: RF4_MUTANTS=1 (R-F4's planted-fault tests)"
     fi
     note "provisioned; P1_PG_BINDIR=$P1_PG_BINDIR"
 fi

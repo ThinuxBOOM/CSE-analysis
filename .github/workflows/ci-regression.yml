@@ -8,9 +8,10 @@
 #   - W1-W3 on Windows: the same files in three parts, Python 3.14 with pinned packages (.github/ci/windows-requirements.txt),
 #     CSE's host names blocked in the hosts file, temporary files on the workspace's drive. PostgreSQL and POSIX-only
 #     suites skip there by their own gates.
-# Together each side runs every tests/test_*.py file exactly once: this is the full regression. One extra Linux group,
-# X1, runs the single database-view test no partition group can run (DATABASE_URL; .github/ci/groups.py). The
-# evidence-corpus and real-document suites skip everywhere. No CSE request is possible and no secret is used.
+# Together each side runs every tests/test_*.py file exactly once: this is the full regression. Two extra Linux groups:
+# X1 runs the single database-view test no partition group can run (DATABASE_URL), and X2 runs R-F4's planted-fault
+# (mutation) tests (RF4_MUTANTS=1; .github/ci/groups.py). The evidence-corpus and real-document suites skip everywhere.
+# No CSE request is possible and no secret is used.
 # A final job summarises all JUnit reports; it fails on any failure, and says whether each one is the recorded
 # baseline (matched by its whole signature) or new.
 name: CI regression (PostgreSQL 17 + Windows)
@@ -33,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13, L14, L15, L16, X1]
+        group: [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13, L14, L15, L16, X1, X2]
     steps:
       - name: Check out the commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
