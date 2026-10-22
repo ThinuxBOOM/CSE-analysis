@@ -292,8 +292,8 @@ def read_report(path):
 
 def verdict(code, cases, killers):
     """('killed' | 'survived' | 'invalid', why) for a planted run. code: the child's exit code, None when it timed out;
-    cases: read_report's; killers: {test id: the reason its failure must match}. Killed only when the child ended with
-    test failures, no test errored, and every named test failed for its reason (one case is enough for a parametrized
+    cases: read_report's; killers: {test id: the reason its failure must match}. Killed only when the child exited 1
+    (test failures), no test errored, and every named test failed for its reason (one case is enough for a parametrized
     test)."""
     if code is None:
         return "invalid", "the child timed out"
@@ -320,6 +320,8 @@ def verdict(code, cases, killers):
         return "survived", f"passed: {survived}"
     if other:
         return "invalid", f"failed for another reason: {other}"
+    if code != 1:                       # the report and the exit code disagree: a kill needs both
+        return "invalid", f"exit {code}, although every named test failed for its reason: a kill needs exit 1"
     return "killed", "every named test failed for its reason"
 
 
@@ -357,6 +359,21 @@ def test_the_kill_rule_counts_only_a_failure_for_its_intended_reason():
     assert control_problems(1, {a: [("passed", "")], b: [("failed", "x")]}, killers) == [f"{b}: ['failed']", "exit 1"]
     assert control_problems(0, {a: [("passed", "")]}, killers) == [f"{b}: did not run"]
     assert control_problems(None, None, killers) == ["the control timed out"]
+
+
+def test_a_kill_needs_exit_1_even_when_every_named_test_failed_for_its_reason():
+    """Runs everywhere (an independent audit finding, 2026-10-22). A report in which every named test failed for its
+    reason, from a child that exited 0, is INVALID, not a kill: the exit code and the report disagree, and the kill
+    rule needs both. Exit 0 stays a survivor's code, when the named tests passed. The same report with exit 1 is a
+    kill."""
+    a, b = "t.py::test_a", "t.py::test_b"
+    killers = {a: "DID NOT RAISE", b: r"\(1, 1\) == \(0, 0\)"}
+    every_one_failed = {a: [("failed", "Failed: DID NOT RAISE <class 'E'>")],
+                        b: [("failed", "assert (1, 1) == (0, 0)")]}
+    assert verdict(1, every_one_failed, killers) == ("killed", "every named test failed for its reason")
+    assert verdict(0, every_one_failed, killers) == (
+        "invalid", "exit 0, although every named test failed for its reason: a kill needs exit 1")
+    assert verdict(0, {a: [("passed", "")], b: [("passed", "")]}, killers) == ("survived", f"passed: {[a, b]}")
 
 
 def test_the_report_reader_reads_each_outcome(tmp_path):
