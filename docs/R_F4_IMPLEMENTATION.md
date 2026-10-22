@@ -60,7 +60,8 @@ and evidence only; it changes no decision.
 | `ef4e0e7` | Claude (the owner's "commit") | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
 | `5528e5a` | Claude (the owner's request, 2026-10-21; the owner's "commit") | Documents only: the acceptance matrix at `ef4e0e7`, each row from the tests' bodies; the HB-5 Windows report-path defect investigated (HB-5 unchanged); the L02 baseline as a failed test matching its signature; the gaps X2 leaves (§19) |
 | `41d7e0f` | Claude (the owner's decisions, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: 14 more mutants (M15–M17, MF1, MR3, MT1–MT3, MP6, MP7, MN1–MN4) and a stricter kill rule (each named test's intended reason, read from a JUnit report); section 20, with the owner's decisions and the reader-login staging plan. No application code, migration, pin or CI change (§20) |
-| the commit adding §20.8 | Claude | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
+| `b32a06a` | Claude (the owner's "commit") | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
+| the commit adding §20.9 | Claude | Documents only: `b32a06a`'s GitHub Actions results, X2 36 passed (§20.9) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2411,4 +2412,42 @@ Claude's local run below; CI's JUnit report was not read. The call is removed. A
 - **Afterwards:** no container or volume of the run remained.
 
 **Still to come:** the corrected X2 run in GitHub Actions. That needs the owner's commit and push. It is to be
-recorded once it has run, not assumed here.
+recorded once it has run, not assumed here. *It ran: §20.9.*
+
+### 20.9 X2 with the corrections (2026-10-22)
+
+**The run.** The owner pushed `b32a06a` (`b32a06a1c191ee98c3a16d3d22b14a32a59a0877`). Its GitHub Actions runs, read by
+Claude from their public job conclusions and check-run annotations:
+- fast [39704161566](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39704161566): success (offline 2,107
+  passed, 581 skipped);
+- regression [39704161715](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39704161715): **failed**, verdict
+  `baseline-only`.
+
+**X2: 36 passed, exit 0.** Those are:
+- the 3 tests that run everywhere;
+- the control (every named test passed on the unchanged copy);
+- **all 32 mutants, killed for their intended reasons:** each child exited 1, nothing errored, and every named test
+  failed with its reason. M17 and MN3, INVALID at `41d7e0f` (§20.8), were killed with the corrections.
+
+**The other groups:**
+- **L16:** 642 passed, 68 skipped; **W3:** 1,001 passed, 307 skipped. Both as at `41d7e0f`.
+- **L02:** 240 passed, 1 failed. The failure is the recorded HB-2 baseline: the summary matched its signature
+  ("the recorded baseline failure"). It is **open**, not waived or accepted (§20.1).
+- **Every other group:** unchanged.
+- **All 21 groups together:** 4,710 passed, 1 failed (the baseline), 700 skipped, 2 xfailed.
+
+**What this shows, and what it does not:**
+- **It shows** that each of the 32 planted faults of §18.2 and §20.3 is detected by its named tests, for the
+  intended reason, on PostgreSQL 17 in CI, at `b32a06a`.
+- **The per-test failure texts** are in X2's JUnit report and log, which need a signed-in account and were not read.
+  The result rests on the group's public counts and the kill rule (§20.2).
+- **The limits of §20.7 stand:**
+  - hand-chosen mutants, not a full sweep;
+  - M1–M14 Claude-reported only;
+  - the runbook's checks not executed;
+  - no reader login (§20.6);
+  - no real documents;
+  - L02 open;
+  - HB5-W1 a separate issue.
+
+**Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
