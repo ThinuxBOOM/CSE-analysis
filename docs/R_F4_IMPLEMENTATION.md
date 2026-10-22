@@ -10,10 +10,10 @@ snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and fa
 runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
 `6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19;
 the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
-failure, for R-F4 acceptance only, is §21 (the test still fails). All await the owner's independent review. NOT
-accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen;
-the R-F4 design carries the amendment text) and then, the same day, formally waived the item for this
-implementation package:
+failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22. All await the
+owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17
+(F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally waived the item for
+this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -64,6 +64,7 @@ and evidence only; it changes no decision.
 | `b32a06a` | Claude (the owner's "commit") | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
 | the commit adding §20.9 | Claude | Documents only: `b32a06a`'s GitHub Actions results, X2 36 passed (§20.9) |
 | the commit adding section 21 | Claude (the owner's decision, 2026-10-22) | Documents only: the owner's waiver, for R-F4 acceptance only, of the L02 baseline failure `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`; the test still fails (§21) |
+| the commit adding section 22 | Claude (the owner's request, 2026-10-22) | `tests/test_rf4_mutants.py`: §5.7's M1–M14 as X2 mutants, each with §5.7's named test and its intended reason; `docs/CI_TEST_STRATEGY.md`: X2's description; section 22. No application code, migration, frozen test, pin or CI configuration change (§22) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2131,7 +2132,7 @@ Nothing in HB-5's code, tests or pins was changed.
 | # | Gap | Material | Smallest closure |
 |---|---|---|---|
 | 1 | M15–M17 (`_persist` committing per filing; the duplicate-key read-back skipped; `on conflict` lost) are Claude-reported only, last at `d6924e7`. Their targets are unchanged since: `worker/extract_financial_candidates.py` and `store.py` have no change after `d6924e7`, and the HB-1 to HB-6 preflights changed pin values only (`git diff d6924e7 ef4e0e7`) | Yes: the transaction and duplicate semantics | Three mutants in `tests/test_rf4_mutants.py`, so they run in X2: killers p21, p17, p24 |
-| 2 | M1–M14 (wiring and pins) are Claude-reported only | Lower: the wiring is unchanged, and u17 and the lifecycle test run in GitHub Actions | Optional: M1, M7, M8 (distinct faults, killers the lifecycle test and u17) |
+| 2 | M1–M14 (wiring and pins) are Claude-reported only *(in X2 since §22, 2026-10-22; its CI run is recorded there)* | Lower: the wiring is unchanged, and u17 and the lifecycle test run in GitHub Actions | Optional: M1, M7, M8 (distinct faults, killers the lifecycle test and u17) |
 | 3 | The store's persisted-F3 check (`store.py`, the `persisted != row["f3_input_sha256"]` test) has no planted fault | Yes: audit Finding 1 | One mutant (the condition never true): killers p25 ×3 |
 | 4 | The reader's F3 check in `_evidence_for_run` (`reader.py:196`) has no planted fault | Yes: it is what makes RT-14 compare F3 | One mutant: killer p11 (the F3 hash tamper reported `corrupt`) |
 | 5 | The trigger checks in `schema._trigger_problems` (the function body, its configuration) and the extra-trigger check have no planted fault | Yes: tamper protection | Two or three mutants: killers p26/u18, p28/u19, p29/u19 |
@@ -2360,7 +2361,7 @@ survives `SET ROLE`.
   failure, come from X2 after the owner's commit and push.
   *They ran at `41d7e0f`: §20.8.*
 - **Mutation coverage** is still hand-chosen, not a full sweep: equivalent mutants were not explored, and M1–M14 are
-  Claude-reported only.
+  Claude-reported only. *M1–M14 are in X2 since §22.*
 
 **Unchanged:**
 - **L02:** the open, failed HB-2 baseline (owner decision 1). *Waived for R-F4 acceptance only on 2026-10-22
@@ -2566,3 +2567,105 @@ acquisition.
 
 §18.5, §19.1, §19.6, §20.1 and §20.7–§20.9 recorded L02 as open and not waived. They record the position before this
 decision. §19.3, §19.6, §20.1 and §20.7 now point here.
+
+## 22. §5.7's M1–M14 in X2 (2026-10-22)
+
+**The request.** Bring the original mutation checks M1–M14 into X2, so that their evidence comes from CI and not only
+from Claude's local runs.
+
+**All of this section's work was done by Claude. Status: NOT ACCEPTED / NOT FROZEN.** The audit is not complete.
+
+**What changed:**
+- `tests/test_rf4_mutants.py`: 14 mutants, their constants and `pin_line`;
+- two lines of `docs/CI_TEST_STRATEGY.md` describing X2 (§2.1 and the group table);
+- this record.
+
+**What did not change:** application code, migration 0018, any frozen test, any HB-1 to HB-6 file or pin, CI's
+configuration, the kill rule, and the L02 baseline and its waiver (§21). The 32 earlier mutants are unchanged.
+
+**The GitHub Actions evidence needs the owner's commit and push.** The request asked for that evidence but also said
+not to commit. When this section was written the changes were uncommitted and no X2 run had them. The run is to be
+recorded once it has run, not assumed here.
+
+### 22.1 The historical evidence, kept apart
+
+§5.7's M1–M14 ran on Windows copies of `82b7a3e` (`pytest -q -x`, so the first failing test was named). They were
+re-run at `f67c181`, `2bc66c1` and `d6924e7` (§7.4, §8.4, §9.5). All of that is **Claude-reported, local only**,
+under the rule of the time: the named tests failed. They never ran in CI.
+
+§22's mutants rewrite the same faults for the current code and the stricter rule of §20.2:
+- **killed** only on exit 1, with no test errored and every named test failing for its intended reason;
+- an unchanged control first.
+
+### 22.2 The mapping
+
+Each named test is §5.7's. **"Lifecycle"** is a frozen F5 test, named here and not changed:
+`tests/test_f5_lifecycle.py::test_candidates_are_built_in_memory_and_the_document_is_deleted`.
+Each reason was read from that test's real failure under its mutant (§22.4); the exact patterns are in the test file.
+
+| ID | §5.7's fault | File | Substitution | Named test | Intended reason (the failure seen) |
+|---|---|---|---|---|---|
+| M1 | `_persist` makes no F4 save | F5 | `f4 = f4_store.save(got["f4"], cid, cls)` → `f4 = "inserted"` | lifecycle | the saves were `f3, link, f5, commit`: no F4 |
+| M2 | F4 saved after F5 | F5 | the F4 save and the F5 save swapped | lifecycle | `f3, link, f5, f4, commit` |
+| M3 | F4 saved before the issuer link | F5 | the issuer link moved after the F4 store's choice and save | lifecycle | `f3, f4, link, f5, commit` |
+| M4 | the caller's F4 store ignored | F5 | `f4_store = stores.get("f4")` → `f4_store = None` | lifecycle | R-F4's own store was used on the test's stand-in connection: `'Conn' object has no attribute 'cursor'`, raised in `financial_f4_store/store.py` |
+| M5 | `make_consumer` drops F4's output | F5 | `"f4": ext, ` removed from the consumer's result | lifecycle | `KeyError: 'f4'` raised in F5's `_persist` |
+| M6 | `make_consumer` keeps a deep copy | F5 | `"f4": ext` → `"f4": __import__("copy").deepcopy(ext)` | u17 (identity) | `<object …> is <object …>` is false |
+| M7 | the F4 save gets F5's result, not the F3 dict | F5 | the save's third argument `cls` → `got["result"]` | lifecycle | `KeyError: 'cse_filing_id'` in the test's F4 stand-in, which checks that argument |
+| M8 | an F4 save failure is swallowed | F5 | the F4 save wrapped in `try: … except Exception: f4 = None` | u17 (propagation) | `DID NOT RAISE` `UnsupportedValue` |
+| M9 | `_persist`'s result drops `"f4"` | F5 | `"f4": f4, "f5": status` → `"f5": status` | lifecycle | `KeyError: 'f4'` raised in the test, reading the result |
+| M10 | HB-1 does not pin `schema.py` | HB-1's preflight | the `schema.py` line of `FROZEN_FILES` removed | u17 (HB-1 closure) | `Extra items in the right set: 'worker/financial_f4_store/schema.py'` |
+| M11 | HB-1 does not pin `STORE_VERSION` | HB-1's preflight | R-F4's `STORE_VERSION` line of `FROZEN_VERSIONS` removed | u17 (HB-1 closure) | `('worker.financial_f4_store', 'STORE_VERSION', …) in (…)` is false |
+| M12 | HB-3 keeps HB-2's old preflight pin | HB-3's preflight | its pin of `worker/backfill_transport/preflight.py` set back to the value at `main` (`4646626`), before R-F4 | HB-3 u12 | `frozen file worker/backfill_transport/preflight.py changed` |
+| M13 | HB-1 keeps F5's old hash | HB-1's preflight | its pin of `worker/extract_financial_candidates.py` set back to the value at `main` (`4646626`) | HB-1 u10 | `frozen file worker/extract_financial_candidates.py changed` |
+| M14 | the RDV harness saves F5 before the issuer link | `tests/rdv_evidence.py` | `persist_filing` saves F5 (with no link) and then makes the link | u17 (RDV order) | `['f3', 'classification_id', 'f5', 'link', 'commit'] == ['f3', 'classification_id', 'link', 'f5', 'commit']` |
+
+**M5 and M9** both raise `KeyError: 'f4'`. Their reasons tell them apart by where it is raised: in `_persist` for M5,
+in the test for M9.
+
+**M10–M13 change a pin, and their named test checks exactly that pin:**
+- the reason names the pinned file or version;
+- no test that checks a downstream pin is named: not HB-2's pin of HB-1's preflight, and not HB-4's of HB-3's;
+- so a failure caused only by an unrelated downstream pin cannot count as their kill.
+
+**M10–M13's lines are read from the source when the module loads** (`pin_line`). A pin cascade changes their values,
+and reading the lines keeps the mutants aimed at them. A line not found exactly once fails the applicability test.
+
+**"Old" pin, for M12 and M13:** the value at `main` (`4646626`), before R-F4. At `82b7a3e`, §5.7's "old" was the value
+before that stage's cascade. Both are earlier values that no longer match the file.
+
+**Not ported faithfully, or left uncovered:** none. Each of M1–M14 is planted with §5.7's fault and §5.7's named test.
+§5.7's tests were the first to fail under `-x`, so a mutant may also fail other tests, which are not named here.
+
+### 22.3 How they run
+
+They use the harness of §18 and §20 unchanged:
+- the copy, one exact substitution found once, then restored;
+- the child pytest with its JUnit report, `-vv`, the 10-minute limit and the one-minute `lock_timeout`;
+- servers left behind are stopped;
+- the control runs first;
+- `verdict()`: killed only on exit 1 (`62f4a6d`), with no error, and every named test failing for its reason.
+
+The control now names 54 tests. Their unit tests need no PostgreSQL, and they run in X2's container like the rest.
+
+### 22.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6, pytest 9.1.1, run by Claude: a scratch capture (not committed) of M1–M14's unit tests, through the module's own functions | **Control:** all 27 non-PostgreSQL named tests passed. Under each mutant its named test failed. Each reason was then set from the failure seen |
+| The same, after the reasons were set (free memory 10.6% at the start, the RAM guard armed and not fired) | `pytest tests/test_rf4_mutants.py`: 4 passed, 47 skipped. Control: 27 passed. **M1–M14: 14 of 14 killed for their reasons.** Claude-reported, **not CI evidence**, and not a substitute for it |
+| GitHub Actions at `62f4a6d` (the remote head before §21) | Regression [39766979614](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39766979614): **failed**, verdict `baseline-only`. X2 37 passed; L16 643 passed, 68 skipped; W3 1,002 passed, 307 skipped; L02 the recorded baseline. Fast [39766979693](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39766979693): success. The baseline the next run is compared with |
+| GitHub Actions for this section's changes | **Not run.** The changes are uncommitted; the run needs the owner's commit and push. **Expected:** X2 51 passed (4 run everywhere, the control, 46 mutants); L16 643 passed, 82 skipped; W3 1,002 passed, 321 skipped; offline 2,108 passed, 595 skipped; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). **To be recorded once it has run, not assumed here** |
+
+### 22.5 What remains
+
+- **The X2 run with M1–M14.** Once it has run, all of §5.7's M1–M17 and the 32 mutants of §18 and §20 run in CI.
+- **The limits of §20.7 stand:**
+  - the mutants are hand-chosen, not a full sweep;
+  - the runbook's checks have not been executed;
+  - no reader login is provisioned (§20.6);
+  - there are no real documents;
+  - L02 still fails, and is waived for R-F4 acceptance only (§21);
+  - HB5-W1 is a separate issue.
+
+**Status: NOT ACCEPTED / NOT FROZEN.**

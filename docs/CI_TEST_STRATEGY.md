@@ -88,7 +88,7 @@ routes 0; connect to 192.0.2.1: ENETUNREACH: no network`.
   - group X1 only: `DATABASE_URL` set to `f1scratch` as the superuser. Its test reads the `daily_completeness` view,
     which the documented worker grants do not cover, and it rolls back everything it writes;
   - group X2 only: `RF4_MUTANTS=1`. `tests/test_rf4_mutants.py` then plants each fault in a copy of the checkout and
-    runs the named R-F4 tests against it in child pytest processes, in the same container, with no network.
+    runs each mutant's named tests against it in child pytest processes, in the same container, with no network.
 - **Isolation.**
   - Each group runs in its own job, on its own runner, in its own container.
   - Inside a group there is one pytest process, and its clusters run one after another.
@@ -170,7 +170,7 @@ The 19 groups of the earlier full runs (controls I4 and I5; `docs/R_F4_IMPLEMENT
 | L14, L15, L16 | part C: every other file, in byte order, in slices of 11 (L16 holds `test_rf4_postgres` and `test_rf4_unit`) |
 | W1, W2, W3 | part A (the HB files of L01–L07), part B (the files of L08–L13), part C |
 | X1 (extra) | `test_eod_completeness.py::test_daily_completeness_view_distinguishes_intraday_from_eod`, in its own pytest run with `DATABASE_URL` (§2.1). It cannot run in a partition group: `test_dry_run_isolation.py` deletes `DATABASE_URL` from the environment when it is imported, which happens at collection. In L14 the same test still skips |
-| X2 (extra) | `tests/test_rf4_mutants.py` with `RF4_MUTANTS=1` (§2.1): a control, then each R-F4 mutant planted in a copy of the checkout and killed only if its named tests fail (`docs/R_F4_IMPLEMENTATION.md` §18). In its partition group, L16, the planted runs skip and only the file's applicability check runs |
+| X2 (extra) | `tests/test_rf4_mutants.py` with `RF4_MUTANTS=1` (§2.1): a control, then each mutant planted in a copy of the checkout. It is killed only if its child exits 1, no test errors, and every named test fails for its intended reason (`docs/R_F4_IMPLEMENTATION.md` §18, §20, §22). In its partition group, L16, the planted runs skip and only the file's tests that run everywhere run |
 
 **What `groups.py --check` enforces.**
 - Each side runs every `tests/test_*.py` file exactly once. The check fails if a file is missing, repeated, or

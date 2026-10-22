@@ -1,5 +1,5 @@
 """
-Planted-fault (mutation) tests for R-F4 (docs/R_F4_IMPLEMENTATION.md sections 18 and 20).
+Planted-fault (mutation) tests for R-F4 (docs/R_F4_IMPLEMENTATION.md sections 18, 20 and 22).
 
 Section 18's mutants plant faults in the changes after `d6924e7`:
     schema.py      D1 and D2 (1252c56)
@@ -16,6 +16,11 @@ Section 20's plant faults in the earlier code that had none in CI:
     schema.py      the trigger function's definition and configuration, an extra enabled trigger (f67c181, 2bc66c1),
                    and the name-resolution invariant (d6924e7)
     preflight.py   the constraint definitions (f67c181), the migration ledger and each role's search path (d6924e7)
+Section 22's are section 5.7's M1-M14 (Stage 2, fa464d2), which had run only locally:
+    F5's file      _persist's F4 save, its place, the caller's F4 store, the F3 dict it gets, a failure propagating
+                   and its outcome in the result; make_consumer handing on F4's output, the very object (M1-M9)
+    HB-1, HB-3     the pins of R-F4's schema.py and STORE_VERSION, of HB-2's preflight and of F5 (M10-M13)
+    RDV harness    tests/rdv_evidence.py's persist order (M14)
 
 Each mutant plants one fault: one exact substitution, found exactly once, in a copy of the repository. Its named tests
 then run in a fresh pytest process against the copy, which writes a JUnit report. The mutant is KILLED only when that
@@ -59,6 +64,34 @@ PKG = "worker/financial_f4_store/"
 F5 = "worker/extract_financial_candidates.py"
 # pytest 7 says DID NOT RAISE <class 'module.Name'>, pytest 8 and later DID NOT RAISE Name
 NOT_RAISED = r"DID NOT RAISE (?:<class ')?(?:[\w.]+\.)?{}\b"
+HB1 = "worker/financial_backfill/preflight.py"
+HB3 = "worker/backfill_discovery/preflight.py"
+LIFECYCLE = "tests/test_f5_lifecycle.py::test_candidates_are_built_in_memory_and_the_document_is_deleted"
+# F5's _persist, line for line (M1-M3, M7, M8)
+_LINK = '    link = stores["issuer"].link_filing(cls["cse_filing_id"])\n'
+_F4_STORE = ('    f4_store = stores.get("f4")\n'
+             "    if f4_store is None:                        # HB-4 builds its stores with four keys "
+             "(docs/R_F4_DESIGN.md section 3)\n"
+             "        from .financial_f4_store.store import PostgresF4Store\n"
+             '        f4_store = PostgresF4Store(stores["conn"])\n')
+_F4_SAVE = '    f4 = f4_store.save(got["f4"], cid, cls)\n'
+_F5_SAVE = '    status, run_id = stores["candidates"].save(got["result"], cid, link)\n'
+# the pins as they were before R-F4 (main 4646626): M12 and M13 plant them again
+PRE_RF4 = {"hb2_preflight_in_hb3": "d66a1470fea43f75e0e8568ee66a9fb00114d0003d41f4b2c7e8a2f1f96b4f9c",
+           "f5_in_hb1": "9b94d745710b0ab6ef3a1fddaefaad7cce450362790bb5bd1faa2bcd58ae3d98"}
+
+
+def pin_line(path, text):
+    """The one line of `path` that contains `text` (with its newline), read when this module loads: a pin's value
+    changes with every pin cascade, and reading it keeps M10-M13 aimed at the line as it is. When no line or more than
+    one has it, a marker that is in no file, so the applicability test fails visibly."""
+    src = open(os.path.join(REPO, path), encoding="utf-8").read().replace("\r\n", "\n")
+    found = [line + "\n" for line in src.split("\n") if text in line]
+    return found[0] if len(found) == 1 else f"<{len(found)} lines of {path} contain {text!r}>"
+
+
+_HB2_PIN_IN_HB3 = pin_line(HB3, "worker/backfill_transport/preflight.py")
+_F5_PIN_IN_HB1 = pin_line(HB1, "worker/extract_financial_candidates.py")
 
 # (mutant, the change it reverts, file, exact text, its replacement,
 #  {each test that must fail: its intended reason, a regex its failure must match})
@@ -254,6 +287,60 @@ MUTANTS = [
           r'\.\.\. SET\): \'rf4_shadow, public\'\): schema rf4_shadow is searched before public',
       P + "test_p30_a_role_level_search_path_ahead_of_public_is_refused_by_the_store_and_reported_by_the_preflight":
           r"\[\] == \[[\"']cse_worker: the search_path its sessions get"}),
+    # ------------------------------------------- section 22: section 5.7's M1-M14 (Stage 2, fa464d2), now in CI
+    ("M1", "fa464d2: _persist saves F4", F5, _F4_SAVE, '    f4 = "inserted"\n',
+     {LIFECYCLE: r"assert \[\('f3', 50553\), \('link', 50553\), \('f5', 50553, '[^']*'\), \('commit',\)\] =="}),
+    ("M2", "fa464d2: F4 is saved before F5", F5, _F4_SAVE + _F5_SAVE, _F5_SAVE + _F4_SAVE,
+     {LIFECYCLE:
+          r"assert \[\('f3', 50553\), \('link', 50553\), \('f5', 50553, '[^']*'\), \('f4', 50553\), "
+          r"\('commit',\)\] =="}),
+    ("M3", "fa464d2: F4 is saved after the issuer link", F5, _LINK + _F4_STORE + _F4_SAVE, _F4_STORE + _F4_SAVE + _LINK,
+     {LIFECYCLE:
+          r"assert \[\('f3', 50553\), \('f4', 50553\), \('link', 50553\), \('f5', 50553, '[^']*'\), "
+          r"\('commit',\)\] =="}),
+    ("M4", "fa464d2: _persist uses the caller's F4 store", F5, '    f4_store = stores.get("f4")\n',
+     "    f4_store = None\n",
+     {LIFECYCLE: r"'Conn' object has no attribute 'cursor'.*?financial_f4_store[\\/]store\.py:\d+: AttributeError"}),
+    ("M5", "fa464d2: make_consumer hands F4's output on", F5, '"f4": ext, "result": f5.build(ext, cls),',
+     '"result": f5.build(ext, cls),',
+     {LIFECYCLE: r"KeyError: 'f4'.*?extract_financial_candidates\.py:\d+: KeyError"}),
+    ("M6", "fa464d2: make_consumer keeps the very object F5 was built from", F5, '"f4": ext, "result"',
+     '"f4": __import__("copy").deepcopy(ext), "result"',
+     {U + "test_u17_make_consumer_keeps_f4s_output_the_same_object_f5_built_from":
+          r"assert \(?<object object at 0x[0-9A-Fa-f]+> is <object object at 0x[0-9A-Fa-f]+>"}),
+    ("M7", "fa464d2: the F4 save gets the F3 dict F5 consumed", F5, _F4_SAVE,
+     '    f4 = f4_store.save(got["f4"], cid, got["result"])\n',
+     {LIFECYCLE: r"KeyError: 'cse_filing_id'.*?test_f5_lifecycle\.py:\d+: KeyError"}),
+    ("M8", "fa464d2: a failing F4 save propagates", F5, _F4_SAVE,
+     "    try:\n" + "    " + _F4_SAVE + "    except Exception:\n        f4 = None\n",
+     {U + "test_u17_a_failing_f4_save_propagates_and_f5_is_never_saved": NOT_RAISED.format("UnsupportedValue")}),
+    ("M9", "fa464d2: _persist's result holds the F4 outcome", F5, '"f4": f4, "f5": status', '"f5": status',
+     {LIFECYCLE: r"KeyError: 'f4'.*?test_f5_lifecycle\.py:\d+: KeyError"}),
+    ("M10", "fa464d2: HB-1 pins schema.py, in the R-F4 closure _persist imports", HB1,
+     pin_line(HB1, "worker/financial_f4_store/schema.py"), "",
+     {U + "test_u17_hb1_pins_the_r_f4_modules_persist_imports_and_store_version":
+          r"Extra items in the right set:\s*(?:E\s+)?'worker/financial_f4_store/schema\.py'"}),
+    ("M11", "fa464d2: HB-1 pins R-F4's STORE_VERSION", HB1,
+     pin_line(HB1, '("worker.financial_f4_store", "STORE_VERSION"'), "",
+     {U + "test_u17_hb1_pins_the_r_f4_modules_persist_imports_and_store_version":
+          r"assert \('worker\.financial_f4_store', 'STORE_VERSION', '[^']+'\) in \("}),
+    ("M12", "the R-F4 cascade: HB-3 pins HB-2's preflight as it is now (M12: its pin from before R-F4, main 4646626)",
+     HB3, _HB2_PIN_IN_HB3, re.sub(r'"[0-9a-f]{64}"', f'"{PRE_RF4["hb2_preflight_in_hb3"]}"', _HB2_PIN_IN_HB3),
+     {"tests/test_hb3_unit.py::test_u12_the_frozen_baseline_and_this_package_pass_hb3s_offline_checks":
+          r"frozen file worker/backfill_transport/preflight\.py changed"}),
+    ("M13", "fa464d2: HB-1 pins F5 as it is now (M13: F5's hash from before R-F4, main 4646626)", HB1,
+     _F5_PIN_IN_HB1, re.sub(r'"[0-9a-f]{64}"', f'"{PRE_RF4["f5_in_hb1"]}"', _F5_PIN_IN_HB1),
+     {"tests/test_hb1_unit.py::test_u10_frozen_pins_versions_and_drift_detection":
+          r"frozen file worker/extract_financial_candidates\.py changed"}),
+    ("M14", "fa464d2: the RDV harness persists in _persist's order (M14: F5 before the issuer link)",
+     "tests/rdv_evidence.py",
+     "        link = issuer_store.link_filing(fid)\n"
+     "        f5, run_id = PostgresCandidateStore(conn).save(result, cid, link)\n",
+     "        f5, run_id = PostgresCandidateStore(conn).save(result, cid, None)\n"
+     "        link = issuer_store.link_filing(fid)\n",
+     {U + "test_u17_the_rdv_harness_persists_in_persists_order_apart_from_f4":
+          r"assert \['f3', 'classification_id', 'f5', 'link', 'commit'\] == "
+          r"\['f3', 'classification_id', 'link', 'f5', 'commit'\]"}),
 ]
 KILLERS = sorted({k for m in MUTANTS for k in m[5]})
 CONTROL = {}
