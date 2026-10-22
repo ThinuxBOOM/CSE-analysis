@@ -9,8 +9,9 @@ snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and fa
 (§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
 runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
 `6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19;
-the owner's decisions of 2026-10-22 and the mutants they approved are §20. All await the owner's independent
-review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen;
+the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
+failure, for R-F4 acceptance only, is §21 (the test still fails). All await the owner's independent review. NOT
+accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen;
 the R-F4 design carries the amendment text) and then, the same day, formally waived the item for this
 implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
@@ -62,6 +63,7 @@ and evidence only; it changes no decision.
 | `41d7e0f` | Claude (the owner's decisions, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: 14 more mutants (M15–M17, MF1, MR3, MT1–MT3, MP6, MP7, MN1–MN4) and a stricter kill rule (each named test's intended reason, read from a JUnit report); section 20, with the owner's decisions and the reader-login staging plan. No application code, migration, pin or CI change (§20) |
 | `b32a06a` | Claude (the owner's "commit") | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
 | the commit adding §20.9 | Claude | Documents only: `b32a06a`'s GitHub Actions results, X2 36 passed (§20.9) |
+| the commit adding section 21 | Claude (the owner's decision, 2026-10-22) | Documents only: the owner's waiver, for R-F4 acceptance only, of the L02 baseline failure `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`; the test still fails (§21) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2071,6 +2073,7 @@ each mutant's named tests on the unchanged copy.
 | Tamper and versions | p11 (`corrupt`, `incomplete`, `version_incompatible`, F3 hash, `f5_mismatch`, `missing`), p15, p17 | **Current** |
 | Migration | p1, p9 (×2), p48 | **Current** |
 | Regression controls B, P, S, I | §5.5, §5.6 (at `82b7a3e`), re-run at `f67c181`, `2bc66c1`, `d6924e7` | **Claude-reported only.** The full GitHub Actions regression at `ef4e0e7` is the current counterpart of I, with verdict `baseline-only`; it is not compared with a B run in GitHub Actions |
+| The known baseline failure (L02) | `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (frozen HB-2). It fails at line 588: the fake clock's fixed 2026-10-03 03:00 UTC against PostgreSQL's real `now()`, so `since < 60` cannot hold | **Failing** in every regression run, verdict `baseline-only`, signature matched. **Waived by the owner for R-F4 acceptance only, 2026-10-22 (§21)**: not passed, fixed or green; the test's lines after 588 have not run (§21.3) |
 | Mutation testing | X2: 18 mutants for the changes after `d6924e7` (§18) | **Current** (X2 at `8431e8e` and `ef4e0e7`). M1–M17: **Claude-reported only** (last at `d6924e7`, §5.7) |
 | Real documents | — | **Missing**, by design: at pilot acceptance (design §10) |
 
@@ -2152,6 +2155,7 @@ changes this record only. It waits for the owner's authorization.
 **For acceptance:**
 - the owner's independent audit, which is not complete;
 - the owner's decision on the L02 baseline (§19.1);
+  *Decided 2026-10-22: waived for R-F4 acceptance only (§21). The test still fails.*
 - the gaps of §19.5 that the owner or the auditor requires closed before acceptance.
 
 **Before operation:** a login to enter `cse_reader` (P1's open item), and the runbook's checks run at staging.
@@ -2179,6 +2183,8 @@ When this section was written the changes were **uncommitted**, at the owner's i
 
 1. **L02 stays open.** The known HB-2 baseline failure stays a **failed test** that matches its recorded signature
    (§19.1). There is no waiver, no acceptance and no signature change, and HB-2's code and tests are unchanged.
+   *Superseded in part on 2026-10-22: the owner waived this one failure for R-F4 acceptance only (§21). It stays a
+   failed test with verdict `baseline-only`; the signature, HB-2's code and tests are unchanged.*
 2. **X2:** the targeted mutants of §19.5 are approved.
 3. **The reader login (P1)** is provisioned and verified only at explicitly authorized staging. No production
    credentials or infrastructure are provisioned now. A `SET ROLE` test is not proof that a real login works (§20.6).
@@ -2357,7 +2363,8 @@ survives `SET ROLE`.
   Claude-reported only.
 
 **Unchanged:**
-- **L02:** the open, failed HB-2 baseline (owner decision 1).
+- **L02:** the open, failed HB-2 baseline (owner decision 1). *Waived for R-F4 acceptance only on 2026-10-22
+  (§21); the test still fails.*
 - **The runbook's checks:** never executed.
 - **The reader login:** not provisioned (§20.6).
 - **Real documents:** at pilot acceptance.
@@ -2451,3 +2458,111 @@ Claude from their public job conclusions and check-run annotations:
   - HB5-W1 a separate issue.
 
 **Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
+
+## 21. Owner decision: the L02 baseline failure waived for R-F4 acceptance (2026-10-22)
+
+**The decision.** On 2026-10-22 the owner authorized a documented waiver, for the R-F4 acceptance process, of exactly
+one existing baseline failure:
+
+> `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`
+
+The failure is **WAIVED BY OWNER FOR R-F4 ACCEPTANCE ONLY**, within the scope of §21.5. Claude records the decision at
+the owner's direction; this section makes no decision of its own.
+
+**What this section changes:** documentation only. It changes no code, test, CI logic, failure classification or
+suppression.
+
+### 21.1 The failure waived
+
+**The test.** `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, in CI group L02:
+- it is a frozen HB-2 test;
+- the test file last changed in `1896280`, and its fake clock (`tests/hb2_fakes.py`) in `3a7512c`, both HB-2's own
+  commits of 2026-10-02.
+
+**Where it fails.** At line 588, `assert since is not None and since < 60`, which pytest reports as
+`assert (N is not None and N < 60)`.
+
+**The mechanism.**
+1. The test's fake application clock is fixed at 2026-10-03 03:00 UTC (`tests/hb2_fakes.py`, `BASE_WALL`).
+2. The slice records its ledger request at that fake time.
+3. `worker/backfill_transport/ledger.py` `seconds_since_last_ledger_request` measures the time since that request
+   against PostgreSQL's real `now()`.
+4. After 03:01 UTC on 2026-10-03 the two clocks disagree. `since` is then the real time elapsed since the fake
+   instant, days by now, and `since < 60` cannot hold.
+
+**The evidence that it is that mechanism, and not an R-F4 regression.** Each item is as reported; none was
+independently re-executed:
+- **It fails without R-F4.** Control B, `main` at `4646626` with no R-F4 change, gave L02 240 passed and 1 failed
+  (§5.5; Claude's local run, 2026-10-16), as every R-F4 tree has since.
+- **The signature matches every time.** In every GitHub Actions regression run recorded here since `4be6fa9`, the
+  summary job matched the failure's whole recorded signature:
+  - this test, in L02, a failure;
+  - line 588 and the message;
+  - N within an hour of the time since the fake clock's instant.
+
+  The signature is in `.github/ci/summarize.py` `KNOWN_BASELINE` and `docs/CI_TEST_STRATEGY.md` §7.1. The latest run
+  is `b32a06a`'s regression [39704161715](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39704161715).
+- **R-F4 has not changed what the assertion measures.** From `main` (`4646626`) to `62f4a6d`:
+  - the test and its fake clock are unchanged;
+  - HB-2's `worker/backfill_transport/` changed in one pin value of its preflight only;
+  - P2's `worker/market_capture/` is unchanged.
+
+### 21.2 What stays as it is
+
+- **The test still fails.** It is not passed, fixed, skipped, marked xfail or green. It stays recorded as the known
+  failing baseline (§18.5, §19.1).
+- **CI is unchanged:**
+  - L02's job still fails;
+  - the summary job's verdict stays `baseline-only`, never `passed`;
+  - the regression workflow's conclusion stays failure.
+- **Unchanged files:** `.github/ci/summarize.py`, its `KNOWN_BASELINE` signature, the test, its fake clock and HB-2's
+  code.
+
+### 21.3 Residual uncertainty
+
+**The conclusion is not certain.** That this is a test-clock inconsistency and not a regression rests on the mechanism
+read from the code and on the evidence in §21.1. It is not proven with absolute certainty.
+
+**The rest of the test has not run.** While the test fails at line 588, nothing after that line runs. Its remaining
+lines (589–597) are the part its name describes, and they have not run in any execution since the failure began:
+- they write a P2 `metadata_sweep` run and a `market_source_responses` row;
+- they then assert `throttle.seed_seconds(w, datetime.now(UTC)) < 5`, that the slice's seeding reads P2's archive in
+  PostgreSQL.
+
+**What other coverage there is:**
+- `tests/test_hb2_unit.py::test_t3_seed_seconds_takes_the_later_of_both_archives` covers how `seed_seconds` combines
+  the two archives, with both of its readers replaced by stand-ins. It does not read PostgreSQL.
+- Whether another PostgreSQL test reads P2's archive through `seed_seconds` was not established here.
+
+**So, while this waiver stands,** L4 seeding from both archives against PostgreSQL is not evidenced by this test. The
+waiver accepts that gap for R-F4 acceptance; it does not close it.
+
+### 21.4 Open technical debt (a separate follow-up)
+
+**HB2-CLOCK:** the test-clock inconsistency in `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`. Its
+fake clock records requests at a fixed 2026-10-03 instant, which PostgreSQL's real `now()` is then compared with.
+
+**It stays open.** Correcting it changes a frozen HB-2 test, so it needs HB-2 change control (and its pin
+consequences, if any), under a separate owner decision. It is not done here, and this waiver does not authorize it.
+
+### 21.5 Scope
+
+**It covers only this one test failure,** identified by its recorded signature, for the R-F4 acceptance process. A
+different failure of this test is not covered: another line, another message, or another elapsed time, which is
+anything the summary job reports as a new failure.
+
+**It waives nothing else:**
+- no other failed test;
+- no security or integrity requirement;
+- no R-F4 acceptance criterion (design §9);
+- no operational release gate.
+
+**It authorizes nothing further:** no merge, no staging acceptance, no production deployment, and no live CSE
+acquisition.
+
+**Status: R-F4 remains NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
+
+### 21.6 Earlier statements
+
+§18.5, §19.1, §19.6, §20.1 and §20.7–§20.9 recorded L02 as open and not waived. They record the position before this
+decision. §19.3, §19.6, §20.1 and §20.7 now point here.
