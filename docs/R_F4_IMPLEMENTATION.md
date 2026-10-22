@@ -8,10 +8,11 @@ snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and fa
 (§13); the HB-4 integration tests are `cbcf8d6` (§14); `verify`'s scope and the preflight's column check are `b89cdec`
 (§15); the preflight's table properties, with `verify` under row-level security, are `493bf73` and `7d58604` (§16); the
 runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
-`6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19.
-All await the owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B
-on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally
-waived the item for this implementation package:
+`6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19;
+the owner's decisions of 2026-10-22 and the mutants they approved are §20. All await the owner's independent
+review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen;
+the R-F4 design carries the amendment text) and then, the same day, formally waived the item for this
+implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -57,7 +58,8 @@ and evidence only; it changes no decision.
 | `6246bc6` | Claude (the owner's request, 2026-10-21) | `tests/test_rf4_mutants.py`: 18 planted faults for the changes after `d6924e7`, with a control and an applicability check; CI group X2 (`groups.py`, `linux_tests.sh`, `ci-regression.yml`, `docs/CI_TEST_STRATEGY.md`); the L02 baseline compared; section 18. No application code, migration or pin (§18) |
 | `8431e8e` | Claude (the owner's "commit") | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
 | `ef4e0e7` | Claude (the owner's "commit") | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
-| the commit adding section 19 | Claude (the owner's request, 2026-10-21) | Documents only: the acceptance matrix at `ef4e0e7`, each row from the tests' bodies; the HB-5 Windows report-path defect investigated (HB-5 unchanged); the L02 baseline as a failed test matching its signature; the gaps X2 leaves (§19) |
+| `5528e5a` | Claude (the owner's request, 2026-10-21; the owner's "commit") | Documents only: the acceptance matrix at `ef4e0e7`, each row from the tests' bodies; the HB-5 Windows report-path defect investigated (HB-5 unchanged); the L02 baseline as a failed test matching its signature; the gaps X2 leaves (§19) |
+| the commit adding section 20 | Claude (the owner's decisions, 2026-10-22) | `tests/test_rf4_mutants.py`: 14 more mutants (M15–M17, MF1, MR3, MT1–MT3, MP6, MP7, MN1–MN4) and a stricter kill rule (each named test's intended reason, read from a JUnit report); section 20, with the owner's decisions and the reader-login staging plan. No application code, migration, pin or CI change (§20) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2141,6 +2143,8 @@ Nothing in HB-5's code, tests or pins was changed.
 X2's 19 child runs took 80 seconds, so the addition would cost roughly a minute. It is **not done here**: this task
 changes this record only. It waits for the owner's authorization.
 
+*Since 2026-10-22 the owner has approved it, and it is added: §20. Its PostgreSQL results come from X2.*
+
 ### 19.6 Remaining blockers
 
 **For acceptance:**
@@ -2153,5 +2157,207 @@ changes this record only. It waits for the owner's authorization.
 **At pilot acceptance:** the real-document verification.
 
 **Not an R-F4 blocker:** the HB-5 Windows defect (§19.4).
+
+**Status: NOT ACCEPTED / NOT FROZEN.**
+
+## 20. The owner's decisions of 2026-10-22, and §19.5's mutants added to X2
+
+**All of this section's work was done by Claude. Status: NOT ACCEPTED / NOT FROZEN.** The audit is not complete.
+
+**What changed:** `tests/test_rf4_mutants.py` and this record. There are no changes to:
+- application code;
+- migration 0018;
+- any HB-1 to HB-6 file;
+- any pin (129 checked, 0 mismatches);
+- CI: X2 already runs the file.
+
+When this section was written the changes were **uncommitted**, at the owner's instruction. CSE was not contacted.
+
+### 20.1 The owner's decisions (2026-10-22)
+
+1. **L02 stays open.** The known HB-2 baseline failure stays a **failed test** that matches its recorded signature
+   (§19.1). There is no waiver, no acceptance and no signature change, and HB-2's code and tests are unchanged.
+2. **X2:** the targeted mutants of §19.5 are approved.
+3. **The reader login (P1)** is provisioned and verified only at explicitly authorized staging. No production
+   credentials or infrastructure are provisioned now. A `SET ROLE` test is not proof that a real login works (§20.6).
+4. **Windows.** Linux remains the documented supported production platform. HB-5 `write_json`'s cross-drive failure
+   on Windows (§19.4) is recorded as a **separate issue, HB5-W1**: not R-F4's, and not a release blocker on Linux.
+   HB-5 and HB-6 code, tests and pins are unchanged.
+
+### 20.2 The harness, made stricter
+
+**The kill rule.** A mutant's named tests now run in a child pytest that writes a JUnit report, and the verdict is
+read from it. The mutant is **KILLED** only when:
+- the child exits 1 (test failures);
+- no test errored;
+- every named test failed, with its failure (message and traceback) matching that test's **intended reason**, a
+  regex given per test. For a parametrized test, one failing case is enough.
+
+**Anything else is not a kill, and is reported as such:**
+- **SURVIVED:** a named test passed.
+- **INVALID:**
+  - a timeout, or no report;
+  - a setup or teardown error;
+  - a collection, usage or internal error;
+  - a named test that did not run or was skipped;
+  - a named test that failed for another reason.
+- **INAPPLICABLE:** the substitution's text is not in its file exactly once.
+
+Each verdict is also written to the JUnit report as the property `rf4_mutant`.
+
+**Other changes:**
+- **`-vv`.** The child runs with it, so assertion explanations are not truncated: the reasons are matched against them.
+- **pytest versions.** pytest 7 (CI's container) writes `DID NOT RAISE <class 'module.Name'>`, while pytest 8 and
+  later write `DID NOT RAISE Name`. The pattern accepts both.
+- **No server stranded.** A server a child leaves running is stopped (`pg_ctl -m immediate`). The R-F4 suites'
+  clusters are `/tmp/rf4*/cse_pg_*/data`. `pg_ctl` starts the server in its own session, so killing a child at its
+  timeout does not stop it.
+
+**Unchanged:**
+- one exact substitution, found exactly once, in a copy of the repository;
+- the control first, every named test passing on the unchanged copy;
+- no bytecode;
+- a 10-minute child limit and a one-minute `lock_timeout` (`PGOPTIONS`).
+
+**§18's 18 mutants** keep their substitutions and named tests, and each named test now has a reason.
+
+**Two new tests run everywhere:**
+- **the kill rule:** a timeout, no report, an error, a collection or usage error, a test not run or skipped, another
+  reason, and a survivor are never kills;
+- **the report reader.**
+
+### 20.3 The new mutants
+
+The intended reasons are summarized here; the exact patterns are in the test file.
+
+| ID | Reverts | File | Substitution | Named tests | Intended reason |
+|---|---|---|---|---|---|
+| M15 | design §6: `run()`'s batch commits once (§5.7's M15) | `worker/extract_financial_candidates.py` | after `status, run_id = stores["candidates"].save(got["result"], cid, link)`, a new line `stores["conn"].commit()` | p21 (both cases) | filing 1 committed: `(1, 1, 1) == (0, 0, 0)` |
+| M16 | `8f1f9fd`: a duplicate key is `already_present` only once the saved extraction reads back intact (§5.7's M16) | `store.py` | `reader.load_extraction(self.conn, str(existing[0]))` → `str(existing[0])` | p17 | `DID NOT RAISE` `EvidenceRefused` |
+| M17 | `77cfb84`: the insert skips an existing key (§5.7's M17) | `store.py` | the insert's `on conflict (cse_filing_id, document_sha256, word_extractor, f4_extractor_version, classification_id) do nothing returning id` → `returning id` | p7, p10, p24 | `UniqueViolation` |
+| MF1 | `f67c181` Finding 1: the store refuses an F3 row persisted with content other than F5 consumed | `store.py` | `if persisted != row["f3_input_sha256"]:` → `if False:` | p25 (the store), p25 (`run()`) | `DID NOT RAISE` `ConflictingEvidence` |
+| MR3 | `f67c181` Finding 1, on the rebuild (this form since `95da822`) | `reader.py` | `if codec.f3_input_sha256(cls) != _extraction_row(conn, eid)["f3_input_sha256"]:` → `if False:` | p25 (the store) | the run-level `corrupt` problem is gone: `Extra items in the right set` |
+| MT1 | `f67c181` Finding 2: a trigger function defined other than in 0018 | `schema.py` | `if (got["language"], got["security_definer"], got["body_sha256"]) != (language, False, body):` → `if False:` | u18 (identity), p26 | u18: `not enough values to unpack (expected 1, got 0)`; p26: `DID NOT RAISE` `SchemaUnavailable` (the body replaced in place) |
+| MT2 | `2bc66c1` Finding 4: the function's configuration | `schema.py` | `if tuple(got["config"] or ()) != config:` → `if False:` | u19 (configuration), p28 | u19: `[] ==` the configuration problem; p28: the shadowed guard refuses the store's own row (`is not of filing`), or `DID NOT RAISE` |
+| MT3 | `2bc66c1` Finding 5: an enabled trigger 0018 does not create | `schema.py` | `for trigger in sorted(set(live) - set(TRIGGERS[name])):` → `for trigger in []:` | u19 (extra trigger), p29 | u19: `[] ==` the extra-trigger problem; p29: `DID NOT RAISE` `SchemaUnavailable` |
+| MP6 | `f67c181` Finding 3: a constraint's definition | `preflight.py` | `if got_definition.removesuffix(" NOT VALID") != definition:` → `if False:` | u18 (constraints), p27 | the weakened `chk_ff4c_decimal` not reported |
+| MP7 | `dc6302d` (Stage 1): the migration ledger records 0018 at its pin | `preflight.py` | `elif rows != [(MIGRATION_VERSION, MIGRATION, MIGRATION_SHA256)]:` → `elif False:` | p13 (tampered ledger) | `'verified' == 'failed'` |
+| MN1 | `d6924e7`: a schema searched before `public` | `schema.py` | `out.append(f"schema {_shown(name)} is searched before public…` → `[].append(…` | u20 (invariant), p31 | u20: `[] ==` the problem; p31: the store's refusal no longer names the configured path (`Regex pattern did not match`), or no refusal for a schema not yet created |
+| MN2 | `d6924e7`: `pg_catalog` after `public` | `schema.py` | `if "pg_catalog" in elements[i + 1:] and "pg_catalog" not in elements[:i]:` → `if False:` | u20 (invariant), p38 | u20: `[] ==` the problem; p38: `DID NOT RAISE` `SchemaUnavailable` (public's `=` used) |
+| MN3 | `d6924e7`: relations in the session's temporary schema | `schema.py` | `if temp_objects:` → `if False:` | u20 (the in-band check), p33 | u20: `[] ==` the problem; p33: the temporary table answers the store's F3 read (`missing: no F3 classification`), or the guard refuses, or `DID NOT RAISE` |
+| MN4 | `d6924e7`: the preflight judges each role's configured path | `preflight.py` | `return [f"{role}: the search_path its sessions get …"` → `return [] and [f"{role}: …"` | u20 (precedence), p30 | `[] ==` the role's problem |
+
+**How the named tests were chosen.** Each was read in full, with the code path its assertion exercises.
+
+- **No HB-4-path test for a pinned file.** `store.py`, `reader.py`, `schema.py` and F5's file are pinned by HB-1. A
+  copy with any of them changed makes HB-4's slice refuse on the pin, which is not the fault. So no HB-4-path test is
+  named for those mutants:
+  - p22, p23 and p47 are not named;
+  - p48 is not named;
+  - p25's HB-4 case is not named.
+- **p11 does not kill MR3.** `verify`'s own extraction-level F3 check (`verify.py:125`) reports p11's tamper with or
+  without the reader's check. p25's first test does kill it: its expected problems include the run-level `corrupt`
+  one (detail naming `f3_input_sha256`), which only the reader's check produces.
+- **MN1's p31** includes a schema that does not exist yet. Only the configured path's check catches that one: the
+  session's own resolution does not search a schema that is not there.
+- **MR1 and MR2, u22's entry-point test.** Its connection is a recording stand-in. A reader that is no longer refused
+  goes on to read, and its read helper reaches psycopg2's JSON registration, which raises `TypeError` on the
+  stand-in. The reason requires the reader's own read frame in the traceback: `in _extraction_row` for MR1,
+  `in _load_classification` for MR2. Any `TypeError` is not enough. The kill is indirect; p40's is direct (the shadow
+  answers: `missing: no F4 extraction`, `missing: no F3 classification`).
+
+**Not planted:**
+- the session-level "this session searches … before public" check (`current_schemas`);
+- the `"$user"` checks;
+- "public is not in it";
+- an unparseable value;
+- an undetermined server value (p35);
+- attaching a table as a partition (§19.5, gap 11).
+
+Each is either the second of two checks for one fault (the first is planted) or lower impact. **M1–M14** (wiring
+and pins) were not ported: §19.5 gap 2 was optional, and they remain **Claude-reported only** (last at `d6924e7`).
+
+### 20.4 The intended reasons of the unit tests, read from real runs
+
+Each unit test's reason was read from its actual failure under its mutant on Windows (pytest 9.1.1).
+
+| Mutants | Unit test | Its failure |
+|---|---|---|
+| MS1 | u21 (whitespace) | `== ['public\xa0', 'public']` |
+| MR1, MR2 | u22 (entry points) | the reader's read frame, then `TypeError` (§20.3) |
+| MV1 | u22 (unsafe session) | the two enumerations were sent: `[…] == []` |
+| MV2 | u22 (one snapshot) | `'… read committed, read only' == '… repeatable read, read only'` |
+| MV3 | u22 (refusal) | `assert not report["clean"] …` → `not True` |
+| MV4, MV8 | u23, u24 | `DID NOT RAISE` `ValueError` |
+| MV5 | u23 (failure as itself) | `InterfaceError: connection already closed` |
+| MV6 | u23 (identity) | `'pg_snapshot': '2026-10-20T00:00:00+00:00'` |
+| MV7 | u24 (limited scan) | `[] == [] … and True is False` |
+| MC1 | u24 (the command) | `Failed: the command connected` |
+| MP1, MP3, MP5 | u25, u26 | `[] ==` the column, row-level security or UNLOGGED problem |
+| MT1, MT2, MT3, MP6 | u18, u19 | as in §20.3 |
+| MN1, MN2, MN3, MN4 | u20 | `[] ==` each one's problem |
+
+**The PostgreSQL tests' reasons** were written from their bodies (§20.3) and are **not yet observed**. Each was
+checked only against the failure text predicted from its test body, in pytest 7.4's wording. That catches quoting
+and escaping slips, and is not evidence.
+
+### 20.5 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6, pytest 9.1.1, run by Claude: `pytest tests/test_rf4_unit.py tests/test_rf4_postgres.py tests/test_rf4_mutants.py` | 310 passed, 100 skipped. The PostgreSQL file (67) and the 33 planted runs skip; the 3 tests that run everywhere pass |
+| Windows, run by Claude, a scratch script (not committed). Each mutant with unit tests is planted in a copy, and **only its unit tests** run, through the module's own `run_tests`, `read_report`, `verdict` and `control_problems` | **Control:** all 20 unit tests passed. **23 of 23** mutants with unit tests were **killed for their reasons**. 9 mutants have PostgreSQL tests only and were not run here: MS2, MP2, MP4, M15, M16, M17, MF1, MR3, MP7 |
+| PostgreSQL tests (36 mutant–test pairs) | **Not run locally.** Free memory was 5.1–5.8% of 15.6 GB, at the owner's 5% guard floor, so no container was started |
+| GitHub Actions at the remote head `5528e5a` (§19's record; the old harness) | fast [39645695804](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39645695804) success (offline 2,105 passed, 567 skipped); regression [39645695805](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39645695805) **failed**, verdict `baseline-only`, every group as at `ef4e0e7` (X2 20 passed; L02 240 passed, 1 failed, the recorded signature matched). The baseline the next run is compared with |
+| GitHub Actions for this section's changes | **Not run:** the changes are uncommitted. **Expected** after a commit and push: X2 36 passed (3 run everywhere, the control, 32 mutants); L16, W3 and offline each 2 more passed and 14 more skipped than at `ef4e0e7` (L16 642 passed, 68 skipped; W3 1,001 passed, 307 skipped; offline 2,107 passed, 581 skipped); the other groups unchanged; L02 still the failed baseline. **To be recorded once it has run, not assumed here** |
+
+### 20.6 The reader login (P1): the plan for staging
+
+**Today.** No login enters `cse_reader`. P1 creates `cse_reader` as a NOLOGIN group role, with peer authentication
+only. Every R-F4 test enters it by `SET ROLE` from a superuser session. That shows what `cse_reader` may read. It does
+not show that a login can connect, nor what that login's own settings do: p41 shows a login's own search path
+survives `SET ROLE`.
+
+**Prerequisites, all before any provisioning:**
+- **The owner's explicit authorization of staging.** It has not been given.
+- **A P1 change, under change control, that provisions one login for `verify`:**
+  - a member of `cse_reader` that inherits its privileges;
+  - none of SUPERUSER, CREATEDB, CREATEROLE, REPLICATION or BYPASSRLS;
+  - no CREATE or TEMPORARY on the database;
+  - no role setting;
+  - peer authentication only, through P1's `pg_ident` map from a dedicated OS user, with no password.
+- **The runbook's `DATABASE_URL` for that OS user** (`docs/ops/PHASE2_BACKFILL.md` §12 step 4), over the Unix socket.
+
+**Verification at staging,** each step's output recorded:
+1. As that OS user, connect through `DATABASE_URL`. `current_user` and `session_user` are both the login, with no
+   `SET ROLE`, and `pg_has_role(current_user, 'cse_reader', 'USAGE')` is true.
+2. The login's own attributes (`pg_roles`): none of the five above. `has_database_privilege` gives false for CREATE and
+   TEMPORARY, and `pg_db_role_setting` has no row for it. The preflight checks `cse_reader`'s and `cse_worker`'s
+   configuration, not the login's, so this step is what covers the login.
+3. The preflight through the migration role (§12 step 2): exit 0, clean.
+4. `python -m worker.financial_f4_store verify` as the login:
+   - exit 0, `"clean": true`, `"scope": {"complete": true, …}`;
+   - the snapshot is `repeatable read` and read-only;
+   - its counts equal those a superuser reads.
+5. A write is refused. In a transaction that is then rolled back, an INSERT into one R-F4 table as the login fails
+   with insufficient privilege.
+6. Steps 3–4 again, on the restored copy at the first backup checkpoint (runbook §6).
+
+**Until those steps are run at authorized staging, nothing here is evidence that a real login works.**
+
+### 20.7 What remains
+
+**For these mutants:**
+- **The 36 PostgreSQL mutant–test pairs** have not run. Their verdicts, and whether each reason matches the real
+  failure, come from X2 after the owner's commit and push.
+- **Mutation coverage** is still hand-chosen, not a full sweep: equivalent mutants were not explored, and M1–M14 are
+  Claude-reported only.
+
+**Unchanged:**
+- **L02:** the open, failed HB-2 baseline (owner decision 1).
+- **The runbook's checks:** never executed.
+- **The reader login:** not provisioned (§20.6).
+- **Real documents:** at pilot acceptance.
+- **HB5-W1:** a separate issue (§19.4).
 
 **Status: NOT ACCEPTED / NOT FROZEN.**
