@@ -7,6 +7,8 @@
 #     grants for role f1w; F3 and F5 get the cluster's superuser, since they create their own databases and roles;
 #   - P1_PG_BINDIR for the suites that create their own disposable clusters (each in its own temporary directory, on a
 #     free port, removed by the suite);
+#   - RF4_RUNBOOK_EVIDENCE=<out>/rf4-runbook-rehearsal: where tests/test_rf4_runbook_rehearsal.py (in L16) writes each
+#     scenario's commands, outputs and rehearsal.json, so that they are uploaded with the group's reports;
 #   - for group X1 only, DATABASE_URL to `f1scratch` as the cluster's superuser (the view test it runs reads
 #     daily_completeness, which the documented worker grants do not cover; it rolls everything back);
 #   - for group X2 only, RF4_MUTANTS=1: R-F4's planted-fault tests (tests/test_rf4_mutants.py), which plant each fault
@@ -16,7 +18,8 @@
 # skip by their gates.
 # Before any test: check_no_network.py proves the container has no network (loopback only, no route); and
 # check_cse_unreachable.py that CSE's names do not resolve.
-# Writes to <out>: environment.txt, provision.log (cluster set-up and teardown), pytest.log, junit.xml, exit_code.
+# Writes to <out>: environment.txt, provision.log (cluster set-up and teardown), pytest.log, junit.xml, exit_code;
+# and, for L16, rf4-runbook-rehearsal/.
 # Exit: pytest's own code (0 passed, 1 failed, 2-5 pytest could not complete); or the harness's own, which pytest never
 # uses: 10 unknown group or broken partition, 11 provisioning failed, 12 a network is present or CSE resolves.
 set -uo pipefail
@@ -79,6 +82,7 @@ if [ "$group" != offline ]; then
     export F1_TEST_DATABASE_URL="postgresql://f1w@127.0.0.1:5433/f1scratch"
     export F3_TEST_DATABASE_URL="postgresql://$me@127.0.0.1:5433/postgres"
     export F5_TEST_DATABASE_URL="postgresql://$me@127.0.0.1:5433/postgres"
+    export RF4_RUNBOOK_EVIDENCE="$out/rf4-runbook-rehearsal"
     if [ "$group" = X1 ]; then
         export DATABASE_URL="postgresql://$me@127.0.0.1:5433/f1scratch"
         note "X1: DATABASE_URL=$DATABASE_URL"

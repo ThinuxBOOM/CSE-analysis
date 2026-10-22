@@ -10,10 +10,10 @@ snapshot) is remediated in `95da822` (§12); `verify`'s snapshot metadata and fa
 runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests for the changes after `d6924e7` are
 `6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19;
 the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
-failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22. All await the
-owner's independent review. NOT accepted, NOT frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17
-(F6.2 stays frozen; the R-F4 design carries the amendment text) and then, the same day, formally waived the item for
-this implementation package:
+failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22; a CI rehearsal of the
+runbook's R-F4 checks on a disposable cluster is §23. All await the owner's independent review. NOT accepted, NOT
+frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
+the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
 
@@ -66,6 +66,7 @@ and evidence only; it changes no decision.
 | the commit adding section 21 | Claude (the owner's decision, 2026-10-22) | Documents only: the owner's waiver, for R-F4 acceptance only, of the L02 baseline failure `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`; the test still fails (§21) |
 | `d4ef33a` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: §5.7's M1–M14 as X2 mutants, each with §5.7's named test and its intended reason; `docs/CI_TEST_STRATEGY.md`: X2's description; section 22. No application code, migration, frozen test, pin or CI configuration change (§22) |
 | the commit adding §22.6 | Claude | Documents only: `d4ef33a`'s GitHub Actions results, X2 51 passed (§22.6) |
+| the commit adding section 23 | Claude (the owner's request, 2026-10-22) | `tests/test_rf4_runbook_rehearsal.py`: the runbook's R-F4 sequence rehearsed on a fresh disposable PostgreSQL 17 cluster per scenario, with the real commands and fail-closed cases; `.github/ci/linux_tests.sh`: `RF4_RUNBOOK_EVIDENCE`; `docs/CI_TEST_STRATEGY.md`; section 23. No application code, migration, frozen test or pin change (§23) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2143,7 +2144,7 @@ Nothing in HB-5's code, tests or pins was changed.
 | 9 | RT-14 through HB-4 covers 4 layouts, not the constructed cases | No: the same `_persist` (`worker.py:334`) | Review evidence only (code identity); no new test |
 | 10 | Pre-R-F4 recovery through HB-4 is not tested | No, under the Q1 sequence: R-F4 is frozen before staging, and HB-4 cannot persist without 0018 (p48), so no HB-4 rows from before R-F4 can exist | None needed |
 | 11 | Attaching a table as a partition is not exercised against a live database | Minor | Optional: one more p51 case |
-| 12 | The runbook's checks have never been executed; no login to enter `cse_reader` is provisioned | Yes, for operation | At staging, after the owner's authorization; plus the owner's decision on a reader login (P1) |
+| 12 | The runbook's checks have never been executed; no login to enter `cse_reader` is provisioned *(rehearsed in CI on a disposable cluster since §23, 2026-10-22; not at staging, and not on a restored copy)* | Yes, for operation | At staging, after the owner's authorization; plus the owner's decision on a reader login (P1) |
 | 13 | Real documents | Yes, by design later | At pilot acceptance (design §10) |
 
 **The recommended package** is gaps 1 and 3–7: about 12 more mutants in the existing X2 file. That needs no CI change.
@@ -2367,7 +2368,7 @@ survives `SET ROLE`.
 **Unchanged:**
 - **L02:** the open, failed HB-2 baseline (owner decision 1). *Waived for R-F4 acceptance only on 2026-10-22
   (§21); the test still fails.*
-- **The runbook's checks:** never executed.
+- **The runbook's checks:** never executed. *Rehearsed in CI on a disposable cluster since §23; not at staging.*
 - **The reader login:** not provisioned (§20.6).
 - **Real documents:** at pilot acceptance.
 - **HB5-W1:** a separate issue (§19.4).
@@ -2709,3 +2710,105 @@ Claude from their public job conclusions and check-run annotations:
   - HB5-W1 is a separate issue.
 
 **Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
+
+## 23. A rehearsal of the runbook's R-F4 checks on a disposable PostgreSQL 17 cluster (2026-10-22)
+
+**The request.** The runbook's R-F4 checks had never been executed against a real PostgreSQL database. The owner asked
+for a disposable, offline GitHub Actions rehearsal of the documented sequence (`docs/ops/PHASE2_BACKFILL.md` §12, steps
+1–5), with the real commands and fail-closed cases.
+
+**All of this section's work was done by Claude. Status: NOT ACCEPTED / NOT FROZEN.** This is a rehearsal in CI. It is
+**not** an execution at staging or on a deployment, and it provisions nothing outside its own throwaway cluster.
+
+**What changed:**
+- `tests/test_rf4_runbook_rehearsal.py`, a new file. Placed in byte order, it falls into L16, with no change to the
+  partition: L14 and L15 are unchanged. On W3 and offline only its gate test runs;
+- `.github/ci/linux_tests.sh`: one exported variable, `RF4_RUNBOOK_EVIDENCE=<out>/rf4-runbook-rehearsal`, and its
+  comment;
+- `docs/CI_TEST_STRATEGY.md`: the variable and L16's artifact;
+- this record.
+
+**What did not change:** application code, migration 0018, any frozen test, any HB-1 to HB-6 file or pin, the
+workflow's matrix and jobs, the summary, and the L02 waiver (§21).
+
+**The GitHub Actions run needs the owner's commit and push.** The request asked for its evidence, but also said not to
+commit. When this section was written the changes were uncommitted, and no CI run had them. The run is to be recorded
+once it has run, not assumed here.
+
+### 23.1 What each scenario runs
+
+**Each scenario builds its own fresh cluster:**
+- `worker/ops/ephemeral_pg.py`, P1's throwaway cluster;
+- `listen_addresses` is empty, so there is no TCP listener;
+- a private socket directory under a short `/tmp/rf4rh*` path;
+- its own data directory, stopped and deleted afterwards.
+
+| Stage | What runs | How |
+|---|---|---|
+| Set-up | P1's `ops/provision/sql/bootstrap_cluster.sql` (roles, the database `cse`, its grants) | `psql -f`, as the cluster's superuser |
+| Set-up | 0001–0017 | P1's runner: `python -m worker.ops.migrate apply --to 17`, with `CSE_DB_USER=cse_migrator` |
+| Set-up | `create role rf4_rehearsal_reader login; grant cse_reader to rf4_rehearsal_reader` | the runbook's reader route: a login that inherits `cse_reader`. It is disposable, not the production login (§20.6) |
+| Step 1 | 0018 | P1's runner: `python -m worker.ops.migrate apply` |
+| Data | Synthetic F3, F4 and F5 evidence for three filings | F5's own `_persist` as `cse_worker`, which reaches R-F4 by its fallback. So `verify` has rows to check: at a first deployment there are none, at a checkpoint there are. No real document |
+| Step 2 | `python -m worker.financial_f4_store preflight --migration-role` | `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME` for the cluster, and `CSE_DB_USER=cse_migrator`: the runbook's migration-role route |
+| Step 3 | The gate: continue only on exit 0 with `"clean": true` | `preflight_accepted` |
+| Step 4 | `python -m worker.financial_f4_store verify`, with no `--limit` | `DATABASE_URL` for `rf4_rehearsal_reader` |
+| Step 5 | The gate: accept only exit 0, `"clean": true` and `"scope": {"complete": true, …}` | `verify_accepted` |
+
+**Every command runs in its own process,** with only its route's `CSE_DB_*` or `DATABASE_URL` settings. Nothing is
+mocked. The command, its settings, its exit code, its parsed JSON, its stdout and its stderr are all recorded.
+
+### 23.2 The scenarios and their expected outcomes
+
+| Scenario | Fault | Expected |
+|---|---|---|
+| r1 | none | Step 1 applies only 0018. Preflight: exit 0, clean, the ledger verified as `cse_owner`. Verify: exit 0, clean, scope complete, 3 extractions, 3 runs, 3 rebuilt, no problems, one read-only REPEATABLE READ snapshot. **Accepted** |
+| r2 | Row-level security, without a policy, on `financial_extraction_runs`, which `verify` reads | Preflight: exit 1, not clean, and it names the problem. **Verify is never run.** Not accepted. A probe outside the sequence then runs `verify` anyway: exit 0, clean, with 0 runs seen and 3 extractions. That is the false clean the gate prevents |
+| r3 | The preflight on a connection that cannot read the ledger (`cse_worker` through `DATABASE_URL`) | Exit 2, `"unverifiable"`, nothing else wrong. **Verify is never run.** Not accepted |
+| r4 | One saved cell changed, with triggers off (superuser) | Preflight: exit 0, clean. Verify: exit 1, not clean, scope complete, `corrupt`. **Not accepted** |
+| r5 | `verify --limit 1` (the runbook never passes it) | Verify: exit 1, not clean, no problems, scope incomplete with limit 1. **Not accepted** |
+| everywhere | The gates as pure functions | Only exit 0 with clean passes step 3. Only exit 0, clean and a complete scope pass step 5. A disagreeing exit code and report, a missing report, and an incomplete scope with exit 0 are all refused |
+
+**Clean-up runs whatever happens** (the fixture's `finally`). The server is stopped, `pg_ctl status` is asked before
+the data directory goes (3: no server running), and the cluster's directory is deleted. Each is recorded in
+`rehearsal.json`, and a failure there fails the scenario.
+
+### 23.3 Not rehearsed, or not faithfully
+
+- **The checkpoint on a restored copy (§6): blocked; no procedure exists.** The runbook says to point the two commands
+  at "the restored copy" (`DATABASE_URL`, or `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME`). But:
+  - P1's `python -m worker.ops.restore_check` stops its throwaway cluster at the end, even with `--keep`, which keeps
+    only the stopped data directory (`worker/ops/restore_check.py` step 6; `ephemeral_pg.py` `cleanup`);
+  - the runbook names no step that brings a restored copy up for these commands.
+
+  Starting the kept directory by hand would be a procedure the runbook does not give, so it is **not** rehearsed. The
+  gap is for the owner: P1 or the runbook would need a documented way to keep the restored copy running for the
+  checks.
+- **Authentication.** The throwaway cluster trusts its private socket. Production uses P1's peer authentication with
+  `pg_ident`, which is not rehearsed here.
+- **The production reader login.** No such login is provisioned (§20.6); the rehearsal's login is disposable. The
+  staging checks of §20.6 still apply.
+- **`sudo -u cse-migrator`.** CI runs as one unprivileged user. The migration role is chosen by `CSE_DB_USER`, as the
+  runbook's command sets it, not by the OS user.
+- **Real documents and a production-sized database.** The evidence is synthetic: three filings.
+
+### 23.4 Evidence
+
+| Run | Result |
+|---|---|
+| Windows, Python 3.14.6, pytest 9.1.1, run by Claude: `pytest tests/test_rf4_runbook_rehearsal.py` | 1 passed (the gates), 5 skipped (no PostgreSQL) |
+| Claude's local container run: `cse-p1-test` (PostgreSQL 17.11, Python 3.12.3, pytest 7.4.4), `--network none`, as its unprivileged user, on a clean LF clone of `d219f61` with these files, under the RAM guard (free memory 14.7% at the start; it did not fire) | **6 passed in 70 s.** The decisions of §23.2 were seen exactly, in each scenario's `rehearsal.json`: r1 accepted; r2 stopped at step 3 with verify not run, and its probe clean with 0 runs; r3 stopped at step 3 on exit 2; r4 and r5 not accepted at step 5. In every scenario `pg_ctl status` returned 3 after the stop and the cluster was removed; no `/tmp/rf4rh*` directory was left. Claude-reported, **not CI evidence**, and not a substitute for it |
+| GitHub Actions for this section's changes | **Not run.** It needs the owner's commit and push. **Expected:** L16 649 passed, 82 skipped (643 + 6); W3 1,003 passed, 326 skipped; offline 2,109 passed, 600 skipped; X2 51 passed; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). The artifact `ci-regression-L16` will hold `rf4-runbook-rehearsal/<scenario>/` (`rehearsal.json` and each command's output). **To be recorded once it has run, not assumed here** |
+
+### 23.5 What remains
+
+- **This section's CI run, and its artifact.**
+- **The checkpoint on a restored copy** (§23.3): no documented procedure; the owner's decision.
+- **The runbook's checks at authorized staging, on a real deployment:**
+  - with peer authentication and the production reader login (§20.6);
+  - on a restored backup.
+
+  This rehearsal does not replace them.
+- **The limits of §20.7 and §22.5 stand.**
+
+**Status: NOT ACCEPTED / NOT FROZEN.**
