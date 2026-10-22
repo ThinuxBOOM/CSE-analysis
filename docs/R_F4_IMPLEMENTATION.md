@@ -59,7 +59,8 @@ and evidence only; it changes no decision.
 | `8431e8e` | Claude (the owner's "commit") | p40 and p41 roll their reader sessions back before their clean-up and set a 10-second `lock_timeout`; the planted-fault children get a one-minute `lock_timeout` and a 10-minute limit; §18.7 (the first X2 run). Tests and documents only (§18.7) |
 | `ef4e0e7` | Claude (the owner's "commit") | Documents only: X2's first complete run, `8431e8e`'s GitHub Actions results; §18.5's commit for `tests/hb2_fakes.py` corrected (§18.8) |
 | `5528e5a` | Claude (the owner's request, 2026-10-21; the owner's "commit") | Documents only: the acceptance matrix at `ef4e0e7`, each row from the tests' bodies; the HB-5 Windows report-path defect investigated (HB-5 unchanged); the L02 baseline as a failed test matching its signature; the gaps X2 leaves (§19) |
-| the commit adding section 20 | Claude (the owner's decisions, 2026-10-22) | `tests/test_rf4_mutants.py`: 14 more mutants (M15–M17, MF1, MR3, MT1–MT3, MP6, MP7, MN1–MN4) and a stricter kill rule (each named test's intended reason, read from a JUnit report); section 20, with the owner's decisions and the reader-login staging plan. No application code, migration, pin or CI change (§20) |
+| `41d7e0f` | Claude (the owner's decisions, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: 14 more mutants (M15–M17, MF1, MR3, MT1–MT3, MP6, MP7, MN1–MN4) and a stricter kill rule (each named test's intended reason, read from a JUnit report); section 20, with the owner's decisions and the reader-login staging plan. No application code, migration, pin or CI change (§20) |
+| the commit adding §20.8 | Claude | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2203,7 +2204,7 @@ read from it. The mutant is **KILLED** only when:
   - a named test that failed for another reason.
 - **INAPPLICABLE:** the substitution's text is not in its file exactly once.
 
-Each verdict is also written to the JUnit report as the property `rf4_mutant`.
+*(This said each verdict is also written to the JUnit report as the property `rf4_mutant`: it was not; §20.8.)*
 
 **Other changes:**
 - **`-vv`.** The child runs with it, so assertion explanations are not truncated: the reasons are matched against them.
@@ -2244,7 +2245,7 @@ The intended reasons are summarized here; the exact patterns are in the test fil
 | MP7 | `dc6302d` (Stage 1): the migration ledger records 0018 at its pin | `preflight.py` | `elif rows != [(MIGRATION_VERSION, MIGRATION, MIGRATION_SHA256)]:` → `elif False:` | p13 (tampered ledger) | `'verified' == 'failed'` |
 | MN1 | `d6924e7`: a schema searched before `public` | `schema.py` | `out.append(f"schema {_shown(name)} is searched before public…` → `[].append(…` | u20 (invariant), p31 | u20: `[] ==` the problem; p31: the store's refusal no longer names the configured path (`Regex pattern did not match`), or no refusal for a schema not yet created |
 | MN2 | `d6924e7`: `pg_catalog` after `public` | `schema.py` | `if "pg_catalog" in elements[i + 1:] and "pg_catalog" not in elements[:i]:` → `if False:` | u20 (invariant), p38 | u20: `[] ==` the problem; p38: `DID NOT RAISE` `SchemaUnavailable` (public's `=` used) |
-| MN3 | `d6924e7`: relations in the session's temporary schema | `schema.py` | `if temp_objects:` → `if False:` | u20 (the in-band check), p33 | u20: `[] ==` the problem; p33: the temporary table answers the store's F3 read (`missing: no F3 classification`), or the guard refuses, or `DID NOT RAISE` |
+| MN3 | `d6924e7`: relations in the session's temporary schema | `schema.py` | `if temp_objects:` → `if False:` | u20 (the in-band check), p33 | u20: `[] ==` the problem; p33: the temporary table answers the store's F3 read: `UndefinedColumn: column "document_bytes" does not exist` (corrected after X2's run, §20.8) |
 | MN4 | `d6924e7`: the preflight judges each role's configured path | `preflight.py` | `return [f"{role}: the search_path its sessions get …"` → `return [] and [f"{role}: …"` | u20 (precedence), p30 | `[] ==` the role's problem |
 
 **How the named tests were chosen.** Each was read in full, with the code path its assertion exercises.
@@ -2309,7 +2310,7 @@ and escaping slips, and is not evidence.
 | Windows, run by Claude, a scratch script (not committed). Each mutant with unit tests is planted in a copy, and **only its unit tests** run, through the module's own `run_tests`, `read_report`, `verdict` and `control_problems` | **Control:** all 20 unit tests passed. **23 of 23** mutants with unit tests were **killed for their reasons**. 9 mutants have PostgreSQL tests only and were not run here: MS2, MP2, MP4, M15, M16, M17, MF1, MR3, MP7 |
 | PostgreSQL tests (36 mutant–test pairs) | **Not run locally.** Free memory was 5.1–5.8% of 15.6 GB, at the owner's 5% guard floor, so no container was started |
 | GitHub Actions at the remote head `5528e5a` (§19's record; the old harness) | fast [39645695804](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39645695804) success (offline 2,105 passed, 567 skipped); regression [39645695805](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39645695805) **failed**, verdict `baseline-only`, every group as at `ef4e0e7` (X2 20 passed; L02 240 passed, 1 failed, the recorded signature matched). The baseline the next run is compared with |
-| GitHub Actions for this section's changes | **Not run:** the changes are uncommitted. **Expected** after a commit and push: X2 36 passed (3 run everywhere, the control, 32 mutants); L16, W3 and offline each 2 more passed and 14 more skipped than at `ef4e0e7` (L16 642 passed, 68 skipped; W3 1,001 passed, 307 skipped; offline 2,107 passed, 581 skipped); the other groups unchanged; L02 still the failed baseline. **To be recorded once it has run, not assumed here** |
+| GitHub Actions for this section's changes | **Not run:** the changes are uncommitted. **Expected** after a commit and push: X2 36 passed (3 run everywhere, the control, 32 mutants); L16, W3 and offline each 2 more passed and 14 more skipped than at `ef4e0e7` (L16 642 passed, 68 skipped; W3 1,001 passed, 307 skipped; offline 2,107 passed, 581 skipped); the other groups unchanged; L02 still the failed baseline. **To be recorded once it has run, not assumed here.** *It ran: §20.8* |
 
 ### 20.6 The reader login (P1): the plan for staging
 
@@ -2350,6 +2351,7 @@ survives `SET ROLE`.
 **For these mutants:**
 - **The 36 PostgreSQL mutant–test pairs** have not run. Their verdicts, and whether each reason matches the real
   failure, come from X2 after the owner's commit and push.
+  *They ran at `41d7e0f`: §20.8.*
 - **Mutation coverage** is still hand-chosen, not a full sweep: equivalent mutants were not explored, and M1–M14 are
   Claude-reported only.
 
@@ -2361,3 +2363,52 @@ survives `SET ROLE`.
 - **HB5-W1:** a separate issue (§19.4).
 
 **Status: NOT ACCEPTED / NOT FROZEN.**
+
+### 20.8 X2's first run under the stricter rule, and its corrections (2026-10-22)
+
+**The run.** The owner pushed `41d7e0f` (`41d7e0f4ac7a5bf1fb1c9cd91926c8b71f5bd04e`). Its GitHub Actions runs, read by
+Claude from their public job conclusions and check-run annotations:
+- fast [39702181528](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39702181528): success (offline 2,107
+  passed, 581 skipped, as §20.5 expected);
+- regression [39702181529](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39702181529): **failed**, verdict
+  `new-failures`.
+
+**The groups:**
+- **X2:** 34 passed, **2 failed**.
+- **L16:** 642 passed, 68 skipped; **W3:** 1,001 passed, 307 skipped. Both as expected.
+- **L02:** 240 passed, 1 failed. The failure is the recorded HB-2 baseline: the summary matched its signature again.
+  It stays open, not waived (§20.1).
+- **Every other group:** as at `ef4e0e7`.
+- **All 21 groups together:** 4,708 passed, 3 failed, 700 skipped, 2 xfailed.
+
+**X2's verdicts:**
+- **Passed:** the 3 tests that run everywhere, the control, and **30 of the 32 mutants, killed for their reasons.**
+  - Among them are all 18 of §18, now under the stricter rule.
+  - Of the 14 new mutants, 12 were killed: M15, M16, MF1, MR3, MT1–MT3, MP6, MP7, MN1, MN2, MN4.
+- **0 survived, and 0 were inapplicable.**
+- **2 were INVALID,** each with one named test that failed for a reason the run could not confirm. In both the fault
+  did take effect; the rule held back the kill. The annotations show at most about 490 characters of each failure:
+
+| Mutant | The test it could not confirm | What the run showed | Why, and the correction |
+|---|---|---|---|
+| MN3 | p33 | `psycopg2.errors.UndefinedColumn: column "document_bytes" does not exist`, on `select cse_filing_id, document_sha256, document_bytes, …`. That is `reader._load_classification`, the store's F3 read. Its other named test, u20, matched | **The fault took effect, in a form I had predicted wrongly.** In p33's session the unqualified `report_document_classifications` resolved to the session's temporary table. That table has three columns and no `document_bytes`, which `public`'s table has. I had predicted `missing: no F3 classification`. **Correction:** p33's reason is the observed error |
+| M17 | p24 | `AssertionError: {'a': {…}, 'b': …2741c981`. Run B raised an exception (that assertion fails only then), but its type is cut out. p7 and p10 matched `UniqueViolation` | **pytest 7.4 (CI) shortens a non-string assertion message to 240 characters,** keeping its two ends. p24's message was the dict `got`, so B's exception was lost in the middle. **Correction:** p24's message is now `repr(got)`, a string, which pytest prints in full. p24's assertion is unchanged |
+
+**A third correction.** §20.2 said each verdict is written to the JUnit report as the property `rf4_mutant`. **That
+was not so.** pytest ignores `record_property` under the default `junit_family` (`xunit2`) and warns. This showed in
+Claude's local run below; CI's JUnit report was not read. The call is removed. A verdict is in the test's outcome
+(passed means killed) and, for any other verdict, in its failure message.
+
+**Claude's local check of the corrections** (not CI):
+- **Setup:**
+  - a clean LF clone of `41d7e0f`, with the two corrected test files;
+  - the container `cse-p1-test` (PostgreSQL 17.11, pytest 7.4.4), with `--network none`, run as its unprivileged user;
+  - a RAM guard, which never fired. Free memory was 14.3% at the start.
+- **Command:** `RF4_MUTANTS=1 P1_PG_BINDIR=/usr/lib/postgresql/17/bin pytest tests/test_rf4_mutants.py -k "control or
+  M17 or MN3"`.
+- **Result: 3 passed in 175 s.** The control passed (all 47 named tests), and M17 and MN3 were killed for their
+  reasons.
+- **Afterwards:** no container or volume of the run remained.
+
+**Still to come:** the corrected X2 run in GitHub Actions. That needs the owner's commit and push. It is to be
+recorded once it has run, not assumed here.

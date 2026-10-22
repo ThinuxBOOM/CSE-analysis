@@ -244,8 +244,8 @@ MUTANTS = [
      "    if temp_objects:\n", "    if False:\n",
      {U + "test_u20_the_in_band_check_reads_the_sessions_own_resolution":
           r'\[\] == \["this session\'s temporary schema pg_temp_3 holds 2 relation\(s\) or type\(s\)',
-      P + "test_p33_a_temporary_table_searched_before_public_is_refused":
-          "missing: no F3 classification|is not of filing|" + NOT_RAISED.format("SchemaUnavailable")}),
+      P + "test_p33_a_temporary_table_searched_before_public_is_refused":     # the store's F3 read answered by the
+          'UndefinedColumn: column "document_bytes" does not exist'}),        # 3-column temporary table (X2, 41d7e0f)
     ("MN4", "d6924e7: the preflight judges each role's configured search path", PKG + "preflight.py",
      '    return [f"{role}: the search_path its sessions get ({source}: {value!r}): {problem}"\n',
      '    return [] and [f"{role}: the search_path its sessions get ({source}: {value!r}): {problem}"\n',
@@ -437,8 +437,7 @@ def test_control_every_named_test_passes_on_the_unchanged_copy(tree):
 
 @PLANTED
 @pytest.mark.parametrize("mid, change, path, old, new, killers", MUTANTS, ids=[m[0] for m in MUTANTS])
-def test_mutant_is_killed_by_its_named_tests_for_their_reasons(tree, record_property, mid, change, path, old, new,
-                                                                killers):
+def test_mutant_is_killed_by_its_named_tests_for_their_reasons(tree, mid, change, path, old, new, killers):
     assert CONTROL.get("passed"), "INVALID: the control did not pass, so a kill could not be told from the environment"
     target = os.path.join(tree, path)
     original = open(target, encoding="utf-8").read()
@@ -451,5 +450,4 @@ def test_mutant_is_killed_by_its_named_tests_for_their_reasons(tree, record_prop
         with open(target, "w", encoding="utf-8", newline="") as f:
             f.write(original)
     outcome, why = verdict(code, cases, killers)
-    record_property("rf4_mutant", f"{mid}: {outcome}: {why}")
     assert outcome == "killed", f"{outcome.upper()}: {mid} ({change}): {why}\n{tail}"

@@ -1508,7 +1508,7 @@ def test_p24_two_concurrent_runs_of_one_filing_leave_one_set_of_rows_and_no_dead
         if b.ident is not None:
             b.join(60)
     assert not a.is_alive() and not b.is_alive()
-    assert not any(isinstance(r, BaseException) for r in got.values()), got
+    assert not any(isinstance(r, BaseException) for r in got.values()), repr(got)     # in full: pytest cuts a dict
     stored = {k: [(r["stored"]["f3"], r["stored"]["f4"], r["stored"]["f5"]) for r in v["records"]]
               for k, v in got.items()}
     assert stored =={"a": [("inserted",) * 3], "b": [("already_present",) * 3]}
