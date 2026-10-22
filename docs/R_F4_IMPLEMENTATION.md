@@ -64,7 +64,8 @@ and evidence only; it changes no decision.
 | `b32a06a` | Claude (the owner's "commit") | X2's first run under the stricter rule (30 of 32 killed, MN3 and M17 INVALID); the corrections: MN3's p33 reason, p24's assertion message (`repr(got)`), `record_property` removed. Tests and documents only (§20.8) |
 | the commit adding §20.9 | Claude | Documents only: `b32a06a`'s GitHub Actions results, X2 36 passed (§20.9) |
 | the commit adding section 21 | Claude (the owner's decision, 2026-10-22) | Documents only: the owner's waiver, for R-F4 acceptance only, of the L02 baseline failure `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`; the test still fails (§21) |
-| the commit adding section 22 | Claude (the owner's request, 2026-10-22) | `tests/test_rf4_mutants.py`: §5.7's M1–M14 as X2 mutants, each with §5.7's named test and its intended reason; `docs/CI_TEST_STRATEGY.md`: X2's description; section 22. No application code, migration, frozen test, pin or CI configuration change (§22) |
+| `d4ef33a` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: §5.7's M1–M14 as X2 mutants, each with §5.7's named test and its intended reason; `docs/CI_TEST_STRATEGY.md`: X2's description; section 22. No application code, migration, frozen test, pin or CI configuration change (§22) |
+| the commit adding §22.6 | Claude | Documents only: `d4ef33a`'s GitHub Actions results, X2 51 passed (§22.6) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2655,7 +2656,7 @@ The control now names 54 tests. Their unit tests need no PostgreSQL, and they ru
 | Windows, Python 3.14.6, pytest 9.1.1, run by Claude: a scratch capture (not committed) of M1–M14's unit tests, through the module's own functions | **Control:** all 27 non-PostgreSQL named tests passed. Under each mutant its named test failed. Each reason was then set from the failure seen |
 | The same, after the reasons were set (free memory 10.6% at the start, the RAM guard armed and not fired) | `pytest tests/test_rf4_mutants.py`: 4 passed, 47 skipped. Control: 27 passed. **M1–M14: 14 of 14 killed for their reasons.** Claude-reported, **not CI evidence**, and not a substitute for it |
 | GitHub Actions at `62f4a6d` (the remote head before §21) | Regression [39766979614](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39766979614): **failed**, verdict `baseline-only`. X2 37 passed; L16 643 passed, 68 skipped; W3 1,002 passed, 307 skipped; L02 the recorded baseline. Fast [39766979693](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39766979693): success. The baseline the next run is compared with |
-| GitHub Actions for this section's changes | **Not run.** The changes are uncommitted; the run needs the owner's commit and push. **Expected:** X2 51 passed (4 run everywhere, the control, 46 mutants); L16 643 passed, 82 skipped; W3 1,002 passed, 321 skipped; offline 2,108 passed, 595 skipped; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). **To be recorded once it has run, not assumed here** |
+| GitHub Actions for this section's changes | **Not run.** The changes are uncommitted; the run needs the owner's commit and push. **Expected:** X2 51 passed (4 run everywhere, the control, 46 mutants); L16 643 passed, 82 skipped; W3 1,002 passed, 321 skipped; offline 2,108 passed, 595 skipped; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). **To be recorded once it has run, not assumed here.** *It ran: §22.6* |
 
 ### 22.5 What remains
 
@@ -2669,3 +2670,42 @@ The control now names 54 tests. Their unit tests need no PostgreSQL, and they ru
   - HB5-W1 is a separate issue.
 
 **Status: NOT ACCEPTED / NOT FROZEN.**
+
+### 22.6 X2 with M1–M14 (2026-10-22)
+
+**The run.** The owner pushed `d4ef33a` (`d4ef33a5f1b3f311281bb378ae6f9042bc07e57d`). Its GitHub Actions runs, read by
+Claude from their public job conclusions and check-run annotations:
+- fast [39782997505](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39782997505): success (offline 2,108
+  passed, 595 skipped);
+- regression [39782997754](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39782997754): **failed**, verdict
+  `baseline-only`. Only L02 and the summary job failed.
+
+**X2: 51 passed, exit 0** (pytest 7.4.4, PostgreSQL 17.11). Those are:
+- the 4 tests that run everywhere;
+- the control: all 54 named tests passed on the unchanged copy;
+- **all 46 mutants, killed for their intended reasons.** Each child exited 1, no test errored, and every named test
+  failed with its reason. That includes **M1–M14, in CI for the first time,** and the 32 of §18 and §20.
+
+**None** survived, was invalid or was inapplicable.
+
+**The other groups, as §22.4 expected:**
+- **L16:** 643 passed, 82 skipped; **W3:** 1,002 passed, 321 skipped.
+- **L02:** 240 passed, 1 failed. The failure is the recorded HB-2 baseline: the summary matched its signature. The
+  test **still fails**, and it is waived for R-F4 acceptance only (§21).
+- **Every other group:** as at `62f4a6d`.
+- **All 21 groups together:** 4,727 passed, 1 failed, 728 skipped, 2 xfailed.
+
+**What this shows, and what it does not:**
+- **It shows** that each of §5.7's M1–M14 is detected in CI, at `d4ef33a`, by §5.7's named test, for the intended
+  reason. With §18 and §20, every mutant this record names (M1–M17 and the 32 others) now runs in X2.
+- **The per-test failure texts** are in X2's JUnit report and log, which need a signed-in account and were not read.
+  The result rests on the group's public counts and the kill rule (§20.2, with `62f4a6d`'s exit-1 rule).
+- **The other limits stand:**
+  - the mutants are hand-chosen, not a full sweep;
+  - the runbook's checks have not been executed;
+  - no reader login is provisioned (§20.6);
+  - there are no real documents;
+  - L02 still fails, waived for R-F4 acceptance only (§21);
+  - HB5-W1 is a separate issue.
+
+**Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
