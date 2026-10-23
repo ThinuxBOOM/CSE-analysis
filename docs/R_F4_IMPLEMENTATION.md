@@ -68,7 +68,8 @@ and evidence only; it changes no decision.
 | the commit adding §22.6 | Claude | Documents only: `d4ef33a`'s GitHub Actions results, X2 51 passed (§22.6) |
 | `e755780` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's R-F4 sequence rehearsed on a fresh disposable PostgreSQL 17 cluster per scenario, with the real commands and fail-closed cases; `.github/ci/linux_tests.sh`: `RF4_RUNBOOK_EVIDENCE`; `docs/CI_TEST_STRATEGY.md`; section 23. No application code, migration, frozen test or pin change (§23) |
 | the commit adding §23.6 | Claude | Documents only: `e755780`'s GitHub Actions results, the rehearsal in L16 (§23.6) |
-| the commit adding §24 | Claude (the owner's request, 2026-10-23) | `tests/test_rf4_runbook_rehearsal.py`: the runbook's checkpoint on a restored copy (c1–c6): P1's dump, verify and restore check, the dump restored by P1's documented restore commands into a separate disposable cluster, then the R-F4 checks on it, with fail-closed cases; `docs/CI_TEST_STRATEGY.md`; section 24. No application code, P1 code, migration, frozen test, pin, CI configuration or runbook change (§24) |
+| `9f87881` | Claude (the owner's request, 2026-10-23; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's checkpoint on a restored copy (c1–c6): P1's dump, verify and restore check, the dump restored by P1's documented restore commands into a separate disposable cluster, then the R-F4 checks on it, with fail-closed cases; `docs/CI_TEST_STRATEGY.md`; section 24. No application code, P1 code, migration, frozen test, pin, CI configuration or runbook change (§24) |
+| the commit adding §24.8 | Claude | Documents only: `9f87881`'s GitHub Actions results, read from L16's job log and its downloaded artifact (§24.8) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2995,7 +2996,7 @@ it from the source was not examined.
 |---|---|
 | Windows, Python 3.14.6, pytest 9.1.1, run by Claude: `pytest tests/test_rf4_runbook_rehearsal.py`; `python .github/ci/groups.py --check` | 1 passed (the gates), 11 skipped (no PostgreSQL). The partition is unchanged, 66 files |
 | Claude's local container run: `cse-p1-test` (PostgreSQL 17.11, Python 3.12.3, pytest 7.4.4), `--network none`, `--memory=1g`, as its unprivileged user, on a clean LF clone of `39957c2` with this file, under the RAM guard | **First attempt:** the guard stopped the container at 4.2% free memory, before any test ran. **Second attempt:** 10.4% free at the start; the guard did not fire. **12 passed in 167 s.** Each scenario's `rehearsal.json` showed §24.4's outcomes; the details follow this table. Claude-reported, **not CI evidence**, and not a substitute for it |
-| GitHub Actions for this section's changes | **Not run.** It needs the owner's push. **Expected:**<br>- L16: 655 passed, 82 skipped (649 + 6);<br>- W3: 1,003 passed, 332 skipped;<br>- offline: 2,109 passed, 606 skipped;<br>- X2: 51 passed;<br>- the other groups unchanged;<br>- L02: the failed baseline, waived for R-F4 acceptance only (§21).<br>`ci-regression-L16`'s `rf4-runbook-rehearsal/` will hold c1–c6 beside r1–r5. **To be recorded once it has run, and once its job log and artifact contents have been read, not assumed here** |
+| GitHub Actions for this section's changes | **Not run.** It needs the owner's push. **Expected:**<br>- L16: 655 passed, 82 skipped (649 + 6);<br>- W3: 1,003 passed, 332 skipped;<br>- offline: 2,109 passed, 606 skipped;<br>- X2: 51 passed;<br>- the other groups unchanged;<br>- L02: the failed baseline, waived for R-F4 acceptance only (§21).<br>`ci-regression-L16`'s `rf4-runbook-rehearsal/` will hold c1–c6 beside r1–r5. **To be recorded once it has run, and once its job log and artifact contents have been read, not assumed here.** *It ran: §24.8* |
 
 **The local run's outcomes, by scenario:**
 - **c1:** accepted.
@@ -3016,7 +3017,8 @@ it from the source was not examined.
 
 ### 24.7 What remains
 
-- **This section's CI run.** Its job log and its artifact's contents must be read before it is recorded.
+- **This section's CI run.** Its job log and its artifact's contents must be read before it is recorded. *Done:
+  §24.8.*
 - **The owner's decision on the runbook's procedure** for the restored copy (§24.1), with the proposed sentence.
 - **The checks at authorized staging, on a real restored backup:**
   - with peer authentication;
@@ -3024,5 +3026,97 @@ it from the source was not examined.
 
   This rehearsal does not replace them.
 - **The limits of §20.7, §22.5 and §23.5 stand.**
+
+**Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
+
+### 24.8 The checkpoint rehearsal in GitHub Actions (2026-10-23)
+
+**The run.** The owner pushed `9f87881` (`9f87881e1f775bb55d702c9d328264c750a18a15`).
+- fast [39882296666](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39882296666): success. Offline: 2,109
+  passed, 606 skipped, as §24.6 expected.
+- regression [39882297311](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39882297311): **failed**, verdict
+  `baseline-only`. Only L02 and the summary job failed.
+
+**How it was read.** Unlike §23.6, this time Claude read the evidence itself, not only the counts:
+- the job conclusions and check-run annotations, from the public API;
+- **L16's whole job log**, through the owner's signed-in browser;
+- **the artifact `ci-regression-L16`** (id 12470314213, 115,746 bytes, kept until 2026-11-22):
+  - downloaded with the owner's approval;
+  - its SHA-256, `a379ae31…07e3`, matches the digest the job printed when it uploaded it;
+  - extracted into an empty scratch directory. It holds 150 files;
+  - read with a script that only reads. Nothing was executed from it.
+
+**L16's job log:**
+- the commit `9f87881`;
+- the partition check: 66 files;
+- the container run with `--network none`;
+- pytest: "655 passed, 82 skipped in 117.54s";
+- the group's summary: clean, "No failures, no missing or inconsistent reports";
+- the upload: 150 files, 115,746 bytes.
+
+The log runs pytest with `-q`, so it does not name each test. The names come from the artifact.
+
+**The artifact:**
+- **`environment.txt`:**
+  - the commit is `9f87881` (both the GitHub SHA and the checked-out head);
+  - PostgreSQL 17.11;
+  - the network: interfaces `['lo']` only, 0 routes, ENETUNREACH;
+  - `www.cse.lk`, `cdn.cse.lk` and `cse.lk` do not resolve.
+- **`exit_code`:** 0.
+- **`junit.xml`:** all 12 tests of `tests/test_rf4_runbook_rehearsal.py` passed:
+  - the gates: 0.0 s;
+  - r1–r5: 2.2–2.7 s each;
+  - c1–c6: 6.1–6.3 s each.
+- **`rf4-runbook-rehearsal/`:** 11 scenario directories, each with `rehearsal.json` and every command's stdout and
+  stderr. Each `rehearsal.json` records the commit `9f87881…`, PostgreSQL 17.11 and Python 3.12.3.
+
+**c1–c6, as their `rehearsal.json` and command outputs record them:**
+
+| Scenario | P1: dump, verify, restore check | Restore and the copy | Step 2: preflight on the copy | Step 4: verify on the copy | Decision |
+|---|---|---|---|---|---|
+| c1 | Exit 0 each; dump and restore check `succeeded`; verify `{dump: []}` | `globals.sql`: exit 0, its only error "role postgres already exists"; `pg_restore`: exit 0, no stderr. The copy matched the manifest and P1's invariants, with no problem | Exit 0, clean; ledger `verified`, read as `cse_owner` | Exit 0, clean, scope `{"complete": true, "limit": null}`; 3 extractions, 3 runs, 3 rebuilt, no problems | **Accepted** |
+| c2 | As c1, after a cell was changed on the source | As c1 | Exit 0, clean | Exit 1, not clean, scope complete; 2 of 3 rebuilt; problems `corrupt`, `corrupt` | Not accepted (step 5) |
+| c3 | As c1, after the ledger's 0018 hash was changed on the source | As c1 | Exit 1; ledger `failed`, read as `cse_owner`: it records 0018 with 64 zeros, and the pin expects `39855c0d…91fe4`; no file or object problem | Not run | Stopped at step 3 |
+| c4 | As c1 | As c1; then row-level security set on the copy's `financial_extraction_runs` | Exit 1; the object problem "financial_extraction_runs has row-level security enabled …"; ledger verified | Not run. The probe outside the sequence: exit 0, clean, 0 runs, 3 extractions | Stopped at step 3 |
+| c5 | As c1 | As c1 | As `cse_worker` by `DATABASE_URL`: exit 2; ledger `unverifiable` (`read_as` null); no file or object problem | Not run | Stopped at step 3 |
+| c6 | As c1 | As c1 | Exit 0, clean | `--limit 1`: exit 1, not clean, no problems; scope incomplete, limit 1 | Not accepted (step 5) |
+
+**In all six:**
+- **The checks ran against the copy.** Every step's settings name the copy's socket (`…/copy/cse_pg_*/sock`, port
+  54331), never the source's.
+- **The source was stopped first:** its `pg_ctl status` was 3 before step 2.
+- **The roles came from the dump.** Before `globals.sql` the copy had none of the `cse_*` roles or the reader. After
+  it, all six existed, and the reader was a member of `cse_reader`.
+- **The copy listened on no TCP port:** `listen_addresses` was `''`.
+- **P1's restore check left nothing behind:** `restore-scratch` was empty afterwards.
+- **Clean-up:** `pg_ctl status` was 3 for both the source and the copy, no other server was found, and the scenario's
+  directory was removed.
+
+**r1–r5** recorded what §23.2 requires, as at `e755780`: r1 accepted; r2 and r3 stopped at step 3 (exits 1 and 2; r2's
+probe clean with 0 runs); r4 and r5 not accepted at step 5. Their clean-up shows `{"cluster": 3}`.
+
+**The other groups, as §24.6 expected:**
+- **W3:** 1,003 passed, 332 skipped.
+- **X2:** 51 passed.
+- **L02:** 240 passed, 1 failed. The failure is the recorded HB-2 baseline: the signature matched. It still fails, and
+  it is waived for R-F4 acceptance only (§21).
+- **Every other group:** unchanged.
+- **All 21 groups together:** 4,740 passed, 1 failed, 739 skipped, 2 xfailed. That is `e755780`'s totals plus 6 passed
+  and 6 skipped.
+
+**What this shows, and what it does not:**
+- **It shows** that, in CI, offline, on disposable PostgreSQL 17 clusters, a P1 dump of a database with R-F4's evidence:
+  - passes P1's own verify and restore check;
+  - restores with P1's documented commands into a separate copy;
+  - passes the runbook's preflight and full `verify` there, which accept it;
+  - fails closed in each of the five fault cases.
+
+  c2 shows the value of the step: P1's restore check passed a dump whose evidence was corrupt, and R-F4's `verify` on
+  the copy refused it.
+- **The limits of §24.5 stand:**
+  - the runbook still names no procedure for its restored copy (§24.1): the owner's decision;
+  - no peer authentication, OS service users or production reader login;
+  - no execution at staging or on a real backup;
+  - synthetic evidence only.
 
 **Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
