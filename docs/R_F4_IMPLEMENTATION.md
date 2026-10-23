@@ -66,7 +66,8 @@ and evidence only; it changes no decision.
 | the commit adding section 21 | Claude (the owner's decision, 2026-10-22) | Documents only: the owner's waiver, for R-F4 acceptance only, of the L02 baseline failure `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`; the test still fails (§21) |
 | `d4ef33a` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_mutants.py`: §5.7's M1–M14 as X2 mutants, each with §5.7's named test and its intended reason; `docs/CI_TEST_STRATEGY.md`: X2's description; section 22. No application code, migration, frozen test, pin or CI configuration change (§22) |
 | the commit adding §22.6 | Claude | Documents only: `d4ef33a`'s GitHub Actions results, X2 51 passed (§22.6) |
-| the commit adding section 23 | Claude (the owner's request, 2026-10-22) | `tests/test_rf4_runbook_rehearsal.py`: the runbook's R-F4 sequence rehearsed on a fresh disposable PostgreSQL 17 cluster per scenario, with the real commands and fail-closed cases; `.github/ci/linux_tests.sh`: `RF4_RUNBOOK_EVIDENCE`; `docs/CI_TEST_STRATEGY.md`; section 23. No application code, migration, frozen test or pin change (§23) |
+| `e755780` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's R-F4 sequence rehearsed on a fresh disposable PostgreSQL 17 cluster per scenario, with the real commands and fail-closed cases; `.github/ci/linux_tests.sh`: `RF4_RUNBOOK_EVIDENCE`; `docs/CI_TEST_STRATEGY.md`; section 23. No application code, migration, frozen test or pin change (§23) |
+| the commit adding §23.6 | Claude | Documents only: `e755780`'s GitHub Actions results, the rehearsal in L16 (§23.6) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2798,7 +2799,7 @@ the data directory goes (3: no server running), and the cluster's directory is d
 |---|---|
 | Windows, Python 3.14.6, pytest 9.1.1, run by Claude: `pytest tests/test_rf4_runbook_rehearsal.py` | 1 passed (the gates), 5 skipped (no PostgreSQL) |
 | Claude's local container run: `cse-p1-test` (PostgreSQL 17.11, Python 3.12.3, pytest 7.4.4), `--network none`, as its unprivileged user, on a clean LF clone of `d219f61` with these files, under the RAM guard (free memory 14.7% at the start; it did not fire) | **6 passed in 70 s.** The decisions of §23.2 were seen exactly, in each scenario's `rehearsal.json`: r1 accepted; r2 stopped at step 3 with verify not run, and its probe clean with 0 runs; r3 stopped at step 3 on exit 2; r4 and r5 not accepted at step 5. In every scenario `pg_ctl status` returned 3 after the stop and the cluster was removed; no `/tmp/rf4rh*` directory was left. Claude-reported, **not CI evidence**, and not a substitute for it |
-| GitHub Actions for this section's changes | **Not run.** It needs the owner's commit and push. **Expected:** L16 649 passed, 82 skipped (643 + 6); W3 1,003 passed, 326 skipped; offline 2,109 passed, 600 skipped; X2 51 passed; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). The artifact `ci-regression-L16` will hold `rf4-runbook-rehearsal/<scenario>/` (`rehearsal.json` and each command's output). **To be recorded once it has run, not assumed here** |
+| GitHub Actions for this section's changes | **Not run.** It needs the owner's commit and push. **Expected:** L16 649 passed, 82 skipped (643 + 6); W3 1,003 passed, 326 skipped; offline 2,109 passed, 600 skipped; X2 51 passed; the other groups unchanged; L02 the failed baseline, waived for R-F4 acceptance only (§21). The artifact `ci-regression-L16` will hold `rf4-runbook-rehearsal/<scenario>/` (`rehearsal.json` and each command's output). **To be recorded once it has run, not assumed here.** *It ran: §23.6* |
 
 ### 23.5 What remains
 
@@ -2812,3 +2813,48 @@ the data directory goes (3: no server running), and the cluster's directory is d
 - **The limits of §20.7 and §22.5 stand.**
 
 **Status: NOT ACCEPTED / NOT FROZEN.**
+
+### 23.6 The rehearsal in GitHub Actions (2026-10-22)
+
+**The run.** The owner pushed `e755780` (`e755780caee660f541cb51ca82a2fb5a89516c9f`). Its GitHub Actions runs, read by
+Claude from their public job conclusions, check-run annotations and artifact listing:
+- fast [39793368171](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39793368171): success (offline 2,109
+  passed, 600 skipped, as §23.4 expected);
+- regression [39793367845](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/39793367845): **failed**, verdict
+  `baseline-only`. Only L02 and the summary job failed.
+
+**L16, which holds the rehearsal: 649 passed, 82 skipped, exit 0.**
+- That is 643 + 6 passed, with the skips unchanged from `d4ef33a`, so the rehearsal's 6 tests ran and passed:
+  - the gates;
+  - r1, which accepted the sequence;
+  - r2–r5, each of which refused it as §23.2 requires.
+- PostgreSQL 17.11 and pytest 7.4.4, in the container with no network. The test step took 82 seconds.
+- This is derived from the counts. L16's JUnit report and log need a signed-in account and were not read.
+
+**The other groups, as §23.4 expected:**
+- **W3:** 1,003 passed, 326 skipped.
+- **X2:** 51 passed.
+- **L02:** 240 passed, 1 failed. The failure is the recorded HB-2 baseline: the signature matched. It still fails, and
+  it is waived for R-F4 acceptance only (§21).
+- **Every other group:** unchanged.
+- **All 21 groups together:** 4,734 passed, 1 failed, 733 skipped, 2 xfailed.
+
+**The artifact.** `ci-regression-L16` (id 12433260290, kept until 2026-11-21) is 57,417 bytes, against 29,547 for
+L16's artifact at `d4ef33a`. The 27,870 more bytes fit `rf4-runbook-rehearsal/`: Claude's local run wrote about 147 KB
+of it, uncompressed. That is indirect. **Its contents were not read**: they need a signed-in download. The owner can
+inspect each scenario's `rehearsal.json` and command outputs there.
+
+**A slow run, not a failure.** Building the test container took 94 seconds in L16 but 1,024 seconds in L01, and about
+eight minutes in the fast workflow. That is the image build fetching packages, before any test ran. L01's tests then
+passed in 20 seconds. Nothing in this change touches the image.
+
+**What this shows, and what it does not:**
+- **It shows** that the runbook's R-F4 sequence runs in CI with the real commands on a fresh, disposable PostgreSQL 17
+  cluster. It is accepted when everything is clean, and it fails closed in each of the four cases of §23.2.
+- **The limits of §23.3 and §23.5 stand:**
+  - there is no checkpoint on a restored copy, for want of a documented procedure;
+  - peer authentication is not rehearsed;
+  - there is no production reader login;
+  - there is no execution at staging.
+
+**Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
