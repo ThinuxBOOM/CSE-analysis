@@ -68,8 +68,11 @@ and evidence only; it changes no decision.
 | the commit adding §22.6 | Claude | Documents only: `d4ef33a`'s GitHub Actions results, X2 51 passed (§22.6) |
 | `e755780` | Claude (the owner's request, 2026-10-22; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's R-F4 sequence rehearsed on a fresh disposable PostgreSQL 17 cluster per scenario, with the real commands and fail-closed cases; `.github/ci/linux_tests.sh`: `RF4_RUNBOOK_EVIDENCE`; `docs/CI_TEST_STRATEGY.md`; section 23. No application code, migration, frozen test or pin change (§23) |
 | the commit adding §23.6 | Claude | Documents only: `e755780`'s GitHub Actions results, the rehearsal in L16 (§23.6) |
-| `9f87881` | Claude (the owner's request, 2026-10-23; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's checkpoint on a restored copy (c1–c6): P1's dump, verify and restore check, the dump restored by P1's documented restore commands into a separate disposable cluster, then the R-F4 checks on it, with fail-closed cases; `docs/CI_TEST_STRATEGY.md`; section 24. No application code, P1 code, migration, frozen test, pin, CI configuration or runbook change (§24) |
-| the commit adding §24.8 | Claude | Documents only: `9f87881`'s GitHub Actions results, read from L16's job log and its downloaded artifact (§24.8) |
+| `9f87881` | Claude (the owner's request, 2026-10-23; the owner's "commit") | `tests/test_rf4_runbook_rehearsal.py`: the runbook's checkpoint on a restored copy (c1–c6): P1's dump, verify and restore check, then the dump restored into the rehearsal's own disposable cluster with `psql` and `pg_restore` given that cluster's connection arguments (not a documented checkpoint procedure, §24.1), then the R-F4 checks on it, with fail-closed cases; `docs/CI_TEST_STRATEGY.md`; section 24. No application code, P1 code, migration, frozen test, pin, CI configuration or runbook change (§24) |
+| `219ad62` | Claude | Documents only: `9f87881`'s GitHub Actions results, read from L16's job log and its downloaded artifact (§24.8) |
+| `20d671e` | Claude (the owner's approved wording, 2026-10-23) | `docs/ops/PHASE2_BACKFILL.md` §6: a sentence directing the checkpoint's throwaway copy to be made with `P1_PLATFORM.md` §8 B, step 5. **Wrong:** that step restores into the production cluster (§24.1) |
+| `c398029` | Claude (the owner's correction, 2026-10-23) | `docs/ops/PHASE2_BACKFILL.md` §6: `20d671e`'s sentence replaced. §8 B, step 5 must not be used for the copy; the R-F4 checkpoint procedure is blocked until an isolated-restore procedure is separately reviewed and approved (§24.1) |
+| the commit correcting §24 | Claude (the owner's request, 2026-10-23) | Documents and a docstring only: this record's description of the rehearsal's restore (§23.3, §23.5, §24); the module and `restore()` docstrings of `tests/test_rf4_runbook_rehearsal.py`; runbook §6: its verification sequence states required checks, not authorization to run them. No test logic changed (§24.1) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -2787,8 +2790,10 @@ the data directory goes (3: no server running), and the cluster's directory is d
 
   Starting the kept directory by hand would be a procedure the runbook does not give, so it is **not** rehearsed. The
   gap is for the owner: P1 or the runbook would need a documented way to keep the restored copy running for the
-  checks. *Since §24: rehearsed in CI with P1's own documented restore commands (P1_PLATFORM.md §8 B, step 5) on a
-  separate disposable cluster. The runbook still names no procedure for its restored copy (§24.1).*
+  checks. *Since §24: rehearsed in CI on a copy the rehearsal restores into its own disposable cluster, with `psql` and
+  `pg_restore` given that cluster's connection arguments. That is not a documented checkpoint procedure, and
+  `P1_PLATFORM.md` §8 B, step 5 is not one either: it restores into the production cluster. The runbook blocks the R-F4
+  checkpoint procedure until an isolated-restore procedure is separately reviewed and approved (§24.1).*
 - **Authentication.** The throwaway cluster trusts its private socket. Production uses P1's peer authentication with
   `pg_ident`, which is not rehearsed here.
 - **The production reader login.** No such login is provisioned (§20.6); the rehearsal's login is disposable. The
@@ -2808,8 +2813,8 @@ the data directory goes (3: no server running), and the cluster's directory is d
 ### 23.5 What remains
 
 - **This section's CI run, and its artifact.**
-- **The checkpoint on a restored copy** (§23.3): no documented procedure; the owner's decision. *Rehearsed since §24;
-  the runbook's procedure is still the owner's decision (§24.1).*
+- **The checkpoint on a restored copy** (§23.3): no documented procedure; the owner's decision. *Rehearsed in CI since
+  §24; in the runbook it is blocked until an isolated-restore procedure is separately reviewed and approved (§24.1).*
 - **The runbook's checks at authorized staging, on a real deployment:**
   - with peer authentication and the production reader login (§20.6);
   - on a restored backup.
@@ -2864,7 +2869,7 @@ passed in 20 seconds. Nothing in this change touches the image.
 
 **Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
 
-## 24. The checkpoint on a restored copy, rehearsed with P1's own commands (2026-10-23)
+## 24. The checkpoint on a restored copy, rehearsed on disposable CI clusters (2026-10-23)
 
 **The request.** Close §23.3's gap, the runbook's checkpoint on a restored copy (`docs/ops/PHASE2_BACKFILL.md` §6),
 if the repository's existing procedures support it safely. The rehearsal should:
@@ -2882,8 +2887,8 @@ disposable clusters. It is **not** an execution at staging, on a deployment or o
 ### 24.1 The finding: what the documented procedures support
 
 **What the runbook says.** At each checkpoint, §6 has the owner run "a manual dump and a restore check", then R-F4's
-two checks "on the restored copy", each pointed at it and not at production. It does not say how that copy is brought
-up.
+two checks "on the restored copy", each pointed at it and not at production. It did not say how that copy is brought
+up. Since `c398029` it blocks that procedure (see the correction below).
 
 **P1 documents two ways to restore a dump** (`docs/ops/P1_PLATFORM.md` §8):
 - **A, the routine restore check** (`python -m worker.ops.restore_check`):
@@ -2892,33 +2897,52 @@ up.
   - it then stops and deletes the cluster. `--keep` keeps only the stopped data directory.
 
   It cannot be the copy the checks run on. That was §23.3's finding, and it stands.
-- **B, disaster recovery, step 5:** `psql -X -f "$D/globals.sql"`, then
-  `pg_restore --create --exit-on-error -d postgres "$D/database.dump"`:
-  - run as the cluster's bootstrap superuser;
-  - into a cluster where the database `cse` does not exist yet.
+- **B, disaster recovery onto a new or rebuilt server, step 5:** "Restore it into the production cluster", with
+  `sudo -u postgres psql -X -f "$D/globals.sql"` and then
+  `sudo -u postgres pg_restore --create --exit-on-error -d postgres "$D/database.dump"`.
+  - Its commands give no connection arguments, so on the server they reach the production cluster.
+  - **It documents restoration into production. It is not a procedure for the checkpoint's throwaway copy, and must
+    not be used for one** (runbook §6).
 
-  These commands leave a running restored copy. A fresh disposable cluster meets their precondition.
+**Neither documents a restored copy the checks can run on.** So no documented, reviewed procedure brings up the
+checkpoint's copy.
 
-**So the workflow can be exercised entirely on disposable clusters with synthetic data, and needs no code change:**
+**What the rehearsal does instead:**
 1. P1's dump, verify and restore check, exactly as documented (and as `provision.sh selftest` runs them);
-2. §8 B step 5's two commands, run on a separate disposable cluster;
+2. it brings up **its own disposable CI cluster**, and restores the dump into it with `psql -X -f globals.sql` and
+   `pg_restore --create --exit-on-error -d postgres database.dump`. Each command is given that cluster's connection
+   arguments (`-h` its socket, `-p` its port, `-U` its bootstrap superuser), which §8 B, step 5 does not have;
 3. the runbook's steps 2–5, pointed at that cluster.
 
-None of it needs a production credential, a CSE request or staging.
+None of it needs a production credential, a CSE request or staging. **None of it is a documented checkpoint
+procedure.** It shows how R-F4's checks behave on a copy restored from a P1 dump into an isolated cluster, not how such
+a copy is to be made.
 
-**What this does not settle: the owner's decision.**
-- The runbook's §6 still does not name the procedure for its restored copy.
-- The rehearsal uses P1's documented restore commands on a target the runbook does not name: a separate throwaway
-  cluster, never the production one.
-- It is a rehearsal of documented commands. It is **not** presented as the runbook's procedure.
+**Correction (2026-10-23).** This section first said otherwise:
+- **The restore:** it called the rehearsal's restore "P1's documented restore commands" and "§8 B step 5's two
+  commands, run on a separate disposable cluster", without saying that the rehearsal added the connection arguments.
+- **The proposal:** it proposed a runbook sentence citing `P1_PLATFORM.md` §8 B, step 5 for the checkpoint's throwaway
+  copy. The owner approved a version of it, and Claude committed it as `20d671e`.
 
-**The smallest proposed change** is one sentence in `docs/ops/PHASE2_BACKFILL.md` §6. For the owner; **not made here**.
-For example:
+An independent review found that §8 B, step 5 restores into the production cluster. An operator following that
+sentence would have run it against production.
 
-> restore the checkpoint's dump into a separate throwaway PostgreSQL 17 cluster, never the production one, with
-> `P1_PLATFORM.md` §8 B step 5's commands; point the checks at it; then stop and delete it.
+**The fix, `c398029`.** It replaced the sentence in runbook §6, which now:
+- forbids §8 B, step 5 for the copy;
+- says that `restore_check --keep` and the `cse-financial` / `cse-backfill` wrappers do not provide the copy;
+- blocks the R-F4 checkpoint procedure until a separately reviewed procedure:
+  - restores into an isolated PostgreSQL 17 cluster;
+  - keeps the copy available;
+  - configures appropriate authentication;
+  - connects every verification command to the copy.
 
-It is documentation only: P1's code, units and procedures stay as they are.
+This record, the test's docstrings and runbook §6's statement that its verification sequence is not authorization to
+run the checks were corrected afterwards.
+
+**The rehearsal's evidence is unaffected** (§24.6, §24.8). Its commands and results stand as recorded.
+
+**What this does not settle.** The isolated-restore procedure itself. It is not designed here; it needs separate review
+and approval.
 
 ### 24.2 What changed
 
@@ -2953,7 +2977,7 @@ It is documentation only: P1's code, units and procedures stay as they are.
 | Source | Standing for production. P1's bootstrap; 0001–0018 through P1's runner (`python -m worker.ops.migrate apply`); the disposable reader login `rf4_rehearsal_reader` (§20.6); §23.1's synthetic evidence for three filings | As §23.1 |
 | A fault on the source (c2, c3) | Before the dump, as the source's superuser, with triggers off | Recorded with `"on": "the source, before the dump"` |
 | Backup | `python -m worker.ops.backup dump`, then `python -m worker.ops.backup verify <dump>`, then `python -m worker.ops.restore_check --dump <dump>`. Each must pass: exit 0; the dump and the restore check `succeeded`; `verify` reports no problem; P1's restore check covers the dump and leaves nothing in `restore-scratch` | P1's settings: `CSE_DB_*` for the source, `CSE_DB_USER=cse_backup` (as `cse-ops` and the units set it), `CSE_PG_BINDIR`, `CSE_BACKUP_ROOT` |
-| Restore | `psql -X -f <dump>/globals.sql`, then `pg_restore --create --exit-on-error -d postgres <dump>/database.dump`, into a new throwaway cluster. Its bootstrap superuser has the name the manifest records (`postgres`, as on the server). `globals.sql` may raise only one error: "role postgres already exists" | P1 §8 B, step 5 |
+| Restore | `psql -X -f <dump>/globals.sql`, then `pg_restore --create --exit-on-error -d postgres <dump>/database.dump`, into the rehearsal's own new throwaway cluster, each with that cluster's `-h`, `-p` and `-U`. Its bootstrap superuser has the name the manifest records (`postgres`, as on the server). `globals.sql` may raise only one error: "role postgres already exists" | The rehearsal's own invocation, on its disposable CI cluster. **Not** a documented procedure, and not `P1_PLATFORM.md` §8 B, step 5, which restores into production (§24.1) |
 | The copy, checked | P1's own checks, read-only, as its superuser: `dbhash` compares every table's rows and digest, the triggers and the ledger with the manifest; `security_invariants` runs; neither finds a problem. **Roles:** before `globals.sql`, none of `cse_*` or the reader exists; afterwards all do, and the reader is a member of `cse_reader`. So the reader comes from the dump and is not created on the copy | In-process |
 | A fault on the copy (c4) | After those checks | `"on": "the restored copy"` |
 | The source stopped | `pg_ctl status` returns 3 before any R-F4 check | — |
@@ -2976,11 +3000,13 @@ it from the source was not examined.
 
 ### 24.5 Not rehearsed, or not faithfully
 
-- **The runbook's procedure for its restored copy** (§24.1): the owner's decision.
+- **A procedure for the checkpoint's restored copy.** None exists. The runbook blocks the R-F4 checkpoint procedure
+  until an isolated-restore procedure is separately reviewed and approved (§24.1). The rehearsal's way of bringing up
+  its copy is not one.
 - **Authentication:**
   - the throwaway clusters trust their private sockets; production uses peer authentication with `pg_ident`;
-  - CI runs as one unprivileged OS user. `cse-ops` runs P1's tools as `cse-backup`, and §8 B runs as `postgres`
-    (`sudo -u`). Here `CSE_DB_USER` and the bootstrap superuser's name choose the role instead.
+  - CI runs as one unprivileged OS user. `cse-ops` runs P1's tools as `cse-backup`; here `CSE_DB_USER` chooses the
+    role instead, and the copy is restored as its bootstrap superuser, chosen by name.
 - **The production reader login.** None is provisioned (§20.6). The disposable login exists on the source and reaches
   the copy through `globals.sql`.
 - **Off-site.** `restic` and §8 B step 3's off-site fetch are not involved: the dump is local.
@@ -3019,7 +3045,8 @@ it from the source was not examined.
 
 - **This section's CI run.** Its job log and its artifact's contents must be read before it is recorded. *Done:
   §24.8.*
-- **The owner's decision on the runbook's procedure** for the restored copy (§24.1), with the proposed sentence.
+- **An isolated-restore procedure for the checkpoint's copy**, separately reviewed and approved (§24.1). Until then,
+  the runbook's R-F4 checkpoint procedure is blocked.
 - **The checks at authorized staging, on a real restored backup:**
   - with peer authentication;
   - with the production reader login (§20.6).
@@ -3107,14 +3134,16 @@ probe clean with 0 runs); r4 and r5 not accepted at step 5. Their clean-up shows
 **What this shows, and what it does not:**
 - **It shows** that, in CI, offline, on disposable PostgreSQL 17 clusters, a P1 dump of a database with R-F4's evidence:
   - passes P1's own verify and restore check;
-  - restores with P1's documented commands into a separate copy;
+  - restores into a separate copy on the rehearsal's own disposable cluster, with `psql` and `pg_restore` given that
+    cluster's connection arguments (not a documented procedure, §24.1);
   - passes the runbook's preflight and full `verify` there, which accept it;
   - fails closed in each of the five fault cases.
 
   c2 shows the value of the step: P1's restore check passed a dump whose evidence was corrupt, and R-F4's `verify` on
   the copy refused it.
 - **The limits of §24.5 stand:**
-  - the runbook still names no procedure for its restored copy (§24.1): the owner's decision;
+  - no procedure for the checkpoint's restored copy exists: the runbook blocks the R-F4 checkpoint procedure until one
+    is separately reviewed and approved (§24.1);
   - no peer authentication, OS service users or production reader login;
   - no execution at staging or on a real backup;
   - synthetic evidence only.

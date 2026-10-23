@@ -136,6 +136,10 @@ checkpoint procedure below is blocked** until a separately reviewed procedure ex
 - configures appropriate authentication for it;
 - ensures that every checkpoint verification command connects to that copy, not to production.
 
+The checkpoint's verification sequence in this section, the checks on the restored copy above and R-F4's two checks
+below, states the checks a checkpoint requires. It is **not** authorization to run them: they may run only once that
+isolated-restore procedure has been separately reviewed and approved.
+
 On a build that includes R-F4, the checkpoint also runs R-F4's two checks **on the restored copy**, in the order of
 section 12, steps 2–5. Each command is pointed at the restored copy, not at production: `DATABASE_URL` for a reader
 login, or `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME` for `--migration-role`.

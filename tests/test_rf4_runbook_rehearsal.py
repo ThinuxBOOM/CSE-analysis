@@ -30,9 +30,11 @@ At a checkpoint (c1-c6), on two clusters:
              (docs/ops/P1_PLATFORM.md sections 7-8; provision.sh selftest): python -m worker.ops.backup dump, then
              python -m worker.ops.backup verify <dump>, then python -m worker.ops.restore_check --dump <dump>. Each must
              succeed. P1's restore check removes its own throwaway cluster
-    restore  the dump restored into a separate throwaway cluster, the restored copy, by P1's restore commands
-             (P1_PLATFORM.md section 8, B step 5): psql -X -f globals.sql, then pg_restore --create --exit-on-error
-             -d postgres database.dump, as the copy's bootstrap superuser, named as the dump's manifest records. Every
+    restore  the dump restored into this rehearsal's own disposable CI cluster, the restored copy: psql -X -f
+             globals.sql, then pg_restore --create --exit-on-error -d postgres database.dump, each given that
+             cluster's connection arguments (-h, -p, -U), as its bootstrap superuser, named as the dump's manifest
+             records. This is not a documented checkpoint procedure: P1_PLATFORM.md section 8, B step 5 restores into
+             the production cluster and must not be used for the copy (docs/ops/PHASE2_BACKFILL.md section 6). Every
              role, the reader login included, comes from globals.sql. The copy is then compared with the manifest and
              P1's security invariants
     checks   the source is stopped; then steps 2-5 on the restored copy, by the same routes as above
@@ -43,8 +45,10 @@ verify (c4); an unverifiable ledger (c5) and a limited scan (c6) on the restored
 
 Not rehearsed (sections 23.3 and 24): peer authentication, since the throwaway clusters trust their private sockets;
 the production reader login; P1's OS users (cse-ops runs each tool as its service user; here CSE_DB_USER chooses the
-role). The runbook's section 6 does not name the procedure that brings up its restored copy: the checkpoint scenarios
-use P1's documented restore commands on a separate throwaway cluster (section 24).
+role). No reviewed procedure brings up the runbook's restored copy: its section 6 blocks the R-F4 checkpoint procedure
+until an isolated-restore procedure is separately reviewed and approved. The checkpoint scenarios bring up their own
+copy on a disposable CI cluster, which shows how the checks behave on such a copy, not how the copy is to be made
+(section 24).
 
 Evidence: each scenario writes rehearsal.json (machine-readable: every command, its exit code, its JSON output, the
 gates' decisions and the clean-up) and every command's stdout and stderr to $RF4_RUNBOOK_EVIDENCE/<scenario>. In CI
@@ -380,10 +384,11 @@ class CheckpointRehearsal(Rehearsal):
         assert self.record["p1_restore_scratch_after"] == [], self.record["p1_restore_scratch_after"]
 
     def restore(self):
-        """The dump restored into a separate throwaway cluster by P1's restore commands (P1_PLATFORM.md section 8, B
-        step 5), as that cluster's bootstrap superuser, named as the manifest records (as restore_check names its
-        own). The copy is compared with the manifest and P1's security invariants; it then becomes the cluster that
-        every later command is pointed at, and the source is stopped."""
+        """The dump restored into this rehearsal's own throwaway cluster with psql and pg_restore, each given that
+        cluster's connection arguments, as its bootstrap superuser, named as the manifest records (as restore_check
+        names its own). Not P1_PLATFORM.md section 8, B step 5, which restores into production. The copy is compared
+        with the manifest and P1's security invariants; it then becomes the cluster that every later command is
+        pointed at, and the source is stopped."""
         from worker.ops import backup as ops_backup, dbhash, restore_check
         from worker.ops.ephemeral_pg import EphemeralCluster
         manifest = ops_backup.load_manifest(self.dump_dir)
