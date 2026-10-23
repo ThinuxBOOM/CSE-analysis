@@ -124,9 +124,17 @@ the end, the owner runs a manual dump and a restore check, runs `cse-financial v
 restored copy, and records the checkpoint **in the next HB-S4 arming decision** (the P1 backup-ledger run ids). The
 worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49).
 
-Restore the checkpoint dump into a separate, throwaway PostgreSQL 17 cluster—not the production cluster—using
-`P1_PLATFORM.md` §8 B, step 5. Point every checkpoint verification command at that restored copy, then stop and delete
-the throwaway cluster.
+**The checkpoint's restored copy: BLOCKED (2026-10-23).** Do **not** use `P1_PLATFORM.md` §8 B, step 5 for it. That
+step is disaster recovery: it restores the dump **into the production cluster**, and it must never be used to create the
+throwaway checkpoint copy. P1's `restore_check` (§8 A) does not provide the copy either: it stops its throwaway cluster
+when it finishes (`--keep` keeps only the stopped data directory), and its private socket uses `trust` authentication;
+`--keep` does not satisfy the authentication condition below. `cse-financial` and `cse-backfill` load `/etc/cse/cse.env`
+themselves, so connection settings exported before them do not reliably point them at another cluster. **The R-F4
+checkpoint procedure below is blocked** until a separately reviewed procedure exists that:
+- restores the checkpoint dump into an isolated PostgreSQL 17 cluster, never the production cluster;
+- keeps that copy available for verification;
+- configures appropriate authentication for it;
+- ensures that every checkpoint verification command connects to that copy, not to production.
 
 On a build that includes R-F4, the checkpoint also runs R-F4's two checks **on the restored copy**, in the order of
 section 12, steps 2–5. Each command is pointed at the restored copy, not at production: `DATABASE_URL` for a reader
