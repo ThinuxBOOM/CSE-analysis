@@ -91,7 +91,7 @@ routes 0; connect to 192.0.2.1: ENETUNREACH: no network`.
     runs each mutant's named tests against it in child pytest processes, in the same container, with no network;
   - every PostgreSQL group: `RF4_RUNBOOK_EVIDENCE=<out>/rf4-runbook-rehearsal`. Only L16 holds
     `tests/test_rf4_runbook_rehearsal.py`, which writes each scenario's commands, outputs and `rehearsal.json`
-    there (`docs/R_F4_IMPLEMENTATION.md` §23).
+    there: at deployment (`docs/R_F4_IMPLEMENTATION.md` §23) and at a backup checkpoint, on a restored copy (§24).
 - **Isolation.**
   - Each group runs in its own job, on its own runner, in its own container.
   - Inside a group there is one pytest process, and its clusters run one after another.
@@ -444,7 +444,8 @@ group fails:
 - on Linux, also `docker-build.log`, `provision.log` (scratch cluster set-up and teardown) and
   `scratch-cluster-server.log`;
 - in L16's, also `rf4-runbook-rehearsal/`: one directory per scenario of R-F4's runbook rehearsal, with every
-  command's stdout and stderr and a machine-readable `rehearsal.json` (`docs/R_F4_IMPLEMENTATION.md` §23);
+  command's stdout and stderr and a machine-readable `rehearsal.json` (`docs/R_F4_IMPLEMENTATION.md` §23, and §24
+  for the checkpoint scenarios c1–c6);
 - `summary.json` and `summary.md`.
 
 **Checks before counts are trusted.** `summarize.py` checks every report three ways, and any disagreement is an
