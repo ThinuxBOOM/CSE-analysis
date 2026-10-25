@@ -11,7 +11,7 @@ runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests
 `6246bc6` and `8431e8e` (§18); the acceptance matrix at the remote head `ef4e0e7`, with the remaining gaps, is §19;
 the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
 failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22; a CI rehearsal of the
-runbook's R-F4 checks on a disposable cluster is §23, and on a restored copy of a P1 dump §24. All await the owner's independent review. NOT accepted, NOT
+runbook's R-F4 checks on a disposable cluster is §23, and on a restored copy of a P1 dump §24; the consolidated issue register for R-F4 and the isolated checkpoint restore, with the stopping rule for specification revisions, is §25 (2026-10-26). All await the owner's independent review. NOT accepted, NOT
 frozen.** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
 the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
@@ -73,6 +73,9 @@ and evidence only; it changes no decision.
 | `20d671e` | Claude (the owner's approved wording, 2026-10-23) | `docs/ops/PHASE2_BACKFILL.md` §6: a sentence directing the checkpoint's throwaway copy to be made with `P1_PLATFORM.md` §8 B, step 5. **Wrong:** that step restores into the production cluster (§24.1) |
 | `c398029` | Claude (the owner's correction, 2026-10-23) | `docs/ops/PHASE2_BACKFILL.md` §6: `20d671e`'s sentence replaced. §8 B, step 5 must not be used for the copy; the R-F4 checkpoint procedure is blocked until an isolated-restore procedure is separately reviewed and approved (§24.1) |
 | the commit correcting §24 | Claude (the owner's request, 2026-10-23) | Documents and a docstring only: this record's description of the rehearsal's restore (§23.3, §23.5, §24); the module and `restore()` docstrings of `tests/test_rf4_runbook_rehearsal.py`; runbook §6: its verification sequence states required checks, not authorization to run them. No test logic changed (§24.1) |
+| `08cb850` | Claude (the owner's "commit", 2026-10-26) | Documents only: the design-only checkpoint-restore notes, Revisions 16-F to 16-I, moved into `docs/` |
+| `7074ea5` | Claude (the owner's "commit", 2026-10-26) | Documents only: 16-H's and 16-I's "outside the repository" wording |
+| the commit adding §25 | Claude (the owner's request, 2026-10-26) | Documents only: the consolidated issue register (§25); 16-I amendments A1 (`inst_digest`) and A2 (repository facts) |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -3149,3 +3152,339 @@ probe clean with 0 runs); r4 and r5 not accepted at step 5. Their clean-up shows
   - synthetic evidence only.
 
 **Status: NOT ACCEPTED / NOT FROZEN.** The independent audit is not complete.
+
+## 25. Consolidated issue register: R-F4 and the isolated checkpoint restore (2026-10-26)
+
+**What this section is.** The one register of every known blocker, required correction, deferred issue, owner decision
+and evidence gap for:
+- **(A) R-F4's structured persistence**, which is implemented on this branch and tested; and
+- **(B) the isolated-checkpoint-restore design** of `docs/R-F4_Revision_16-I_consolidated_correction_note.md`, which is
+  a design only: none of its machinery is implemented, no test exercises it, and nothing in it is accepted or safe to
+  execute.
+
+The two are kept apart throughout. The CI rehearsal of §23 and §24 belongs to (A): it exercises R-F4's checks on a
+restored copy. It is **not** the machinery of (B), and it is not a checkpoint procedure (§24.1).
+
+**Why it is here.** This record is R-F4's existing tracking document (its "Remaining blockers" and "What remains"
+sections, §19.6 to §24.7). Placing the register here avoids another standalone note. The 16-I note is kept as the design
+of record for (B). It is amended in place where this pass corrected it (§25.9), and it points here for open items.
+
+**What this section changes.** Documentation only. It makes no owner decision and closes nothing that the governing
+records leave open. Its corrections are design-text corrections (REG-C01, REG-C02, REG-C04), not implementation
+acceptance.
+
+**Status: R-F4 NOT ACCEPTED / NOT FROZEN. The isolated checkpoint restore remains BLOCKED. DO NOT EXECUTE RESTORE. DO
+NOT MERGE.** No CSE request is authorized by this section.
+
+### 25.1 The state at the start of this pass
+
+| Fact | Value | Evidence |
+|---|---|---|
+| Branch and HEAD | `claude/rf4-implementation` at `7074ea5` (`7074ea58e15b646c7fa7bdd428b4576176d0f984`), equal to `origin/claude/rf4-implementation` | DOCUMENT REVIEWED: `git status`, `git rev-parse` after `git fetch`, 2026-10-26 |
+| Relation to `main` | `origin/main` = `4646626`, the merge base. The branch is 55 commits ahead, 0 behind | DOCUMENT REVIEWED: `git rev-list --left-right --count` |
+| Working tree | Clean before this pass | DOCUMENT REVIEWED: `git status --short` |
+| Code since the last recorded CI evidence | None. `eb91d3e` to `7074ea5` changed four documents only (the 16-F to 16-I notes, and 16-H and 16-I's wording) | DOCUMENT REVIEWED: `git diff --stat eb91d3e 7074ea5 -- worker ops tests supabase .github` is empty |
+| CI at HEAD | fast [40225111117](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40225111117): success, offline 2,109 passed, 606 skipped. Regression [40225111103](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40225111103): conclusion failure, summary verdict `baseline-only`. L02 240 passed, 1 failed (the recorded HB-2 baseline, signature matched). L16 655 passed, 82 skipped. X2 51 passed. W3 1,003 passed, 332 skipped. Every other group passed or skipped as at `9f87881` | TEST EXECUTED by GitHub Actions. Read in this pass from the public API (job conclusions and check-run annotations). **Job logs and JUnit reports were not read** |
+| Tests run locally in this pass | None | — |
+
+**Inspected in this pass:**
+- **Documents:** `docs/R_F4_DESIGN.md` (status, §8–§11); this record (status, §1, §6, §19–§24); `docs/R-F4_Revision_16-I_consolidated_correction_note.md`
+  and `…16-H…` (each section this register cites); `docs/ops/PHASE2_BACKFILL.md` §6; `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md`
+  (§11.5, §14.1, §21, the HB-7 row, D17); `docs/MASTER_ARCHITECTURE.md` (the HB-Q7 passages).
+- **Code:** `worker/ops/backup.py:100-135`; `worker/ops/restore_check.py:60-90`; `worker/backfill_f6/reports.py:30-40`;
+  the file lists of `worker/financial_f4_store/` and the R-F4 tests; `tests/test_rf4_runbook_rehearsal.py:400-410`.
+- **Searches:** for the checkpoint design's identifiers (`PC-D-`, `PC-HR-`, `UR-15`, `inst_digest`) outside the 16-series
+  notes (none); and for revision archives in the repository and the project folder (only 16-F to 16-I exist).
+
+**The finding that shapes the plan (DOCUMENT REVIEWED).**
+- `docs/R_F4_DESIGN.md` §10 sets R-F4's path: milestone 6 (independent audit), then 7 (acceptance and freeze). That path
+  does not depend on (B). No governing record makes the 16-series machinery a condition of R-F4's acceptance (REG-C04).
+- (B) is needed where a restored copy must be verified:
+  - the staging restore of milestone 8 (REG-B42);
+  - the pilot checkpoint of milestone 12;
+  - the runbook's checkpoints, before HB-S4 and every 2,000 documents (`docs/ops/PHASE2_BACKFILL.md` §6; Phase 2
+    design §21).
+
+### 25.2 The stopping rule for specification revisions
+
+1. **No new numbered revision.** There is no Revision 16-J or 17. The 16-I note, with its numbered amendments, is the
+   design of record for (B).
+2. **An amendment is allowed only** for a register item of category REQUIRED CORRECTION whose requirement is shown, by a
+   cited contradiction or a concrete case, to be:
+   - internally contradictory;
+   - underspecified in a way that prevents correct implementation; or
+   - demonstrably unsafe.
+
+   Style, restatement and speculative edge cases do not qualify.
+3. **An item that waits for an owner decision, a source review or execution evidence is not re-described.** Its row
+   changes only when that decision or evidence exists.
+4. **Scope comes first.** Part B design text is amended only after REG-B00 places that part in scope. The exceptions
+   are a contradiction or a factual error that affects an item already in the register, as with A1 and A2.
+5. **Logging.** Every amendment is listed in 16-I's amendment record and here, and its previous text stays in git.
+6. **Freeze of the prose.** Once every in-scope REQUIRED CORRECTION is closed, the design is frozen for implementation.
+   Later findings come from implementation and tests, and are handled as defects under change control, not as prose
+   revisions.
+7. **Every open item has a closure condition.** No item stays open because its documentation could be more polished.
+
+### 25.3 Evidence labels
+
+| Label | Meaning here |
+|---|---|
+| DOCUMENT REVIEWED | Read in a named repository document, in this pass |
+| SOURCE REVIEWED | Read in the repository's code at the named lines, in this pass |
+| TEST EXECUTED | Run, with the run named (GitHub Actions run id, or a section of this record that records the run). A run recorded here earlier and not re-read in this pass is cited by section |
+| INDEPENDENTLY REPRODUCED | Re-executed by someone other than the implementer. **No item has this label** |
+| OWNER APPROVED | An owner decision recorded in a named section |
+| NOT VERIFIED | No evidence |
+
+Reading a test is not executing it. A passing synthetic fixture or CI rehearsal is not evidence of a real trust anchor,
+of reviewer-state integrity, or of a safe operational restore.
+
+### 25.4 The register
+
+Columns: **Cat.** is the category; **Depends** names the items that must close first.
+
+#### Part A: R-F4's structured persistence (implemented on the branch)
+
+| ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
+|---|---|---|---|---|---|---|---|---|
+| REG-A01 | BLOCKER | HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete | Design status, §10 row 6; Phase 2 design §11.5; this record's status | DOCUMENT REVIEWED: Findings 1–5 and later reviews remediated (§7–§24), "awaiting the owner's independent review". TEST EXECUTED: CI at `7074ea5` (§25.1) | The owner, or an auditor the owner names, records the audit's conclusion at a named commit: every finding closed with evidence, or waived by a recorded owner decision; REG-A08 to REG-A12 dispositioned | Owner; independent auditor | — | IN PROGRESS |
+| REG-A02 | OWNER DECISION | Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded | Design §8.2 step 7, §8.1 item 17, §10 row 7 | DOCUMENT REVIEWED: "Not started" | A committed freeze record naming the frozen commit, with the owner's recorded acceptance | Owner | REG-A01, REG-A11, REG-A12, REG-A21 | OPEN |
+| REG-A03 | OWNER DECISION | §8.1 item 13: the F6.2 §10 amendment | Design §8.1 row 13, §11; record §6.1, §10 | OWNER APPROVED: waived for this package, 2026-10-17 (§10). F6.2 and its two pinning tests unchanged | Closed by the waiver. Reopens only if the package changes | Owner | — | CLOSED WITH EVIDENCE |
+| REG-A04 | NON-BLOCKING | The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588) | §18.5, §19.1, §21; `.github/ci/summarize.py` `KNOWN_BASELINE` | OWNER APPROVED: waived for R-F4 acceptance only (§21). TEST EXECUTED: still fails at `7074ea5`, signature matched (§25.1). Limit: lines 589–597 never run (§21.3) | For R-F4 acceptance: closed by the waiver, within §21.5's scope (that exact signature). The defect itself is REG-X01. It authorizes no merge (REG-A23) | Owner | REG-X01 (not for acceptance) | CLOSED WITH EVIDENCE |
+| REG-A05 | OWNER DECISION | No login enters `cse_reader`, so the runbook's step 4 cannot run in production | §17.5, §20.1 item 3, §20.6; runbook §12 | OWNER APPROVED: provisioned and verified only at explicitly authorized staging (2026-10-22). NOT VERIFIED: no real login exists; `SET ROLE` tests are not proof | §20.6 steps 1–6 recorded at authorized staging, after the P1 change under change control | Owner | REG-G01 | DEFERRED WITH RATIONALE |
+| REG-A06 | UNVERIFIED | The runbook's R-F4 checks have never run outside CI | §23.3, §23.5, §24.5, §24.7 | TEST EXECUTED (CI, disposable clusters): r1–r5 and c1–c6 passed at `9f87881` (§24.8, artifact read). Trust authentication, a disposable login, synthetic data | Run at authorized staging with peer authentication and the production reader login, outputs recorded | Owner | REG-A05, REG-G01; REG-B01 for a restored copy | DEFERRED WITH RATIONALE |
+| REG-A07 | UNVERIFIED | Real documents: seals intact and the F5 rebuild 100% equal on every saved pilot document | Design §9 (last row), §10 row 12 and Q1 | NOT VERIFIED: synthetic layouts only; the RDV/F0 evidence is lost | At pilot acceptance, by design (milestone 12) | Owner | REG-G05 | DEFERRED WITH RATIONALE |
+| REG-A08 | UNVERIFIED | Every R-F4 result is the implementer's run or the implementer's tests run in CI. None is independently re-executed | Record status; design §9 | DOCUMENT REVIEWED | The auditor names what must be independently reproduced and records it (INDEPENDENTLY REPRODUCED), or records that the CI runs suffice | Independent auditor; owner | — | OPEN |
+| REG-A09 | UNVERIFIED | Per-test CI outcomes are mostly derived from counts. X2's per-mutant JUnit output has not been read | §18.6, §19.2, §19.5 gap 8, §24.8 | DOCUMENT REVIEWED: L16's JUnit was read once, at `9f87881` (§24.8); X2's never | The auditor reads the JUnit artifacts of L16 and X2 at the candidate commit, or accepts the counts in the audit record | Independent auditor | REG-A01 | OPEN |
+| REG-A10 | NON-BLOCKING | Mutation testing is hand-chosen (46 mutants), not a full sweep | §18.6, §20.7, §22.5; design §9 | TEST EXECUTED: X2 51 passed at `7074ea5` (§25.1); per-mutant output not read (REG-A09) | The auditor accepts the set at REG-A01, or names more mutants | Independent auditor | REG-A01 | OPEN |
+| REG-A11 | NON-BLOCKING | Recorded residual limits of the in-band and preflight checks: privileged changes between a check and what it guards (a reload included); components outside R-F4's writer, reader and `verify`; configured settings only; a command-line server value reported as undeterminable; operator overloads by inspection; one long snapshot; a pooler splitting a transaction; PostgreSQL 17's rules only | §9.6, §11.5, §11.7, §12.8, §13.7 | DOCUMENT REVIEWED: recorded limits, not defects | Each recorded as an accepted residual risk in the freeze record, or turned into a required fix by the auditor | Owner; auditor | REG-A01 | OPEN |
+| REG-A12 | NON-BLOCKING | Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check | §15.5, §16.5, §19.5 gap 11 | DOCUMENT REVIEWED | As REG-A11; optionally one more p51 case for the partition attach | Owner; auditor | REG-A01 | OPEN |
+| REG-A13 | NON-BLOCKING | `verify`'s report has no unique run identifier | §13.7 | DOCUMENT REVIEWED | The owner records whether one is required. If not, it is accepted in the freeze record | Owner | — | OPEN |
+| REG-A14 | NON-BLOCKING | Deferred: a job that writes re-mapped F5 runs | Design §11 | DOCUMENT REVIEWED | A separate owner decision and change, if ever wanted | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A15 | NON-BLOCKING | Deferred: `run()`'s batch-transaction finding (pre-existing) | Design §6, §11 | DOCUMENT REVIEWED | As REG-A14 | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A16 | NON-BLOCKING | Deferred: an encoding for NUL, which is refused today | Design §11 | DOCUMENT REVIEWED | Needed only if the pilot sees a NUL; then a change under change control | Owner | REG-G05 | DEFERRED WITH RATIONALE |
+| REG-A17 | NON-BLOCKING | Deferred: RDV option R-b (the harness calls `_persist`) | Design §8 row 6, §11 | DOCUMENT REVIEWED | At the governed re-collection of RDV evidence (owner decision 2026-10-12) | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A18 | NON-BLOCKING | Deferred: HB-5's measurement of unmapped rows | Design §11; Phase 2 design §11.5 | DOCUMENT REVIEWED | A separate HB-5 change, if wanted | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A19 | NON-BLOCKING | Deferred: extraction-context provenance | Design §11 | DOCUMENT REVIEWED | A separate owner decision | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A20 | NON-BLOCKING | Deferred: purge scope | Design §11 | DOCUMENT REVIEWED | A separate owner decision | Owner | — | DEFERRED WITH RATIONALE |
+| REG-A21 | UNVERIFIED | Five assumptions carried as acceptance criteria: dictionary key order not preserved; non-finite floats refused; copied-cell derivation depends on F4.1; F3 read-back fidelity, checked by `f3_input_sha256`; the default decimal context, reported by `verify` | Design §11 | DOCUMENT REVIEWED: each is guarded by a refusal or a hash check (design §4–§5) | Each stays guarded as stated and is accepted in the freeze record; confirmed on real documents at pilot acceptance (REG-A07) | Owner; auditor | REG-A01 | OPEN |
+| REG-A22 | NON-BLOCKING | Statements made stale by the accepted design (Phase 2 design §11.5 and §27; MA §52 and §55) | Design §8 | DOCUMENT REVIEWED: Phase 2 design §11.5 ("R-F4 status (2026-10-16)") and MA's HB-Q7 passages record R-F4 as designed and implemented; Phase 2 D17 lists §11.5 and §27 among the sections it updated. The revision 4 note (Phase 2 design line 26) is a dated entry kept as written, per design §8 | Done | — | — | CLOSED WITH EVIDENCE |
+| REG-A23 | OWNER DECISION | Merging `claude/rf4-implementation` into `main` | Design §8.2, §10; Stage 2's authorization (this record's header) excludes a merge; §21.5 | DOCUMENT REVIEWED; TEST EXECUTED: the regression workflow's conclusion at `7074ea5` is failure (`baseline-only`) | After REG-A02: the owner's merge decision at a named candidate commit with its CI evidence, including how L02 (REG-X01) is treated, since §21 waives it for acceptance only | Owner | REG-A01, REG-A02 | OPEN |
+
+#### Part X: separately tracked defects (not R-F4's)
+
+| ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
+|---|---|---|---|---|---|---|---|---|
+| REG-X01 | REQUIRED CORRECTION | HB2-CLOCK: the frozen HB-2 test compares a fake clock fixed at 2026-10-03 03:00 UTC with PostgreSQL's real `now()` | §21.1, §21.4 | TEST EXECUTED: fails at `7074ea5` (§25.1). SOURCE: mechanism recorded in §21.1, not re-read in this pass | An HB-2 change under its change control, its pin consequences, and L02 passing in CI | Owner (HB-2 change control) | — | OPEN |
+| REG-X02 | NON-BLOCKING | HB5-W1: `os.path.commonpath` raises `ValueError` for paths on different Windows drives in HB-5's `write_json` | §19.4, §20.1 item 4 | SOURCE REVIEWED: `worker/backfill_f6/reports.py:34`. TEST EXECUTED: reproduced by Claude, 2026-10-21 (§19.4); CI run 39162102932. OWNER APPROVED: separate issue, not a release blocker on Linux (2026-10-22) | Kept deferred while Linux is the only supported platform. A fix needs HB-5 change control and an HB-6 pin cascade | Owner | — | DEFERRED WITH RATIONALE |
+
+#### Part G: release gates after acceptance (unchanged; `docs/R_F4_DESIGN.md` §10)
+
+| ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
+|---|---|---|---|---|---|---|---|---|
+| REG-G01 | BLOCKER | Milestone 8: Docker staging of the integrated build, with its prerequisites (fresh install and upgrade, preflight and `verify`, crash and recovery, backup and restore with verify on the restored copy, permissions, fault injection) | Design §10 row 8 and its prerequisites; MA §43.1 | DOCUMENT REVIEWED: not started; the environment does not exist | The owner's staging authorization, then each prerequisite's output recorded | Owner | REG-A02; REG-B42 for the restore step | OPEN |
+| REG-G02 | BLOCKER | Milestone 9: acceptance of the integrated frozen build, which is the build deployed | Design §10 row 9 | DOCUMENT REVIEWED: not started | The owner's recorded acceptance | Owner | REG-G01 | OPEN |
+| REG-G03 | BLOCKER | Milestone 10: production deployment (rehearsal, provisioning, smoke tests with the R-F4 preflight) | Design §10 row 10; runbook §12 | DOCUMENT REVIEWED: no server is provisioned | Recorded deployment rehearsal and smoke tests | Owner | REG-G02 | OPEN |
+| REG-G04 | BLOCKER | Milestone 11: live prerequisites, then HB-S1 and HB-S2 under the owner's arming | Design §10 row 11 | DOCUMENT REVIEWED: not started. No CSE request is authorized by this register | The owner's recorded arming decisions | Owner | REG-G03 | OPEN |
+| REG-G05 | BLOCKER | Milestone 12: the HB-S3 pilot on the R-F4 build and its acceptance, including real-document verification and a checkpoint with all three `verify` runs | Design §10 row 12 and prerequisites; runbook §6 | DOCUMENT REVIEWED: not started | The owner's pilot acceptance, with REG-A07 closed and the checkpoint recorded | Owner | REG-G04; REG-B01 | OPEN |
+| REG-G06 | BLOCKER | Milestone 13: HB-S4 / HB-7: HB-Q9, a recorded checkpoint, the owner's confirmation that R-F4 is frozen, a separate HB-S4 arming | Design §10 row 13; Phase 2 design §14.1, §21, the HB-7 row | DOCUMENT REVIEWED: gated | Each condition recorded by the owner | Owner | REG-A02, REG-G05, REG-B01 | OPEN |
+
+#### Part B: the isolated checkpoint restore (design only; `docs/R-F4_Revision_16-I_consolidated_correction_note.md`)
+
+Every item here concerns the proposed machinery, unless it says otherwise. Nothing in Part B is implemented, executed,
+source-reviewed or owner-approved. **No owner decision listed in 16-I §7.1 has been made** (16-I §7.1).
+
+| ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
+|---|---|---|---|---|---|---|---|---|
+| REG-B00 | OWNER DECISION | **The scope of the isolated-restore procedure.** Runbook §6 requires a separately reviewed procedure that meets four conditions: restore into an isolated PostgreSQL 17 cluster, never production; keep the copy available; configure appropriate authentication; make every verification command connect to the copy. 16-I designs a far larger machinery (signed approvals and attestations, a trust anchor, an evidence key and seals, reviewer state, a sandbox with protocol capture, an RTM). No owner decision adopts any scope | Runbook §6; 16-I §3, §5, §7.1, §9 | DOCUMENT REVIEWED | The owner records which requirements the procedure must meet. Each Part B item is then marked in scope, or recorded out of scope (DEFERRED WITH RATIONALE) by that decision | Owner | — | OPEN |
+| REG-B01 | BLOCKER | **The checkpoint's restored copy is blocked**: no reviewed procedure exists. `P1_PLATFORM.md` §8 B, step 5 restores into production and must never be used for the copy; P1's `restore_check --keep` and the `cse-financial` / `cse-backfill` wrappers do not provide it | Runbook §6 (`c398029`); §24.1 | DOCUMENT REVIEWED. TEST EXECUTED: the CI rehearsal's own restore into a disposable cluster (c1–c6, §24.8) is **not** a procedure | A written procedure, separately reviewed and owner-approved, meeting runbook §6's four conditions and whatever REG-B00 adds. Evidence on disposable clusters, then at authorized staging, that every verification command (P1's checks, `cse-financial verify`, `cse-backfill verify`, the R-F4 preflight and `verify`) reaches the copy: the target's identity checked per command, and authentication appropriate for the copy. Then a runbook change under REG-B27 | Owner; reviewer | REG-B00, REG-B04; REG-B06 if in scope | OPEN |
+| REG-B02 | BLOCKER | **UR-15: no independent trust anchor for the owner key.** Every validation aborts with TRUST_ANCHOR_MISSING | 16-I §3.1.4, §7.3; PC-D-OKEY (b) | DOCUMENT REVIEWED. NOT VERIFIED: no anchor exists | All of: (1) the owner's decision under PC-D-OKEY (b), naming the channel and how the anchor is recorded; (2) for each validating party, a record that the anchor arrived through that channel, which depends on none of the owner key, the AK, the ledger, the driver host or the VM; (3) BOOT-1 to BOOT-12 executed on the implemented validator through that path. **Not acceptable as proof:** a self-consistent ledger, a synthetic or fixture-only anchor, or the BT-0 stub | Owner; independent reviewer | REG-B00, REG-B03 | OPEN |
+| REG-B03 | BLOCKER | **UR-16: no reviewer-state integrity boundary.** Genesis and the state history can be rewritten, truncated, rolled back or removed without detection by SA-1 and SA-2. BT-0 fails closed | 16-I §3.7A, §3.1.4, §7.3; PC-D-TRUST (b), (c) | DOCUMENT REVIEWED. A hash chain alone does not detect replacement or rollback (16-I §3.7A) | A concrete mechanism meeting SI-R1 to SI-R7; the owner's PC-D-TRUST (b, c) decisions; BOOT-13, BOOT-14 and BOOT-14b re-registered as detection fixtures and executed, with independent review. Until then BT-0 keeps failing closed | Owner; designer; independent reviewer | REG-B00, REG-B12 | OPEN |
+| REG-B04 | BLOCKER | **C-b (UR-3): globals restore.** `globals.sql` (`pg_dumpall --globals-only --no-role-passwords`) contains the source's bootstrap superuser, which already exists in the restore cluster, so restoring it raises "role … already exists". P1's direct mode runs `psql -f` without `ON_ERROR_STOP`, then tolerates every stderr line containing "already exists". 16-I's script mode under `ON_ERROR_STOP` would stop at that statement, before the remaining roles and memberships | 16-I §3.22, §7.3 UR-3, E139, SGR-10; record §24.3, §24.8 | SOURCE REVIEWED: `worker/ops/backup.py:105-129` (the manifest records `bootstrap_superuser`); `worker/ops/restore_check.py:71-77` (the cluster is created with that superuser; `check=False`; the substring filter); `tests/test_rf4_runbook_rehearsal.py:404-409` (the same filter). TEST EXECUTED: in CI at `9f87881`, PostgreSQL 17.11, the only `globals.sql` error was "role postgres already exists" (§24.8). Limits: one version; the filter tolerates any "already exists" error, not only the bootstrap role's; E139 not source-reviewed | A recorded design decision on the procedure's globals step: which error, identified exactly (the role named by `bootstrap_superuser`), is tolerated, and how every other role and membership is proven created. Then E139 source-reviewed on the pinned version (REG-B05), and the GLB byte comparison (SGR-10) executed | Designer; owner (approval) | REG-B00, REG-B05 | OPEN |
+| REG-B05 | BLOCKER | **Source and version pins, and independent source reviews** for every component and every class-M and class-F behaviour (16-I §8; gates AG-PINSRC and AG-QBYPASS) | 16-I §8.1–§8.4; PC-D-BASE, PC-D-PGVER, PC-D-VM, PC-D-INDEP | DOCUMENT REVIEWED: "No pin record exists yet"; "No source review has been performed" (16-I §8.1, §8.2) | Pin records per 16-I §8.1. Two-reader source reviews per §8.2. Results judged under §8.3's precedence rules (SUPPORTS for every in-scope class-M behaviour) | Owner (decisions); named readers | REG-B00, REG-B15, REG-B16, REG-B22 | OPEN |
+| REG-B06 | BLOCKER | **Source-backup provenance** (P1-CC-PROV): the source system identifier, selected with the dump's snapshot and recorded in the manifest and the ledger. Without it, every current dump is PROV_ABSENT and ineligible for the 16-I procedure. Also UR-9: freeze records covering `backup.py` | 16-I §3.23, §7.3 UR-9; PC-CC-P1PROV | SOURCE REVIEWED: the manifest (`backup.py:122-131`) records format `cse.backup.manifest.1`, tool version, code revision, host, database, dump role, snapshot id and time, `server_version`, `data_checksums`, `bootstrap_superuser`, `pg_dump_version`, the TOC entries, file hashes and the inventory. **It has no system identifier**: the snapshot query (`:105-107`) does not select one. NOT VERIFIED: P1's own freeze record for `backup.py` was not checked | PC-CC-P1PROV authorized. The P1 change implemented, audited and deployed under its change control. Only fresh dumps used. PVR-1 to PVR-4 executed. UR-9 answered from P1's freeze records | Owner (change control); P1 maintainer | REG-B00 | OPEN |
+| REG-B07 | BLOCKER | **The archive of Revisions 4–15 and the RTM** (16-I §9 prerequisites 1–6: archived revisions with matching hashes; collision decisions; EXAMPLE spans; approved registries and CT; identifier meanings; two byte-identical reproductions). Also UR-1, UR-2, UR-13, UR-14 | 16-I §9, §5.3 (AG-RTM), §7.3; PC-D-DOCS | DOCUMENT REVIEWED: only 16-F to 16-I exist in the repository (`docs/`, `08cb850`). Revisions 4–15 and 16 to 16-E are in neither the repository nor the project folder. They may exist only in earlier Claude session transcripts — NOT VERIFIED. No RTM run, registry, CT, collision decision, span or reproduction exists. The RTM is required by the 16-series design only: R-F4's design and this record define no RTM gate | Prerequisites 1–6 met and AG-RTM passing with two independent byte-identical reproductions. Alternatively, an owner decision under REG-B00 that puts the RTM out of the procedure's scope (DEFERRED WITH RATIONALE) | Owner; archivist; two operators | REG-B00, REG-B16, REG-B18 | OPEN |
+| REG-B08 | OWNER DECISION | **C-a / PC-D-SKEW:** S and J; Δ_att > 2S cannot hold under the delivery model | 16-I §4.2, §7.1, §10.2 | DOCUMENT REVIEWED. Interim: DELIVERY_AMBIGUOUS rejects | The owner's recorded values, consistent with Δ_att ≤ 2S, or acceptance of DELIVERY_AMBIGUOUS | Owner | REG-B00 | OPEN |
+| REG-B09 | OWNER DECISION | **C-c / PC-D-REVIEW:** `p0-floor`, `issued-before` or `current-floor`. Under `current-floor` or the interim rule, a run is eligible for at most one use | 16-I §3.4, §3.6, §7.1, §10.2; FR-HIST-15 | DOCUMENT REVIEWED. Interim: both floors; LATE_EVIDENCE leads to HELD or SUSPENDED | The owner's recorded choice | Owner | REG-B00 | OPEN |
+| REG-B10 | OWNER DECISION | **PC-D-OKEY (a) and (c):** the owner key, principal and key type; recovery from integrity flags and erroneous owner signatures, including EVIDENCE_KEY_REUSE. Part (b) is REG-B02 | 16-I §7.1 | DOCUMENT REVIEWED | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B11 | OWNER DECISION | **PC-D-EKEY:** (a) evidence-key custody, principal, key type and rotation; (b) whether rotation preserves eligibility, which also needs §3.6 item 5 and the AK pin revised | 16-I §3.12A, §7.1 | DOCUMENT REVIEWED. Interim: no; STALE_AK in any case | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B12 | OWNER DECISION | **PC-D-TRUST (b) and (c):** which adversary classes (SA-0 to SA-3) the reviewer-state boundary must resist, and who holds its evidence | 16-I §3.7A, §7.1 | DOCUMENT REVIEWED. Interim: SA-0 to SA-2 in scope | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B13 | OWNER DECISION | **PC-HR-KEYS:** both signers files registered through an owner-signed ledger entry | 16-I §5.1, §7.1 | DOCUMENT REVIEWED. Interim: no seal can pass §3.13 step 2 | Recorded registration | Owner | REG-B02, REG-B10, REG-B11 | OPEN |
+| REG-B14 | OWNER DECISION | **PC-D-EMAX:** whether exceeding E_max is a rejection, and E_max's value | 16-I §4.3, §7.1 | DOCUMENT REVIEWED. Interim: a rejection | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B15 | OWNER DECISION | **PC-D-BASE:** distribution, dated archive snapshot and base image | 16-I §7.1, §8.1 | DOCUMENT REVIEWED. Blocks AG-PINSRC | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B16 | OWNER DECISION | **PC-D-INDEP:** the second source readers, hash recomputers, fixture reviewers and RTM operators | 16-I §7.1, §8.2 | DOCUMENT REVIEWED | Named people recorded | Owner | REG-B00 | OPEN |
+| REG-B17 | OWNER DECISION | **PC-D-FRESH:** (a) S, W, Δ_att, Δ_start, the reviewer-state location and platform; (b) whether verified-but-rejected owner objects raise floors; (c) FORK coverage | 16-I §3.2.2, §7.1 | DOCUMENT REVIEWED. Interims stated in §7.1 | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B18 | OWNER DECISION | **PC-D-RGI:** the RTM collision decisions 1–8 (from 16-C §4, not in the repository), the CT and EXAMPLE spans | 16-I §7.1, §9 | DOCUMENT REVIEWED. 16-C is not in the repository | Recorded decision | Owner | REG-B07 | OPEN |
+| REG-B19 | OWNER DECISION | **PC-D-QCAP:** the sandbox mechanism; the protocol allowlist after PROTO-1 | 16-I §3.9, §3.10, §7.1 | DOCUMENT REVIEWED | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B20 | OWNER DECISION | **PC-D-LEASE:** the lease interval, T_stop and E_max | 16-I §3.26, §7.1 | DOCUMENT REVIEWED | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B21 | OWNER DECISION | **PC-D-PGCHK:** whether DC-D is used, and the `data_checksums` expectation X | 16-I §3.17, §7.1 | DOCUMENT REVIEWED. SOURCE REVIEWED: the manifest records the source's `data_checksums` (`backup.py:126`), a fact, not the decision | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B22 | OWNER DECISION | **PC-D-SEC, PC-D-PGVER, PC-D-VM, PC-D-DOCS, PC-D-HV**, "as in Revision 16" | 16-I §7.1 | DOCUMENT REVIEWED. NOT VERIFIED: their definitions are in Revision 16, which is not in the repository (REG-B07) | Definitions recovered, then recorded decisions | Owner | REG-B00, REG-B07 | OPEN |
+| REG-B23 | OWNER DECISION | **Decisions carried by name only:** PC-D-TRUST (a), PC-D-PH, PC-D-XFER, PC-D-CON, PC-D-RS, PC-D-MGR, PC-D-AKIT, PC-D-1HOST, PC-D-LOGFMT, PC-D-LOGALL, PC-D4, PC-D7, PC-D8, PC-D9, PC-D10, PC-VC-P1 | 16-I §5.1 | DOCUMENT REVIEWED: listed; NOT VERIFIED: definitions not in the repository | As REG-B22 | Owner | REG-B00, REG-B07 | OPEN |
+| REG-B24 | OWNER DECISION | **Host registrations PC-HR-PROD and PC-HR-HV** | 16-I §5.1 | DOCUMENT REVIEWED | Recorded registrations | Owner | REG-B00 | OPEN |
+| REG-B25 | OWNER DECISION | **Fixture acceptances PC-FX-*** (PC-FX-IMG, EXPCFG, DC, SEQ, JSON, FAIL, EB, QCAP, RS, SCH, GLB, SM, E2E, CI, VM, GRD, ORC) | 16-I §5.1 | DOCUMENT REVIEWED. Nothing to accept yet: no fixture exists | Owner acceptance of each bundle after REG-B36 to REG-B40 are executed | Owner | REG-B36 to REG-B40 | OPEN |
+| REG-B26 | OWNER DECISION | **PC-CC-CKPT-IMPL:** change-control authorization to implement the machinery | 16-I §5.1, §10.4 | DOCUMENT REVIEWED: not authorized | Recorded authorization naming the in-scope design | Owner | REG-B00 and every in-scope Part B design item | OPEN |
+| REG-B27 | OWNER DECISION | **PC-CC-RUNBOOK6:** the runbook §6 change that would unblock the checkpoint | 16-I §5.1 | DOCUMENT REVIEWED | A reviewed runbook change, approved by the owner | Owner | REG-B01 | OPEN |
+| REG-B28 | OWNER DECISION | **PC-CC-RF4 and PC-CC-VC** (carried by name) | 16-I §5.1 | NOT VERIFIED: definitions not in the repository | As REG-B22 | Owner | REG-B07 | OPEN |
+| REG-B29 | UNVERIFIED | UR-4: whether psql transmits the COPY `\.` terminator | 16-I §3.14, §7.3; ADV-22 | NOT VERIFIED | Source review on the pinned version, or ADV-22 executed | Readers | REG-B05 | OPEN |
+| REG-B30 | UNVERIFIED | UR-5: the exact startup parameters psql sends | 16-I §3.10, §7.3; PROTO-1 | NOT VERIFIED | PROTO-1 executed on the pinned tuple | Implementer; reviewer | REG-B05 | OPEN |
+| REG-B31 | UNVERIFIED | UR-6: `\restrict` and `--restrict-key` support in the pinned and production versions; production's `pg_dumpall` call has no `--restrict-key` | 16-I §3.14, §7.3 | SOURCE REVIEWED: `backup.py:117-118` has no `--restrict-key`. Version support NOT VERIFIED | Source review on the pinned versions | Readers | REG-B05 | OPEN |
+| REG-B32 | UNVERIFIED | UR-8: which sequence kinds exist in production | 16-I §3.21, §7.3 | NOT VERIFIED: needs production or staging access, which is not authorized | A read-only catalogue query at authorized staging or production | Owner | REG-G01 | OPEN |
+| REG-B33 | UNVERIFIED | UR-10: power-loss durability of reviewer state | 16-I §3.7, §7.3 | NOT VERIFIED | Fault-injection evidence, or the owner's recorded acceptance of the residual | Owner | REG-B03 | OPEN |
+| REG-B34 | REQUIRED CORRECTION | UR-11: the copy's `pg_hba` and `pg_ident` content is unspecified | 16-I §3.10, §7.3 | DOCUMENT REVIEWED | Specified in the procedure (REG-B01) | Designer | REG-B00 | OPEN |
+| REG-B35 | OWNER DECISION | UR-12: the path and permissions of production-side durable state on the driver host | 16-I §7.3 | DOCUMENT REVIEWED | Recorded decision | Owner | REG-B00 | OPEN |
+| REG-B36 | UNVERIFIED | Fixtures: input identity, role and signature ambiguity, import idempotence, order independence (OI-1 to OI-4) and canonicality: CAN-1 to CAN-20, FR-REC-*, CAN-9's and CAN-11's projections | 16-I §3.2, §6.13, §6.14 | NOT VERIFIED: proposed, unexecuted; nothing is implemented | Implemented under REG-B26, executed under 16-I §8.3, independently reviewed | Implementer; reviewer | REG-B26 | OPEN |
+| REG-B37 | UNVERIFIED | Fixtures: evidence-key lifecycle, authorization, rotation and revocation, seals, rejection objects, validation history and eligibility: LIFE-1 to LIFE-18, RKN-1 to RKN-24, SLV-1 to SLV-9, FR-HIST-1 to FR-HIST-16, FR-LATE-*, FB-*, FR-* | 16-I §6.1–§6.5, §6.10, §6.12 | NOT VERIFIED | As REG-B36 | Implementer; reviewer | REG-B26 | OPEN |
+| REG-B38 | UNVERIFIED | Fixtures: the trust bootstrap and state-integrity adversarial cases: BOOT-1 to BOOT-17 and BOOT-14b | 16-I §6.11 | NOT VERIFIED. The BT-0 stub and synthetic anchors make them logic tests only | As REG-B36; BOOT-13, BOOT-14 and BOOT-14b as detection fixtures (REG-B03) | Implementer; reviewer | REG-B26, REG-B02, REG-B03 | OPEN |
+| REG-B39 | UNVERIFIED | Fixtures: restore command construction, SQL and protocol behaviour, logging, authentication, configuration, checksums, globals, schema and sequences: SBX-*, SM-*, QID-*, QB-*, PROTO-*, FX-EB, ADV-*, SPL-*, FX-JSON, FX-FAIL-*, CMPL-*, LRC-*, EXPCFG, CFG-*, CKS-*, FX-DC, GRD-*, OPR-*, FX-RS, SQV-*, FX-SEQ, SGR-*, FX-SCH, FX-GLB, PVR-*, PROV-B*, FX-SM, SM-N1, FX-E2E-*, NET-* | 16-I §6.6–§6.9 | NOT VERIFIED. Many are BLOCKED-PIN | As REG-B36, after REG-B05 for the BLOCKED-PIN ones | Implementer; reviewer | REG-B26, REG-B05 | OPEN |
+| REG-B40 | UNVERIFIED | Fixtures: registry, orchestration, the source gate and the RTM: RGV-*, ORC-*, SRC-*, RTM-* | 16-I §6.5, §6.9, §9 | NOT VERIFIED | As REG-B36; RTM-* under REG-B07 | Implementer; reviewer | REG-B26, REG-B07 | OPEN |
+| REG-B41 | UNVERIFIED | The behaviour register (class M and class F, E113 to E142, E127 widened) and assumptions E131, E132, E143. E1 to E130 are carried by name | 16-I §7.2, §8.4 | NOT VERIFIED: every behaviour is UNVERIFIED (16-I §8.4) | Under REG-B05 for the behaviours, and REG-B07 for E1 to E130's definitions | Readers | REG-B05, REG-B07 | OPEN |
+| REG-B42 | OWNER DECISION | Whether milestone 8's staging restore ("backup and restore, with … R-F4 `verify` on the restored copy") and milestone 12's checkpoint must use the isolated-restore procedure of REG-B01. Runbook §6 states its block for the checkpoint's copy only | Design §10 prerequisites; runbook §6 | DOCUMENT REVIEWED | The owner records which procedure each restore step uses | Owner | REG-B00 | OPEN |
+
+#### Part C: specification corrections (this pass)
+
+| ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
+|---|---|---|---|---|---|---|---|---|
+| REG-C01 | REQUIRED CORRECTION | **The `inst_digest` snapshot mismatch.** §3.3 step 8 recorded each validation's digest after step 6, but §3.6 item 1 compared R's review with the `use` validation's state after step 4. What U presents at step 6 (ledger entries, a newer head, rejection objects for R) escaped review currency, contrary to item 1's own consequence and to OI-4. The `use` record did not hold the value its decision used | 16-I §3.2.2, §3.3 step 8, §3.6 item 1, §3.2.4 (as issued at `7074ea5`) | DOCUMENT REVIEWED. **Corrected as 16-I amendment A1** (§25.9): `inst_digest` is over S6 (after step 6); a new `currency_digest` (`use` only) is the same digest over S6 without U's own attestation; item 1 compares the two; the report, Δ's sufficiency argument and the fixtures follow; FR-HIST-16 is added. Fully determined by existing requirements; no owner decision involved. A design correction only: FR-HIST-14 to FR-HIST-16 are unexecuted (REG-B37) | Done in design text | Designer (Claude), for the owner's review | — | CLOSED WITH EVIDENCE |
+| REG-C02 | REQUIRED CORRECTION | 16-I's repository citations carried from 16-E were incomplete. It said P1's direct mode used `cse_restore_check` as the restore cluster's superuser, and that the `pg_dump` version was not known to be recorded (UR-7) | 16-I §3.18, §3.22, §7.3, §8.1 | SOURCE REVIEWED: `worker/ops/restore_check.py:71` (the manifest's bootstrap superuser, falling back to `cse_restore_check` only when missing); `worker/ops/backup.py:126-130` (`pg_dump_version`, `server_version`, `data_checksums`, `bootstrap_superuser`). **Corrected as 16-I amendment A2.** UR-7 is closed. C-b stays open (REG-B04) | Done in design text | Designer (Claude), for the owner's review | — | CLOSED WITH EVIDENCE |
+| REG-C03 | REQUIRED CORRECTION | 16-I does not say what a `use` attestation binds: the attestation schema carries `run_id` (§3.1.1), but a use's identifier, and how ATTESTATION_REPLAY and ATTESTATION_CONFLICT apply to uses (including a re-presented use attestation), are unspecified. That prevents a correct implementation of `use` validations | 16-I §3.1.1, §3.1.5 group 6, §3.6 item 3 | DOCUMENT REVIEWED | A 16-I amendment that defines the use attestation's binding and its replay and conflict rules, made only when REG-B00 puts `use` validations in scope (§25.2 rule 4) | Designer; owner (approval) | REG-B00 | OPEN |
+| REG-C04 | REQUIRED CORRECTION | The 16-series status line ("R-F4 NOT ACCEPTED / NOT FROZEN") could be read as making R-F4's acceptance depend on the checkpoint machinery | 16-I header; `docs/R_F4_DESIGN.md` §10 | DOCUMENT REVIEWED: design §10's milestones 6 and 7 do not depend on it (§25.1). **Clarified in 16-I's amendment record** (§25.9). R-F4's status is unchanged: NOT ACCEPTED / NOT FROZEN | Done in design text | Designer (Claude), for the owner's review | — | CLOSED WITH EVIDENCE |
+
+### 25.5 Legacy identifiers
+
+Nothing is renamed or merged. The legacy identifiers stay valid in their documents, and each maps to one register
+item.
+
+| Legacy identifier (source) | Register item |
+|---|---|
+| Design §10 milestones 1–5 | Done (design §10; no item) |
+| Milestone 6; audit Findings 1–5; RF4-A1; the owner's reviews behind §13–§17 | REG-A01 |
+| Milestone 7 | REG-A02 |
+| Milestones 8, 9, 10, 11, 12, 13 | REG-G01, G02, G03, G04, G05, G06 |
+| §8.1 item 13 | REG-A03 |
+| L02 baseline (§21) | REG-A04 |
+| HB2-CLOCK (§21.4) | REG-X01 |
+| HB5-W1 (§19.4, §20.1) | REG-X02 |
+| The reader login (P1; §20.6) | REG-A05 |
+| §19.5 gaps 1, 3, 4, 5, 6, 7 (closed by §20, §20.9) and 2 (closed by §22.6) | Evidence of REG-A10 |
+| §19.5 gap 8 | REG-A09 |
+| §19.5 gap 9 | REG-A01 (review evidence) |
+| §19.5 gap 10 | None needed (§19.5) |
+| §19.5 gap 11 | REG-A12 |
+| §19.5 gap 12 | REG-A05, REG-A06 |
+| §19.5 gap 13 | REG-A07 |
+| Residuals of §9.6, §11.5, §11.7, §12.8 | REG-A11 |
+| §13.7 | REG-A11, REG-A13 |
+| §15.5, §16.5 | REG-A12 |
+| §18.6, §20.7, §22.5 | REG-A09, REG-A10 |
+| §23.3, §23.5, §24.5, §24.7 | REG-A06, REG-B01 |
+| Design §11 deferred items, in order | REG-A14 to REG-A20 |
+| Design §11 assumptions | REG-A21 |
+| Design §8 stale statements | REG-A22 |
+| 16-I UR-1, UR-2, UR-13, UR-14 | REG-B07 |
+| 16-I UR-3 (C-b) | REG-B04 |
+| 16-I UR-4, UR-5, UR-6 | REG-B29, REG-B30, REG-B31 |
+| 16-I UR-7 | REG-C02 (closed) |
+| 16-I UR-8, UR-9, UR-10, UR-11, UR-12 | REG-B32, REG-B06, REG-B33, REG-B34, REG-B35 |
+| 16-I UR-15 | REG-B02 |
+| 16-I UR-16; SA-0 to SA-3; SI-R1 to SI-R7; BT-0 | REG-B03 |
+| BT-1 to BT-7 | REG-B02 (BT-1, BT-2), REG-B03 (BT-0) and REG-B38 (all, as fixtures) |
+| C-a; C-b; C-c | REG-B08; REG-B04; REG-B09 |
+| PC-D-OKEY (b); (a) and (c) | REG-B02; REG-B10 |
+| PC-D-EKEY; PC-D-TRUST (b, c); PC-HR-KEYS | REG-B11; REG-B12; REG-B13 |
+| PC-D-REVIEW; PC-D-SKEW | REG-B09; REG-B08 |
+| PC-D-EMAX, PC-D-BASE, PC-D-INDEP, PC-D-FRESH, PC-D-RGI, PC-D-QCAP, PC-D-LEASE, PC-D-PGCHK | REG-B14, B15, B16, B17, B18, B19, B20, B21 |
+| PC-D-SEC, PC-D-PGVER, PC-D-VM, PC-D-DOCS, PC-D-HV | REG-B22 |
+| PC-D-TRUST (a), PC-D-PH, PC-D-XFER, PC-D-CON, PC-D-RS, PC-D-MGR, PC-D-AKIT, PC-D-1HOST, PC-D-LOGFMT, PC-D-LOGALL, PC-D4, PC-D7–PC-D10, PC-VC-P1 | REG-B23 |
+| PC-HR-PROD, PC-HR-HV | REG-B24 |
+| PC-FX-* | REG-B25 |
+| PC-CC-CKPT-IMPL; PC-CC-RUNBOOK6; PC-CC-RF4, PC-CC-VC | REG-B26; REG-B27; REG-B28 |
+| PC-CC-P1PROV, P1-CC-PROV | REG-B06 |
+| AG-PINSRC, AG-QBYPASS | REG-B05 |
+| AG-RTM | REG-B07 |
+| AG-FRESH, AG-SEAL, AG-STATUS, AG-APPROVALS, AG-PRECOND | REG-B02, REG-B03, and their fixtures in REG-B36 to REG-B38 |
+| AG-QID, AG-QCAP, AG-EB and the other gates carried from revisions ≤15 (16-I §5.3) | REG-B39; their definitions under REG-B07 |
+| VC-1 to VC-8, ACC-1 to ACC-6, the aliases of 16-I §5.2 | REG-B07 (carried by name) |
+| OI-1 to OI-4 | REG-B36 |
+| `inst_digest` | REG-C01 |
+| E113 to E143; E1 to E130 | REG-B41; REG-B07 |
+| The fixture families of 16-I §6 | REG-B36 to REG-B40 |
+
+### 25.6 Counts
+
+78 items.
+
+| Category | Total | OPEN | IN PROGRESS | CLOSED WITH EVIDENCE | DEFERRED WITH RATIONALE |
+|---|---|---|---|---|---|
+| BLOCKER | 14 | 13 | 1 (REG-A01) | 0 | 0 |
+| REQUIRED CORRECTION | 6 | 3 (REG-X01, REG-B34, REG-C03) | 0 | 3 (REG-C01, REG-C02, REG-C04) | 0 |
+| NON-BLOCKING | 14 | 4 | 0 | 2 (REG-A04, REG-A22) | 8 (REG-A14 to REG-A20, REG-X02) |
+| OWNER DECISION | 28 | 26 | 0 | 1 (REG-A03) | 1 (REG-A05) |
+| UNVERIFIED | 16 | 14 | 0 | 0 | 2 (REG-A06, REG-A07) |
+| **All** | **78** | **60** | **1** | **6** | **11** |
+
+By part: A 23, X 2, G 6, B 43, C 4.
+
+### 25.7 The finite plan
+
+**R-F4 has a short path to acceptance that does not wait for Part B.** Part B waits first for one owner decision,
+REG-B00.
+
+| Step | Action | Who | Exit criterion | Items |
+|---|---|---|---|---|
+| 1 | The independent review of R-F4's audit remediation at a named candidate commit (today `7074ea5`, or the commit recording this section: documents only) | Owner, or an auditor the owner names | A recorded audit conclusion at that commit: every finding closed with evidence or waived by a recorded decision; REG-A08 to REG-A12 dispositioned | REG-A01, A08–A12 |
+| 2 | Component acceptance and the freeze record | Owner | A committed freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded; REG-A11, A12, A13 and A21 recorded as accepted or fixed | REG-A02 |
+| 3 | The merge decision | Owner | A recorded decision at a named candidate commit with its CI evidence, including how L02 is treated (REG-X01) | REG-A23 |
+| 4 | Can run in parallel with steps 1–3: the scope of the isolated-restore procedure | Owner | A recorded decision that marks every Part B item in scope or out of scope | REG-B00, B42 |
+| 5 | The in-scope owner decisions; then only the in-scope REQUIRED CORRECTIONs (REG-C03, REG-B34), under §25.2 | Owner; then designer | Each decision recorded; each correction an amendment of 16-I | Part B as scoped |
+| 6 | Authorization, implementation, pins and source reviews, fixtures with independent review | Owner; implementer; readers; reviewer | REG-B26 authorized; the in-scope fixtures executed under 16-I §8.3 and reviewed; REG-B02 and REG-B03 closed if in scope | REG-B05, B26, B36–B41 |
+| 7 | The procedure reviewed and approved; the runbook changed | Reviewer; owner | REG-B01 closed; the runbook change approved (REG-B27) | REG-B01, B27 |
+| 8 | Staging and the later gates | Owner | Design §10 milestones 8–13 as recorded | REG-G01–G06 |
+
+**The exact next step.** Step 1: the owner, or the auditor the owner names, reviews the remediation recorded in §7 to §24
+at a named commit. The exit criterion is a recorded audit conclusion at that commit. Nothing in Part B is a prerequisite
+of it.
+
+### 25.8 Verdicts
+
+**Merge: DO NOT MERGE** (`claude/rf4-implementation`, candidate `7074ea5` or the commit recording this section).
+- R-F4 is not independently audited, accepted or frozen (design §10, milestones 6 and 7; REG-A01, REG-A02). HB-Q7's
+  condition is not met.
+- Stage 2's authorization excludes a merge (this record's header). No owner merge decision exists (REG-A23).
+- At `7074ea5` the regression workflow's conclusion is failure (`baseline-only`, L02). §21 waives L02 for R-F4
+  acceptance only and authorizes no merge.
+
+**Restore: DO NOT EXECUTE RESTORE.**
+- Runbook §6 blocks the checkpoint's restored copy until a separately reviewed and approved procedure exists (`c398029`;
+  REG-B01). None does.
+- The procedure's scope is undecided (REG-B00). The 16-I machinery is a design only, with the hard blockers UR-15 and
+  UR-16 open (REG-B02, REG-B03).
+- No restore is authorized. The CI rehearsal (§24) is not a procedure, and `P1_PLATFORM.md` §8 B, step 5 restores into
+  production.
+
+### 25.9 What this pass changed
+
+- **This record:**
+  - this section;
+  - one clause in the status paragraph pointing here;
+  - rows in §1 for `08cb850`, `7074ea5` and the commit adding this section.
+- **`docs/R-F4_Revision_16-I_consolidated_correction_note.md`:**
+  - the header rows (Amendments; the [R] label);
+  - a new amendment record (A1, A2, and the REG-C04 clarification);
+  - **A1:** §3.2.1, §3.2.2, §3.2.4, §3.3 step 8, §3.6 item 1, §5.3, §6.0, §6.4 (FR-HIST-14 and FR-HIST-15 reworded;
+    FR-HIST-16 added), §6.14, §9, §10.5;
+  - **A2:** §1, §3.18, §3.22, §7.3 (UR-3, UR-7), §8.1, §10.2, §10.5, §10.6.
+
+  The text as issued is `7074ea5`.
+- **Not changed:** code, tests, migrations, pins, CI, P1, the runbook, frozen HB-1 to HB-6 components, the 16-F to 16-H
+  notes, `docs/R_F4_DESIGN.md`.
+- **Not done:**
+  - no test was run locally;
+  - CI at `7074ea5` was read through the public API only;
+  - no source review in the sense of 16-I §8.2;
+  - no owner decision was made;
+  - CSE was not contacted;
+  - no restore was executed;
+  - nothing was pushed or merged.
+
+**Status: R-F4 NOT ACCEPTED / NOT FROZEN. DO NOT MERGE. DO NOT EXECUTE RESTORE. No restore is authorized.**

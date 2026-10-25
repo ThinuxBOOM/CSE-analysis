@@ -9,6 +9,7 @@
 | Prepared by | Claude (Anthropic), at the owner's request |
 | Prepared for | Independent audit |
 | Status | **NOT READY. DO NOT MERGE. DO NOT EXECUTE RESTORE. R-F4 NOT ACCEPTED / NOT FROZEN. No restore is authorized.** |
+| Amendments | A1 and A2 (2026-10-26), design text only, listed in the amendment record below. They are not a new revision. Every open item of this note is tracked in the consolidated register, `docs/R_F4_IMPLEMENTATION.md` §25 |
 
 ## Contents
 
@@ -30,7 +31,7 @@
 
 | Label | Meaning |
 |---|---|
-| [R] | Repository fact, read at commit `eb91d3e` (during 16-E; nothing was re-read for 16-F to 16-I) |
+| [R] | Repository fact, read at commit `eb91d3e` (during 16-E; nothing was re-read for 16-F to 16-I). Amendment A2 re-read `worker/ops/backup.py` and `worker/ops/restore_check.py` at `7074ea5`; neither has changed since `43f6b85` |
 | [E] | External behavior documented by an exact pinned source. **None qualifies.** Every earlier reading — the PostgreSQL 17 documentation and the psql `REL_17_STABLE` source — was unpinned, so it is cited as [E?] |
 | [E?] | Unverified external claim |
 | [P] | Design proposal |
@@ -42,6 +43,26 @@
 - Revisions 16-G and 16-H: verbatim.
 - Revisions 16 to 16-F: through 16-G's consolidated text and a session summary. Their definitions are carried as 16-G states them. **ST_A and ST_G (16-C) were not re-read**; §6.13 defines its own starting state so that no CAN expectation depends on their exact content.
 - Revisions 4 to 15: only through a summary. Their items are carried **by name**; where a definition could not be re-checked, that is flagged (UR-2, UR-14). **The archive/RTM blocker for Revisions 4–15 stands** (PC-D-DOCS, AG-RTM).
+
+---
+
+## Amendment record (after issue)
+
+**16-I remains the current consolidated design for the isolated checkpoint restore.** No Revision 16-J exists, and none
+is planned. A later change is made only as a numbered amendment here, tied to an item of the consolidated register
+(`docs/R_F4_IMPLEMENTATION.md` §25) and allowed by its stopping rule (§25.2). The text as issued is commit `7074ea5`.
+An amendment changes design text only: nothing in it is implemented, executed, independently reviewed or
+owner-approved.
+
+| # | Date | Register item | Text changed | Why |
+|---|---|---|---|---|
+| A1 | 2026-10-26 | REG-C01 | §3.2.1 (the `validation` row); §3.2.2 (the `inst_digest` row, with the snapshots S4 and S6 named; a new `currency_digest` row); §3.2.4 (the report; the sufficiency argument's step 7); §3.3 step 8; §3.6 item 1; §5.3 (AG-STATUS); §6.0; §6.4 (FR-HIST-14, FR-HIST-15; new FR-HIST-16); §6.14; §9; §10.5 | §3.3 step 8 recorded every validation's `inst_digest` after step 6, but §3.6 item 1 compared R's latest review with the `use` validation's state **after step 4**. What U itself presents at step 6 — ledger entries, a newer head, rejection objects for R found at step 6 — escaped that comparison. A head first seen through U could therefore leave R "current", while the same head imported earlier forces a new review: contrary to item 1's own consequence ("any instance added after R's last seal or review") and to OI-4. Separately, the `use` record held a digest that was not the value its decision used. **The correction follows from existing requirements:** the comparison covers everything in state after step 6 (item 1) except U's own attestation, which no earlier review can contain; without that one exception no use could ever be eligible, contrary to §3.6, LIFE-1, LIFE-2 and FR-HIST-15. No owner decision is involved, and nothing is weakened: every instance other than U's own attestation now counts, where 16-I left out everything U presented |
+| A2 | 2026-10-26 | REG-C02 | §3.18 (the UR-7 bullet); §3.22 (the bootstrap-superuser sentence); §7.3 (UR-3 and UR-7); §8.1 (the UR-7 pin bullet); §1, §10.2, §10.5 and §10.6 (the unresolved range) | The [R] citations carried from 16-E were incomplete. Reading `worker/ops/backup.py:105-130` and `worker/ops/restore_check.py:71-77` at `7074ea5` shows that the manifest records `pg_dump_version`, `server_version`, `data_checksums` and `bootstrap_superuser`, and that P1's restore check builds its cluster with the manifest's bootstrap superuser, falling back to `cse_restore_check` only when the field is missing. 16-I said that direct mode used `cse_restore_check` and that the `pg_dump` version was not known to be recorded. UR-7 is closed by that reading. C-b (UR-3) stays open: see §3.22 and the register's REG-B04 |
+
+**Scope of the status line (register REG-C04).** The status line above repeats R-F4's governing status. It adds no
+condition to R-F4's component acceptance. Under `docs/R_F4_DESIGN.md` §10, that acceptance (milestones 6 and 7) does not
+depend on this note's machinery. The isolated-restore procedure this note designs is a prerequisite of the restore steps
+of later milestones and of the runbook's checkpoints (`docs/ops/PHASE2_BACKFILL.md` §6; the register's REG-B01).
 
 ---
 
@@ -76,7 +97,7 @@ Evidence status for every row: **design only. No source review, no fixture execu
 
 | Dimension | Status |
 |---|---|
-| Design consistency | Consistent on paper, apart from the open items in §10.2 — one parameter decision, three design defects (two of them the hard blockers UR-15 and UR-16) and one pending policy choice — and the unresolved items UR-1 to UR-16 (§7.3). 16-H corrected the 16-G inconsistencies it found; 16-I corrects the order-independence definitions and the further inconsistencies in §0 rows 3a to 3g. None of these corrections has been independently reviewed |
+| Design consistency | Consistent on paper, apart from the open items in §10.2 — one parameter decision, three design defects (two of them the hard blockers UR-15 and UR-16) and one pending policy choice — and the unresolved items UR-1 to UR-16, apart from UR-7, which amendment A2 closed (§7.3). 16-H corrected the 16-G inconsistencies it found; 16-I corrects the order-independence definitions and the further inconsistencies in §0 rows 3a to 3g. None of these corrections has been independently reviewed |
 | Source review | None |
 | Fixture execution | None. No test or fixture has been executed |
 | Independent evidence review | None |
@@ -398,7 +419,7 @@ Each validation emits one deterministic, ordered list. Acceptance happens if and
 | `equivocation`, `fork`, `attestation-conflict`, `seal-conflict` | Flagged pair | kind; the unordered pair {λ1, λ2} | Derived audit records. `attestation-conflict` is new in 16-H: 16-G derived that flag but had no record kind for it |
 | `import` (revised in 16-I) | Processing of an input identity κ at a source reference | κ; the source reference (a store position, or the presentation slot at step 6); the result: VERIFIED(ι) or UNVERIFIABLE(code), or for a kit file STORED or UNNAMED | Audit only. **Never a decision input.** Written when κ is first seen at a source reference, and whenever κ's result changes |
 | `genesis` | State | `owner_anchor` | Authoritative only once the pre-state checks pass (§3.1.4). Today they cannot |
-| `validation`, `accepted` | Validation | §3.3 step 8, including `inst_digest` (new in 16-I) | `validation` records are the authoritative history for status (§3.5) and for review currency (§3.6) |
+| `validation`, `accepted` | Validation | §3.3 step 8, including `inst_digest` (new in 16-I) and, in a `use` record, `currency_digest` (amendment A1) | `validation` records are the authoritative history for status (§3.5) and for review currency (§3.6) |
 | `recovered` | Recovery | §3.7 | Audit |
 
 **Rules:**
@@ -441,7 +462,8 @@ Let I be the set of `instance` records in state; all are VERIFIED. Every functio
 | V_E | §3.1.2A |
 | h_latest | The highest `head_seq` in Obj (§3.12A) |
 | Res(S) (new in 16-I) | {(κ, r_S(κ))} over every κ that an import step or a presentation has processed. **Audit only; no decision reads it.** Compared by OI-1 |
-| `inst_digest` (new in 16-I) | SHA-256(C({"instances": the ascending list of [role, `raw_sha256`, `sig_sha256`] over I, "kit": the ascending list of kit-store `sha256` values})). Recorded in every `validation` record at step 7, and read by §3.6 item 1 |
+| `inst_digest` (new in 16-I; snapshot stated by A1) | SHA-256(C({"instances": the ascending list of [role, `raw_sha256`, `sig_sha256`] over I, "kit": the ascending list of kit-store `sha256` values})), over **S6**, the state after step 6 (S4 is the state after step 4). Recorded in every `validation` record. The `inst_digest` of R's latest seal or review is the reference §3.6 item 1 compares with. **No rule reads a digest of S4** |
+| `currency_digest` (amendment A1; `use` validations only) | The same function over S6 with exactly one instance left out: the instance of U's own presented attestation, ι(att_U), whether step 6 recorded it or it was already in state. Nothing else is left out. Recorded in the `use` record, and compared by §3.6 item 1. If U's attestation was already recorded before R's latest review, that review's digest contains it and `currency_digest` does not, so R is not current for U: a fresh attestation is needed (fail-closed) |
 
 - **Floors and PC-D-FRESH (b).** The floors above are computed over every VERIFIED owner-class logical object; that is the interim rule, and these unfiltered floors are what Proj holds (§3.2.4). If the owner chooses "accepted objects only", step 5 restricts Obj to logical objects belonging to accepted runs. That restriction depends on the `accepted` records (Δ5, §3.2.4), not on import order.
 - **Replay** (§3.3 step 3): verify each `instance`; rebuild Obj, `seen`, the floors and their carriers, Flags and V_E from these functions; and compare them with the stored derived records (§3.2.1 rule 2).
@@ -572,14 +594,14 @@ Under κ each of these has its own entry. Two files with the same κ at differen
 - step 5: the Proj after step 4, with the audit reference kept out of the report; at seal and review, `floor_p0` from Δ7 and O from Δ3;
 - step 6: Δ7;
 - step 6a: the purpose head from Δ7; the purpose AK from Δ7 (P0 and `use`) or from Δ4 (seal and review);
-- step 7: the Proj after step 6, together with Δ4, Δ5, Δ7 and Δ8.
+- step 7: the Proj after step 6, together with Δ4, Δ5, Δ7 and Δ8. At a `use` validation, `currency_digest` is a function of the Proj after step 6 and of U's presented attestation (Δ7) (amendment A1).
 
 **The report** — the bytes whose SHA-256 step 8 records — holds only:
 - the kind, run_id and option;
 - the code list, and the decision: PASS, FAIL, or ABORT with its codes;
 - the floor reference, as carrier content hashes;
 - the purpose heads and the purpose AK hash;
-- `evidence_instances` (P0) and `inst_digest`;
+- `evidence_instances` (P0), `inst_digest`, and at a `use` validation `currency_digest` (amendment A1);
 - at a `use` validation, U's attestation content hash and h_U.
 
 Each of these is a function of Δ. Record numbers, prefix hashes, write times and source references are left out.
@@ -627,6 +649,7 @@ Each of these is a function of Δ. Record numbers, prefix hashes, write times an
    - the purpose heads and the purpose AK's hash;
    - at P0, `evidence_instances` (§3.2.3);
    - `inst_digest` (§3.2.2) of the state after step 6 (new in 16-I);
+   - at a `use` validation, `currency_digest` (§3.2.2; amendment A1);
    - at a `use` validation, U's attestation content hash and h_U;
    - the code list and the report SHA-256. The report's content is defined in §3.2.4.
 
@@ -698,9 +721,10 @@ A consumer — for example the runbook §6 checkpoint step — may rely on run R
 
 1. **Status and review currency** (revised in 16-I):
    - R's derived status is VALID; otherwise ELIGIBILITY_NOT_ESTABLISHED(NOT_VALID);
-   - R's most recent `validation` record of kind seal or review is a PASS, and its `inst_digest` equals the `inst_digest` of this `use` validation's state after step 4, before U's objects are recorded at step 6. Otherwise ELIGIBILITY_NOT_ESTABLISHED(REVIEW_NOT_CURRENT).
+   - R's most recent `validation` record of kind seal or review is a PASS, and its `inst_digest` equals this `use` validation's `currency_digest` (§3.2.2): the digest of its state after step 6, leaving out only U's own attestation. It is evaluated at step 7. Otherwise ELIGIBILITY_NOT_ESTABLISHED(REVIEW_NOT_CURRENT).
+   - **Amended 2026-10-26 (A1).** As issued, 16-I compared with this validation's state after step 4. What U itself presents at step 6 — ledger entries, a newer head, rejection objects for R found at step 6 — then escaped the comparison (FR-HIST-16).
    - 16-H's wording, "a review completed after the latest import", depended on record order, which Proj and Δ leave out (§3.2.4).
-   - **Consequence:** any instance added after R's last seal or review — whether by an import, by another run's presented objects, or by an earlier use's attestation — makes that review not current, and R must be reviewed again before the next use. This is deliberately conservative (FR-HIST-14, FR-HIST-15).
+   - **Consequence:** any instance added after R's last seal or review — whether by an import, by another run's presented objects, by an earlier use's attestation, or by what U itself presents other than its own attestation (A1) — makes that review not current, and R must be reviewed again before the next use. This is deliberately conservative (FR-HIST-14, FR-HIST-15).
    - **Consequence under the interim review rule (stated in 16-I).** Under `current-floor` and under the interim rule, a review fails with CLOCK_ROLLBACK (flagged LATE_EVIDENCE under the interim) once any owner statement later than R's `t_att` + S has been seen. A previous use's attestation is such a statement. Combined with this item, R can be relied on **for at most one use** under those rules, until PC-D-REVIEW is decided (FR-HIST-15). The floor rules come from 16-G and 16-H; 16-H's looser wording allowed a second use to rely on a review that predated the first use's attestation, and 16-I's exact currency rule closes that.
 2. **Integrity:** no EQUIVOCATION or FORK flag in current state, and no SEAL_CONFLICT for R.
 3. **Fresh attestation:** U has its own fresh owner attestation (nonce, `t_use`, bound head h_U) that passes the trust bootstrap, §3.1 and §4.
@@ -1138,7 +1162,7 @@ Three observations must agree with X:
 - the manifest format is known;
 - provenance is valid (§3.23);
 - pinned versions: the copy's PostgreSQL 17 minor must be ≥ the dump's `server_version`, and `pg_restore` is pinned.
-- **UR-7:** the version of the `pg_dump` binary that produced the dump has not been confirmed to be recorded.
+- **UR-7 (closed by amendment A2, 2026-10-26):** the manifest records the producing `pg_dump` binary's version (`pg_dump_version`, [R] `worker/ops/backup.py:130`), the source's `server_version` and `data_checksums` (`:126`) and its bootstrap superuser (`:129`). The `pg_dumpall` version is not recorded separately.
 
 ### 3.19 Restore-session guard [P]
 
@@ -1229,7 +1253,7 @@ END $guard$;
 - ownership, grants, extensions and database settings (SCH) [E? where each one appears];
 - predefined roles that are not dumped, and the bootstrap superuser.
 
-The bootstrap superuser must match production's. Direct mode used `cse_restore_check` ([R] `restore_check.py:71`), which would differ (UR-3).
+The bootstrap superuser must match production's. The manifest records it (`bootstrap_superuser`, [R] `backup.py:129`), and P1's restore check creates its cluster with that name, falling back to `cse_restore_check` only when the field is missing ([R] `restore_check.py:71`). (Corrected by amendment A2: as issued, this sentence said that direct mode used `cse_restore_check`.) Restoring `globals.sql` into such a cluster raises "role … already exists" for that role, which direct mode tolerates (UR-3).
 
 **If equivalence isn't proven,** AG-SCHEMA and AG-GLB stay unpassed.
 
@@ -1498,7 +1522,7 @@ These are permitted only in archived text, and are rejected everywhere else (REG
 | AG-QBYPASS | AG-PINSRC, plus every sandbox behavior (E116, E121, E122a, E122b, E122c, E123, E124, E125, E126a to E126e, E129, E130, E117, audit witness) FIXTURE-CONFIRMED under precedence rule 5 |
 | AG-FRESH | **UR-15 and UR-16 resolved**; E127 and E128 at SUPPORTS and FIXTURE-CONFIRMED; the owner-class RKN rows; BOOT-1 to BOOT-6, BOOT-10 to BOOT-17 and BOOT-14b, with BOOT-13, BOOT-14 and BOOT-14b re-registered as detection fixtures under the UR-16 correction (SI-R6); CAN-1 to CAN-10, CAN-12, CAN-15, CAN-17 and CAN-18; FB, FR and FR-HIST fixtures |
 | AG-SEAL | **UR-15 and UR-16 resolved**; E127 at SUPPORTS and FIXTURE-CONFIRMED; the evidence-class RKN rows; BOOT-7 to BOOT-9; LIFE-1 to LIFE-18; CAN-11, CAN-13, CAN-14, CAN-16, CAN-19, CAN-20; SLV-1 to SLV-9 |
-| AG-STATUS | **UR-15 and UR-16 resolved**; FR-HIST-1 to FR-HIST-15; LIFE-1 to LIFE-18; CAN-12 |
+| AG-STATUS | **UR-15 and UR-16 resolved**; FR-HIST-1 to FR-HIST-16; LIFE-1 to LIFE-18; CAN-12 |
 | AG-APPROVALS, AG-PRECOND | **UR-15 and UR-16 resolved**, plus their existing conditions |
 | AG-QID | E129 and E113 (class F) FIXTURE-CONFIRMED; QID-1 to QID-7; PROTO-15 |
 
@@ -1536,9 +1560,9 @@ These are permitted only in archived text, and are rejected everywhere else (REG
 - FB-1 to FB-37; FR-* (including FR-REC, FR-NONCE, FR-NS, FR-EQ, FR-CONC, FR-INT, FR-IMP); FR-LATE-*; FR-HIST-*; LED-*, PCV-*;
 - RGV-*, SLV-*, ORC-*; SBX-*, SM-*, QID-*, QB-*, PROTO-*;
 - FX-*, ADV-*, SPL-*, CMPL-*, LRC-*; EXPCFG, CFG-*, CKS-*, GRD-*, OPR-*, SQV-*, SGR-*, PROV-B*, PVR-*, FX-E2E-*, NET-*;
-- SRC-*; RKN-1 to RKN-24; BOOT-1 to BOOT-17 and BOOT-14b; LIFE-1 to LIFE-18; CAN-1 to CAN-20; FR-HIST-1 to FR-HIST-15; RTM-*.
+- SRC-*; RKN-1 to RKN-24; BOOT-1 to BOOT-17 and BOOT-14b; LIFE-1 to LIFE-18; CAN-1 to CAN-20; FR-HIST-1 to FR-HIST-16; RTM-*.
 
-**16-I adds or revises fixtures (CAN-5, CAN-8, CAN-9, CAN-11, CAN-15 to CAN-20, FR-HIST-12, FR-HIST-14, FR-HIST-15, FR-REC-8, LIFE-13). Their expectations are proposed and derivable only; none has been executed.**
+**16-I adds or revises fixtures (CAN-5, CAN-8, CAN-9, CAN-11, CAN-15 to CAN-20, FR-HIST-12, FR-HIST-14, FR-HIST-15, FR-REC-8, LIFE-13); amendment A1 adds FR-HIST-16. Their expectations are proposed and derivable only; none has been executed.**
 
 **What the labels mean:**
 - **BLOCKED-PIN:** the expectation must be pre-registered only after source review on the pinned tuple (§8.3).
@@ -1702,8 +1726,9 @@ The setup is 16-D's: evidence arrives after P0 and is first imported at seal.
 | FR-HIST-11 | Reviewer state corrupt | STATE_CORRUPT | Current UNKNOWN; no record written | No |
 | FR-HIST-12 | A consumer presents only the `accepted` record | — | — | **ELIGIBILITY_NOT_ESTABLISHED(ACCEPTED_RECORD_ONLY)** |
 | FR-HIST-13 | The same review run twice from the same state | Identical report bytes (Δ trivially equal; OI-3) | — | One `validation` record each |
-| FR-HIST-14 (new in 16-I) | From FR-HIST-1, an owner entry `e11n` (seq 11, approved within `t_att` + S, so that no floor or time rule fires) is imported. Then a `use` validation `u-2`, binding the latest head | — | VALID | **No:** ELIGIBILITY_NOT_ESTABLISHED(REVIEW_NOT_CURRENT). The latest review's `inst_digest` lacks `e11n`'s instance, so it differs from `u-2`'s digest after step 4 |
-| FR-HIST-15 (new in 16-I) | After FR-HIST-14, a review of `run-a`, then a `use` validation with a fresh use `u-3` | PASS / PASS / CLOCK_ROLLBACK / CLOCK_ROLLBACK + LATE_EVIDENCE. `u-2`'s attestation (`t_use` later than `run-a`'s `t_att` + S) raised `max_time_seen` | VALID / VALID / INVALIDATED / SUSPENDED | `p0-floor` and `issued-before`: **ELIGIBLE**, because the review's `inst_digest` covers `e11n` and `u-2`'s attestation and equals `u-3`'s digest after step 4. `current-floor` and interim: **No**, ELIGIBILITY_NOT_ESTABLISHED(NOT_VALID). The digest is computed over sets (§3.2.2), so none of these results depends on the order in which the instances arrived |
+| FR-HIST-14 (new in 16-I) | From FR-HIST-1, an owner entry `e11n` (seq 11, approved within `t_att` + S, so that no floor or time rule fires) is imported. Then a `use` validation `u-2`, binding the latest head | — | VALID | **No:** ELIGIBILITY_NOT_ESTABLISHED(REVIEW_NOT_CURRENT). The latest review's `inst_digest` lacks `e11n`'s instance, so it differs from `u-2`'s `currency_digest` (A1; 16-I as issued compared the digest after step 4, which gives the same result here) |
+| FR-HIST-15 (new in 16-I) | After FR-HIST-14, a review of `run-a`, then a `use` validation with a fresh use `u-3` | PASS / PASS / CLOCK_ROLLBACK / CLOCK_ROLLBACK + LATE_EVIDENCE. `u-2`'s attestation (`t_use` later than `run-a`'s `t_att` + S) raised `max_time_seen` | VALID / VALID / INVALIDATED / SUSPENDED | `p0-floor` and `issued-before`: **ELIGIBLE**, because the review's `inst_digest` covers `e11n` and `u-2`'s attestation and equals `u-3`'s `currency_digest`, which leaves out only `u-3`'s own attestation (A1). `current-floor` and interim: **No**, ELIGIBILITY_NOT_ESTABLISHED(NOT_VALID). The digest is computed over sets (§3.2.2), so none of these results depends on the order in which the instances arrived |
+| FR-HIST-16 (amendment A1) | From FR-HIST-1: `run-a` is VALID and its latest review is current. A `use` validation `u-4` binds a head `h11`, with its entry `e11`, issued after `run-a`'s `t_att`. No import has brought them into state; `u-4` presents them at step 6 | — | VALID | **No:** ELIGIBILITY_NOT_ESTABLISHED(REVIEW_NOT_CURRENT), because `currency_digest` contains `e11` and `h11`. Under 16-I as issued, the digest after step 4 lacked them and item 1 passed, so under `current-floor` or the interim `u-4` could be ELIGIBLE although a review that sees `h11` gives ROLLBACK. The same result is expected when `h11` was imported before `u-4` (early arrival), as OI-4 requires. After a new review: under `p0-floor` and `issued-before`, ELIGIBLE for a fresh use; under `current-floor` and the interim, the review gives ROLLBACK and `run-a` is not VALID |
 
 ### 6.5 Registry, seal and orchestration (derivable)
 
@@ -2118,6 +2143,7 @@ None of these has been implemented, run or reviewed. BOOT-13, BOOT-14 and BOOT-1
 | §3.1.2A and §3.3 step 4: every input without a VERIFIED instance processed again; kit files to a fixpoint | CAN-9, CAN-11, CAN-20 | CAN-20 new |
 | §3.3 step 6: `import` notes for presented inputs | RKN-9, RKN-10, RKN-17 | Expectations unchanged; the rule now produces them |
 | §3.1.5 group 11; §3.3 step 8 kind `use`; §3.6 item 1 currency; ELIGIBILITY_NOT_ESTABLISHED sub-codes | FR-HIST-9, FR-HIST-12, FR-HIST-14, FR-HIST-15; LIFE-13 | FR-HIST-14 and FR-HIST-15 new; the others' codes revised |
+| Amendment A1: `currency_digest` (§3.2.2, §3.6 item 1) | FR-HIST-14, FR-HIST-15, FR-HIST-16 | FR-HIST-16 new; FR-HIST-14 and FR-HIST-15 reworded, expectations unchanged |
 
 **None of the 16-I fixtures has been implemented, run or reviewed.** Their expectations are derived from this note's rules only. CAN-18 and CAN-19 start from states built directly for the fixture, and CAN-18 uses a hypothetical owner decision that has not been made.
 
@@ -2194,11 +2220,11 @@ All other existing PC-D-* decisions are unchanged and unapproved.
 |---|---|---|
 | UR-1 | Missing evidence | Mapping of gates P1 to P5 onto §3.8's states (needs the archive) |
 | UR-2 | Missing evidence | Meanings of items carried by name (marked †, FX-E2E, NET, PROV-B, BIND-4, SM-N1) |
-| UR-3 | **Design defect (C-b)** | **Globals restore:** pg_dumpall's bootstrap role versus ON_ERROR_STOP. Direct mode tolerates the error ([R] `restore_check.py:75`); script mode has no defined handling |
+| UR-3 | **Design defect (C-b)** | **Globals restore:** pg_dumpall's bootstrap role versus ON_ERROR_STOP. Direct mode tolerates the error ([R] `restore_check.py:75`); script mode has no defined handling. **A2:** the error is the `CREATE ROLE` of the bootstrap superuser, because the restore cluster's own bootstrap superuser has the same name ([R] `restore_check.py:71`); in CI it was the only error (`docs/R_F4_IMPLEMENTATION.md` §24.8) |
 | UR-4 | Unknown external behavior | Whether psql transmits the COPY `\.` terminator |
 | UR-5 | Unknown external behavior | The exact startup parameters psql sends |
 | UR-6 | Unknown external behavior | Whether `\restrict` and `--restrict-key` are supported in the pinned and the production versions. Production's `pg_dumpall` call has no `--restrict-key` ([R] `backup.py:117`) |
-| UR-7 | Unknown fact (repository) | Whether the producing `pg_dump` binary version is recorded |
+| UR-7 | Unknown fact (repository) | **Closed (amendment A2, 2026-10-26).** It is recorded: `pg_dump_version` in the manifest ([R] `worker/ops/backup.py:130`) |
 | UR-8 | Unknown fact (production) | Which sequence kinds exist in production |
 | UR-9 | Unknown fact (repository / freeze) | Freeze records covering `backup.py` |
 | UR-10 | Unverifiable assumption | Power-loss durability, which cannot be fully established without fault injection |
@@ -2224,7 +2250,7 @@ The pin records and source-evidence records are as specified in 16-C §3 and 16-
 - OpenSSH (`ssh-keygen`);
 - audit userspace;
 - PostgreSQL 17 server, client binaries (`psql`, `pg_restore`, `pg_dump`, `pg_dumpall`, `pg_controldata`, `pg_checksums`) and libpq, for the copy;
-- the production `pg_dump` and `pg_dumpall` versions (UR-7);
+- the production `pg_dump` and `pg_dumpall` versions (the manifest records `pg_dump_version`, A2; pinning is still required);
 - the Python runtime (C(x));
 - our own code: `ckpt-hold`, supervisor, `qcap`, EB, validator, RTM extractor. For these the record is commit, recipe, compiler and binary hash, and each needs an **independent code review** rather than source evidence.
 
@@ -2358,13 +2384,14 @@ This consolidates 16-A to 16-I. **No historical identifier is renamed.**
   - BOOT-13 to BOOT-17, BOOT-14b, LIFE-15 to LIFE-18, CAN-10 to CAN-14;
   - UR-16.
 - **Added in 16-I:** CAN-15 to CAN-20, FR-HIST-14, FR-HIST-15. No new prefix is introduced.
+- **Added by amendment A1 (2026-10-26):** FR-HIST-16.
 - **Not RTM candidates:**
   - record kinds and namespaces: `validation`, `fork`, `seal-conflict`, `instance`, **`kit`**, **`attestation-conflict`**, `cse-checkpoint-seal`, `cse-checkpoint-rejection`;
   - record fields and names: `owner_anchor`, **`verified_by`**, **`evidence_instances`**, **`evidence_manifest`**, **Line_owner**, **ST_CAN**, **V_E**, **A_p** (each contains an underscore);
   - file names: `allowed_signers.owner`, `allowed_signers.evidence`;
   - reason codes and sub-codes, which contain underscores;
   - the section labels "3.12A" and "3.7A" (each contains a dot);
-  - from 16-I: Δ1 to Δ9 (they begin with a Greek letter), κ, Res, the record field `inst_digest`, the validation kind `use`, the sub-codes NOT_VALID, REVIEW_NOT_CURRENT and ACCEPTED_RECORD_ONLY, and the import results STORED and UNNAMED.
+  - from 16-I: Δ1 to Δ9 (they begin with a Greek letter), κ, Res, the record fields `inst_digest` and `currency_digest` (A1), the validation kind `use`, the sub-codes NOT_VALID, REVIEW_NOT_CURRENT and ACCEPTED_RECORD_ONLY, and the import results STORED and UNNAMED.
 - **Prefix check:**
   - BT, BOOT, LIFE and CAN (16-G) and SA, SI-R and OI (16-H) are not used elsewhere in the revisions available to the author.
   - **The adversary classes were deliberately not named A0 to A3**, because A0 is an existing identifier.
@@ -2416,7 +2443,7 @@ None of these is a contradiction in the rules. Each is open for a stated reason,
 | **C-a** | **Parameter inconsistency needing an owner decision** | The rules are consistent, but under the fail-closed delivery model delivery is limited to 2S. The values first proposed in 16-B (Δ_att = 900 s, S = 300 s) cannot both hold | PC-D-SKEW. This note does not choose values |
 | **C-c** | **Intentional policy choice pending an owner decision** | The review-order options deliberately give different statuses for the same evidence. Under `current-floor` and the interim rule, a run is also eligible for at most one use (§3.6, 16-I) | PC-D-REVIEW |
 
-The other unresolved items (UR-1, UR-2, UR-4 to UR-14) are typed in §7.3.
+The other unresolved items (UR-1, UR-2, UR-4 to UR-6, UR-8 to UR-14) are typed in §7.3. UR-7 is closed (A2).
 
 ### 10.3 Unverified
 
@@ -2517,6 +2544,8 @@ The other unresolved items (UR-1, UR-2, UR-4 to UR-14) are typed in §7.3.
 | 16-H OI-3: "starting from states with equal Proj" | Equal Δ (16-I) |
 | 16-H §3.1.2A: "owner-class files are not re-tried" | Every input without a VERIFIED instance is processed again (16-I) |
 | 16-H §3.6 item 1: "a review completed after the latest import" | Review currency by `inst_digest` (16-I) |
+| 16-I §3.6 item 1 as issued: the comparison with the `use` validation's state after step 4 | `currency_digest` over the state after step 6 (amendment A1) |
+| 16-I §3.22 as issued: "Direct mode used `cse_restore_check`"; UR-7 open | The manifest's bootstrap superuser; UR-7 closed (amendment A2) |
 | 16-H FR-REC-8: "only `raw_sha256` is computed" | κ is computed (16-I) |
 | 16-G §3.2 and §3.7: `seen` holds the first VERIFIED instance, and `instance` records only later ones | §3.2.1 (16-H) |
 | 16-G §3.2: "Reordering inputs cannot change an acceptance result", stated as fact | OI-1 to OI-4, stated as claims (16-H) |
@@ -2541,13 +2570,15 @@ The other unresolved items (UR-1, UR-2, UR-4 to UR-14) are typed in §7.3.
 | 16-B's rename to FRS-* | Withdrawn (16-C) |
 | F9's unsigned confirmation | The time attestation (16-A corrections) |
 
-**Unresolved:** UR-1 to UR-16; C-a, C-b, C-c; every decision in §7.1.
+**Amended after issue (2026-10-26):** A1 and A2; see the amendment record at the top.
+
+**Unresolved:** UR-1 to UR-6 and UR-8 to UR-16 (UR-7 closed by A2); C-a, C-b, C-c; every decision in §7.1.
 
 ### 10.6 Final status by dimension
 
 | Dimension | Status |
 |---|---|
-| Design consistency | On paper, apart from the §10.2 open items (including the hard blockers UR-15 and UR-16) and UR-1 to UR-16. The 16-H and 16-I corrections are unreviewed |
+| Design consistency | On paper, apart from the §10.2 open items (including the hard blockers UR-15 and UR-16) and UR-1 to UR-16 (UR-7 closed by A2). The 16-H and 16-I corrections, and amendments A1 and A2, are unreviewed |
 | Source review | None |
 | Fixture execution | None. No test or fixture has been executed |
 | Independent evidence review | None |
