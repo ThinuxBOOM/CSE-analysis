@@ -36,7 +36,7 @@
 | [P] | Design proposal |
 | [X] | Executed evidence: **none** |
 
-**Work done for 16-I:** design text only. The author read the 16-H note, which is outside the repository and was written earlier in this session. No repository file was read or changed, no external source was read, and no test, build, connection, transfer, restore, commit, push or merge happened. **No test or fixture has been executed, and no implementation exists or has been verified. Nothing in this note has been independently verified or source-reviewed.**
+**Work done for 16-I:** design text only. The author read the 16-H note, which was written earlier in the same session. When 16-I was written, 16-H was kept outside the repository; it is now committed in `docs/` beside this one. No repository file was read or changed, no external source was read, and no test, build, connection, transfer, restore, commit, push or merge happened. **No test or fixture has been executed, and no implementation exists or has been verified. Nothing in this note has been independently verified or source-reviewed.**
 
 **History available to the author:**
 - Revisions 16-G and 16-H: verbatim.

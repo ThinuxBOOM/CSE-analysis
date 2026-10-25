@@ -36,7 +36,7 @@
 | [P] | Design proposal |
 | [X] | Executed evidence: **none** |
 
-**Work done for 16-H:** design text only. The author read the 16-G note in full and searched the 16-F note for the fixture states ST_A and ST_G. Both notes are outside the repository. No repository file was read or changed, no external source was read, and no test, build, connection, transfer, restore, commit, push or merge happened. **Nothing in this note has been independently verified, source-reviewed or executed.**
+**Work done for 16-H:** design text only. The author read the 16-G note in full and searched the 16-F note for the fixture states ST_A and ST_G. When 16-H was written, both notes were kept outside the repository; they are now committed in `docs/` beside this one. No repository file was read or changed, no external source was read, and no test, build, connection, transfer, restore, commit, push or merge happened. **Nothing in this note has been independently verified, source-reviewed or executed.**
 
 **History available to the author:**
 - Revision 16-G: verbatim.
