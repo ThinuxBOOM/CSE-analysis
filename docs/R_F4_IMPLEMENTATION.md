@@ -3272,6 +3272,8 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 | REG-A22 | NON-BLOCKING | Statements made stale by the accepted design (Phase 2 design §11.5 and §27; MA §52 and §55) | Design §8 | DOCUMENT REVIEWED: Phase 2 design §11.5 ("R-F4 status (2026-10-16)") and MA's HB-Q7 passages record R-F4 as designed and implemented; Phase 2 D17 lists §11.5 and §27 among the sections it updated. The revision 4 note (Phase 2 design line 26) is a dated entry kept as written, per design §8 | Done | — | — | CLOSED WITH EVIDENCE |
 | REG-A23 | OWNER DECISION | Merging `claude/rf4-implementation` into `main` | Design §8.2, §10; Stage 2's authorization (this record's header) excludes a merge; §21.5 | DOCUMENT REVIEWED; TEST EXECUTED: the regression workflow's conclusion at `7074ea5` is failure (`baseline-only`) | After REG-A02: the owner's merge decision at a named candidate commit with its CI evidence, including how L02 (REG-X01) is treated, since §21 waives it for acceptance only | Owner | REG-A01, REG-A02 | OPEN |
 
+*The owner's decisions D1 to D6 at the audited baseline `044cbf5` are recorded in §26.5 (2026-10-26). D5, acceptance and freeze, is approved conditionally and is not yet effective. The statuses above are unchanged here; §26.4 states the status each item takes, and when (§26.7).*
+
 #### Part X: separately tracked defects (not R-F4's)
 
 | ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
@@ -3488,3 +3490,381 @@ of it.
   - nothing was pushed or merged.
 
 **Status: R-F4 NOT ACCEPTED / NOT FROZEN. DO NOT MERGE. DO NOT EXECUTE RESTORE. No restore is authorized.**
+
+## 26. R-F4 owner acceptance and freeze record: decisions recorded; acceptance conditional, NOT YET FROZEN (2026-10-26)
+
+> **R-F4 is NOT ACCEPTED, NOT FROZEN and NOT AUTHORIZED TO MERGE.**
+> - **The owner's decisions D1 to D6 are recorded in §26.5.** The owner approved them on 2026-10-26, in the conversation
+>   in which this section was prepared; Claude recorded them in the owner's words. No signature exists.
+> - **D5 approves acceptance and freeze conditionally.** It takes effect only when all four of its prerequisites are
+>   verified and recorded, and then only at the freeze-record commit V (§26.1, §26.5). Prerequisites 2, 3 and 4 are
+>   outstanding. Prerequisite 1 is satisfied only when this section is committed.
+> - **A gap found to undermine a stated R-F4 requirement stops the freeze sequence** (§26.5, the fail-closed rule).
+> - **D6 does not authorize a merge.**
+>
+> **Committing this text records the decisions and satisfies prerequisite 1 only. It does not freeze R-F4**, and it is
+> not a re-audit. This section is documentation only. It follows the shape of F8's freeze record
+> (`docs/F8_IMPLEMENTATION.md` §9); design §8.1 item 17 says the freeze record is written only after the independent
+> audit.
+
+### 26.1 The audited baseline (checked 2026-10-26, before this section was written)
+
+| Item | Value | Evidence |
+|---|---|---|
+| Repository, branch | `ThinuxBOOM/CSE-analysis`, `claude/rf4-implementation` | — |
+| Audited implementation baseline | `044cbf5d1a662a0fd74969b94e88d0bac39213ab`: the commit the independent audit's conclusion names (§26.3.1) | DOCUMENT REVIEWED: after `git fetch`, local HEAD and `origin/claude/rf4-implementation` both equal it; the working tree was clean |
+| Decision-record commit (D) | **None yet.** The documentation-only commit that first records D1 to D6: this section, once the owner commits it. It satisfies D5 prerequisite 1 only. It is not a re-audit, and it does not freeze R-F4 | — |
+| Freeze-candidate commit (F) | **None yet.** The first documentation-only commit that contains the recorded D5 prerequisites 2 and 3. It may be D itself, if those are recorded before D is made. **F is the commit whose tree the drift check examines.** It must change no in-scope path. Making F does not freeze R-F4 | — |
+| Freeze-record commit (V) | **None yet.** The verification commit: the next documentation-only commit after F. It records F's exact SHA, the drift-check command, and that command's empty output against F (D5 prerequisite 4). It must change no in-scope path. **R-F4 is accepted and frozen at V, and not before** (§26.5) | — |
+| Drift since the baseline, at preparation | **None.** HEAD is the baseline. The only local change is this section, uncommitted | As above; and the post-audit drift check below, run against the working tree on 2026-10-26: empty output |
+| Post-audit drift rule | Any change after the baseline to a file in §26.2's scope (code, migration 0018, tests, pins) needs review under change control (design §8.2) before a freeze. A documentation-only commit leaves the audited implementation unchanged, but it is **not** a re-audit. Run against the actual tree of the freeze-candidate commit F, once F exists, this must give empty output, and F's SHA, the command and its output are recorded in the freeze-record commit V: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- worker/financial_f4_store worker/extract_financial_candidates.py supabase/migrations/0018_f4_structure_persistence.sql tests/rf4_support.py tests/test_rf4_unit.py tests/test_rf4_postgres.py tests/test_rf4_mutants.py tests/test_rf4_runbook_rehearsal.py tests/test_f5_lifecycle.py tests/rdv_evidence.py worker/financial_backfill/preflight.py worker/backfill_transport/preflight.py worker/backfill_discovery/preflight.py worker/backfill_documents/preflight.py worker/backfill_f6/preflight.py worker/backfill_ops/preflight.py` | Run against the working tree on 2026-10-26: empty output, which does **not** satisfy D5 prerequisite 4. Not yet run against a freeze-candidate commit F, because none exists |
+| Relation to `main` | `origin/main` = `4646626`, the merge base. 56 commits ahead, 0 behind | `git rev-list --left-right --count` |
+| The last commit touching each file, and what it changed | The package: `493bf73` (2026-10-20), code (`preflight.py`). F5's `worker/extract_financial_candidates.py`: `248b31c` (2026-10-16), text only: the `--write-db` help string and `run()`'s docstring, with no logic change. Migration 0018: `77cfb84` (2026-10-14). Tests: `test_rf4_unit.py` `a78dbc9`; `test_rf4_postgres.py` `b32a06a`; `test_rf4_mutants.py` `d4ef33a`; `rf4_support.py` `77cfb84`, each code. `test_rf4_runbook_rehearsal.py`: `eb91d3e` (2026-10-23), **docstrings only**; its last code change is `9f87881` (2026-10-23). CI configuration: `e755780`. **The last commit that changed code in this scope is `9f87881`.** `eb91d3e` changed documents and docstrings, and every commit after it changed documents only | SOURCE REVIEWED: `git log` for each path; for `eb91d3e`, the file's syntax tree without docstrings is identical before and after; `248b31c`'s diff read |
+| Migration 0018 | `supabase/migrations/0018_f4_structure_persistence.sql`. SHA-256 of the LF-normalised committed file: `39855c0dd3c9e9d6d6726dad78399d55af81aba1c43182099599a3f407991fe4`, equal to `preflight.MIGRATION_SHA256` (`worker/financial_f4_store/preflight.py:48`) | SOURCE REVIEWED: hash recomputed from the committed blob |
+| Store version | `STORE_VERSION = "f4.store.1"` (`worker/financial_f4_store/__init__.py:21`), in HB-1's `FROZEN_VERSIONS` (`worker/financial_backfill/preflight.py:124`) | SOURCE REVIEWED |
+| HB-1's pins of F5 and R-F4 (`worker/financial_backfill/preflight.py:56-65`) | `extract_financial_candidates.py` `8bdf472aec40…`; `financial_f4_store/__init__.py` `951277dbd022…`, `codec.py` `506f6c9a40ed…`, `errors.py` `9cc73693aaf9…`, `reader.py` `6db7aef2e1ad…`, `schema.py` `200d694886ca…`, `store.py` `a20060560c28…`. **Each equals the committed file's hash** | SOURCE REVIEWED: recomputed from the committed blobs (LF) |
+| HB-2 to HB-6's pins of the preflight before each | HB-2 → HB-1 `bea9f43be920…`; HB-3 → HB-2 `2a70eb110062…`; HB-4 → HB-3 `7ef41029098b…`; HB-5 → HB-4 `f5170b2a59d0…`; HB-6 → HB-5 `29320e6aaa65…`. **Each equals the committed file's hash.** HB-6's own preflight hashes to `d0429416087d…`, which nothing pins; HB-6's pin-only note records that value | SOURCE REVIEWED: as above |
+
+These hash comparisons are recomputations from the committed files. They are not the preflights' own test runs. The
+pin tests ran in the CI runs of §26.3.2.
+
+### 26.2 What the freeze would cover (the scope of decision D5)
+
+- **The package** `worker/financial_f4_store/`: `__init__.py`, `__main__.py`, `codec.py`, `errors.py`, `preflight.py`,
+  `reader.py`, `schema.py`, `store.py`, `verify.py`.
+- **Migration 0018**, with the hash above.
+- **F5's** `worker/extract_financial_candidates.py`, frozen again (design §8 row 1).
+- **R-F4's tests:** `tests/rf4_support.py`, `tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py`,
+  `tests/test_rf4_mutants.py`, `tests/test_rf4_runbook_rehearsal.py`.
+- **The approved frozen-test edits** (design §8.1 items 8 and 9): the one test in `tests/test_f5_lifecycle.py`, and the
+  `persist_filing` docstring in `tests/rdv_evidence.py`.
+- **The HB-1 to HB-6 pin-only amendments**, at the values in §26.1.
+- **The contract:** `docs/R_F4_DESIGN.md` (RF4-M1 to RF4-M5, release sequence Q1).
+
+**Not covered:** the checkpoint-restore design notes (`docs/R-F4_Revision_16-F` to `16-I`); the runbook; P1; CI
+configuration; and any HB-1 to HB-6 file beyond its pin values.
+
+### 26.3 Evidence, by kind
+
+#### 26.3.1 The independent audit (source level)
+
+- **The independent auditor:** ChatGPT. It is independent of Claude, which implemented R-F4 and prepared this draft.
+  Claude did not perform this audit.
+- **The auditor's reported conclusion:** "PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW — NOT YET FROZEN OR AUTHORIZED TO
+  MERGE", at the audited baseline `044cbf5d1a662a0fd74969b94e88d0bac39213ab`. The owner reported it, with the audit's
+  evidence limitations, in the conversation in which this draft was prepared (2026-10-26). The audit's own date is not
+  recorded here.
+- **Its method, as the owner describes it:** an independent source review, and an inspection of the CI evidence of the
+  regression run [40227479992](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40227479992), including its
+  artifacts (§26.3.2).
+- **Checks it independently reproduced:** none (§26.3.3).
+- **No separately archived audit report exists in the repository.** This section is the repository's only account of the
+  audit's conclusion, and it rests on the owner's report of it. Archiving the audit's text is a proposed follow-up that
+  needs the owner's approval (§26.7). It is not a precondition of D5 unless the owner makes it one.
+- **Source-level findings before this baseline,** remediated on the branch:
+  - the Stage 2 audit's Findings 1–5 (§7, §8);
+  - the guard's name resolution (§9, §11);
+  - RF4-A1 (§12);
+  - the later reviews of §13 to §17;
+  - the planted-fault work of §18, §20 and §22.
+
+  Their commits are in §1.
+
+#### 26.3.2 CI results reported by the observed runs at the baseline
+
+Read by the preparer from GitHub's public API on 2026-10-26: job conclusions and check-run annotations. **The job logs
+and JUnit artifacts were not read by the preparer.** The audit cites the regression run; the preparer also read the fast
+run.
+
+- **Fast** [40227479994](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40227479994): **success**; offline 2,109
+  passed, 606 skipped.
+- **Regression** [40227479992](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40227479992): **conclusion
+  failure**; summary verdict `baseline-only`.
+
+| Group | Result | Group | Result |
+|---|---|---|---|
+| L01 | 47 passed | L12 | 378 passed, 4 skipped |
+| **L02** | **240 passed, 1 failed** | L13 | 10 passed, 17 skipped |
+| L03 | 55 passed | L14 | 256 passed, 1 skipped |
+| L04 | 57 passed | L15 | 339 passed, 2 xfailed |
+| L05 | 11 skipped | L16 | 655 passed, 82 skipped |
+| L06 | 48 passed | X1 | 1 passed |
+| L07 | 25 passed | X2 | 51 passed |
+| L08 | 270 passed, 4 skipped | W1 | 266 passed, 218 skipped |
+| L09 | 27 passed | W2 | 829 passed, 67 skipped |
+| L10 | 171 passed, 3 skipped | W3 | 1,003 passed, 332 skipped |
+| L11 | 12 passed | **All 21** | **4,740 passed, 1 failed, 739 skipped, 2 xfailed** |
+
+L02's job and the summary job failed; the other 20 group jobs succeeded. The environment the annotation reports:
+Ubuntu 24.04.5, Python 3.12.3, pytest 7.4.4, PostgreSQL 17.11.
+
+#### 26.3.3 Checks independently reproduced
+
+**None.** As reported, the audit independently re-ran no test. This preparation ran no test either. No result carries
+the label INDEPENDENTLY REPRODUCED (§25.3).
+
+#### 26.3.4 Checks not performed
+
+| Check | Status | Register |
+|---|---|---|
+| Real-document validation: seals and the F5 rebuild on real pilot documents | Not performed; by design at pilot acceptance | REG-A07 |
+| Live CSE acquisition | Not performed and not authorized | REG-G04 |
+| Staging validation, including the runbook's checks with peer authentication and a real reader login | Not performed; no staging environment exists, and no reader login is provisioned | REG-G01, REG-A05, REG-A06 |
+| Production validation (deployment rehearsal, smoke tests) | Not performed; no server is provisioned | REG-G03 |
+| The checkpoint on a restored copy | Blocked: no reviewed isolated-restore procedure | REG-B01 |
+| A full mutation sweep | Not performed; 46 hand-chosen mutants | REG-A10 |
+| PostgreSQL versions other than 17 | Not performed | REG-A11 |
+| Independent re-execution of any test | Not performed | REG-A08 |
+
+#### 26.3.5 The L02 failure
+
+- **The test:** `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, at line 588,
+  `assert since is not None and since < 60`.
+- **At the baseline:** 240 passed and 1 failed, in run 40227479992.
+- **The mechanism** (§21.1; the run's annotation): the test's fake clock is fixed at 2026-10-03 03:00 UTC
+  (`tests/hb2_fakes.py` `BASE_WALL`), while the time since the last ledger request is measured against PostgreSQL's real
+  `now()`. So `since < 60` cannot hold after that minute. It is a frozen HB-2 test, unchanged by R-F4.
+- **The regression workflow is red:** its conclusion is failure and its verdict `baseline-only`, never "passed".
+- **The waiver that exists:** §21, the owner's decision of 2026-10-22, waived this one failure, with this signature, **for
+  R-F4 acceptance only**. The owner confirmed it at this baseline under D4 (§26.5), with these limits unchanged.
+- **It is not:**
+  - CI being green;
+  - a general test waiver, or cover for any other failure or signature;
+  - merge authorization.
+
+  HB2-CLOCK (REG-X01) stays open.
+
+### 26.4 Issue-register dispositions
+
+Each row's wording and status were checked against §25.4 at the baseline; the wording is quoted verbatim. The audit
+dispositions are as the owner reported them. **§25's statuses are not changed in this section.** The last column gives the
+status each item takes under the recorded decisions, and when; §26.7 applies it to §25.
+
+| Item | Register wording (§25.4) and category | Current status (§25.4) | Audit disposition (as reported) | Owner decision (§26.5) | Status it takes, and when |
+|---|---|---|---|---|---|
+| REG-A01 | BLOCKER: "HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete" | IN PROGRESS | The audit conclusion is complete: PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW | D5 prerequisite 2: the owner's confirmation of §26.3.1, **outstanding** | CLOSED WITH EVIDENCE once prerequisite 2 is recorded (§26.7, step 2). Until then, unchanged |
+| REG-A08 | UNVERIFIED: "Every R-F4 result is the implementer's run or the implementer's tests run in CI. None is independently re-executed" | OPEN | The evidence review is complete, as described in the audit. No check was independently re-run | Acknowledged under D1: the audit reviewed the relevant CI evidence; no test was independently re-executed | CLOSED WITH EVIDENCE (the CI evidence reviewed; INDEPENDENTLY REPRODUCED: none) once D5 prerequisite 2 is recorded (§26.7, step 2). Until then, unchanged |
+| REG-A09 | UNVERIFIED: "Per-test CI outcomes are mostly derived from counts. X2's per-mutant JUnit output has not been read" | OPEN | The relevant evidence review is complete, as described in the audit | — (no decision of its own) | CLOSED WITH EVIDENCE once D5 prerequisite 2 is recorded (§26.7, step 2). Until then, unchanged |
+| REG-A10 | NON-BLOCKING: "Mutation testing is hand-chosen (46 mutants), not a full sweep" | OPEN | A documented non-blocking residual limitation for component freeze | D1: accepted | CLOSED WITH EVIDENCE (accepted residual for component freeze; 46 mutants, not a full sweep) at the decision-record commit (§26.7, step 1) |
+| REG-A11 | NON-BLOCKING: "Recorded residual limits of the in-band and preflight checks: privileged changes between a check and what it guards (a reload included); components outside R-F4's writer, reader and `verify`; configured settings only; a command-line server value reported as undeterminable; operator overloads by inspection; one long snapshot; a pooler splitting a transaction; PostgreSQL 17's rules only" | OPEN | As REG-A10 | D1: accepted | CLOSED WITH EVIDENCE (accepted residual risks for component freeze; the limits stand) at the decision-record commit (§26.7, step 1) |
+| REG-A12 | NON-BLOCKING: "Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check" | OPEN | As REG-A10 | D2: accepted, with conditions | **Unchanged (OPEN) at the decision-record commit D**, which records D2's decision only. It becomes CLOSED WITH EVIDENCE for R-F4 component freeze only when prerequisite 3's six conclusions are recorded and establish that no REG-A12 gap undermines a stated R-F4 requirement (§26.7, step 3). If any gap is found to undermine one, REG-A12 stays OPEN and the freeze sequence stops under §26.5's fail-closed rule; D2's conditional acceptance does not bypass this. An unassessed gap is not thereby a defect. Closing REG-A12 for component freeze does not close a release-relevant gap: each stays OPEN, recorded against its release gate (REG-G01 to REG-G06), until that gate is satisfied |
+| REG-A13 | NON-BLOCKING: "`verify`'s report has no unique run identifier" | OPEN | As REG-A10 | D3: deferred with rationale | DEFERRED WITH RATIONALE at the decision-record commit (§26.7, step 1): not required for this freeze; revisit if operational traceability needs it |
+| REG-A21 | UNVERIFIED: "Five assumptions carried as acceptance criteria: dictionary key order not preserved; non-finite floats refused; copied-cell derivation depends on F4.1; F3 read-back fidelity, checked by `f3_input_sha256`; the default decimal context, reported by `verify`" (detailed below) | OPEN | Recorded assumptions | D1: accepted, subject to the pilot | At the decision-record commit (§26.7, step 1), D1's acceptance of the five assumptions for R-F4 component freeze is recorded: CLOSED WITH EVIDENCE for that purpose only. This records no validation. Real-document validation of the assumptions remains OUTSTANDING under REG-A07, at the pilot (REG-G05); REG-A07, the pilot and the related release gates stay open until actually satisfied |
+| REG-A04 | NON-BLOCKING: "The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588)" | CLOSED WITH EVIDENCE (§21's waiver, for R-F4 acceptance only) | — | D4: confirmed at this baseline | Unchanged |
+| REG-A02 | OWNER DECISION: "Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded" | OPEN | Stays open until the owner approves | D5: approved conditionally, not yet effective | CLOSED WITH EVIDENCE only when the freeze takes effect, at the freeze-record commit V (§26.1; §26.7, step 6). Until then, OPEN |
+| REG-A23 | OWNER DECISION: "Merging `claude/rf4-implementation` into `main`" | OPEN | A separate decision | D6: not authorized | OPEN: a separate recorded owner decision is needed before any merge |
+
+**REG-A21's five assumptions**, as `docs/R_F4_DESIGN.md` §11 records them, with their guards:
+1. **Dictionary ordering and canonical hashing:** "dictionary key order is not preserved, and nothing depends on it";
+   design §4.3 ("What the canonical hash cannot see") adds "because F5 reads by key and both hashes sort keys".
+   `canonical_json` is `json.dumps(obj, sort_keys=True, …)` character for character (SOURCE REVIEWED:
+   `worker/financial_f4_store/codec.py:357-358`).
+2. **Non-finite floats:** "non-finite floats have not been seen in real `pdftotext` output, and are refused".
+3. **Copied-cell fields:** "deriving the copied cell fields depends on F4.1 and is guarded at write time".
+4. **F3 input integrity:** "the F3 read-back depends on how faithfully 0005 stores F3, which `f3_input_sha256` checks".
+5. **F5's decimal context:** "the default decimal context around the F2 consumer, which `verify` reports on if it is
+   ever violated". F5 is rebuilt under Python's default decimal context, and a cell that does not re-parse identically
+   gives a typed refusal (design §8, the amendment text).
+
+### 26.5 Owner decisions (recorded 2026-10-26)
+
+Each decision is separate. None is implied by another. The owner approved the dispositions below on 2026-10-26, in the
+conversation in which this section was prepared. Claude recorded them. The quoted words are the owner's. No signature
+exists.
+
+**D1. The recorded residual risks and assumptions, for R-F4 component freeze** (REG-A10, REG-A11, REG-A21; REG-A08
+acknowledged)
+- [x] Accept them as recorded, as residual risks and assumptions of the frozen component.
+- [ ] Do not accept. Required first: ____
+- **Decision:** ACCEPTED. **Date:** 2026-10-26. **Owner's words:** "Record acceptance of: REG-A10's documented
+  limitation that mutation testing covers 46 hand-selected mutants, not a full sweep; REG-A11's documented residual risks
+  and limits of the in-band and preflight checks; REG-A21's five listed implementation assumptions, subject to
+  real-document validation at the later pilot."
+- **The limits stand:**
+  - The guards and the preflight do not eliminate every risk. That includes privileged concurrent schema changes, and
+    environmental misconfiguration beyond what they check (REG-A11).
+  - The 46 mutants are not every possible mutant (REG-A10).
+  - Synthetic tests do not prove that every assumption holds for real CSE documents (REG-A21). They are validated only at
+    the pilot (REG-A07).
+  - The preflight must still run before `verify` (runbook §6 and §12).
+  - Component acceptance does not certify staging, restore or production safety.
+- **REG-A08, acknowledged:** the audit reviewed the relevant CI evidence. No test was independently re-executed.
+
+**D2. The preflight's documented coverage limitations** (REG-A12)
+- [x] Accept them as residual limitations for the freeze, with no fix required first.
+- [ ] Require a specific fix before the freeze (name it): ____. Candidates from REG-A12: storage settings; column order;
+  tables `verify` does not read; role attributes; a live partition-attach test (one more p51 case); a column check in
+  the store's in-band check. The last would change pinned `schema.py`, so it needs the HB-1 to HB-6 pin cascade under
+  change control.
+- **Decision:** ACCEPTED, with conditions. **Date:** 2026-10-26. **Owner's words:** "Accept the documented preflight
+  coverage gaps as residual limitations for R-F4 component freeze, provided no gap undermines a stated R-F4
+  requirement. Keep any release-relevant gap open until its applicable release gate is satisfied."
+- **The conditions:**
+  - Whether any gap undermines a stated R-F4 requirement is not yet assessed (D5 prerequisite 3).
+  - If one does:
+    - its acceptance lapses, and REG-A12 stays OPEN (§26.4);
+    - it needs a fix, completed and re-audited;
+    - the freeze sequence stops (the fail-closed rule, after D5's prerequisites).
+  - **Synthetic tests do not replace real-document validation at the later pilot** (REG-A07).
+
+**D3. A unique verification-run identifier** (REG-A13)
+- [ ] Not required: accepted as a residual of the frozen component.
+- [ ] Required before the freeze: a change to `verify.py` under change control, with its tests.
+- [ ] Required later, under change control after the freeze.
+- [x] Deferred with rationale: not required for this freeze; revisit if operational traceability needs it. *(Option
+  added on 2026-10-26 at the owner's direction; the three options above are unchanged.)*
+- **Decision:** DEFERRED WITH RATIONALE. **Date:** 2026-10-26. **Owner's words:** "Deferred with rationale: not required
+  for this freeze; revisit if operational traceability needs it."
+- **Scope:** the missing identifier is a documented non-blocking limitation of this freeze. No identifier is added, and
+  no code changes.
+
+**D4. The narrowly scoped L02 baseline waiver** (REG-A04; §21)
+- [x] Confirm that §21's waiver applies at this baseline: only to this one failure with its recorded signature, and
+  only for consideration of R-F4's component acceptance. The regression workflow stays red (conclusion failure, verdict
+  `baseline-only`); it is not called green. It is not a general test waiver, and not a merge authorization.
+- [ ] Do not confirm.
+- **Decision:** CONFIRMED. **Date:** 2026-10-26. **Owner's words:** "Record the owner's confirmation that the existing
+  §21 waiver applies at baseline `044cbf5d1a662a0fd74969b94e88d0bac39213ab`, strictly to the single documented L02
+  failure for consideration of R-F4 component acceptance."
+- **The limits stand:**
+  - The regression workflow remains red: conclusion `failure`, verdict `baseline-only`.
+  - This is not a declaration that CI is green, and not a general test waiver.
+  - It does not authorize merging.
+  - §21's signature and scope are unchanged, and HB2-CLOCK (REG-X01) stays open.
+
+**D5. Formal acceptance and freeze of R-F4** (REG-A02)
+- [x] Accept R-F4 and freeze it, with the scope of §26.2, as implemented and audited at the baseline
+  `044cbf5d1a662a0fd74969b94e88d0bac39213ab`. That gives: R-F4 frozen, F5 frozen again, and the HB-1 to HB-6 pin-only
+  amendments of §26.1 recorded. **Approved conditionally:** this takes effect only when all four prerequisites below are
+  verified and recorded. It does not take effect from this decision, or from committing this text. The commit that
+  records the decision is documentation only, and it is not a re-audit.
+- [ ] Do not accept. Reason: ____
+- **Decision:** APPROVED CONDITIONALLY, **pending prerequisites 2, 3 and 4 below. NOT YET EFFECTIVE: R-F4 is not accepted
+  or frozen.** **Date:** 2026-10-26. **Owner's words:** "Record the owner's approval to accept and freeze R-F4
+  conditionally, only when all stated prerequisites have been verified."
+
+**The prerequisites, as at 2026-10-26:**
+
+| # | Prerequisite | Status | Evidence |
+|---|---|---|---|
+| 1 | D1 to D4 recorded as decided, under their existing definitions | **Recorded in this uncommitted section; not yet satisfied.** Satisfied only at the decision-record commit D, when D1 to D4 are committed | §26.5 D1 to D4 |
+| 2 | The owner confirms the audit conclusion recorded in §26.3.1 | **OUTSTANDING** | No confirmation of §26.3.1's text is recorded. The approval of D1 to D6 is not taken as one |
+| 3 | Any fix required under D1, D2 or D3 completed and re-audited | **OUTSTANDING.** D1 and D3 require no fix. D2's acceptance holds only if no REG-A12 gap undermines a stated R-F4 requirement, and no existing record establishes that. The six conclusions still needed are listed below this table. If any finds a gap that undermines a stated requirement, the fail-closed rule below applies | Document review, 2026-10-26. §15.5 and §16.5 list the gaps as unchecked, without assessing them against design §9. The audit's overall verdict is not taken as that assessment |
+| 4 | The in-scope drift check of §26.1, run against the actual tree of the freeze-candidate commit F, gives empty output; and the freeze-record commit V records F's exact SHA, the command and that output | **OUTSTANDING:** neither F nor V exists. The check against the working tree on 2026-10-26 gave empty output; that does **not** satisfy this prerequisite | Once F exists: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- <the §26.1 paths>`, recorded in V |
+
+**Prerequisite 3: the six assessments still required.**
+- For each REG-A12 gap, the owner, or an auditor the owner names, records a conclusion against the stated requirement
+  named below. Each conclusion rests on existing evidence, or on newly obtained review evidence.
+- **No conclusion is recorded yet, and none is decided here.** An unassessed gap is not thereby a defect.
+
+| Gap (REG-A12) | Stated requirement it is assessed against (`docs/R_F4_DESIGN.md` §9) | Evidence on record | What a conclusion still needs | Conclusion |
+|---|---|---|---|---|
+| (a) Storage settings | RT-14 and RT-15 (the fidelity of what is stored and rebuilt). The "R-F4 preflight" row's refusal list does not name storage settings | §15.5 and §16.5: storage and statistics settings are not checked. No record examines their effect | A documented review, against PostgreSQL 17's documentation or source, of whether any table storage parameter can change stored values or what `verify` reads | None recorded |
+| (b) Column order | The "R-F4 preflight" row: it refuses "when a live constraint or column differs from 0018's" | §15.2: `_column_problems` compares the live columns with 0018's **by name** (missing or extra; type; NOT NULL; default; identity or generated; collation) | A recorded reading of whether "differs" includes position; and a source review of R-F4's SQL (`store.py`, `reader.py`, `verify.py`, `preflight.py`) for any statement that depends on column position | None recorded |
+| (c) The tables `verify` does not read (§16.5: `report_filings`, the issuer links, and 0008's other F5 tables) | The "R-F4 preflight" row: "a table it or `verify` relies on" | §16.2: the preflight checks 0018's tables and `READ_TABLES`, and u26 (`tests/test_rf4_unit.py:1662`) derives `READ_TABLES` from the tables `reader.py` and `verify.py` read. u26's individual CI outcome has not been read (REG-A09) | A recorded conclusion that this checked set covers every table the preflight, the reader and `verify` rely on, so that none of them relies on the unchecked tables | None recorded |
+| (d) Role attributes | The "Access rules" row (the privileges of §4.4); the preflight's row-level-security refusal | §16.5: role attributes are not checked, and `BYPASSRLS` can only reveal rows, not hide them. §20.6 step 2 checks the `verify` login's attributes at staging | A review of §4.4's stated rules against each unchecked attribute. It concludes either that no attribute defeats a stated component requirement, or that the gap is release-relevant and left to staging (REG-A05, REG-G01) | None recorded |
+| (e) Attaching a partition | The "R-F4 preflight" row: it refuses partitioning | **Unit level:** u26 (`tests/test_rf4_unit.py:1683`; its partition cases at lines 1698 and 1702), which tests the report logic only. **PostgreSQL level:** p51 (`tests/test_rf4_postgres.py:3108`) exercises row-level security, persistence and inheritance on PostgreSQL. Its docstring says attaching a partition is not exercised there | Either a recorded judgment that u26 plus a source review of the preflight's catalogue query suffices, or PostgreSQL-level evidence. A new p51 case committed to the branch would change an in-scope test: post-audit drift needing change control and a re-audit (§26.1), after which prerequisite 4 could not be met against `044cbf5d1a662a0fd74969b94e88d0bac39213ab` | None recorded |
+| (f) No column check in the store's in-band check | The in-band check's requirement, which names tables, privileges and triggers only; RT-14 and RT-15 at write time | `worker/financial_f4_store/store.py`: before returning `inserted`, the write-time read-back check compares the saved extraction's content hash (module docstring, lines 22–25; the refusal at line 116) | A source review of whether that read-back refuses every column drift that could change stored content (type, collation, default, generated expression), or whether some drift is seen only by the next preflight | None recorded |
+
+**Prerequisite 3 is satisfied only when:**
+- all six conclusions are recorded with their evidence; and
+- for any gap found to undermine a stated requirement, its fix has been completed and re-audited.
+
+Until then it stays **OUTSTANDING**, and REG-A12 stays OPEN (§26.4). D2's conditional acceptance does not bypass this. Where
+a fix is required, satisfying prerequisite 3 does not by itself let the sequence continue: the fail-closed rule below
+applies. This record runs no test and infers no fix.
+
+**The fail-closed rule.** If any of the six conclusions finds that a REG-A12 gap undermines a stated R-F4 requirement:
+- **The freeze sequence stops** at §26.7 step 3. No freeze-candidate commit F or freeze-record commit V is made, and D5 is
+  not effective.
+- **The fix changes an in-scope path** (§26.2). The fixed implementation is then not the one audited at
+  `044cbf5d1a662a0fd74969b94e88d0bac39213ab`, and that baseline is not treated as its audit.
+- **The sequence does not continue by making prerequisite 4's drift check pass against
+  `044cbf5d1a662a0fd74969b94e88d0bac39213ab`**, for example by keeping the fix out of F's tree.
+- **Before the sequence can resume:** the fix completed under change control (design §8.2); a re-audit that establishes a
+  new audited baseline; and any owner decision that the new baseline needs. This record makes none of those decisions,
+  and does not say how D5 or its prerequisites would then be restated.
+
+**The commits, and when the freeze becomes effective** (§26.1). Three commits are involved. Only V makes the freeze
+effective, and no commit records a check of its own tree.
+
+| Commit | What it is | What it must contain | Its part in prerequisite 4 | Freeze? |
+|---|---|---|---|---|
+| **D**, the decision-record commit | The documentation-only commit that first records D1 to D6: this section, once the owner commits it | D1 to D6 (prerequisite 1) | None | No |
+| **F**, the freeze-candidate commit | The first documentation-only commit that contains the recorded prerequisites 2 and 3. It may be D, if those are recorded before D is made | The owner's confirmation of §26.3.1; the six conclusions of prerequisite 3, none finding a gap that undermines a stated requirement | **The commit checked.** Once F exists, `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- <the §26.1 paths>` is run against its tree, and must give empty output | No |
+| **V**, the freeze-record commit | The verification commit: the next documentation-only commit after F | F's exact SHA; that command; its empty output | **The commit that records the check** | **Yes. R-F4 is accepted and frozen at V, and not before** |
+
+- **The audited implementation baseline** stays `044cbf5d1a662a0fd74969b94e88d0bac39213ab`. No documentation commit (D, F
+  or V) changes, revalidates or re-audits it.
+- **The frozen implementation** is F's in-scope tree, which the check recorded in V shows equal to the baseline.
+- **If the check against F does not give empty output,** no V is made. F is not a valid freeze candidate, and the drift
+  needs change control and a re-audit (§26.1).
+- **V must change no in-scope path.** V cannot check its own tree. Once V exists, `git diff --stat <F's SHA> <V's SHA> --
+  <the §26.1 paths>` must give empty output. If it does not, V is not a valid freeze-record commit, and the freeze has not
+  taken effect.
+
+**D6. Merge authorization** (REG-A23): a separate decision, not implied by D5.
+- [ ] Authorize merging `claude/rf4-implementation` into `main` at a named merge-candidate commit: ____. The decision should
+  state how the red regression workflow (L02, REG-X01) is treated for the merge, because §21 covers R-F4 acceptance only.
+- [x] Not authorized.
+- **Decision:** NOT AUTHORIZED. **Date:** 2026-10-26. **Owner's words:** "Not authorized."
+- **The owner's clarification:**
+  - Identifying a merge candidate is permitted, but that is not authorization to merge.
+  - A separate recorded owner decision is required before merging. It must name the candidate commit and explicitly
+    address the red L02 regression result.
+  - The existing L02 waiver does not itself authorize a merge.
+  - No merge candidate is selected in this record.
+
+### 26.6 Kept separate: what a freeze would not resolve or authorize
+
+- **Restore and staging blockers are not R-F4 component acceptance,** and this record resolves none of them:
+  - REG-B00 to REG-B42, including UR-15 (REG-B02), UR-16 (REG-B03) and the blocked checkpoint restore (REG-B01);
+  - the release gates REG-G01 to REG-G06.
+- **The isolated checkpoint restore remains BLOCKED. DO NOT EXECUTE RESTORE.**
+- **Even once D5 takes effect, the freeze would not authorize:** a merge (D6); staging; provisioning; production deployment;
+  live CSE requests; arming; the pilot; HB-S4, HB-7 or bulk document retrieval; or executing any restore.
+- **What D5 would change for HB-7, once effective.** It would meet HB-Q7's R-F4 condition ("implemented, independently audited,
+  accepted and frozen"). HB-7's other gates remain (design §10 row 13; Phase 2 design §14.1, §21, §27):
+  - the pilot accepted;
+  - HB-Q9;
+  - a recorded checkpoint, which needs REG-B01;
+  - a separate HB-S4 arming.
+
+### 26.7 Follow-up edits (not made here)
+
+- **The sequence.** Every commit in it is documentation only. §26.4 gives the status each register item takes at each
+  step, and these are applied to §25 only at that step:
+  1. **The decision-record commit D:** the owner commits this section (prerequisite 1). Apply REG-A10's, A11's, A13's
+     and A21's statuses. REG-A12 stays OPEN.
+  2. **Prerequisite 2:** record the owner's explicit confirmation of §26.3.1. Apply REG-A01's, A08's and A09's statuses.
+  3. **Prerequisite 3:** record the six conclusions (§26.5).
+     - If none finds a gap that undermines a stated requirement: apply REG-A12's status. Record any gap found
+       release-relevant as open against its release gate; closing REG-A12 does not close it.
+     - If any does: **stop.** REG-A12 stays OPEN, and §26.5's fail-closed rule applies. Steps 4 to 7 are not taken.
+  4. **The freeze-candidate commit F:** the first commit that contains the records of steps 2 and 3. It may be D. It
+     changes no in-scope path, and it does not freeze R-F4.
+  5. **The check:** once F exists, run the drift check of §26.1 against F's tree. If its output is not empty, stop
+     (§26.5).
+  6. **The freeze-record commit V:** the next commit after F. It records F's exact SHA, the command and its empty output
+     (prerequisite 4), and it changes no in-scope path. R-F4 is accepted and frozen at V. Apply REG-A02's status, and
+     update the status lines below.
+  7. **After V:** confirm that `git diff --stat <F's SHA> <V's SHA> -- <the §26.1 paths>` gives empty output. If it does
+     not, V is not a valid freeze-record commit, and the freeze has not taken effect (§26.5).
+- **Proposed, needs the owner's approval:** archive the independent audit's text (its conclusion and its evidence
+  limitations) as a durable repository artifact. Its form and location are the owner's choice. None is created here.
+- **Status lines** saying R-F4 is "not yet independently audited after Stage 2, accepted or frozen":
+  - this record's header;
+  - `docs/R_F4_DESIGN.md`'s status table and §10 rows 6 and 7;
+  - `docs/MASTER_ARCHITECTURE.md` §52 and the Phase 1 sequencing passage;
+  - `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` §11.5, with its revision log.
+- **The R-F4 pin-only notes in the HB-1 to HB-6 freeze records** (Phase 2 design, lines 46, 75, 164, 345, 525 and 688).
+  Their values equal §26.1's (checked).
+  - Every heading says "re-pinned 2026-10-17".
+  - But the current HB-2 to HB-6 values were introduced in `95da822` (2026-10-20). HB-1's current pins of `schema.py`
+    and `reader.py` were introduced in `1252c56` (2026-10-18) and `95da822` (2026-10-20).
+  - The HB-1 note names `errors`, `schema` and `store` as re-pinned on 2026-10-17, and does not mention `reader`.
+
+  Correct the dates and the HB-1 note's list. No pin value changes.
+- **After the freeze,** any change to a frozen file needs the owner's change control (design §8.2).
+
+**Status: decisions recorded; D5 approved conditionally and NOT YET EFFECTIVE. R-F4 NOT ACCEPTED / NOT FROZEN. NOT AUTHORIZED TO MERGE. DO NOT EXECUTE RESTORE.**
