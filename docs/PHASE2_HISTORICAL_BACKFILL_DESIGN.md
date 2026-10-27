@@ -32,6 +32,13 @@ Revision 5 (2026-10-16) records R-F4's implementation (`docs/R_F4_IMPLEMENTATION
 HB-Q7's gate on HB-7 / HB-S4 is therefore not met. The sections it touches are listed in Appendix D, D17; the
 revision 4 paragraph above is a dated entry and stays as written.
 
+Revision 6 (2026-10-28) records R-F4's freeze record (`docs/R_F4_IMPLEMENTATION.md` §26): its independent audit is
+complete (2026-10-26; the owner confirmed its conclusion on 2026-10-27). R-F4 status: Accepted and frozen at V,
+effective once the post-V check gives empty output (V is its freeze-record commit); until then R-F4 is not accepted or
+frozen. HB-Q7's R-F4 condition on HB-7 / HB-S4 is met only once the freeze is effective; their other gates remain, and
+meeting it authorizes nothing. R-F4 is not merged. The sections it touches are listed in Appendix D, D18; the
+revision 4 and 5 paragraphs above are dated entries and stay as written.
+
 **HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
 HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
 `f27c34a1b69e79b058b847fb4446ddcca403fc839d251f363386c8902dc8aae7`), the package `worker/financial_backfill/` and the
@@ -1557,6 +1564,11 @@ blocker HB-X1** and **not** written. The requirements it must meet are below. Th
   their tests; Stage 2, F5's `_persist` wired to it, the approved frozen-test and RDV edits and the HB-1 to HB-6 pin
   cascade (`docs/R_F4_IMPLEMENTATION.md`). **Not yet independently audited after Stage 2, accepted or frozen**: HB-Q7's
   gate on HB-7 / HB-S4 is not met.
+- **R-F4 status (2026-10-28), superseding the entry above.** Independently audited (2026-10-26; the owner confirmed the
+  conclusion on 2026-10-27). **Accepted and frozen at V, effective once the post-V check gives empty output** (V is its
+  freeze-record commit, `docs/R_F4_IMPLEMENTATION.md` §26); until then R-F4 is not accepted or frozen. HB-Q7's R-F4
+  condition on HB-7 / HB-S4 is met only once the freeze is effective. Their other gates remain (§14.1, §21, §27), and
+  nothing is authorized by this. Not merged: no owner merge decision exists.
 
 ## 12. Provenance
 
@@ -2444,7 +2456,8 @@ D1–D13 (revision 2) were found by re-checking revision 1 against the repositor
 at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. D16
 (revision 4) corrects two stale statements found on the owner's review of revision 4. Every correction is confined
 to this document. D17 (revision 5) records R-F4's implementation, made under R-F4's own change control
-(`docs/R_F4_DESIGN.md` §8), in the sections it touches; it changes no Phase 2 rule.
+(`docs/R_F4_DESIGN.md` §8), in the sections it touches; it changes no Phase 2 rule. D18 (revision 6) records R-F4's
+freeze record in the same way; it changes no Phase 2 rule or gate.
 - D1–D13 change no frozen stage, blocker conclusion or owner default.
 - D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
   2026-10-02.
@@ -2473,3 +2486,4 @@ to this document. D17 (revision 5) records R-F4's implementation, made under R-F
 | D15 | Status, §11.5, §14.1, §26.2, §27, Appendix D | HB-Q7 was an open owner question, and HB-7's dependency "HB-Q7 decided" named the decision but not its consequence | Records owner decision HB-Q7 (Option A, 2026-10-13) and adds the gate "R-F4 implemented, independently audited, accepted and frozen" to HB-S4 (§14.1) and HB-7 (§27), keeping every existing gate | Owner decision HB-Q7, 2026-10-13 |
 | D16 | Status, §27, Appendix C, Appendix D | §27's HB-4 row still listed "(HB-Q7)" as a dependency, although HB-Q7 gates only HB-7 / HB-S4 (§11.5) and HB-4's implementation status (Status) lists it among the "Not HB-4 blockers". Appendix C still said that the Master Architecture was not edited and that the proposed cross-reference was in the phase report only | HB-4 depends on HB-2; its scope and exit criteria are unchanged. Appendix C separates the design work (revisions 1–3 did not edit the Master Architecture) from the later updates that did, including the owner-approved update that records HB-Q7 | `git log -- docs/MASTER_ARCHITECTURE.md`: no change in revisions 1–3 (`59ac143`, `62a24f6`, `75fd835`); the cross-reference first appears in the HB-1 freeze record `54bce75`. Owner review of revision 4, 2026-10-14 |
 | D17 | Status (revision 5), §4.1, §4.2 (R-F4 note), §10.1, §10.2, §11.1, §11.2, §11.5, §21, §22, §23.4, §27, the HB-1 to HB-6 implementation and freeze records (pin-only notes), Appendix D | The design described F5's `_persist` without R-F4's F4 save, the frozen pins and version tuple without R-F4's, and R-F4 as not designed or implemented | Records R-F4 as designed and accepted (2026-10-14) and implemented in Stages 1 and 2 on `claude/rf4-implementation` (not merged, not yet independently audited after Stage 2, accepted or frozen); the F4 save in `_persist`'s order; `f4.store.1` in the armed tuple; the 0018 tables; the capacity estimate; R-F4's `verify` at checkpoints; replay of F5 from the database; R-F4's two approved frozen-test edits; the HB-1 to HB-6 pin-only amendments. HB-Q7's gate is unchanged and not met | `docs/R_F4_DESIGN.md` §3, §5, §7, §8; `docs/R_F4_IMPLEMENTATION.md` |
+| D18 | Status (revision 6), §11.5, Appendix D | §11.5 and the revision log recorded R-F4 as not yet independently audited after Stage 2, accepted or frozen, and HB-Q7's gate on HB-7 / HB-S4 as not met | Records R-F4's completed independent audit (2026-10-26, its conclusion confirmed by the owner on 2026-10-27) and its freeze record: Accepted and frozen at V, effective once the post-V check gives empty output. HB-Q7's R-F4 condition is met only once the freeze is effective; the other gates of HB-7 / HB-S4 and every Phase 2 rule unchanged. The revision 5 entry and §11.5's R-F4 status entry of 2026-10-16 stay as written | `docs/R_F4_IMPLEMENTATION.md` §26 |
