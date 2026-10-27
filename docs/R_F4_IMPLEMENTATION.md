@@ -13,7 +13,7 @@ runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests
 the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
 failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22; a CI rehearsal of the
 runbook's R-F4 checks on a disposable cluster is §23, and on a restored copy of a P1 dump §24; the consolidated issue register for R-F4 and the isolated checkpoint restore, with the stopping rule for specification revisions, is §25 (2026-10-26); the owner's acceptance and freeze record, with D5 approved conditionally and not yet effective, is §26. R-F4 is NOT accepted and NOT
-frozen: REG-A02 stays OPEN, and D5 prerequisites 3 and 4 are outstanding. A merge is not authorized (D6; REG-A23).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
+frozen: REG-A02 stays OPEN, and D5 prerequisite 4 is outstanding (prerequisites 1 to 3 are satisfied). A merge is not authorized (D6; REG-A23).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
 the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
@@ -78,7 +78,8 @@ and evidence only; it changes no decision.
 | `7074ea5` | Claude (the owner's "commit", 2026-10-26) | Documents only: 16-H's and 16-I's "outside the repository" wording |
 | the commit adding §25 | Claude (the owner's request, 2026-10-26) | Documents only: the consolidated issue register (§25); 16-I amendments A1 (`inst_digest`) and A2 (repository facts) |
 | `ca74572` | Claude (the owner's approval, 2026-10-27) | Documents only: the decision-record commit D. §26, the owner acceptance and freeze record: the owner's decisions D1 to D6 of 2026-10-26, with D5 approved conditionally (§26.5) |
-| *Pending, not yet committed:* the proposed documentation change applying §26.7 steps 1 and 2 | Claude (the owner's request and confirmation, 2026-10-27) | Documents only: D's SHA and D5 prerequisite 1 in §26; the owner's confirmation of the audit conclusion (D5 prerequisite 2); §25's statuses for REG-A13 (D3), then REG-A01, A08, A09, A10, A11 and A21. No SHA yet. Once the change is committed, a later documentation-only change must replace this placeholder with that commit's real SHA; none is predicted here |
+| `40b138b` | Claude (the owner's request and confirmation, 2026-10-27; the owner's approval to commit) | Documents only: §26.7 steps 1 and 2. D's SHA and D5 prerequisite 1 in §26; the owner's confirmation of the audit conclusion (D5 prerequisite 2); §25's statuses for REG-A13 (D3), then REG-A01, A08, A09, A10, A11 and A21 |
+| *Pending, not yet committed:* the proposed documentation change recording REG-A12's assessments and the owner's decision D7 | Claude (the owner's requests, and the owner's decision D7, 2026-10-27) | Documents only: the six REG-A12 assessments, prepared by the preparer, and the preparer-run probe for gap (e); the owner's decision D7 (the readings of gaps (b) and (c2), and the six conclusions adopted); D5 prerequisite 3 SATISFIED (§26.5); §26.7 step 3 applied: REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only, and REG-X03 added (a P1 follow-up); the status summaries and next steps that repeat them; `40b138b`'s SHA in the row above. Once committed, this change is the freeze-candidate commit F (§26.1), provided it changes no in-scope path. No SHA yet. Once the change is committed, a later documentation-only change must replace this placeholder with that commit's real SHA; none is predicted here |
 
 **Sections 1–6 record Stage 2 as tested at `82b7a3e`** (`82b7a3e1558841ff85dc087d336d7ebba3288c19`): controls I and S,
 mutants M15 to M17 and the unit-level mutants all ran on it or on copies of it (§5). **The audit remediation is tested
@@ -3251,8 +3252,8 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 
 | ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
 |---|---|---|---|---|---|---|---|---|
-| REG-A01 | BLOCKER | HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete | Design status, §10 row 6; Phase 2 design §11.5; this record's status | DOCUMENT REVIEWED: Findings 1–5 and later reviews remediated (§7–§24), "awaiting the owner's independent review" (this record's header as at 2026-10-26). TEST EXECUTED: CI at `7074ea5` (§25.1). OWNER APPROVED: the audit conclusion of §26.3.1 (the audit of 2026-10-26: "PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW", at `044cbf5`), confirmed by the owner on 2026-10-27 (D5 prerequisite 2, §26.5). Its limits: a source review and an inspection of CI-produced evidence (the artifacts and JUnit reports, L16's and X2's); no test independently re-run; real CSE documents, staging and production not validated. REG-A08 to REG-A12 are dispositioned in §26.4; REG-A12 stays OPEN. Closing REG-A01 closes the audit gate only: component acceptance and freeze remain REG-A02, OPEN | The owner, or an auditor the owner names, records the audit's conclusion at a named commit: every finding closed with evidence, or waived by a recorded owner decision; REG-A08 to REG-A12 dispositioned | Owner; independent auditor | — | CLOSED WITH EVIDENCE |
-| REG-A02 | OWNER DECISION | Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded | Design §8.2 step 7, §8.1 item 17, §10 row 7 | DOCUMENT REVIEWED: "Not started" | A committed freeze record naming the frozen commit, with the owner's recorded acceptance | Owner | REG-A01, REG-A11, REG-A12, REG-A21 | OPEN |
+| REG-A01 | BLOCKER | HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete | Design status, §10 row 6; Phase 2 design §11.5; this record's status | DOCUMENT REVIEWED: Findings 1–5 and later reviews remediated (§7–§24), "awaiting the owner's independent review" (this record's header as at 2026-10-26). TEST EXECUTED: CI at `7074ea5` (§25.1). OWNER APPROVED: the audit conclusion of §26.3.1 (the audit of 2026-10-26: "PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW", at `044cbf5`), confirmed by the owner on 2026-10-27 (D5 prerequisite 2, §26.5). Its limits: a source review and an inspection of CI-produced evidence (the artifacts and JUnit reports, L16's and X2's); no test independently re-run; real CSE documents, staging and production not validated. REG-A08 to REG-A12 are dispositioned in §26.4; REG-A12 stayed OPEN until §26.7 step 3 (2026-10-27, D7). Closing REG-A01 closes the audit gate only: component acceptance and freeze remain REG-A02, OPEN | The owner, or an auditor the owner names, records the audit's conclusion at a named commit: every finding closed with evidence, or waived by a recorded owner decision; REG-A08 to REG-A12 dispositioned | Owner; independent auditor | — | CLOSED WITH EVIDENCE |
+| REG-A02 | OWNER DECISION | Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded | Design §8.2 step 7, §8.1 item 17, §10 row 7 | DOCUMENT REVIEWED: "Not started" (as at 2026-10-26). OWNER APPROVED: D5, approved conditionally (§26.5). As at 2026-10-27: D5 prerequisites 1 to 3 satisfied and 4 outstanding (no freeze-candidate commit F or freeze-record commit V yet); every item it depends on is closed. It closes only at V (§26.7, step 6) | A committed freeze record naming the frozen commit, with the owner's recorded acceptance | Owner | REG-A01, REG-A11, REG-A12, REG-A21 | OPEN |
 | REG-A03 | OWNER DECISION | §8.1 item 13: the F6.2 §10 amendment | Design §8.1 row 13, §11; record §6.1, §10 | OWNER APPROVED: waived for this package, 2026-10-17 (§10). F6.2 and its two pinning tests unchanged | Closed by the waiver. Reopens only if the package changes | Owner | — | CLOSED WITH EVIDENCE |
 | REG-A04 | NON-BLOCKING | The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588) | §18.5, §19.1, §21; `.github/ci/summarize.py` `KNOWN_BASELINE` | OWNER APPROVED: waived for R-F4 acceptance only (§21). TEST EXECUTED: still fails at `7074ea5`, signature matched (§25.1). Limit: lines 589–597 never run (§21.3) | For R-F4 acceptance: closed by the waiver, within §21.5's scope (that exact signature). The defect itself is REG-X01. It authorizes no merge (REG-A23) | Owner | REG-X01 (not for acceptance) | CLOSED WITH EVIDENCE |
 | REG-A05 | OWNER DECISION | No login enters `cse_reader`, so the runbook's step 4 cannot run in production | §17.5, §20.1 item 3, §20.6; runbook §12 | OWNER APPROVED: provisioned and verified only at explicitly authorized staging (2026-10-22). NOT VERIFIED: no real login exists; `SET ROLE` tests are not proof | §20.6 steps 1–6 recorded at authorized staging, after the P1 change under change control | Owner | REG-G01 | DEFERRED WITH RATIONALE |
@@ -3262,7 +3263,7 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 | REG-A09 | UNVERIFIED | Per-test CI outcomes are mostly derived from counts. X2's per-mutant JUnit output has not been read | §18.6, §19.2, §19.5 gap 8, §24.8 | DOCUMENT REVIEWED (the preparer's own reads, as at 2026-10-26): the preparer read L16's JUnit once, at `9f87881` (§24.8), and X2's never. The independent audit inspected the candidate's CI artifacts and JUnit reports for run 40227479992, at the baseline: L16's and X2's, including X2's per-mutant results (§26.3.1). That is the reading of L16's and X2's JUnit at the candidate commit that the closure condition names. It is an inspection of CI-produced evidence; no test was independently re-run. OWNER APPROVED (D5 prerequisite 2, 2026-10-27): the owner confirmed the audit's conclusion. Applied at §26.7 step 2, after REG-A01, on which it depends, closed | The auditor reads the JUnit artifacts of L16 and X2 at the candidate commit, or accepts the counts in the audit record | Independent auditor | REG-A01 | CLOSED WITH EVIDENCE |
 | REG-A10 | NON-BLOCKING | Mutation testing is hand-chosen (46 mutants), not a full sweep | §18.6, §20.7, §22.5; design §9 | TEST EXECUTED: X2 51 passed at `7074ea5` (§25.1); per-mutant output not read by the preparer (as at 2026-10-26). The independent audit inspected X2's per-mutant results for run 40227479992, at the baseline (REG-A09; §26.3.1). OWNER APPROVED: D1 (§26.5), recorded at the decision-record commit `ca74572` (§26.1): accepted as a documented residual limitation for R-F4 component freeze; 46 mutants, not a full sweep. The audit's matching disposition (§26.4) is confirmed by the owner (D5 prerequisite 2). Applied at §26.7 step 2, after REG-A01, on which it depends, closed | The auditor accepts the set at REG-A01, or names more mutants | Independent auditor | REG-A01 | CLOSED WITH EVIDENCE (for R-F4 component freeze only; D1) |
 | REG-A11 | NON-BLOCKING | Recorded residual limits of the in-band and preflight checks: privileged changes between a check and what it guards (a reload included); components outside R-F4's writer, reader and `verify`; configured settings only; a command-line server value reported as undeterminable; operator overloads by inspection; one long snapshot; a pooler splitting a transaction; PostgreSQL 17's rules only | §9.6, §11.5, §11.7, §12.8, §13.7 | DOCUMENT REVIEWED: recorded limits, not defects. OWNER APPROVED: D1 (§26.5), recorded at the decision-record commit `ca74572` (§26.1): accepted as residual risks of the frozen component. The limits stand: the guards and the preflight do not eliminate every risk. The audit's matching disposition (§26.4) is confirmed by the owner (D5 prerequisite 2). Applied at §26.7 step 2, after REG-A01, on which it depends, closed | Each recorded as an accepted residual risk in the freeze record, or turned into a required fix by the auditor | Owner; auditor | REG-A01 | CLOSED WITH EVIDENCE (for R-F4 component freeze only; D1) |
-| REG-A12 | NON-BLOCKING | Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check | §15.5, §16.5, §19.5 gap 11 | DOCUMENT REVIEWED | As REG-A11; optionally one more p51 case for the partition attach | Owner; auditor | REG-A01 | OPEN |
+| REG-A12 | NON-BLOCKING | Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check | §15.5, §16.5, §19.5 gap 11 | DOCUMENT REVIEWED. SOURCE REVIEWED (2026-10-27): six conclusions, prepared by the preparer and adopted by the owner with the readings of gaps (b) and (c2) (D7, 2026-10-27); none finds a gap that undermines a stated requirement (§26.5). TEST EXECUTED, gap (e) only: one preparer-run PostgreSQL 17.11 probe, in which the preflight refused `financial_f4_cells` attached as a DEFAULT partition (§26.5). Not INDEPENDENTLY REPRODUCED. OWNER APPROVED: D2 (2026-10-26) and D7 (2026-10-27). Residuals kept: column position and the storage and statistics settings unchecked; owner-level manipulation of the migration ledger, the inheritance-child case included, an owner-level residual of REG-A11's general class accepted explicitly under D7 (D1 predates this finding); `relispartition` without a `pg_inherits` row untested. Release-relevant parts stay open elsewhere: the `verify` login (REG-A05, REG-G01) and P1's verification of the ledger (REG-X03). Applied at §26.7 step 3 | As REG-A11; optionally one more p51 case for the partition attach | Owner; auditor | REG-A01 | CLOSED WITH EVIDENCE (for R-F4 component freeze only; D2, D7) |
 | REG-A13 | NON-BLOCKING | `verify`'s report has no unique run identifier | §13.7 | DOCUMENT REVIEWED. OWNER APPROVED: D3 (§26.5), recorded at the decision-record commit `ca74572` (§26.1): deferred with rationale: not required for this freeze; revisit if operational traceability needs it. No identifier is added, and no code changes | The owner records whether one is required. If not, it is accepted in the freeze record | Owner | — | DEFERRED WITH RATIONALE (D3) |
 | REG-A14 | NON-BLOCKING | Deferred: a job that writes re-mapped F5 runs | Design §11 | DOCUMENT REVIEWED | A separate owner decision and change, if ever wanted | Owner | — | DEFERRED WITH RATIONALE |
 | REG-A15 | NON-BLOCKING | Deferred: `run()`'s batch-transaction finding (pre-existing) | Design §6, §11 | DOCUMENT REVIEWED | As REG-A14 | Owner | — | DEFERRED WITH RATIONALE |
@@ -3275,7 +3276,7 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 | REG-A22 | NON-BLOCKING | Statements made stale by the accepted design (Phase 2 design §11.5 and §27; MA §52 and §55) | Design §8 | DOCUMENT REVIEWED: Phase 2 design §11.5 ("R-F4 status (2026-10-16)") and MA's HB-Q7 passages record R-F4 as designed and implemented; Phase 2 D17 lists §11.5 and §27 among the sections it updated. The revision 4 note (Phase 2 design line 26) is a dated entry kept as written, per design §8 | Done | — | — | CLOSED WITH EVIDENCE |
 | REG-A23 | OWNER DECISION | Merging `claude/rf4-implementation` into `main` | Design §8.2, §10; Stage 2's authorization (this record's header) excludes a merge; §21.5 | DOCUMENT REVIEWED; TEST EXECUTED: the regression workflow's conclusion at `7074ea5` is failure (`baseline-only`) | After REG-A02: the owner's merge decision at a named candidate commit with its CI evidence, including how L02 (REG-X01) is treated, since §21 waives it for acceptance only | Owner | REG-A01, REG-A02 | OPEN |
 
-*The owner's decisions D1 to D6 at the audited baseline `044cbf5` are recorded in §26.5 (2026-10-26), committed as the decision-record commit `ca74572`. D5, acceptance and freeze, is approved conditionally and is not yet effective. On 2026-10-27, after D, §26.7 steps 1 and 2 were applied above: REG-A13 (step 1); then REG-A01, and after it REG-A08, A09, A10, A11 and A21 (step 2, with D5 prerequisite 2). Every other status is unchanged. §26.4 states the status each item takes, and when (§26.7).*
+*The owner's decisions D1 to D6 at the audited baseline `044cbf5` are recorded in §26.5 (2026-10-26), committed as the decision-record commit `ca74572`. D5, acceptance and freeze, is approved conditionally and is not yet effective. On 2026-10-27, after D, §26.7 steps 1 and 2 were applied above: REG-A13 (step 1); then REG-A01, and after it REG-A08, A09, A10, A11 and A21 (step 2, with D5 prerequisite 2). Every other status is unchanged. Later on 2026-10-27, after the owner's decision D7 (§26.5), §26.7 step 3 was applied: REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only, and REG-X03 added (Part X). REG-A02 stays OPEN until the freeze-record commit V. REG-G01's Depends gained REG-X03 the same day, to match REG-X03's closure condition. §26.4 states the status each item takes, and when (§26.7).*
 
 #### Part X: separately tracked defects (not R-F4's)
 
@@ -3283,12 +3284,13 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 |---|---|---|---|---|---|---|---|---|
 | REG-X01 | REQUIRED CORRECTION | HB2-CLOCK: the frozen HB-2 test compares a fake clock fixed at 2026-10-03 03:00 UTC with PostgreSQL's real `now()` | §21.1, §21.4 | TEST EXECUTED: fails at `7074ea5` (§25.1). SOURCE: mechanism recorded in §21.1, not re-read in this pass | An HB-2 change under its change control, its pin consequences, and L02 passing in CI | Owner (HB-2 change control) | — | OPEN |
 | REG-X02 | NON-BLOCKING | HB5-W1: `os.path.commonpath` raises `ValueError` for paths on different Windows drives in HB-5's `write_json` | §19.4, §20.1 item 4 | SOURCE REVIEWED: `worker/backfill_f6/reports.py:34`. TEST EXECUTED: reproduced by Claude, 2026-10-21 (§19.4); CI run 39162102932. OWNER APPROVED: separate issue, not a release blocker on Linux (2026-10-22) | Kept deferred while Linux is the only supported platform. A fix needs HB-5 change control and an HB-6 pin cascade | Owner | — | DEFERRED WITH RATIONALE |
+| REG-X03 | NON-BLOCKING | P1's verification of the migration ledger. `verify_server` checks the privileges granted to PUBLIC on `ops` tables and that `cse_worker` lacks USAGE on `ops`; it does not check INSERT granted on `ops.schema_migrations` to a named role, such as `cse_reader` or `cse_backup`, which both have USAGE on `ops`. While the ledger has no 0018 row, a role so granted could insert a forged one that neither R-F4's preflight nor P1's `migrate verify` tells apart from a genuine one. Nor does `verify_server` check the ledger's row-level security, inheritance, partitioning or persistence. Found on 2026-10-27, while assessing REG-A12's gap (c2) | §26.5, gap (c2); `worker/ops/verify_server.py:23-30`, `117-168`; `supabase/migrations/0009_local_security_boundary.sql:60` | SOURCE REVIEWED (2026-10-27): `verify_server` checks PUBLIC's privileges on `public` and `ops` tables (`:120-123`), the worker's lack of UPDATE, DELETE and TRUNCATE on the append-only tables (`:125-132`) and of USAGE on `ops` (`:133-135`), DELETE and TRUNCATE grants beyond the owner (`:136-141`), the append-only triggers (`:143-159`) and a clean ledger (`:161-168`). Granting INSERT on the ledger needs its owner, under the ownership premise of §26.5, gap (c2), which is untested. NOT VERIFIED: no such grant was made or tested. Outside R-F4's requirements under D7's adopted reading of gap (c2) | An owner decision, recorded before REG-G01's staging gate closes (REG-G01 depends on it): a change to P1's `verify_server` under P1's change control, or the risk recorded as an accepted P1 residual | Owner (P1 change control) | — | OPEN |
 
-#### Part G: release gates after acceptance (unchanged; `docs/R_F4_DESIGN.md` §10)
+#### Part G: release gates after acceptance (`docs/R_F4_DESIGN.md` §10; unchanged except that REG-G01's Depends gained REG-X03 on 2026-10-27)
 
 | ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
 |---|---|---|---|---|---|---|---|---|
-| REG-G01 | BLOCKER | Milestone 8: Docker staging of the integrated build, with its prerequisites (fresh install and upgrade, preflight and `verify`, crash and recovery, backup and restore with verify on the restored copy, permissions, fault injection) | Design §10 row 8 and its prerequisites; MA §43.1 | DOCUMENT REVIEWED: not started; the environment does not exist | The owner's staging authorization, then each prerequisite's output recorded | Owner | REG-A02; REG-B42 for the restore step | OPEN |
+| REG-G01 | BLOCKER | Milestone 8: Docker staging of the integrated build, with its prerequisites (fresh install and upgrade, preflight and `verify`, crash and recovery, backup and restore with verify on the restored copy, permissions, fault injection) | Design §10 row 8 and its prerequisites; MA §43.1 | DOCUMENT REVIEWED: not started; the environment does not exist | The owner's staging authorization, then each prerequisite's output recorded | Owner | REG-A02; REG-B42 for the restore step; REG-X03 | OPEN |
 | REG-G02 | BLOCKER | Milestone 9: acceptance of the integrated frozen build, which is the build deployed | Design §10 row 9 | DOCUMENT REVIEWED: not started | The owner's recorded acceptance | Owner | REG-G01 | OPEN |
 | REG-G03 | BLOCKER | Milestone 10: production deployment (rehearsal, provisioning, smoke tests with the R-F4 preflight) | Design §10 row 10; runbook §12 | DOCUMENT REVIEWED: no server is provisioned | Recorded deployment rehearsal and smoke tests | Owner | REG-G02 | OPEN |
 | REG-G04 | BLOCKER | Milestone 11: live prerequisites, then HB-S1 and HB-S2 under the owner's arming | Design §10 row 11 | DOCUMENT REVIEWED: not started. No CSE request is authorized by this register | The owner's recorded arming decisions | Owner | REG-G03 | OPEN |
@@ -3417,22 +3419,25 @@ item.
 
 ### 25.6 Counts
 
-78 items.
+79 items.
 
 | Category | Total | OPEN | IN PROGRESS | CLOSED WITH EVIDENCE | DEFERRED WITH RATIONALE |
 |---|---|---|---|---|---|
 | BLOCKER | 14 | 13 | 0 | 1 (REG-A01) | 0 |
 | REQUIRED CORRECTION | 6 | 3 (REG-X01, REG-B34, REG-C03) | 0 | 3 (REG-C01, REG-C02, REG-C04) | 0 |
-| NON-BLOCKING | 14 | 1 (REG-A12) | 0 | 4 (REG-A04, REG-A10, REG-A11, REG-A22) | 9 (REG-A13, REG-A14 to REG-A20, REG-X02) |
+| NON-BLOCKING | 15 | 1 (REG-X03) | 0 | 5 (REG-A04, REG-A10, REG-A11, REG-A12, REG-A22) | 9 (REG-A13, REG-A14 to REG-A20, REG-X02) |
 | OWNER DECISION | 28 | 26 | 0 | 1 (REG-A03) | 1 (REG-A05) |
 | UNVERIFIED | 16 | 11 | 0 | 3 (REG-A08, REG-A09, REG-A21) | 2 (REG-A06, REG-A07) |
-| **All** | **78** | **54** | **0** | **12** | **12** |
+| **All** | **79** | **54** | **0** | **13** | **12** |
 
 Updated on 2026-10-27 for §26.7 steps 1 and 2: REG-A13 DEFERRED WITH RATIONALE (D3); REG-A01 CLOSED WITH EVIDENCE (D5
 prerequisite 2); then REG-A08 and REG-A09 CLOSED WITH EVIDENCE, and REG-A10, A11 and A21 CLOSED WITH EVIDENCE for R-F4
-component freeze only (D1).
+component freeze only (D1). Updated again later that day for §26.7 step 3, after the owner's decision D7 (§26.5):
+REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; and REG-X03, a P1 follow-up found while assessing REG-A12's
+gap (c2), added to Part X as NON-BLOCKING and OPEN. So the register has 79 items; OPEN stays at 54 (REG-A12 closed,
+REG-X03 opened), and CLOSED WITH EVIDENCE becomes 13.
 
-By part: A 23, X 2, G 6, B 43, C 4.
+By part: A 23, X 3, G 6, B 43, C 4.
 
 ### 25.7 The finite plan
 
@@ -3451,9 +3456,12 @@ REG-B00.
 | 8 | Staging and the later gates | Owner | Design §10 milestones 8–13 as recorded | REG-G01–G06 |
 
 **The exact next step** (as at 2026-10-27). Step 1 is complete: the audit conclusion is recorded (§26.3.1) and the owner
-confirmed it on 2026-10-27, so REG-A01 is closed, and REG-A08 to REG-A12 are dispositioned (§26.4); REG-A12 stays OPEN.
-Step 2 proceeds under §26.7. Its next action is D5 prerequisite 3: the six REG-A12 assessments (§26.5). Nothing in Part B
-is a prerequisite of it.
+confirmed it on 2026-10-27, so REG-A01 is closed, and REG-A08 to REG-A12 are dispositioned (§26.4). Step 2 proceeds
+under §26.7: D5 prerequisites 1 to 3 are satisfied, and REG-A12 is closed for R-F4 component freeze only (D7; §26.5).
+Its next actions: the independent review of the uncommitted change that records D7 and prerequisite 3; the owner's
+commit of it, which makes it the freeze-candidate commit F, provided it changes no in-scope path; the drift check of
+§26.1 against F's tree; and the freeze-record commit V (prerequisite 4). R-F4 is accepted and frozen only at V.
+Nothing in Part B is a prerequisite of it.
 
 ### 25.8 Verdicts
 
@@ -3502,12 +3510,15 @@ is a prerequisite of it.
 ## 26. R-F4 owner acceptance and freeze record: decisions recorded; acceptance conditional, NOT YET FROZEN (2026-10-26)
 
 > **R-F4 is NOT ACCEPTED, NOT FROZEN and NOT AUTHORIZED TO MERGE.**
-> - **The owner's decisions D1 to D6 are recorded in §26.5.** The owner approved them on 2026-10-26, in the conversation
->   in which this section was prepared; Claude recorded them in the owner's words. No signature exists.
+> - **The owner's decisions D1 to D7 are recorded in §26.5.** The owner approved D1 to D6 on 2026-10-26, in the
+>   conversation in which this section was prepared, and D7 on 2026-10-27; Claude recorded them in the owner's words. No
+>   signature exists.
 > - **D5 approves acceptance and freeze conditionally.** It takes effect only when all four of its prerequisites are
 >   verified and recorded, and then only at the freeze-record commit V (§26.1, §26.5). Prerequisite 1 is satisfied by
 >   the decision-record commit D, `ca745726babbe82a38192e1c795db6afb3728ff1`. Prerequisite 2 is satisfied by the
->   owner's confirmation of the audit conclusion on 2026-10-27 (§26.3.1). Prerequisites 3 and 4 are outstanding.
+>   owner's confirmation of the audit conclusion on 2026-10-27 (§26.3.1). Prerequisite 3 is satisfied: on 2026-10-27 the
+>   owner adopted the six REG-A12 conclusions (D7), and none finds a gap that undermines a stated R-F4 requirement
+>   (§26.5). Prerequisite 4 is outstanding: neither the freeze-candidate commit F nor V exists yet.
 > - **A gap found to undermine a stated R-F4 requirement stops the freeze sequence** (§26.5, the fail-closed rule).
 > - **D6 does not authorize a merge.**
 >
@@ -3523,10 +3534,10 @@ is a prerequisite of it.
 | Repository, branch | `ThinuxBOOM/CSE-analysis`, `claude/rf4-implementation` | — |
 | Audited implementation baseline | `044cbf5d1a662a0fd74969b94e88d0bac39213ab`: the commit the independent audit's conclusion names (§26.3.1) | DOCUMENT REVIEWED on 2026-10-26, before this section was written: after `git fetch`, local HEAD and `origin/claude/rf4-implementation` both equalled it, and the working tree was clean |
 | Decision-record commit (D) | **`ca745726babbe82a38192e1c795db6afb3728ff1`** (2026-10-27). The documentation-only commit that first recorded D1 to D6: this section. It satisfies D5 prerequisite 1 only. It is not a re-audit, and it does not freeze R-F4 | DOCUMENT REVIEWED (2026-10-27): `git show --stat` lists one file, `docs/R_F4_IMPLEMENTATION.md`, and D's parent is the baseline. The post-audit drift check below, run against D's tree, gives empty output. That is not D5 prerequisite 4, which is run against F |
-| Freeze-candidate commit (F) | **None yet.** The first documentation-only commit that contains the recorded D5 prerequisites 2 and 3. It is later than D, which does not record them. **F is the commit whose tree the drift check examines.** It must change no in-scope path. Making F does not freeze R-F4 | — |
+| Freeze-candidate commit (F) | **None yet.** The first documentation-only commit that contains the recorded D5 prerequisites 2 and 3. It is later than D, which does not record them. **F is the commit whose tree the drift check examines.** It must change no in-scope path. Making F does not freeze R-F4. *As at 2026-10-27:* prerequisite 3 is recorded in the documentation change of §1's pending row, which becomes F when it is committed, provided it changes no in-scope path | — |
 | Freeze-record commit (V) | **None yet.** The verification commit: the next documentation-only commit after F. It records F's exact SHA, the drift-check command, and that command's empty output against F (D5 prerequisite 4). It must change no in-scope path. **R-F4 is accepted and frozen at V, and not before** (§26.5) | — |
-| Drift since the baseline | **At preparation (2026-10-26): none.** HEAD was then the baseline, and the only local change was this section, uncommitted. **Since then:** D (`ca74572`, 2026-10-27) changed this record only; later documentation changes are listed in §1 | 2026-10-26: as above, and the post-audit drift check below, run against the working tree: empty output. 2026-10-27: D's `git show --stat`, and the same check against D's tree: empty output (row D). Neither is D5 prerequisite 4 |
-| Post-audit drift rule | Any change after the baseline to a file in §26.2's scope (code, migration 0018, tests, pins) needs review under change control (design §8.2) before a freeze. A documentation-only commit leaves the audited implementation unchanged, but it is **not** a re-audit. Run against the actual tree of the freeze-candidate commit F, once F exists, this must give empty output, and F's SHA, the command and its output are recorded in the freeze-record commit V: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- worker/financial_f4_store worker/extract_financial_candidates.py supabase/migrations/0018_f4_structure_persistence.sql tests/rf4_support.py tests/test_rf4_unit.py tests/test_rf4_postgres.py tests/test_rf4_mutants.py tests/test_rf4_runbook_rehearsal.py tests/test_f5_lifecycle.py tests/rdv_evidence.py worker/financial_backfill/preflight.py worker/backfill_transport/preflight.py worker/backfill_discovery/preflight.py worker/backfill_documents/preflight.py worker/backfill_f6/preflight.py worker/backfill_ops/preflight.py` | Run against the working tree on 2026-10-26, and against D's tree on 2026-10-27: empty output both times. Neither satisfies D5 prerequisite 4. Not yet run against a freeze-candidate commit F, because none exists |
+| Drift since the baseline | **At preparation (2026-10-26): none.** HEAD was then the baseline, and the only local change was this section, uncommitted. **Since then:** D (`ca74572`, 2026-10-27) changed this record only; later documentation changes are listed in §1 | 2026-10-26: as above, and the post-audit drift check below, run against the working tree: empty output. 2026-10-27: D's `git show --stat`, and the same check against D's tree: empty output (row D). Later on 2026-10-27, the same check against `40b138b`'s tree, the tree the gap (e) probe ran (§26.5): empty output. None of these is D5 prerequisite 4 |
+| Post-audit drift rule | Any change after the baseline to a file in §26.2's scope (code, migration 0018, tests, pins) needs review under change control (design §8.2) before a freeze. A documentation-only commit leaves the audited implementation unchanged, but it is **not** a re-audit. Run against the actual tree of the freeze-candidate commit F, once F exists, this must give empty output, and F's SHA, the command and its output are recorded in the freeze-record commit V: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- worker/financial_f4_store worker/extract_financial_candidates.py supabase/migrations/0018_f4_structure_persistence.sql tests/rf4_support.py tests/test_rf4_unit.py tests/test_rf4_postgres.py tests/test_rf4_mutants.py tests/test_rf4_runbook_rehearsal.py tests/test_f5_lifecycle.py tests/rdv_evidence.py worker/financial_backfill/preflight.py worker/backfill_transport/preflight.py worker/backfill_discovery/preflight.py worker/backfill_documents/preflight.py worker/backfill_f6/preflight.py worker/backfill_ops/preflight.py` | Run against the working tree on 2026-10-26, and against D's and `40b138b`'s trees on 2026-10-27: empty output each time. None satisfies D5 prerequisite 4. Not yet run against a freeze-candidate commit F, because none exists |
 | Relation to `main` (at the baseline, 2026-10-26) | `origin/main` = `4646626`, the merge base. The baseline is 56 commits ahead, 0 behind | `git rev-list --left-right --count` |
 | The last commit touching each file, and what it changed | The package: `493bf73` (2026-10-20), code (`preflight.py`). F5's `worker/extract_financial_candidates.py`: `248b31c` (2026-10-16), text only: the `--write-db` help string and `run()`'s docstring, with no logic change. Migration 0018: `77cfb84` (2026-10-14). Tests: `test_rf4_unit.py` `a78dbc9`; `test_rf4_postgres.py` `b32a06a`; `test_rf4_mutants.py` `d4ef33a`; `rf4_support.py` `77cfb84`, each code. `test_rf4_runbook_rehearsal.py`: `eb91d3e` (2026-10-23), **docstrings only**; its last code change is `9f87881` (2026-10-23). CI configuration: `e755780`. **The last commit that changed code in this scope is `9f87881`.** `eb91d3e` changed documents and docstrings, and every commit after it, up to the baseline, changed documents only | SOURCE REVIEWED: `git log` for each path; for `eb91d3e`, the file's syntax tree without docstrings is identical before and after; `248b31c`'s diff read |
 | Migration 0018 | `supabase/migrations/0018_f4_structure_persistence.sql`. SHA-256 of the LF-normalised committed file: `39855c0dd3c9e9d6d6726dad78399d55af81aba1c43182099599a3f407991fe4`, equal to `preflight.MIGRATION_SHA256` (`worker/financial_f4_store/preflight.py:48`) | SOURCE REVIEWED: hash recomputed from the committed blob |
@@ -3619,8 +3630,9 @@ Ubuntu 24.04.5, Python 3.12.3, pytest 7.4.4, PostgreSQL 17.11.
 
 #### 26.3.3 Checks independently reproduced
 
-**None.** As reported, the audit independently re-ran no test. This preparation ran no test either. No result carries
-the label INDEPENDENTLY REPRODUCED (§25.3).
+**None.** As reported, the audit independently re-ran no test. This preparation ran no test either. Later, on
+2026-10-27, the preparer ran one PostgreSQL probe for REG-A12 gap (e) (§26.5): the implementer's own run, not an
+independent one. No result carries the label INDEPENDENTLY REPRODUCED (§25.3).
 
 #### 26.3.4 Checks not performed
 
@@ -3658,8 +3670,8 @@ the label INDEPENDENTLY REPRODUCED (§25.3).
 Each row's wording and status were checked against §25.4 at the baseline; the wording is quoted verbatim. The audit
 dispositions are as the owner reported them. **§25's statuses are not changed in this section.** The last column gives the
 status each item takes under the recorded decisions, and when; §26.7 applies it to §25. On 2026-10-27, after D, step 1's
-status (REG-A13) and step 2's (REG-A01 first; then REG-A08 to REG-A11 and REG-A21) were applied to §25; the others are
-unchanged.
+status (REG-A13) and step 2's (REG-A01 first; then REG-A08 to REG-A11 and REG-A21) were applied to §25. Later that
+day, after the owner's decision D7, step 3's (REG-A12) was applied. The others are unchanged.
 
 | Item | Register wording (§25.4) and category | Status at the baseline (§25.4) | Audit disposition (as reported) | Owner decision (§26.5) | Status it takes, and when |
 |---|---|---|---|---|---|
@@ -3668,7 +3680,7 @@ unchanged.
 | REG-A09 | UNVERIFIED: "Per-test CI outcomes are mostly derived from counts. X2's per-mutant JUnit output has not been read" | OPEN | The relevant evidence review is complete: the audit inspected L16's and X2's JUnit reports for run 40227479992, including X2's per-mutant results (§26.3.1) | — (no decision of its own) | CLOSED WITH EVIDENCE once D5 prerequisite 2 is recorded (§26.7, step 2). Applied on 2026-10-27, after REG-A01, on which it depends |
 | REG-A10 | NON-BLOCKING: "Mutation testing is hand-chosen (46 mutants), not a full sweep" | OPEN | A documented non-blocking residual limitation for component freeze | D1: accepted | CLOSED WITH EVIDENCE (accepted residual for component freeze; 46 mutants, not a full sweep) at §26.7 step 2, once REG-A01, on which it depends, has closed. Applied on 2026-10-27, after REG-A01. D1's acceptance itself is recorded at the decision-record commit |
 | REG-A11 | NON-BLOCKING: "Recorded residual limits of the in-band and preflight checks: privileged changes between a check and what it guards (a reload included); components outside R-F4's writer, reader and `verify`; configured settings only; a command-line server value reported as undeterminable; operator overloads by inspection; one long snapshot; a pooler splitting a transaction; PostgreSQL 17's rules only" | OPEN | As REG-A10 | D1: accepted | CLOSED WITH EVIDENCE (accepted residual risks for component freeze; the limits stand) at §26.7 step 2, once REG-A01, on which it depends, has closed. Applied on 2026-10-27, after REG-A01. D1's acceptance itself is recorded at the decision-record commit |
-| REG-A12 | NON-BLOCKING: "Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check" | OPEN | As REG-A10 | D2: accepted, with conditions | **Unchanged (OPEN) at the decision-record commit D**, which records D2's decision only. It becomes CLOSED WITH EVIDENCE for R-F4 component freeze only when prerequisite 3's six conclusions are recorded and establish that no REG-A12 gap undermines a stated R-F4 requirement (§26.7, step 3). If any gap is found to undermine one, REG-A12 stays OPEN and the freeze sequence stops under §26.5's fail-closed rule; D2's conditional acceptance does not bypass this. An unassessed gap is not thereby a defect. Closing REG-A12 for component freeze does not close a release-relevant gap: each stays OPEN, recorded against its release gate (REG-G01 to REG-G06), until that gate is satisfied |
+| REG-A12 | NON-BLOCKING: "Preflight coverage gaps: storage settings and column order; tables `verify` does not read; role attributes; attaching a partition not exercised against a live database; no column check in the store's in-band check" | OPEN | As REG-A10 | D2: accepted, with conditions | **Unchanged (OPEN) at the decision-record commit D**, which records D2's decision only. It becomes CLOSED WITH EVIDENCE for R-F4 component freeze only when prerequisite 3's six conclusions are recorded and establish that no REG-A12 gap undermines a stated R-F4 requirement (§26.7, step 3). If any gap is found to undermine one, REG-A12 stays OPEN and the freeze sequence stops under §26.5's fail-closed rule; D2's conditional acceptance does not bypass this. An unassessed gap is not thereby a defect. Closing REG-A12 for component freeze does not close a release-relevant gap: each stays OPEN, recorded against its release gate (REG-G01 to REG-G06), until that gate is satisfied. On 2026-10-27 the preparer proposed the six assessments, and the owner adopted them with the readings of gaps (b) and (c2) (D7; §26.5). None finds a gap that undermines a stated requirement, so step 3's status was applied that day: **CLOSED WITH EVIDENCE for R-F4 component freeze only**. Its release-relevant parts stay open: the `verify` login (REG-A05, REG-G01) and P1's verification of the ledger (REG-X03) |
 | REG-A13 | NON-BLOCKING: "`verify`'s report has no unique run identifier" | OPEN | As REG-A10 | D3: deferred with rationale | DEFERRED WITH RATIONALE at the decision-record commit (§26.7, step 1; applied on 2026-10-27): not required for this freeze; revisit if operational traceability needs it |
 | REG-A21 | UNVERIFIED: "Five assumptions carried as acceptance criteria: dictionary key order not preserved; non-finite floats refused; copied-cell derivation depends on F4.1; F3 read-back fidelity, checked by `f3_input_sha256`; the default decimal context, reported by `verify`" (detailed below) | OPEN | Recorded assumptions | D1: accepted, subject to the pilot | D1's acceptance of the five assumptions for R-F4 component freeze is recorded at the decision-record commit. The register status becomes CLOSED WITH EVIDENCE, for that purpose only, at §26.7 step 2, once REG-A01, on which it depends, has closed. Applied on 2026-10-27, after REG-A01. This records no validation. Real-document validation of the assumptions remains OUTSTANDING under REG-A07, at the pilot (REG-G05); REG-A07, the pilot and the related release gates stay open until actually satisfied |
 | REG-A04 | NON-BLOCKING: "The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588)" | CLOSED WITH EVIDENCE (§21's waiver, for R-F4 acceptance only) | — | D4: confirmed at this baseline | Unchanged |
@@ -3687,11 +3699,15 @@ unchanged.
    ever violated". F5 is rebuilt under Python's default decimal context, and a cell that does not re-parse identically
    gives a typed refusal (design §8, the amendment text).
 
-### 26.5 Owner decisions (recorded 2026-10-26)
+### 26.5 Owner decisions (D1 to D6 recorded 2026-10-26; D7 2026-10-27)
 
-Each decision is separate. None is implied by another. The owner approved the dispositions below on 2026-10-26, in the
-conversation in which this section was prepared. Claude recorded them. The quoted words are the owner's. No signature
-exists.
+Each decision is separate. None is implied by another. The owner approved D1 to D6 below on 2026-10-26, in the
+conversation in which this section was prepared, and D7 on 2026-10-27. Claude recorded them. The quoted words are the
+owner's. No signature exists.
+
+*D7 (2026-10-27) is the owner's decision on REG-A12: the readings of gaps (b) and (c2), and the adoption of the six
+conclusions under D5's prerequisite 3. The preparer prepared those assessments as proposals; D7 adopts them and adds no
+evidence (prerequisite 3, below).*
 
 **D1. The recorded residual risks and assumptions, for R-F4 component freeze** (REG-A10, REG-A11, REG-A21; REG-A08
 acknowledged)
@@ -3721,7 +3737,9 @@ acknowledged)
   coverage gaps as residual limitations for R-F4 component freeze, provided no gap undermines a stated R-F4
   requirement. Keep any release-relevant gap open until its applicable release gate is satisfied."
 - **The conditions:**
-  - Whether any gap undermines a stated R-F4 requirement is not yet assessed (D5 prerequisite 3).
+  - Whether any gap undermines a stated R-F4 requirement is D5 prerequisite 3. On 2026-10-27 the owner adopted the six
+    conclusions, with the readings of gaps (b) and (c2) (D7): none finds such a gap, so D2's acceptance holds and no fix
+    is required (prerequisite 3, below).
   - If one does:
     - its acceptance lapses, and REG-A12 stays OPEN (§26.4);
     - it needs a fix, completed and re-audited;
@@ -3760,7 +3778,7 @@ acknowledged)
   verified and recorded. It does not take effect from this decision, or from committing this text. The commit that
   records the decision is documentation only, and it is not a re-audit.
 - [ ] Do not accept. Reason: ____
-- **Decision:** APPROVED CONDITIONALLY, **pending prerequisites 3 and 4 below; 1 and 2 are satisfied. NOT YET
+- **Decision:** APPROVED CONDITIONALLY, **pending prerequisite 4 below; 1, 2 and 3 are satisfied. NOT YET
   EFFECTIVE: R-F4 is not accepted or frozen.** **Date:** 2026-10-26. **Owner's words:** "Record the owner's
   approval to accept and freeze R-F4 conditionally, only when all stated prerequisites have been verified."
 
@@ -3770,30 +3788,445 @@ acknowledged)
 |---|---|---|---|
 | 1 | D1 to D4 recorded as decided, under their existing definitions | **SATISFIED** by the decision-record commit D, `ca745726babbe82a38192e1c795db6afb3728ff1` (2026-10-27), which commits D1 to D4 | §26.5 D1 to D4; §26.1 |
 | 2 | The owner confirms the audit conclusion recorded in §26.3.1 | **SATISFIED** on 2026-10-27: the owner's explicit confirmation, "I approve the audit results." | §26.3.1, with the audit's limits unchanged: a source review and an inspection of CI-produced evidence (the artifacts and JUnit reports, L16's and X2's); no test independently re-run; real CSE documents, staging and production not validated |
-| 3 | Any fix required under D1, D2 or D3 completed and re-audited | **OUTSTANDING.** D1 and D3 require no fix. D2's acceptance holds only if no REG-A12 gap undermines a stated R-F4 requirement, and no existing record establishes that. The six conclusions still needed are listed below this table. If any finds a gap that undermines a stated requirement, the fail-closed rule below applies | Document review, 2026-10-26. §15.5 and §16.5 list the gaps as unchecked, without assessing them against design §9. The audit's overall verdict is not taken as that assessment |
-| 4 | The in-scope drift check of §26.1, run against the actual tree of the freeze-candidate commit F, gives empty output; and the freeze-record commit V records F's exact SHA, the command and that output | **OUTSTANDING:** neither F nor V exists. The checks against the working tree on 2026-10-26 and against D's tree on 2026-10-27 gave empty output; **neither** satisfies this prerequisite | Once F exists: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- <the §26.1 paths>`, recorded in V |
+| 3 | Any fix required under D1, D2 or D3 completed and re-audited | **SATISFIED** on 2026-10-27: no fix is required. D1 and D3 require none. D2's acceptance holds: the six REG-A12 conclusions, prepared by the preparer and adopted by the owner with the readings of gaps (b) and (c2) (D7), were each assessed against the requirement it bears on, and none finds a gap that undermines a stated R-F4 requirement (below). So nothing needed completing or re-auditing | Document review, 2026-10-26: §15.5 and §16.5 list the gaps as unchecked. Source review, 2026-10-27; R-F4's tests in CI at the baseline (§26.3.2); for gap (e), one preparer-run PostgreSQL 17.11 probe, not INDEPENDENTLY REPRODUCED; the owner's decision D7 (below). The audit's overall verdict is not taken as these assessments |
+| 4 | The in-scope drift check of §26.1, run against the actual tree of the freeze-candidate commit F, gives empty output; and the freeze-record commit V records F's exact SHA, the command and that output | **OUTSTANDING:** neither F nor V exists. Once committed, the documentation change recording prerequisite 3 (§1's pending row) is F, provided it changes no in-scope path. The checks against the working tree (2026-10-26), and against D's and `40b138b`'s trees (2026-10-27), gave empty output; **none** satisfies this prerequisite | Once F exists: `git diff --stat 044cbf5d1a662a0fd74969b94e88d0bac39213ab <F's SHA> -- <the §26.1 paths>`, recorded in V |
 
-**Prerequisite 3: the six assessments still required.**
-- For each REG-A12 gap, the owner, or an auditor the owner names, records a conclusion against the stated requirement
-  named below. Each conclusion rests on existing evidence, or on newly obtained review evidence.
-- **No conclusion is recorded yet, and none is decided here.** An unassessed gap is not thereby a defect.
+**Prerequisite 3: the six REG-A12 assessments (prepared by the preparer; adopted by the owner on 2026-10-27, D7).**
+- **The rule.** For each REG-A12 gap, the owner, or an auditor the owner names, records a conclusion against the stated
+  requirement it bears on. Each conclusion rests on existing evidence, or on newly obtained review evidence. An
+  unassessed gap is not thereby a defect.
+- **Who prepared these, and who adopted them.** Claude, the implementer and the preparer of this record, prepared them
+  as proposals on 2026-10-27, after `40b138b`, at the owner's request. On 2026-10-27 the owner adopted all six, with their
+  qualifications, evidence limits and residual risks, and the narrower readings under (b) and (c2) (D7). Adoption adds no
+  evidence: what was inspected, inferred or left untested stays as labelled below. The assessments come after the audit
+  of 2026-10-26 and the owner's confirmation of 2026-10-27 (§26.3.1), and neither covers them. No auditor has reviewed
+  them.
+- **What they rest on.**
+  - *Inspected, not tested* (SOURCE REVIEWED and DOCUMENT REVIEWED, at the lines cited, at `40b138b`):
+    `worker/financial_f4_store/`, migration 0018 and R-F4's tests; P1's `ops/provision/sql/bootstrap_cluster.sql`,
+    `worker/ops/migrate.py` (the ledger's table and the runner), `worker/ops/verify_server.py` and
+    `supabase/migrations/0009_local_security_boundary.sql` (the ledger's grants); `docs/R_F4_DESIGN.md` §5 and §9,
+    runbook §12 (`docs/ops/PHASE2_BACKFILL.md:253-257`) and this record; and the design's history, read with `git log -S`,
+    `git log -G` and `git show`. `40b138b`'s in-scope tree equals the baseline's (§26.1, the drift rows).
+  - *Tested for these assessments:* gap (e) only, in one PostgreSQL probe run by the preparer (recorded below). No test
+    was run for the other five; (c2)'s analysis of the ledger's table properties, for example, was not tested at all.
+  - Tests already run in CI at the baseline are cited by name where they bear on a requirement (§26.3.2). The preparer
+    did not read their individual outcomes for these assessments. No test has been independently re-run by anyone
+    (§26.3.3).
+- **Labels.** *Observed*: seen in the gap (e) probe. *Source reviewed*: read in the code at the named lines. *Document
+  reviewed*: read in a named document, or in its git history. *Inference*: reasoning from the source, or from the
+  preparer's understanding of PostgreSQL's behaviour, not executed; no PostgreSQL documentation is cited in these
+  assessments. *Not tested*: neither observed nor exercised by a test cited here. *Adopted (D7)*: the owner's decision,
+  which adds no evidence. Nothing here is INDEPENDENTLY REPRODUCED.
 
-| Gap (REG-A12) | Stated requirement it is assessed against (`docs/R_F4_DESIGN.md` §9) | Evidence on record | What a conclusion still needs | Conclusion |
+Gap (c) is assessed in two parts: **(c1)**, the tables §16.5 names, and **(c2)**, P1's migration ledger, which the
+preflight itself reads (newly identified on 2026-10-27). They are separate questions: only (c2) turned on how the
+requirement is read, and D7 decided it.
+
+| Gap (REG-A12) | Stated requirement it bears on (`docs/R_F4_DESIGN.md`) | Conclusion (prepared by the preparer; adopted under D7) | Owner interpretation or decision | Adopted by the owner or a named auditor |
 |---|---|---|---|---|
-| (a) Storage settings | RT-14 and RT-15 (the fidelity of what is stored and rebuilt). The "R-F4 preflight" row's refusal list does not name storage settings | §15.5 and §16.5: storage and statistics settings are not checked. No record examines their effect | A documented review, against PostgreSQL 17's documentation or source, of whether any table storage parameter can change stored values or what `verify` reads | None recorded |
-| (b) Column order | The "R-F4 preflight" row: it refuses "when a live constraint or column differs from 0018's" | §15.2: `_column_problems` compares the live columns with 0018's **by name** (missing or extra; type; NOT NULL; default; identity or generated; collation) | A recorded reading of whether "differs" includes position; and a source review of R-F4's SQL (`store.py`, `reader.py`, `verify.py`, `preflight.py`) for any statement that depends on column position | None recorded |
-| (c) The tables `verify` does not read (§16.5: `report_filings`, the issuer links, and 0008's other F5 tables) | The "R-F4 preflight" row: "a table it or `verify` relies on" | §16.2: the preflight checks 0018's tables and `READ_TABLES`, and u26 (`tests/test_rf4_unit.py:1662`) derives `READ_TABLES` from the tables `reader.py` and `verify.py` read. u26's individual CI outcome has not been read (REG-A09) | A recorded conclusion that this checked set covers every table the preflight, the reader and `verify` rely on, so that none of them relies on the unchecked tables | None recorded |
-| (d) Role attributes | The "Access rules" row (the privileges of §4.4); the preflight's row-level-security refusal | §16.5: role attributes are not checked, and `BYPASSRLS` can only reveal rows, not hide them. §20.6 step 2 checks the `verify` login's attributes at staging | A review of §4.4's stated rules against each unchecked attribute. It concludes either that no attribute defeats a stated component requirement, or that the gap is release-relevant and left to staging (REG-A05, REG-G01) | None recorded |
-| (e) Attaching a partition | The "R-F4 preflight" row: it refuses partitioning | **Unit level:** u26 (`tests/test_rf4_unit.py:1683`; its partition cases at lines 1698 and 1702), which tests the report logic only. **PostgreSQL level:** p51 (`tests/test_rf4_postgres.py:3108`) exercises row-level security, persistence and inheritance on PostgreSQL. Its docstring says attaching a partition is not exercised there | Either a recorded judgment that u26 plus a source review of the preflight's catalogue query suffices, or PostgreSQL-level evidence. A new p51 case committed to the branch would change an in-scope test: post-audit drift needing change control and a re-audit (§26.1), after which prerequisite 4 could not be met against `044cbf5d1a662a0fd74969b94e88d0bac39213ab` | None recorded |
-| (f) No column check in the store's in-band check | The in-band check's requirement, which names tables, privileges and triggers only; RT-14 and RT-15 at write time | `worker/financial_f4_store/store.py`: before returning `inserted`, the write-time read-back check compares the saved extraction's content hash (module docstring, lines 22–25; the refusal at line 116) | A source review of whether that read-back refuses every column drift that could change stored content (type, collation, default, generated expression), or whether some drift is seen only by the next preflight | None recorded |
+| (a) Storage and statistics settings | §9: RT-14 and RT-15. The "R-F4 preflight" row's refusal list does not name these settings | Does not undermine a stated requirement, for component freeze. **For the column-level settings (a column's storage, compression and statistics settings), this is conditional on D7's narrower reading of "differs" under (b).** Not directly tested | D7: adopted, with (b)'s reading for the column-level settings | Yes: the owner, 2026-10-27 (D7) |
+| (b) Column order | §9, the "R-F4 preflight" row: it refuses "when a live constraint or column differs from 0018's" | Does not undermine the requirement, under the reading D7 adopted: "differs" means a difference in a property design §5 lists, columns matched by name. Column position is not independently checked | D7: the narrower reading. It also settles (a)'s column-level settings | Yes: the owner, 2026-10-27 (D7) |
+| (c1) `report_filings`, the issuer links, 0008's other F5 tables | §9, the "R-F4 preflight" row: "a table it or `verify` relies on" | Does not undermine a stated requirement, for component freeze, under either reading: neither the preflight nor `verify` reads these tables | D7: adopted. Not part of the (c2) question | Yes: the owner, 2026-10-27 (D7) |
+| (c2) P1's migration ledger, `ops.schema_migrations` (newly identified) | §9, the "R-F4 preflight" row: "a table it or `verify` relies on" | Does not undermine the requirement, under the reading D7 adopted (the table-property check's scope in design §5 and runbook §12). The ledger is checked separately, for version, filename and pinned hash. Owner-level manipulation of the ledger, the inheritance-child case included, remains a residual risk | D7: the narrower reading | Yes: the owner, 2026-10-27 (D7) |
+| (d) Role attributes | §9, the "Access rules" row (the privileges of §4.4); the "R-F4 preflight" row ("under-privileged"; row-level security) | Does not undermine a stated requirement of the R-F4 component. The real `verify` login stays a staging gate (REG-A05, REG-G01) | D7: adopted | Yes: the owner, 2026-10-27 (D7) |
+| (e) Attaching a partition | §9, the "R-F4 preflight" row: it refuses "partitioning" | The detection path is supported by observed PostgreSQL 17.11 behaviour, in one preparer-run probe, not independently reproduced. The gap does not undermine a stated requirement. The `relispartition`-without-`pg_inherits` case is untested | D7: adopted. No fix | Yes: the owner, 2026-10-27 (D7) |
+| (f) No column check in the store's in-band check | §9, the "R-F4 preflight" row's last sentence (tables, privileges and triggers); RT-14 and RT-15 at write time | Does not undermine a stated requirement, for component freeze | D7: adopted | Yes: the owner, 2026-10-27 (D7) |
+
+**Where the disputed wording comes from** (DOCUMENT REVIEWED: the history of `docs/R_F4_DESIGN.md`). When the design was
+accepted, its "R-F4 preflight" row read: "It passes on a migrated database. It refuses when 0018 is missing, edited or
+under-privileged. The store's in-band schema check raises its typed error before any insert" (`4646626`, 2026-10-14). The
+clause "when a live constraint or column differs from 0018's" was added on 2026-10-20 in `b89cdec`, the commit that also
+wrote design §5's list of compared column properties. The clause "a table it or `verify` relies on" was added the same
+day in `493bf73`, with §5's list of checked tables. The implementer, Claude, drafted both, to describe what was built;
+the owner committed them. That is why the owner decided how they are read under (b) and (c2) (D7, 2026-10-27).
+
+**(a) Storage and statistics settings.**
+- **The gap:** the preflight does not check a table's storage parameters, a column's storage or compression, or
+  statistics settings (§15.5).
+- **The requirement:** RT-14 and RT-15: what is stored is rebuilt exactly. The "R-F4 preflight" row's refusal list does
+  not name these settings.
+- **Depends on (b).** A column's storage, compression and statistics settings are properties of the column. They fall
+  outside "a live … column differs from 0018's" only under the narrower reading of "differs", which the owner adopted
+  (D7). The treatment of these settings is conditional on that reading. The table-level settings do not depend on (b).
+- **Source reviewed:**
+  - every read that returns more than one row orders it explicitly (`reader.py:116-117`, `121-123`, `154`, `158`;
+    `verify.py:109`, `111`); the other reads fetch one row by key;
+  - the reader refuses an extraction whose child counts differ (`incomplete`, `reader.py:124-128`) or whose content does
+    not hash to `f4_content_sha256` (`corrupt`, `reader.py:130-131`). p11 exercises those refusals on tampered rows
+    (§19.3).
+- **Inference:** these settings govern physical storage, compression, vacuum and the planner's statistics; none is meant
+  to change a stored value as read. With every multi-row read ordered, a different plan cannot reorder what the reader
+  assembles. If a setting did change a value as read, the seal would refuse the extraction as `corrupt`: it would fail
+  closed, not pass.
+- **Not tested:** no setting was applied and then exercised. No PostgreSQL documentation or source is cited here,
+  parameter by parameter.
+- **Residual:** privileged schema changes remain REG-A11's accepted residual risk (D1). That includes a table access
+  method other than the built-in `heap`, which the preflight does not check either: defining one needs a superuser.
+- **Conclusion** (adopted, D7): does not undermine a stated requirement, for component freeze. For the column-level
+  settings, this is conditional on (b)'s narrower reading, which D7 adopted.
+
+**(b) Column order.**
+- **The gap:** the preflight compares the live columns with 0018's by name, not by position (§15.5).
+- **The requirement, verbatim:** the "R-F4 preflight" row: it refuses "when a live constraint or column differs from
+  0018's". Design §5 (the objects check) lists what is compared for a column: "every column 0018 creates, by name, with
+  its type, its `NOT NULL` …, its default, no identity or generation and its type's default collation, and no other
+  column". Position is not in that list.
+- **Source reviewed:**
+  - `_column_problems` keys the live columns by name (`preflight.py:339-366`). u25 asserts that the reversed rows give no
+    problem, "compared by name, not position" (`tests/test_rf4_unit.py:1657`);
+  - the store's inserts name every column (`store.py:76-79`, `102-104`, `110-113`);
+  - the reader maps each row by the cursor's column names (`reader.py:36-43`), names the F3 and F5 columns it selects
+    (`reader.py:147`, `153`, `157`, `176`), and `codec.decode_extraction` reads by key (`codec.py:566-629`);
+  - `verify` names the columns it selects (`verify.py:109`, `111`).
+- **Inference:** no R-F4 statement depends on a column's position, so another order changes nothing R-F4 writes or reads.
+- **Not tested:** no table with its columns in another order was exercised.
+- **The interpretation (the owner's decision, D7, 2026-10-27).** The literal wording, "a column differs from 0018's",
+  may be broader than the properties design §5 lists; D7 decides how it is read.
+  - *What supports the narrower reading* (document reviewed; the preparer's reasoning):
+    - the sentence pairs constraints and columns, and a constraint has no position, so "differs" reads as a comparison
+      of each object, matched by name;
+    - design §5, written in the same commit, lists the compared properties, and position is not one of them;
+    - in the same commit, this record listed "column order, which is compared by name only" as not checked (§15.5),
+      and u25 asserts that order does not matter;
+    - read as any physical difference, "differs" has no stopping point: it would cover every attribute PostgreSQL stores
+      for a column, including the storage, compression and statistics settings of (a), which REG-A12 and D2 treat as
+      coverage gaps.
+  - *Adopted by the owner (D7):* "differs" means a difference in the properties design §5 lists, columns matched by
+    name. Column ordinal position is not independently checked. The reading does not excuse a difference in any property
+    §5 requires the preflight to check. Position and (a)'s column-level settings remain documented coverage gaps under D2.
+  - *The broader reading (not adopted):* had it applied, the preflight would not refuse a table whose columns are in
+    another order, and so would not meet the requirement as written. The fix would have needed an in-scope code change
+    (an order check in `_column_problems`, `preflight.py`), the reversal of u25's assertion that reversed rows give no
+    problem (`tests/test_rf4_unit.py:1657`), an in-scope test, and a re-audit with a new audited baseline (§26.1).
+  - D7 does not change the design's wording. Whether to clarify it remains the owner's choice, under change control
+    (`docs/R_F4_DESIGN.md` is the contract in §26.2's scope).
+- **Every property design §5 lists is compared** (source reviewed), so the reading excuses none. `_column_problems`
+  reports a missing column (`preflight.py:346-348`), another type (`:350-351`), a changed `NOT NULL` (`:352-353`), a
+  generated column (`:354-356`), another default (`:357-358`), an identity column (`:359-361`), a non-default collation
+  (`:362-363`) and an extra column (`:364-365`). `_constraint_problems` reports a missing, retyped, redefined,
+  unvalidated or extra constraint (`:317-336`). u25 and p50 cover the columns, and u18 and p27 the constraints, in CI.
+- **Conclusion** (adopted, D7): under the adopted reading, the gap does not undermine the requirement.
+
+**(c) The tables `verify` does not read.**
+- **The gap:** the preflight does not check `report_filings`, the issuer links, or 0008's other F5 tables (§16.5).
+- **The requirement, verbatim:** the "R-F4 preflight" row: it refuses "when a table it or `verify` relies on has
+  row-level security, a policy, another persistence, kind, partitioning or inheritance". Design §5 names the set it
+  checks: "each of the five tables, and each F3 and F5 table the reader and `verify` read".
+- **Source reviewed:**
+  - the reader and `verify` read 0018's five tables and four others: `report_document_classifications`,
+    `report_statement_periods` and `report_classification_evidence` (0005), and `financial_extraction_runs` (0008)
+    (`reader.py:67`, `82`, `116`, `121`, `147`, `153`, `157`, `176`; `verify.py:109`, `111`);
+  - those four are `READ_TABLES` (`preflight.py:267-268`), whose table properties the preflight checks as it does 0018's
+    (`preflight.py:276-286`, `369-391`). u26 derives `READ_TABLES` from the tables `reader.py` and `verify.py` read
+    (`tests/test_rf4_unit.py:1662`);
+  - the store writes only 0018's tables (`store.py:76`, `102`, `111`). 0018's guard function reads only
+    `report_document_classifications` (`supabase/migrations/0018_f4_structure_persistence.sql:197-207`);
+  - R-F4's code reads none of `report_filings`, the issuer links or 0008's other tables;
+  - **newly identified:** the preflight itself reads one more table, P1's migration ledger `ops.schema_migrations`
+    (`preflight.py:564-579`). It does not check that table's properties.
+- **Inference:** every table that R-F4's writer, reader or `verify` reads as evidence is in the checked set, so a property
+  of an unchecked table cannot hide or add a row in what they read.
+
+*(c1) `report_filings`, the issuer links and 0008's other F5 tables.*
+- **Not part of the scope question.** Neither the preflight nor the reader nor `verify` reads any of them, so none is "a
+  table it or `verify` relies on" under either reading.
+- **`report_filings` (source reviewed).** R-F4 depends on it only through 0018's foreign key
+  (`0018_f4_structure_persistence.sql:40`). The preflight compares that constraint's definition, its referenced table and
+  columns included (`preflight.py:87`), so a dropped or altered foreign key is reported.
+- **The preparer's understanding of PostgreSQL's behaviour, not cited to its documentation here and not tested:** a
+  foreign-key check bypasses row-level security on the referenced table, so row-level security or a policy on
+  `report_filings` can neither make the check fail nor let it pass wrongly; and a foreign key referencing an ordinary
+  table is satisfied only by that table's own rows, not by its inheritance children, so a filing present only in a
+  child would fail the insert. A failed insert makes the store roll its savepoint back and re-raise
+  (`store.py:119-121`, source reviewed): the save is refused, not silently accepted.
+- **What the conclusion rests on:** the source inventory above, by which neither the preflight nor the reader nor
+  `verify` reads any of these tables, and the preflight's comparison of the foreign key's definition, which u18 and p27
+  cover in CI. It does not rest on the understanding above, which concerns what `report_filings`'s properties could do
+  to the foreign key at write time.
+- **Conclusion** (adopted, D7): on that basis, does not undermine a stated requirement, for component freeze, under
+  either reading.
+
+*(c2) P1's migration ledger, `ops.schema_migrations` (newly identified on 2026-10-27).*
+- **The ledger (source reviewed).** P1's runner creates it as `cse_owner`, its owner, with `version` as primary key,
+  `filename` unique and a hash-format check. Append-only triggers stop UPDATE, DELETE and TRUNCATE, not INSERT
+  (`worker/ops/migrate.py:8-12`, `39-50`, `62-65`). The runner writes it as the owner (`:246-253`) and reads it without
+  `ONLY` (`:166`). Migration 0009 gives `cse_reader` and `cse_backup` USAGE on `ops`
+  (`0009_local_security_boundary.sql:60`), and `cse_reader` SELECT on its tables (`:117`). `cse_backup` reads through
+  `pg_read_all_data`, and its only write is to `ops.backup_runs` (`:119-120`; `0011_ops_backup_ledger.sql:85`).
+  `cse_worker` has no access to `ops`.
+- **What the preflight does with it (source reviewed).**
+  - It reads `version`, `filename` and `sha256` where `version = 18 or filename = '0018_f4_structure_persistence.sql'`,
+    without `ONLY` (`preflight.py:564-565`). The result is `verified` only when the rows are exactly
+    `[(18, '0018_f4_structure_persistence.sql', <the pin>)]` (`:572-579`; the pin at `:46-48`). Nothing else in the
+    ledger is checked: not its other columns, and not 0001–0017, which P1's `migrate verify` compares with the
+    checked-out files.
+  - It reads the ledger directly, as a role with SELECT, or, on the migration route, as `cse_owner` inside a read-only
+    transaction that is rolled back (`:544-551`); otherwise the ledger is `unverifiable`. `clean` needs `verified`
+    (`:587`).
+  - What the ledger adds: the file check compares the checkout with the pin, and the objects check the live objects.
+    The ledger check is the database's record that the runner applied 0018 from a file with the pinned hash. It is the
+    only evidence for what 0018 does that the objects check does not compare, its table comments for example.
+- **Which property changes affect the result** (inference from the source above; none tested).
+  - **The ownership premise.** Each change below needs the ledger's owner, `cse_owner`, which the migration role can
+    become (`migrate.py:14`, `178`), or a superuser. That is the preparer's understanding of PostgreSQL's behaviour. It
+    is neither cited to PostgreSQL's documentation here nor tested. The conclusions below depend on it. They do not
+    depend on this list being complete: any other owner-level change, such as a trigger or rule that rewrites inserted
+    rows, falls in the same class. Of the other roles, `cse_reader` and `cse_backup` may only read the ledger, and
+    `cse_worker` cannot reach `ops`.
+  - **Row-level security or a policy:** rows can only be hidden, so the check fails closed. Without FORCE the owner is
+    exempt, so the two routes can disagree: the migration route `verified`, the `cse_reader` route `failed` with "…
+    is not in the migration ledger", a message that names the wrong cause.
+  - **An inheritance child** (creating one needs ownership of the ledger, under the premise above): a child does not
+    inherit the primary key or the unique constraint, and the check reads without `ONLY`. A child row duplicating the
+    ledger's own 0018 row gives two rows, so the check fails. **But when the ledger has no 0018 row, a forged row `(18,
+    '0018_f4_structure_persistence.sql', <the pin>)` in a child makes the check pass (`verified`).** This case does not
+    fail closed. P1's runner, which also reads without `ONLY`, would see the same row.
+  - **Partitioning:** attaching the ledger as a partition of another table leaves its own reads unchanged. Making it a
+    partitioned table means replacing it (below).
+  - **UNLOGGED:** after a crash the ledger is empty, so the check fails.
+  - **Dropped constraints, a changed column type, a non-deterministic collation:** the rows are compared exactly, so
+    duplicates or changed values fail the check, and a wider match only adds rows.
+  - **The append-only triggers disabled or dropped:** an existing 0018 row with another hash can be updated to the pin,
+    which makes the check pass.
+  - **The table replaced by a view or another relation:** it can return any row, which makes the check pass.
+  - **Privileges:** revoking `cse_reader`'s SELECT gives `unverifiable` (exit 2), correctly labelled. Granting INSERT to
+    another role widens who could forge a row by a plain INSERT, while the ledger has no 0018 row.
+- **What follows (inference).**
+  - An altered ledger can make the check pass an invalid migration state only through action by its owner or a
+    superuser, subject to the ownership premise above, which is untested. What is needed depends on the ledger's state:
+    - **No 0018 row:** an owner-level INSERT of the expected row makes the check pass, whether into the ledger itself
+      or into an inheritance child. A plain INSERT into the ledger changes none of its table properties, so no
+      table-property check would see it. The child-table route is a property change that an inheritance check on the
+      ledger would see at preflight time, had one been in scope.
+    - **A 0018 row with another hash:** the primary key on `version` and the unique `filename` refuse a second row in
+      the ledger, so a plain INSERT cannot replace it, and a child row would only add a second row, which fails the
+      check. Changing that state needs further privileged action. Disabling the append-only triggers, updating the row
+      and re-enabling them leaves nothing for a check at preflight time to see. Replacing the table, with a view for
+      example, is a property change that a kind check on the ledger would see.
+    - So the existing checks do not catch every path, and a property check on the ledger would catch only some: the
+      plain INSERT and the trigger route would pass it.
+  - Even then, `clean` also needs the file and objects checks to pass, so what passes unseen is limited to what those
+    checks do not compare.
+  - Checking the ledger's properties would add diagnostics, such as the row-level security case, more than protection,
+    since an owner can always take a route such a check would not see.
+  - The ledger's integrity against its owner is P1's. P1's `verify_server`, run as the superuser, checks the privileges
+    granted to PUBLIC on `ops` tables, that the worker cannot write the ledger or reach `ops`, that the append-only
+    triggers are enabled and that the ledger is clean (`worker/ops/verify_server.py:23-30`, `117-168`). It does not
+    check INSERT granted on the ledger to a named role, such as `cse_reader` or `cse_backup`, nor the ledger's row-level
+    security, inheritance, partitioning or persistence. Whether and when the runbook runs it was not checked here. The
+    remaining owner-level risk is a residual of REG-A11's general class (privileged changes), accepted explicitly under
+    D7. D1, which accepted REG-A11 on 2026-10-26, predates this finding and does not cover it specifically. P1's
+    verification gap is tracked separately, as REG-X03 (Part X).
+- **Not tested:** none of these changes was made against PostgreSQL. The inheritance, row-level security and ownership
+  rules relied on here are the preparer's understanding of PostgreSQL's behaviour, neither cited to its documentation
+  here nor exercised in this work.
+- **The reading (the owner's decision, D7, 2026-10-27).** Read literally, "a table it … relies on" includes the ledger:
+  "it" is the preflight. D7 decides how it is read.
+  - *What supports the narrower reading* (document reviewed; the preparer's reasoning):
+    - design §5 makes the ledger a check of its own, item 2, and says the three checks are separate and "one never stands
+      in for another" (`docs/R_F4_DESIGN.md:287-292`). The table-property check is part of item 3, the objects check,
+      and names its tables: "each of the five tables, and each F3 and F5 table the reader and `verify` read"
+      (`:304-307`);
+    - design §5 gives that check's reason: "`verify` reads what its role can see" (`:271-276`);
+    - runbook §12 step 2 lists "the migration ledger's 0018 entry and hash" apart from "the table properties (row-level
+      security, persistence, kind, inheritance) of 0018's tables and of the F3 and F5 tables `verify` reads"
+      (`docs/ops/PHASE2_BACKFILL.md:253-257`). The preflight's docstring says the same (`preflight.py:19-23`);
+    - read literally, "a table it relies on" would also cover the system catalogues the preflight reads, so the phrase
+      needs a bound;
+    - this record's list of unchecked tables (§16.5) does not mention the ledger. It was overlooked, not deliberately
+      excluded.
+  - *Adopted by the owner (D7):* the narrower reading, bounded by the table-property check's explicit scope in design §5
+    and runbook §12. The ledger is checked separately, for the expected migration version, filename and pinned hash; it
+    is not part of that scope. The owner-level manipulation risks above are kept, the inheritance-child case included.
+  - *The literal reading (not adopted):* had it applied, the preflight would not have met the requirement as written for
+    the ledger. The smallest fix would have been to look the ledger up in the catalogue by schema and name, run
+    `_table_problems` on it and report under `ledger`, with a unit test of the report and a PostgreSQL test with row-level
+    security and with a child table on the ledger, over both routes, and the text of design §5 and §9 and of runbook §12
+    changed to match. `preflight.py` being in scope, that would have needed change control, a re-audit and a new audited
+    baseline (§26.1).
+  - D7 changes neither the design's nor the runbook's wording.
+- **The ledger check meets its own requirement** (design §5, item 2: version 18, `0018_f4_structure_persistence.sql`, the
+  pinned SHA-256; `verified`, `failed` or `unverifiable`; clean only when verified). Source reviewed above. p13 covers a
+  ledger verified only by a role that can read it, a tampered or misnumbered entry, and the exit codes
+  (`tests/test_rf4_postgres.py:813`, `833`, `925`), and X2's mutant MP7 the pin comparison, in CI.
+- **Conclusion** (adopted, D7): under the adopted reading, the gap does not undermine the requirement. The owner-level
+  manipulation risks stay as an owner-level residual risk of REG-A11's general class, accepted explicitly under D7; D1
+  predates this finding. INSERT granted on the ledger to a named role, which P1 does not check, is a separate P1
+  follow-up (REG-X03).
+
+**(d) Role attributes.**
+- **The gap:** the preflight does not check role attributes (`SUPERUSER`, `BYPASSRLS`, `CREATEROLE`, `REPLICATION` and
+  the like) of `cse_worker`, `cse_reader` or the login that runs `verify` (§16.5).
+- **The requirements:** the "Access rules" row, "The privileges in §4.4": PUBLIC revoked; `cse_worker` may SELECT and
+  INSERT; `cse_reader` may SELECT; `f5_reject_mutation` triggers stop UPDATE, DELETE and TRUNCATE "for every role"; no
+  row-level security. And the "R-F4 preflight" row: it refuses when 0018 is "under-privileged", and when a table has
+  row-level security or a policy.
+- **Source reviewed:**
+  - the preflight checks each role's table privileges with `has_table_privilege` (`preflight.py:401`, `404`), and a
+    forbidden privilege held on some columns only (`preflight.py:406-412`);
+  - P1's bootstrap sets `nosuperuser nocreatedb nocreaterole noreplication nobypassrls` on the roles it provisions, even
+    when they already exist (`ops/provision/sql/bootstrap_cluster.sql:24`);
+  - p2 (`tests/test_rf4_postgres.py:322-341`) runs one statement against each of three tables: UPDATE on
+    `financial_f4_cells`, DELETE on `financial_f4_rows`, and TRUNCATE … CASCADE on `financial_f4_extractions`
+    (`:335-336`). It runs each as `cse_worker`, refused for lack of privilege, and as a superuser session, `postgres`,
+    the disposable cluster's bootstrap superuser (`:203-207`; `tests/f64_support.py:31`), refused by the append-only
+    triggers. It does not run each operation on every table;
+  - that every R-F4 table carries its append-only triggers, present, enabled and as 0018 creates them, is what the
+    store's in-band check and the preflight verify (`schema.py`, source reviewed). u18 tests how that check judges a
+    trigger; p12 shows a disabled, replica-only or dropped trigger refusing the save (`:746-759`, `:790-793`); p26, an
+    altered trigger; p29, an extra enabled one; and p13, the preflight reporting a disabled one (`:869-871`);
+  - p13 (`:853`, `:892`) covers the object problems reported for the named roles, a forbidden privilege granted on single
+    columns included; p51 (`:3108`) and p52 (`:3150`) the refusal of row-level security, which p52 shows can hide
+    evidence from `verify`.
+- **Tested, and untested understanding.** Tested in CI: privileges granted to the named roles are reported (p13); the
+  append-only triggers refuse a superuser session's UPDATE on `financial_f4_cells`, DELETE on `financial_f4_rows` and
+  TRUNCATE … CASCADE on `financial_f4_extractions` (p2); and the preflight's refusal of row-level security is exercised
+  on five of the nine checked tables: enabled on `financial_f4_cells`, `financial_f4_extractions` and
+  `financial_extraction_runs`, forced on `financial_f4_statements`, and a policy on `financial_f4_rows` and on
+  `financial_extraction_runs` (p51, p52). It is not exercised on the other four, `financial_f4_columns`,
+  `report_document_classifications`, `report_statement_periods` and `report_classification_evidence`; that they take the
+  same code path (`_TABLE_QUERY`, `_table_problems`) is source reviewed, and u26 tests the report logic. So, after a
+  clean preflight, `BYPASSRLS` has nothing on the checked tables to bypass. The preparer's understanding of
+  PostgreSQL's behaviour, not cited to its documentation here and not tested: that `has_table_privilege` also reports
+  privileges a role holds through membership, and every privilege for a superuser, so that a role given a forbidden
+  privilege that way, or made a superuser, would be reported; and that `BYPASSRLS` can only reveal rows, never hide
+  them.
+- **Not tested:** no attribute was set on `cse_worker` or `cse_reader` with the preflight then run. Not every
+  privileged-role scenario is covered.
+- **Not established, and not closed here:** the actual `verify` login. None is provisioned. Its attributes are checked at
+  authorized staging (§20.6 step 2), under REG-A05 and REG-G01, which stay as they are.
+- **Residual:** privileged roles acting outside R-F4's code remain REG-A11's accepted residual risk (D1).
+- **Conclusion** (adopted, D7): does not undermine a stated requirement of the R-F4 component, on the tested points
+  above: the append-only requirement holds even for a superuser session, and row-level security is refused. That the
+  preflight would also *report* a role made superuser, or holding a forbidden privilege through membership, rests on the
+  untested understanding above. Were it wrong, the gap would be in what the preflight reports, not in the append-only
+  protection; disabling the triggers stays a privileged change, REG-A11's residual. The real `verify` login stays a
+  staging gate (REG-A05, REG-G01).
+
+**(e) Attaching a partition.**
+- **The gap:** attaching a table as a partition was not exercised against PostgreSQL (§16.5); p51's docstring says so
+  (`tests/test_rf4_postgres.py:3115`). u26 checks the report logic on a hand-built catalogue row
+  (`tests/test_rf4_unit.py:1702`); that is not taken as evidence of what PostgreSQL records.
+- **The requirement:** the "R-F4 preflight" row: it refuses when a table it or `verify` relies on has "partitioning", and
+  it "reports the file, the ledger and the objects separately".
+- **Source reviewed:** `_TABLE_QUERY` reads each checked table's `relispartition` and its `pg_inherits` parents and
+  children (`preflight.py:276-286`). `_table_problems` reports a partition only when the parents list is not empty
+  (`preflight.py:383-385`).
+- **Observed** (the preparer-run probe below; PostgreSQL 17.11): attaching `financial_f4_cells` as the DEFAULT partition
+  of a new partitioned table set `relispartition` to true and wrote a `pg_inherits` row naming the parent. The
+  preflight's own catalogue query returned both. The command exited 1 with exactly one object problem, while its file
+  and ledger checks stayed clean and verified. After the detach it exited 0, clean.
+- **Inference:** `_TABLE_QUERY` and `_table_problems` are the same for every checked table, so the other eight take the
+  same path.
+- **Not tested:**
+  - attaching any of the other eight checked tables (0018's other four, or the four `READ_TABLES`);
+  - a partition with bounds (`FOR VALUES …`) rather than DEFAULT;
+  - **the edge case:** `relispartition` true without a `pg_inherits` row naming a parent. `_table_problems` would then
+    report no partition (`preflight.py:383-385`). In the probe PostgreSQL recorded both together; whether it can ever
+    record one without the other was not examined. *Untested inference:* PostgreSQL records a partition's link to its
+    parent in `pg_inherits`, so `relispartition` true without that row would indicate inconsistent catalogue state,
+    not an ordinary partition. This is the preparer's understanding, not a verified property of the current
+    environment.
+- **Conclusion** (adopted, D7): the detection path for a table attached as a partition is supported by observed
+  PostgreSQL 17.11 behaviour, and the gap does not undermine a stated requirement. This rests on one preparer-run probe,
+  not on independent reproduction; the edge case above stays untested.
+- **Residual:** no source fix is proposed or made. Reporting `relispartition` on its own would change `preflight.py`, and
+  committing the probe as a test would change an in-scope test: either is post-audit drift, needing change control and a
+  re-audit (§26.1). Whether the edge case needs anything is the owner's choice.
+
+**(f) No column check in the store's in-band check.**
+- **The gap:** the store's in-band check (`schema.py`) checks tables, privileges and triggers, not columns. Column drift is
+  the preflight's to find, at its checkpoints (§15.5).
+- **The requirements:** the "R-F4 preflight" row's last sentence: "The store's in-band schema check raises its typed
+  error before any insert when a table, a privilege or a trigger is missing, disabled or altered". It names no column.
+  RT-14 and RT-15 apply to what is written.
+- **Source reviewed:**
+  - the inserts name every column (`store.py:76-79`, `102-104`, `110-113`);
+  - before returning `inserted`, the store reads the extraction back in the same transaction and refuses it as `corrupt`
+    unless it reproduces the content hash computed before the write (`store.py:114-116`, with the reader's checks at
+    `reader.py:124-131`);
+  - on any error the store rolls back to its savepoint and re-raises (`store.py:119-121`). The caller's transaction then
+    fails, so nothing of that save is committed;
+  - `codec.decode_extraction` reads the columns it needs by key (`codec.py:566-629`), so an extra column is not read.
+- **Inference:**
+  - drift that changes stored content makes the read-back differ, and the save is refused and rolled back. Drift that
+    makes an insert fail (a missing column; an extra `NOT NULL` column without a default) fails the save the same way;
+  - content-neutral drift (an extra nullable column; a collation; a default on a column the store does not supply) is
+    not seen at write time. The next preflight reports it: p50 (`tests/test_rf4_postgres.py:3025`) covers column drift
+    that no constraint shows.
+- **Not tested:** no test cited here alters a column and then saves through the store. No test and no X2 mutant
+  exercises the read-back's refusal (`store.py:115-116`); the tests that save through the store, p18 among them, reach
+  only its success path. Its refusal of column drift is inferred from the source, not observed.
+- **Residual:** content-neutral drift is found at the next preflight, not at write time. A column check in the in-band
+  check would change `schema.py`, which HB-1 pins: the HB-1 to HB-6 pin cascade, under change control (D2's candidates).
+- **Conclusion** (adopted, D7): does not undermine a stated requirement, for component freeze.
+
+**The gap (e) probe (2026-10-27), as the preparer ran and reported it.** Under §25.3 it is TEST EXECUTED, recorded in this
+section. It is not a repository test, not a rerun by the auditor, and not INDEPENDENTLY REPRODUCED.
+- **Who:** Claude, the implementer and the preparer of this record, at the owner's request. The owner has not
+  independently verified the host, the Docker state or the probe's execution.
+- **Where its output is:** the preparer supplied the raw output to the owner in the conversation. The scratch directory
+  that held the probe script and its logs is temporary, and nothing there is cited as durable evidence. The probe script
+  is not in the repository.
+- **The environment, as reported:**
+  - PostgreSQL 17.11 (`postgres (PostgreSQL) 17.11 (Ubuntu 17.11-1.pgdg24.04+2)`);
+  - an isolated container: `cse-p1-test:latest`, run with `--rm --network none --memory=1g`, as the non-root user
+    `tester`;
+  - the project's disposable cluster (`tests/f64_support.py`'s `start_cluster`): a private Unix socket directory (mode
+    0700) and no TCP listener (`listen_addresses` empty); P1's bootstrap, then migrations 0001–0018 through P1's runner.
+    The ledger recorded 0018 at its pinned SHA-256, and each preflight run read it as verified;
+  - the code: a scratch clone of `40b138b` with LF-only content, as committed. Its in-scope tree equals the baseline's
+    (§26.1). No repository file was changed.
+- **The preflight** ran three times, through its real command, `python3 -m worker.financial_f4_store preflight
+  --migration-role`:
+
+| Step | The catalogue, as PostgreSQL reported it | Exit | The preflight's report |
+|---|---|---|---|
+| Before | `financial_f4_cells`: `relispartition` false; no `pg_inherits` parent | 0 | Clean. No file or object problem. Ledger verified, read as `cse_owner` |
+| Attached: `create table public.rf4_parted (like public.financial_f4_cells) partition by list (status)`, then `alter table public.rf4_parted attach partition public.financial_f4_cells default` | `relispartition` true; `relpartbound` `DEFAULT`; parent `rf4_parted` in `pg_inherits` | 1 | Not clean. No file problem. Ledger verified. The object problems, exactly: `financial_f4_cells is a partition of rf4_parted; expected neither` |
+| After: detached, and `rf4_parted` dropped | `relispartition` false; no parent | 0 | Clean. No file or object problem. Ledger verified |
+
+- **Clean-up, as reported:** the disposable cluster and the probe's base directory were removed. The container exited 0
+  after 9 seconds. The RAM guard read 7.7%, 7.4% and 7.0% free during the run, and did not trip. Docker's containers,
+  volumes and images matched those recorded before the run, and `cse-p1-test:latest` was kept.
 
 **Prerequisite 3 is satisfied only when:**
 - all six conclusions are recorded with their evidence; and
 - for any gap found to undermine a stated requirement, its fix has been completed and re-audited.
 
-Until then it stays **OUTSTANDING**, and REG-A12 stays OPEN (§26.4). D2's conditional acceptance does not bypass this. Where
-a fix is required, satisfying prerequisite 3 does not by itself let the sequence continue: the fail-closed rule below
-applies. This record runs no test and infers no fix.
+**Prerequisite 3, as at 2026-10-27: SATISFIED.**
+- **The conclusions are recorded.** All six are recorded above with their evidence, and the owner adopted them on
+  2026-10-27 (D7), as the rule requires.
+- **None finds a gap that undermines a stated requirement.** Each was assessed against the requirement it bears on, as D7
+  reads it (the table below). That assessment, not the adoption, is the reason: each requirement is met by an implemented
+  check, and whatever stays unchecked is outside the requirement as read, fails closed, or is an accepted residual risk.
+- **So no fix is required** under D2, and D1 and D3 require none. Nothing needed completing or re-auditing.
+- **The evidence's limits stand.** "In CI" below means R-F4's tests in the runs of §26.3.2 at the baseline. L16 and X2
+  passed there with no failure. L16 holds R-F4's unit and PostgreSQL test files, as §19.2 derived at `ef4e0e7`, and X2
+  the planted-fault tests. The independent audit inspected L16's and X2's JUnit reports as CI artifacts (§26.3.1); it
+  re-ran no test. The preparer did not read the individual outcomes for these assessments, and no test was
+  independently re-run (§26.3.3). Several conclusions rest on source review and inference, and gap (e) on one
+  preparer-run probe. Nothing is INDEPENDENTLY REPRODUCED.
+
+| Gap | The requirement, as read under D7 | Met by | Evidence | What stays unchecked, and why it does not undermine the requirement | Release-relevant, kept open |
+|---|---|---|---|---|---|
+| (a) | RT-14 and RT-15: what is stored is rebuilt exactly. The preflight's refusal list does not name storage or statistics settings, and the column-level ones are outside "differs" (D7) | The reader's child-count and content-hash checks, which refuse a changed value rather than pass it | Source review; p11 (tampered rows) and p18 (RT-14 and RT-15) in CI | The settings themselves, untested. They govern storage, not values (inference), and a value changed as read would be refused | No |
+| (b) | The preflight refuses a column or constraint that differs from 0018's in a property design §5 lists, matched by name | `_column_problems`; `_constraint_problems` | Source review; u18, u25, p27 and p50 in CI | Column position: not a listed property, and no R-F4 statement depends on it | No |
+| (c1) | The table-property check covers design §5's set (D7) | The check on 0018's tables and `READ_TABLES`; the foreign key's definition (`preflight.py:87`) | Source review; u18, u26, p27, p51 and p52 in CI | These tables: neither the preflight nor the reader nor `verify` reads them (source review), and the conclusion rests on that. How row-level security or inheritance on `report_filings` would affect the foreign key is the preparer's understanding, not cited and not tested, and is not relied on | No |
+| (c2) | The ledger is checked separately: version 18, `0018_f4_structure_persistence.sql`, the pinned SHA-256 (design §5, item 2) | `ledger_check` | Source review; p13 and X2's mutant MP7 in CI | The ledger's table properties: outside the table-property check (D7). Owner-level manipulation, including a forged row, directly or in a child, when the 0018 row is absent: an owner-level residual of REG-A11's general class, accepted explicitly under D7 (D1 predates this finding), and resting on the untested ownership premise | P1's verification of the ledger: REG-X03, on which REG-G01 depends |
+| (d) | The privileges of §4.4; the refusal of an under-privileged 0018 and of row-level security | `_role_problems` (effective privileges); the append-only triggers; the table-property check | Source review; p2, p13, p51 and p52 in CI | Role attributes as such. Tested: the append-only triggers refuse a superuser session (p2), and row-level security is refused (p51, p52). The preparer's untested understanding, not cited: that the effective-privilege check also reports privileges held through membership or the superuser attribute. Were it wrong, the gap would be in reporting, and disabling the triggers stays a privileged change (REG-A11) | The real `verify` login: REG-A05, REG-G01 |
+| (e) | The preflight refuses a table it or `verify` relies on that is a partition | `_TABLE_QUERY`; `_table_problems` | One preparer-run probe on PostgreSQL 17.11 (observed), not independently reproduced; u26 | The other eight tables and bounded partitions: untested, on the same code path (inference). `relispartition` without a `pg_inherits` row: untested, and it would indicate inconsistent catalogue state rather than an ordinary partition (untested inference). Both are accepted residuals (D7) | No |
+| (f) | The in-band check refuses before any insert when a table, a privilege or a trigger is missing, disabled or altered; RT-14 and RT-15 at write time | `schema.problems`; the write-time read-back | Source review; p12, p26, p28, p29, p48, u18, u19 and p18 in CI. p18 and the other saving tests reach only the read-back's success path | Columns at write time: not part of the in-band requirement. Drift that changes content is refused by the read-back, inferred from the source: no test or X2 mutant exercises that refusal. Content-neutral drift is found by the next preflight (p50) | No |
+
+- **What this does not do.** It does not accept or freeze R-F4. D5 takes effect only at the freeze-record commit V, after
+  prerequisite 4. REG-A02 stays OPEN until V, and REG-A23 stays OPEN. It authorizes no merge, push, staging, production
+  deployment, live CSE acquisition or restore. CI stays red, and the L02 waiver covers R-F4 acceptance only (D4).
+- **The freeze-candidate commit F.** Once committed, the documentation change that records D7 and this prerequisite
+  (§1's pending row) is the first commit containing prerequisites 2 and 3, so it is F (§26.1), provided it changes no
+  in-scope path. Its SHA is not known here. Prerequisite 4 follows: the drift check against F's tree, recorded in V.
+
+Recording this ran no test, and no fix is inferred or made; the gap (e) probe ran before, and is recorded above.
 
 **The fail-closed rule.** If any of the six conclusions finds that a REG-A12 gap undermines a stated R-F4 requirement:
 - **The freeze sequence stops** at §26.7 step 3. No freeze-candidate commit F or freeze-record commit V is made, and D5 is
@@ -3836,11 +4269,43 @@ effective, and no commit records a check of its own tree.
   - The existing L02 waiver does not itself authorize a merge.
   - No merge candidate is selected in this record.
 
+**D7. REG-A12: the readings of gaps (b) and (c2), and the six conclusions** (REG-A12; D5 prerequisite 3)
+- [x] Adopt the narrower reading under (b), the narrower reading under (c2), and all six conclusions as prepared under
+  D5's prerequisite 3, with their qualifications, evidence limits and residual risks.
+- [ ] Do not adopt. Required first: ____
+- **Decision:** ADOPTED. **Date:** 2026-10-27. **Owner's words:** "I explicitly accept the recommendations from the
+  latest assessment":
+  1. **Gap (b):** "Adopt the narrower interpretation. “Differs” means a difference in the properties explicitly listed in
+     design §5, with columns matched by name. Column ordinal position is not independently checked. This interpretation
+     does not excuse differences in any property §5 explicitly requires the preflight to check."
+  2. **Gap (c2):** "Adopt the narrower interpretation of “a table it or `verify` relies on,” bounded by the explicit
+     table-property-check scope in design §5 and runbook §12. The ledger is checked separately for the expected
+     migration version, filename and pinned hash; it is not automatically part of that table-property-check scope.
+     Preserve the owner-level manipulation risk, including the inheritance-child case that can make the ledger check
+     pass when the expected row is absent."
+  3. **The six conclusions:** "Adopt all six proposed REG-A12 conclusions (a, b, c1, c2, d, e, f as organized in the
+     current record), including their qualifications, evidence limits and residual risks. For gap (a), the treatment of
+     column-level storage, compression and statistics settings is conditional on the narrower interpretation in (b).
+     Keep the partition-attachment probe described as preparer-run on PostgreSQL 17.11, not independently reproduced,
+     and preserve the untested `relispartition`-without-`pg_inherits` case."
+- **What it is, and is not:**
+  - It interprets the accepted design's wording (`docs/R_F4_DESIGN.md` §9, the "R-F4 preflight" row). It amends neither
+    the design nor the runbook, and weakens no requirement.
+  - It adopts conclusions and adds no evidence. What was inspected, inferred or left untested stays as labelled under
+    prerequisite 3.
+  - It does not by itself satisfy prerequisite 3. That follows from the assessment recorded there.
+  - It authorizes no merge, push, staging, production deployment, live CSE acquisition or restore.
+
 ### 26.6 Kept separate: what a freeze would not resolve or authorize
 
 - **Restore and staging blockers are not R-F4 component acceptance,** and this record resolves none of them:
   - REG-B00 to REG-B42, including UR-15 (REG-B02), UR-16 (REG-B03) and the blocked checkpoint restore (REG-B01);
   - the release gates REG-G01 to REG-G06.
+- **P1's verification of the migration ledger (REG-X03) is not R-F4's.** P1's `verify_server` checks the privileges
+  granted to PUBLIC on `ops` tables, and that `cse_worker` lacks USAGE on `ops`. It does not check INSERT granted on
+  `ops.schema_migrations` to a named role, such as `cse_reader` or `cse_backup`, nor the ledger's row-level security,
+  inheritance, partitioning or persistence (§26.5, gap (c2)). It stays OPEN, outside this freeze, until the owner
+  decides on a P1 change or accepts it as a P1 residual, before REG-G01's staging gate closes (REG-G01 depends on it).
 - **The isolated checkpoint restore remains BLOCKED. DO NOT EXECUTE RESTORE.**
 - **Even once D5 takes effect, the freeze would not authorize:** a merge (D6); staging; provisioning; production deployment;
   live CSE requests; arming; the pilot; HB-S4, HB-7 or bulk document retrieval; or executing any restore.
@@ -3857,17 +4322,22 @@ effective, and no commit records a check of its own tree.
   step, and these are applied to §25 only at that step:
   1. **The decision-record commit D:** `ca745726babbe82a38192e1c795db6afb3728ff1` (2026-10-27), which satisfies
      prerequisite 1. **Done:** REG-A13's status was applied to §25 in the documentation change after D that records
-     D's SHA (pending commit; §1). D1's acceptance of REG-A10, A11 and A21 is recorded at D, but their register
-     statuses wait for REG-A01, on which they depend (step 2). REG-A12 stays OPEN.
+     D's SHA (`40b138b`; §1). D1's acceptance of REG-A10, A11 and A21 is recorded at D, but their register
+     statuses wait for REG-A01, on which they depend (step 2). REG-A12 stayed OPEN at this step (closed at step 3).
   2. **Prerequisite 2:** record the owner's explicit confirmation of §26.3.1. **Done** on 2026-10-27, in the same
      documentation change as step 1. REG-A01's status was applied first; then REG-A08's and A09's; then, with REG-A01
      closed, REG-A10's, A11's and A21's.
-  3. **Prerequisite 3:** record the six conclusions (§26.5).
+  3. **Prerequisite 3:** record the six conclusions (§26.5). **Done** on 2026-10-27: the owner adopted the six
+     conclusions and the readings of gaps (b) and (c2) (D7), and none finds a gap that undermines a stated requirement.
+     REG-A12's status was applied to §25: CLOSED WITH EVIDENCE, for R-F4 component freeze only. The release-relevant
+     gaps stay open against their gates: the `verify` login (REG-A05, REG-G01), and P1's verification of the ledger,
+     added as REG-X03. Not yet committed (§1's pending row).
      - If none finds a gap that undermines a stated requirement: apply REG-A12's status. Record any gap found
        release-relevant as open against its release gate; closing REG-A12 does not close it.
      - If any does: **stop.** REG-A12 stays OPEN, and §26.5's fail-closed rule applies. Steps 4 to 7 are not taken.
   4. **The freeze-candidate commit F:** the first commit that contains the records of steps 2 and 3. It is later than
-     D. It changes no in-scope path, and it does not freeze R-F4.
+     D. It changes no in-scope path, and it does not freeze R-F4. **Pending:** once committed, the documentation change
+     recording step 3 (§1's pending row) is F, provided it changes no in-scope path. No SHA is predicted here.
   5. **The check:** once F exists, run the drift check of §26.1 against F's tree. If its output is not empty, stop
      (§26.5).
   6. **The freeze-record commit V:** the next commit after F. It records F's exact SHA, the command and its empty output
@@ -3875,8 +4345,10 @@ effective, and no commit records a check of its own tree.
      update the status lines below.
   7. **After V:** confirm that `git diff --stat <F's SHA> <V's SHA> -- <the §26.1 paths>` gives empty output. If it does
      not, V is not a valid freeze-record commit, and the freeze has not taken effect (§26.5).
-- **§1's pending row.** After the documentation change applying steps 1 and 2 is committed, a later documentation-only
-  change must replace §1's pending placeholder with that commit's real SHA. No SHA is predicted here.
+- **§1's pending rows.** The documentation change applying steps 1 and 2 is `40b138b`; its §1 row now carries that SHA.
+  The change recording step 3 (D7 and prerequisite 3) has a pending row in turn. Once committed, it is F, provided it
+  changes no in-scope path. A later documentation-only change (V, at step 6, or one after it) must replace that
+  placeholder with its real SHA. No SHA is predicted here.
 - **Proposed, needs the owner's approval:** archive the independent audit's text (its conclusion and its evidence
   limitations) as a durable repository artifact. Its form and location are the owner's choice. None is created here.
 - **Status lines** saying R-F4 is "not yet independently audited after Stage 2, accepted or frozen". Their audit clause
@@ -3896,4 +4368,4 @@ effective, and no commit records a check of its own tree.
   Correct the dates and the HB-1 note's list. No pin value changes.
 - **After the freeze,** any change to a frozen file needs the owner's change control (design §8.2).
 
-**Status: decisions recorded at D (`ca74572`); D5 prerequisites 1 and 2 satisfied, prerequisites 3 and 4 outstanding; D5 approved conditionally and NOT YET EFFECTIVE. R-F4 NOT ACCEPTED / NOT FROZEN. NOT AUTHORIZED TO MERGE. DO NOT EXECUTE RESTORE.**
+**Status: decisions D1 to D6 recorded at D (`ca74572`), and D7 on 2026-10-27 (§26.5); D5 prerequisites 1, 2 and 3 satisfied, prerequisite 4 outstanding (no freeze-candidate commit F or freeze-record commit V yet); REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; D5 approved conditionally and NOT YET EFFECTIVE. R-F4 NOT ACCEPTED / NOT FROZEN. NOT AUTHORIZED TO MERGE. DO NOT EXECUTE RESTORE.**
