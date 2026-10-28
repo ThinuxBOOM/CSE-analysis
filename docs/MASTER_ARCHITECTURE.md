@@ -3309,3 +3309,73 @@ Every implementation prompt must explicitly state:
 15. how the user-facing reasoning can be grounded in the actual inputs.
 
 If those questions cannot be answered, the implementation is not ready.
+
+## 68.1 Claude-assisted development and task execution
+
+These rules govern how work is requested from Claude and how Claude
+carries it out and reports it. They add no authority of their own:
+every acceptance criterion, freeze condition, release gate, protected
+path, owner decision and operational prohibition elsewhere in this
+document and in the component design and implementation records
+remains authoritative and prevails over anything here.
+
+1.  **Project integrity takes precedence over speed.** Never weaken an
+    acceptance criterion, omit a material risk, misrepresent evidence
+    or close an unresolved gate to make faster progress. Perform the
+    audits and verification that correctness, traceability, safety or
+    the acceptance criteria require, and do not skip them merely
+    because the owner is impatient with the process. Equally, do not
+    add audits, repeated checks, cosmetic cleanup or scope without a
+    concrete justification.
+2.  **Maximize useful work per Claude turn.** Prompts are precise,
+    comprehensive and scoped so that Claude can complete as much
+    compatible, authorized work as possible in one turn. Where
+    appropriate, a prompt directs Claude to:
+    -   inspect the current Git state and the relevant files, history,
+        requirements and evidence;
+    -   investigate the whole explicitly defined scope, not stop at the
+        first finding;
+    -   cross-check findings against authoritative evidence and the
+        acceptance criteria;
+    -   distinguish verified facts, reported results, assumptions,
+        uncertainties and owner decisions;
+    -   complete all authorized, in-scope changes together;
+    -   perform the relevant verification and inspect the complete
+        diff;
+    -   report remaining risks, limitations, unresolved decisions and
+        the next actionable step.
+
+    Do not split work across prompts out of habit when it can be
+    completed safely and coherently in one turn.
+3.  **Bundle work intelligently, not recklessly.** Combine tasks when
+    their scope, prerequisites, authorization and verification methods
+    are compatible. Keep them separate when combining them would
+    compromise safety, bypass an approval boundary, obscure a failure,
+    touch protected implementation paths without authorization, or make
+    the result harder to review.
+4.  **Preserve explicit authorization boundaries.** Every prompt defines
+    its permitted scope and its stop conditions. Claude does not infer
+    permission to stage, commit, push, merge, deploy, run database
+    operations, contact the live CSE or perform a restore because the
+    action seems the logical next step. Explicit owner authorization is
+    required wherever this project's rules require it, and existing
+    freeze conditions, release gates, protected paths and operational
+    prohibitions remain authoritative.
+5.  **Use evidence-based stopping criteria.** A task or audit is
+    complete when its defined scope has been investigated, its findings
+    have been addressed or explicitly dispositioned, its required checks
+    have passed, and its remaining risks and decisions are recorded. Do
+    not reopen completed work because further auditing is theoretically
+    possible; reopen it when new evidence, a concrete contradiction, a
+    failed check, a requirement or an unresolved risk justifies it.
+6.  **Make completion reports independently reviewable.** Claude's
+    final report states:
+    -   what was examined and what was changed;
+    -   the exact files and the relevant diff;
+    -   the checks performed and their actual results;
+    -   what was not checked or not independently verified;
+    -   remaining risks, open gates and required owner decisions;
+    -   the Git state, and commit and push status where applicable.
+
+    A reported check is never described as independently verified
+    unless independent verification actually occurred.
