@@ -4411,7 +4411,7 @@ the post-V check gives empty output; no commit records a check of its own tree.
      gives empty output. If it does not, V is not a valid freeze-record commit, and the freeze has not taken effect
      (§26.5). If it gives empty output with exit status 0, a later documentation-only commit records that evidence and
      V's SHA, and only then closes REG-A02 (§26.4). **Done** on 2026-10-28, and recorded in the post-V
-     acceptance-record commit (§1's pending row):
+     acceptance-record commit (`1171f928221c7c06974b75eb0796a4ff05ae5337`; §1):
      - **Compared:** F, `adce25a8a33f791a310212e0bd0278e5778c23d2`, with V, `ddcd80aee67b711750ce5b5171e531eccb6f59eb`
        (V's parent is F). Both arguments are commits, so git compared the two trees directly. HEAD was V, and the
        working tree was clean.
@@ -4432,11 +4432,10 @@ the post-V check gives empty output; no commit records a check of its own tree.
      - **What it establishes.** Under §26.5, V is a valid freeze-record commit, and the condition "effective once the
        post-V check gives empty output" is met. REG-A02 is closed (§25.4, §26.4). It authorizes no merge, staging,
        production deployment, live CSE request or restore.
-- **§1's pending rows.** The documentation changes applying steps 1 and 2, and step 3, are `40b138b` and F
+- **§1's commit rows.** The documentation changes applying steps 1 and 2, and step 3, are `40b138b` and F
   (`adce25a`), and V is `ddcd80aee67b711750ce5b5171e531eccb6f59eb`; their §1 rows carry those SHAs. V's SHA,
-  and the post-V check's result (step 7), are recorded by the post-V acceptance-record commit, which has a pending
-  row in turn: a later documentation-only change must replace that placeholder with its real SHA. No SHA is
-  predicted here.
+  and the post-V check's result (step 7), are recorded by the post-V acceptance-record commit,
+  `1171f928221c7c06974b75eb0796a4ff05ae5337`, whose §1 row carries that SHA. No §1 row remains pending.
 - **Proposed, needs the owner's approval:** archive the independent audit's text (its conclusion and its evidence
   limitations) as a durable repository artifact. Its form and location are the owner's choice. None is created here.
 - **Status lines** saying R-F4 is "not yet independently audited after Stage 2, accepted or frozen". **Updated in this
