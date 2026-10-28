@@ -2084,10 +2084,12 @@ Still open after real-data validation:
     the owner confirmed its conclusion on 2026-10-27). R-F4 status:
     Accepted and frozen at V, effective once the post-V check gives
     empty output (V is its freeze-record commit,
-    `docs/R_F4_IMPLEMENTATION.md` §26); until then R-F4 is not accepted
-    or frozen. HB-Q7's R-F4 condition is met only once the freeze is
-    effective; meeting it authorizes nothing, and HB-7's other gates
-    remain. R-F4 is not merged, and no merge is authorized.
+    `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on
+    2026-10-28 (run by Claude, not independently reproduced; §26.7,
+    step 7 there), so the freeze is in effect. HB-Q7's R-F4 condition
+    is therefore met; meeting it authorizes nothing, and HB-7's other
+    gates remain outstanding. R-F4 is not merged, and no merge is
+    authorized.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2768,8 +2770,11 @@ architecture should be implemented in dependency order.
     (`docs/R_F4_DESIGN.md`, 2026-10-14), implemented on the controlled
     branch `claude/rf4-implementation` (not merged) and independently
     audited. R-F4 status: Accepted and frozen at V, effective once the
-    post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26).
-    Its sequencing is owner decision HB-Q7 (2026-10-13, below);
+    post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26);
+    that check gave empty output on 2026-10-28 (run by Claude, not
+    independently reproduced; `docs/R_F4_IMPLEMENTATION.md` §26.7,
+    step 7), so the freeze is in effect. Its sequencing is owner
+    decision HB-Q7 (2026-10-13, below);
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
@@ -2837,10 +2842,11 @@ that build. It is implemented on the controlled branch
 independently audited (2026-10-26; the owner confirmed the conclusion on
 2026-10-27). R-F4 status: Accepted and frozen at V, effective once the
 post-V check gives empty output (V is its freeze-record commit,
-`docs/R_F4_IMPLEMENTATION.md` §26); until then R-F4 is not accepted or
-frozen. HB-Q7's R-F4 condition is met only once the freeze is effective;
-HB-7 remains subject to all of its other gates, and no merge is
-authorized.
+`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on
+2026-10-28 (run by Claude, not independently reproduced), so the freeze
+is in effect. HB-Q7's R-F4 condition is therefore met; meeting it
+authorizes nothing, HB-7 remains subject to all of its other gates, and
+no merge is authorized.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2850,7 +2856,7 @@ authorized.
 -   reconciliation;
 -   coverage audit.
 
-Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 4).
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 7).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),

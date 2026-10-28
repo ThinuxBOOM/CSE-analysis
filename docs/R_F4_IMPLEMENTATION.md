@@ -13,7 +13,7 @@ runbook's preflight-then-`verify` order is `a78dbc9` (§17); planted-fault tests
 the owner's decisions of 2026-10-22 and the mutants they approved are §20; the owner's waiver of the L02 baseline
 failure, for R-F4 acceptance only, is §21 (the test still fails); §5.7's M1–M14 in X2 are §22; a CI rehearsal of the
 runbook's R-F4 checks on a disposable cluster is §23, and on a restored copy of a P1 dump §24; the consolidated issue register for R-F4 and the isolated checkpoint restore, with the stopping rule for specification revisions, is §25 (2026-10-26); the owner's acceptance and freeze record is §26: D5's four prerequisites are satisfied. Accepted and frozen at V, effective once the post-V check gives empty output
-(§26.7, step 7); until then R-F4 is NOT accepted and NOT frozen, and REG-A02 stays OPEN. A merge is not authorized (D6; REG-A23).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
+(§26.7, step 7); that check gave empty output on 2026-10-28 (preparer-run, not independently reproduced; `1171f92`), so the freeze is in effect and REG-A02 is CLOSED WITH EVIDENCE. A merge is not authorized (D6; REG-A23).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
 the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
@@ -3179,9 +3179,10 @@ of record for (B). It is amended in place where this pass corrected it (§25.9),
 records leave open. Its corrections are design-text corrections (REG-C01, REG-C02, REG-C04), not implementation
 acceptance.
 
-**Status of R-F4 (§26): Accepted and frozen at V, effective once the post-V check gives empty output; until then NOT
-ACCEPTED / NOT FROZEN. When this section was written (2026-10-26): NOT ACCEPTED / NOT FROZEN. The isolated checkpoint
-restore remains BLOCKED. DO NOT EXECUTE RESTORE. DO NOT MERGE.** No CSE request is authorized by this section.
+**Status of R-F4 (§26): Accepted and frozen at V, effective once the post-V check gives empty output; that check gave
+empty output on 2026-10-28 (§26.7, step 7), so the freeze is in effect. When this section was written (2026-10-26): NOT
+ACCEPTED / NOT FROZEN. The isolated checkpoint restore remains BLOCKED. DO NOT EXECUTE RESTORE. DO NOT MERGE.** No CSE
+request is authorized by this section.
 
 ### 25.1 The state at the start of this pass
 
@@ -3255,7 +3256,7 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 
 | ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
 |---|---|---|---|---|---|---|---|---|
-| REG-A01 | BLOCKER | HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete | Design status, §10 row 6; Phase 2 design §11.5; this record's status | DOCUMENT REVIEWED: Findings 1–5 and later reviews remediated (§7–§24), "awaiting the owner's independent review" (this record's header as at 2026-10-26). TEST EXECUTED: CI at `7074ea5` (§25.1). OWNER APPROVED: the audit conclusion of §26.3.1 (the audit of 2026-10-26: "PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW", at `044cbf5`), confirmed by the owner on 2026-10-27 (D5 prerequisite 2, §26.5). Its limits: a source review and an inspection of CI-produced evidence (the artifacts and JUnit reports, L16's and X2's); no test independently re-run; real CSE documents, staging and production not validated. REG-A08 to REG-A12 are dispositioned in §26.4; REG-A12 stayed OPEN until §26.7 step 3 (2026-10-27, D7). Closing REG-A01 closes the audit gate only: component acceptance and freeze remain REG-A02, OPEN | The owner, or an auditor the owner names, records the audit's conclusion at a named commit: every finding closed with evidence, or waived by a recorded owner decision; REG-A08 to REG-A12 dispositioned | Owner; independent auditor | — | CLOSED WITH EVIDENCE |
+| REG-A01 | BLOCKER | HB-Q7 requires R-F4 to be independently audited before acceptance. The Stage 2 audit is not complete | Design status, §10 row 6; Phase 2 design §11.5; this record's status | DOCUMENT REVIEWED: Findings 1–5 and later reviews remediated (§7–§24), "awaiting the owner's independent review" (this record's header as at 2026-10-26). TEST EXECUTED: CI at `7074ea5` (§25.1). OWNER APPROVED: the audit conclusion of §26.3.1 (the audit of 2026-10-26: "PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW", at `044cbf5`), confirmed by the owner on 2026-10-27 (D5 prerequisite 2, §26.5). Its limits: a source review and an inspection of CI-produced evidence (the artifacts and JUnit reports, L16's and X2's); no test independently re-run; real CSE documents, staging and production not validated. REG-A08 to REG-A12 are dispositioned in §26.4; REG-A12 stayed OPEN until §26.7 step 3 (2026-10-27, D7). Closing REG-A01 closes the audit gate only: component acceptance and freeze remained REG-A02, OPEN when REG-A01 closed (2026-10-27); REG-A02 was CLOSED WITH EVIDENCE on 2026-10-28 (§26.7, step 7; `1171f928221c7c06974b75eb0796a4ff05ae5337`) | The owner, or an auditor the owner names, records the audit's conclusion at a named commit: every finding closed with evidence, or waived by a recorded owner decision; REG-A08 to REG-A12 dispositioned | Owner; independent auditor | — | CLOSED WITH EVIDENCE |
 | REG-A02 | OWNER DECISION | Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded | Design §8.2 step 7, §8.1 item 17, §10 row 7 | DOCUMENT REVIEWED: "Not started" (as at 2026-10-26). OWNER APPROVED: D5, approved conditionally (§26.5). D5's four prerequisites are satisfied: 1 by D (`ca74572`); 2 by the owner's confirmation of the audit conclusion (2026-10-27); 3 by D7 and its assessment, committed as F (`adce25a`); 4 by the drift check of §26.1 against F's tree, which gave empty output (preparer-run, 2026-10-27; not INDEPENDENTLY REPRODUCED), recorded in the freeze-record commit V (§26.5). The freeze record is §26; the implementation it freezes is F's in-scope tree, identical to the audited baseline `044cbf5`'s. Accepted and frozen at V, effective once the post-V check gives empty output (§26.7, step 7). Every item it depends on is closed. **Its closure is conditional** (the owner's decision, 2026-10-28): REG-A02 stays OPEN at V, and closes only in a later documentation-only commit, once the post-V check has returned empty output with exit status 0 and that evidence is recorded. **The post-V check** (§26.7, step 7), run on 2026-10-28: `git diff --stat adce25a8a33f791a310212e0bd0278e5778c23d2 ddcd80aee67b711750ce5b5171e531eccb6f59eb -- <the 16 §26.1 paths>` gave empty output, exit status 0, no stderr (preparer-run; not INDEPENDENTLY REPRODUCED). Closed in the documentation-only commit that records it (§1) | A committed freeze record naming the frozen commit, with the owner's recorded acceptance | Owner | REG-A01, REG-A11, REG-A12, REG-A21 | CLOSED WITH EVIDENCE |
 | REG-A03 | OWNER DECISION | §8.1 item 13: the F6.2 §10 amendment | Design §8.1 row 13, §11; record §6.1, §10 | OWNER APPROVED: waived for this package, 2026-10-17 (§10). F6.2 and its two pinning tests unchanged | Closed by the waiver. Reopens only if the package changes | Owner | — | CLOSED WITH EVIDENCE |
 | REG-A04 | NON-BLOCKING | The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588) | §18.5, §19.1, §21; `.github/ci/summarize.py` `KNOWN_BASELINE` | OWNER APPROVED: waived for R-F4 acceptance only (§21). TEST EXECUTED: still fails at `7074ea5`, signature matched (§25.1). Limit: lines 589–597 never run (§21.3) | For R-F4 acceptance: closed by the waiver, within §21.5's scope (that exact signature). The defect itself is REG-X01. It authorizes no merge (REG-A23) | Owner | REG-X01 (not for acceptance) | CLOSED WITH EVIDENCE |
@@ -3464,16 +3465,16 @@ REG-B00.
 **The exact next step** (as at 2026-10-28). Step 1 is complete: the audit conclusion is recorded (§26.3.1) and the owner
 confirmed it on 2026-10-27, so REG-A01 is closed. Step 2 reaches the freeze-record commit V: D5's four prerequisites
 are satisfied (F is `adce25a`, and the drift check against its tree gave empty output). Accepted and frozen at V,
-effective once the post-V check gives empty output. Step 2 is complete, and REG-A02 closes, only when a later
-documentation-only commit records that check's empty output (§26.7, step 7). Step 3, the merge decision (REG-A23), is
-a separate owner decision and is not authorized. Nothing in Part B is a prerequisite of steps 1 and 2.
+effective once the post-V check gives empty output. That check gave empty output on 2026-10-28 and is recorded in
+`1171f92` (§26.7, step 7), so step 2 is complete and REG-A02 is closed. Step 3, the merge decision (REG-A23), is a
+separate owner decision and is not authorized. Nothing in Part B is a prerequisite of steps 1 and 2.
 
 ### 25.8 Verdicts
 
 **Merge: DO NOT MERGE** (`claude/rf4-implementation`, candidate `7074ea5` or the commit recording this section).
 - R-F4's independent audit is complete, and the owner confirmed its conclusion on 2026-10-27 (milestone 6; REG-A01
-  closed). Milestone 7: Accepted and frozen at V, effective once the post-V check gives empty output; REG-A02 stays
-  OPEN until then. Neither is a merge decision.
+  closed). Milestone 7: Accepted and frozen at V, effective once the post-V check gives empty output; that check gave
+  empty output on 2026-10-28, and REG-A02 is closed (§26.7, step 7). Neither is a merge decision.
 - Stage 2's authorization excludes a merge (this record's header). No owner merge decision exists (REG-A23).
 - At `7074ea5` the regression workflow's conclusion is failure (`baseline-only`, L02). §21 waives L02 for R-F4
   acceptance only and authorizes no merge.
@@ -3516,7 +3517,7 @@ a separate owner decision and is not authorized. Nothing in Part B is a prerequi
 ## 26. R-F4 owner acceptance and freeze record: Accepted and frozen at V, effective once the post-V check gives empty output (2026-10-26 to 2026-10-28)
 
 > **R-F4: Accepted and frozen at V, effective once the post-V check gives empty output (§26.7, step 7).**
-> **Until then, R-F4 is NOT ACCEPTED / NOT FROZEN. It is NOT AUTHORIZED TO MERGE.**
+> **That check gave empty output on 2026-10-28, so the freeze is in effect. It is NOT AUTHORIZED TO MERGE.**
 > - **The owner's decisions D1 to D7 are recorded in §26.5.** The owner approved D1 to D6 on 2026-10-26, in the
 >   conversation in which this section was prepared, and D7 on 2026-10-27; Claude recorded them in the owner's words. No
 >   signature exists.
@@ -3534,7 +3535,7 @@ a separate owner decision and is not authorized. Nothing in Part B is a prerequi
 > - **Frozen at V, effective once the post-V check gives empty output** (§26.7, steps 6 and 7). The check needs V's
 >   SHA, so it can run only after V is committed. If its output is not empty, V is not a valid freeze-record commit,
 >   and R-F4 is not frozen. REG-A02 stays OPEN at V, and closes only in a later documentation-only commit that records
->   the check's empty output (the owner's decision, 2026-10-28).
+>   the check's empty output (the owner's decision, 2026-10-28). That commit is `1171f92`.
 >
 > **Committing this text as D recorded the decisions and satisfied prerequisite 1 only. It did not freeze R-F4**, and it
 > was not a re-audit. This section is documentation only. It follows the shape of F8's freeze record
@@ -4370,8 +4371,8 @@ the post-V check gives empty output; no commit records a check of its own tree.
   deployment; live CSE requests; arming; the pilot; HB-S4, HB-7 or bulk document retrieval; or executing any restore.
 - **What the freeze changes for HB-7.** HB-Q7's R-F4 condition ("implemented, independently audited, accepted and
   frozen") is met only once the freeze is effective: Accepted and frozen at V, effective once the post-V check gives
-  empty output. Meeting it authorizes nothing. HB-7's other gates remain (design §10 row 13; Phase 2 design §14.1,
-  §21, §27):
+  empty output. That check gave empty output on 2026-10-28 (§26.7, step 7), so R-F4's condition is now met. Meeting it
+  authorizes nothing. HB-7's other gates remain outstanding (design §10 row 13; Phase 2 design §14.1, §21, §27):
   - the pilot accepted;
   - HB-Q9;
   - a recorded checkpoint, which needs REG-B01;
@@ -4462,4 +4463,4 @@ the post-V check gives empty output; no commit records a check of its own tree.
   Correct the dates, the HB-1 note's list and that clause. No pin value changes. Not made in this commit.
 - **After the freeze,** any change to a frozen file needs the owner's change control (design §8.2).
 
-**Status: decisions D1 to D6 recorded at D (`ca74572`), and D7 at F (`adce25a`); D5's four prerequisites satisfied, the fourth by the drift check against F, recorded here; REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; REG-A02 OPEN until the post-V check gives empty output (§26.7, step 7). R-F4: Accepted and frozen at V, effective once the post-V check gives empty output; until then NOT ACCEPTED / NOT FROZEN. NOT AUTHORIZED TO MERGE (REG-A23 OPEN). DO NOT EXECUTE RESTORE.**
+**Status: decisions D1 to D6 recorded at D (`ca74572`), and D7 at F (`adce25a`); D5's four prerequisites satisfied, the fourth by the drift check against F, recorded here; REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; REG-A02 CLOSED WITH EVIDENCE on 2026-10-28, after the post-V check gave empty output with exit status 0 (§26.7, step 7; `1171f928221c7c06974b75eb0796a4ff05ae5337`; preparer-run, not independently reproduced). R-F4: Accepted and frozen at V, effective once the post-V check gives empty output; that check gave empty output, so the freeze is in effect. NOT AUTHORIZED TO MERGE (REG-A23 OPEN). DO NOT EXECUTE RESTORE.**
