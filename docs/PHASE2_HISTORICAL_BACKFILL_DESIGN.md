@@ -91,6 +91,32 @@ are implemented:
 `0fbc73e46ae0…`). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and
 do not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
 
+*HB-2 change control: decision HB2-CLOCK-1 (2026-10-29), one frozen-test edit.* Approved on 2026-10-29 by ChatGPT, the
+project's independent auditor, under decision-making authority the owner delegated to it (the owner's instruction of
+that date); recorded by Claude. It changes exactly one line of one frozen HB-2 test, and nothing else in HB-2: in
+`tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives`, `clock = F.FakeClock()` becomes
+`clock = F.FakeClock(datetime.now(UTC) - timedelta(seconds=30))`.
+- **Why.** The fake transport stamps each request's `requested_at` and `observed_at` from its fake clock, fixed at
+  2026-10-03 03:00 UTC (`tests/hb2_fakes.py` `BASE_WALL`), while `ledger.seconds_since_last_ledger_request` measures
+  against PostgreSQL's real `now()`. Since that minute the test has failed at `since < 60`, and its archive-seeding
+  assertions after that line have not run (`docs/R_F4_IMPLEMENTATION.md` §21.1, §21.3; REG-X01). With the request
+  stamped 30 s in the past, the ledger's value should be under 60 s but over 5 s, so the final
+  `throttle.seed_seconds(...) < 5` holds only if P2's archive is read.
+- **Test-only.** No production code or behaviour, shared test helper (`tests/hb2_fakes.py`), migration, pin, CI
+  workflow, classifier or `KNOWN_BASELINE` entry changes. No preflight pins the test file, and R-F4's frozen paths are
+  untouched. Both bounds and every other assertion are unchanged. HB-2 stays frozen.
+- **Assumptions, not yet shown by execution:** the slice finishes within about 30 s of real time; Python and
+  PostgreSQL read the same clock; P2's archive is empty when the slice opens.
+- **Validation, and the evidence acceptance still needs:** the targeted test in the PostgreSQL 17 test container; then
+  CI on the commit: the regression summary `clean`, L02 without a failure, no new failure, missing or inconsistent
+  report, no unexplained count change, and the fast workflow succeeding. An unexpected failure stops the work for
+  review; the transport, the ledger and the classifier are not changed to work around it.
+- **REG-X01 stays OPEN** until its exit criterion is met: an HB-2 change under its change control, its pin
+  consequences, and L02 passing in CI (`docs/R_F4_IMPLEMENTATION.md` §25.4). The L02 waiver (§21 there) is unchanged:
+  it covers R-F4 acceptance only and authorizes no merge.
+- **It authorizes nothing else:** no merge, staging, provisioning, deployment, live CSE request, arming, pilot, bulk
+  retrieval or restore.
+
 Dead slices are expired by the transport's own spool-aware recovery (a spooled response becomes `recovered_from_spool`
 without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.
 

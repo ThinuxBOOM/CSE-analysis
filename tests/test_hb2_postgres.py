@@ -580,7 +580,7 @@ def test_l4_seeding_reads_both_archives(env):
     assert ledger.seconds_since_last_ledger_request(w) is None
     arm(env)
     item = listing_item(w)
-    clock = F.FakeClock()
+    clock = F.FakeClock(datetime.now(UTC) - timedelta(seconds=30))
     with open_slice(w, stage="HB-S2", kind="json", runtime=runtime(env, clock, script=[ok()])) as sl:
         sl.claim(item)
         sl.json_request(item, *LISTING)

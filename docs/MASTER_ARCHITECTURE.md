@@ -2241,6 +2241,13 @@ Correction included in the frozen baseline:
     lease stays active and the next slice recovers the attempt
     spool-first.
 
+Change control after the freeze: decision HB2-CLOCK-1 (2026-10-29)
+approved a one-line edit of one frozen HB-2 test,
+`test_l4_seeding_reads_both_archives`, whose fake clock disagreed
+with PostgreSQL's real `now()` (REG-X01). No HB-2 code changed. The
+decision is recorded in the Phase 2 design's HB-2 implementation
+status.
+
 HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
 and an owner arming decision still gate any live Phase 2 request.
