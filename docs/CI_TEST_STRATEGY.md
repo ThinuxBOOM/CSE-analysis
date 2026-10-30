@@ -265,6 +265,19 @@ would need `DATABASE_URL` and the five-company fixture their docstring mentions.
 | `test_hb4_postgres`, `test_hb5_postgres` (HB-4/HB-5 integration) | L06, L07 | Before any freeze or merge |
 | The pin- and frozen-file tests (A above) and the R-F4 preflight's pins | L01–L03, L08, L10, L16; fast workflow | At each freeze record |
 
+**The HB-4/HB-5 row's run of 2026-10-30, at `48df3b9`.** Executed by Claude, the implementer, at the owner's request.
+The owner designated it as this row's owner run (the owner's instruction of 2026-10-30). The owner did not execute it,
+and it is not INDEPENDENTLY REPRODUCED (`docs/R_F4_IMPLEMENTATION.md` §25.3).
+- **How:** CI's harness and command (§2.1) on a fresh LF clone of
+  `48df3b91726f90e54da788c10fa2945bdc3d0a47`, in a `cse-ci-linux` image built locally from that commit's recipe
+  (`sha256:a9c09548…`), with no network. The container was started detached under a RAM guard, not with `--rm`.
+- **Results:** both exit 0, on PostgreSQL 17.11:
+  - L06: 48 passed in 148 s (`junit.xml` SHA-256 `af08d462ccc4…`);
+  - L07: 25 passed in 128 s (`646f215a2261…`).
+- **Evidence:** kept outside the repository in `D:\cse-dualrun-20261030\evidence`: each group's reports and logs, the
+  image build log, the runner, a README and a SHA-256 manifest.
+- **What it covers:** this commit's tree. Whether a later merge candidate needs another run is the owner's decision.
+
 ## 6. Collected and executed, file by file
 
 **Where the numbers come from.**
