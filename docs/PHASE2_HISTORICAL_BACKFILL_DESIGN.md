@@ -2417,6 +2417,12 @@ hard-code assumptions about the canonical financial-truth layer.
   Q1 (frozen before staging; the pilot runs on that build). It is implemented on the controlled branch
   `claude/rf4-implementation` (Stages 1 and 2, not merged) and is **not yet independently audited after Stage 2,
   accepted or frozen** (§11.5). HB-7's other gates are unchanged.
+  *(2026-10-31: the sentence above is superseded. R-F4's Stage 2 independent audit is complete (2026-10-26; the
+  owner confirmed its conclusion on 2026-10-27); R-F4 is accepted and frozen, in effect since the post-V check of
+  2026-10-28 (§11.5); and it was merged into `main` on 2026-10-30 through pull request #6 (merge commit `912ab01`;
+  `docs/R_F4_IMPLEMENTATION.md` §26.5). HB-Q7's R-F4 condition is met, which authorizes nothing. The merge
+  authorizes no staging, provisioning, deployment, pilot, live CSE request, real-document acquisition, bulk retrieval
+  or restore, and HB-7's other gates remain.)*
 
 | Step | Scope | Depends on | Exit criteria |
 |---|---|---|---|
