@@ -1,6 +1,7 @@
 # R-F4: full F4 structure persistence (implementation record)
 
-**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, not merged. The independent
+**Status: IMPLEMENTED (Stages 1 and 2) on the controlled branch `claude/rf4-implementation`, and merged into `main`
+on 2026-10-30 through pull request #6 (merge commit `912ab01`; §26.5). The independent
 audit of Stage 2 is complete (2026-10-26): its conclusion, PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`, was
 confirmed by the owner on 2026-10-27 (§26.3.1; REG-A01 closed). Its findings (2026-10-17) are remediated in `f67c181` (Findings 1–3,
 §7), `2bc66c1` (Findings 4–5, §8) and `d6924e7` (the guard's name resolution, §9); the search-path test evidence, and two defects it
@@ -14,7 +15,7 @@ the owner's decisions of 2026-10-22 and the mutants they approved are §20; the 
 failure, for R-F4 acceptance only, is §21 (the test then failed; since the HB-2 correction `f319ca7` it passes,
 and REG-X01 is closed); §5.7's M1–M14 in X2 are §22; a CI rehearsal of the
 runbook's R-F4 checks on a disposable cluster is §23, and on a restored copy of a P1 dump §24; the consolidated issue register for R-F4 and the isolated checkpoint restore, with the stopping rule for specification revisions, is §25 (2026-10-26); the owner's acceptance and freeze record is §26: D5's four prerequisites are satisfied. Accepted and frozen at V, effective once the post-V check gives empty output
-(§26.7, step 7); that check gave empty output on 2026-10-28 (preparer-run, not independently reproduced; `1171f92`), so the freeze is in effect and REG-A02 is CLOSED WITH EVIDENCE. The owner's merge decision D6 (2026-10-30, §26.5) approves the tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI; nothing is merged (REG-A23 IN PROGRESS).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
+(§26.7, step 7); that check gave empty output on 2026-10-28 (preparer-run, not independently reproduced; `1171f92`), so the freeze is in effect and REG-A02 is CLOSED WITH EVIDENCE. The owner's merge decision D6 (2026-10-30, §26.5) approves the tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI, which it did (`45b941c`; §26.5); REG-A23 is CLOSED WITH EVIDENCE, and R-F4 was merged into `main` on 2026-10-30 through pull request #6 (merge commit `912ab01`, whose second parent is `45b941c`).** For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; the R-F4 design carries
 the amendment text) and then, the same day, formally waived the item for this implementation package:
 **item 13 is WAIVED BY OWNER** (§10). Every result here is Claude's report, on synthetic layouts, not independently
 re-executed. No real-document evidence exists.
@@ -28,8 +29,8 @@ and evidence only; it changes no decision.
 **Authorizations:** Stage 1 on 2026-10-14; Stage 2 on 2026-10-16, which "does not authorize component freeze, merge to
 `main`, staging, deployment, live CSE acquisition, the pilot, or bulk retrieval". The component freeze was
 authorized later by D5 and is in effect (§26); the merge process for the tested candidate was approved by D6 on
-2026-10-30, conditionally (§26.5). No merge, staging, deployment, live CSE acquisition, pilot or bulk retrieval has
-happened.
+2026-10-30, conditionally (§26.5), and the merge was made the same day through pull request #6 (`912ab01`). No
+staging, deployment, live CSE acquisition, pilot or bulk retrieval has happened.
 
 ## 1. Commits
 
@@ -3286,7 +3287,7 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 | REG-A20 | NON-BLOCKING | Deferred: purge scope | Design §11 | DOCUMENT REVIEWED | A separate owner decision | Owner | — | DEFERRED WITH RATIONALE |
 | REG-A21 | UNVERIFIED | Five assumptions carried as acceptance criteria: dictionary key order not preserved; non-finite floats refused; copied-cell derivation depends on F4.1; F3 read-back fidelity, checked by `f3_input_sha256`; the default decimal context, reported by `verify` | Design §11 | DOCUMENT REVIEWED: each is guarded by a refusal or a hash check (design §4–§5). OWNER APPROVED: D1 (§26.5), recorded at the decision-record commit `ca74572` (§26.1): the five assumptions accepted for R-F4 component freeze only, subject to real-document validation at the later pilot. This records no validation: synthetic tests do not show that the assumptions hold for real CSE documents. That stays OUTSTANDING under REG-A07, at the pilot (REG-G05). Applied at §26.7 step 2, after REG-A01, on which it depends, closed | Each stays guarded as stated and is accepted in the freeze record; confirmed on real documents at pilot acceptance (REG-A07) | Owner; auditor | REG-A01 | CLOSED WITH EVIDENCE (for R-F4 component freeze only; D1). Real-document validation OUTSTANDING (REG-A07) |
 | REG-A22 | NON-BLOCKING | Statements made stale by the accepted design (Phase 2 design §11.5 and §27; MA §52 and §55) | Design §8 | DOCUMENT REVIEWED: Phase 2 design §11.5 ("R-F4 status (2026-10-16)") and MA's HB-Q7 passages record R-F4 as designed and implemented; Phase 2 D17 lists §11.5 and §27 among the sections it updated. The revision 4 note (Phase 2 design line 26) is a dated entry kept as written, per design §8 | Done | — | — | CLOSED WITH EVIDENCE |
-| REG-A23 | OWNER DECISION | Merging `claude/rf4-implementation` into `main` | Design §8.2, §10; Stage 2's authorization (this record's header) excludes a merge; §21.5 | DOCUMENT REVIEWED; TEST EXECUTED: the regression workflow's conclusion at `7074ea5` is failure (`baseline-only`) (as at 2026-10-26). OWNER APPROVED (2026-10-30): D6 (§26.5) names the tested merge candidate `7efafc82d065938e88473fabe7c9ede8908af294` and approves it for the merge process, subject to the documentation-only commit recording D6 passing its own CI; that commit is the merge target. TEST EXECUTED at the candidate: fast run [41057878548](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41057878548) and regression run [41057878542](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41057878542) succeeded (summary `clean`; L02 241 passed, 0 failed). NOT VERIFIED: the D6 record commit's own CI, which has not run when that commit is made | After REG-A02: the owner's merge decision at a named candidate commit with its CI evidence, including how L02 (REG-X01) is treated, since §21 waives it for acceptance only | Owner | REG-A01, REG-A02 | IN PROGRESS |
+| REG-A23 | OWNER DECISION | Merging `claude/rf4-implementation` into `main` | Design §8.2, §10; Stage 2's authorization (this record's header) excludes a merge; §21.5 | DOCUMENT REVIEWED; TEST EXECUTED: the regression workflow's conclusion at `7074ea5` is failure (`baseline-only`) (as at 2026-10-26). OWNER APPROVED (2026-10-30): D6 (§26.5) names the tested merge candidate `7efafc82d065938e88473fabe7c9ede8908af294` and approves it for the merge process, subject to the documentation-only commit recording D6 passing its own CI; that commit is the merge target. TEST EXECUTED at the candidate: fast run [41057878548](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41057878548) and regression run [41057878542](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41057878542) succeeded (summary `clean`; L02 241 passed, 0 failed). NOT VERIFIED: the D6 record commit's own CI, which has not run when that commit is made. TEST EXECUTED (verified 2026-10-30): on the D6 record commit `45b941c93961fae0055c61761b35fe8208862815`, which is not the tested candidate, fast run [41059823976](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41059823976) success (offline 2,109 passed, 606 skipped) and regression run [41059824119](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41059824119) success, all 22 jobs, summary `clean`, 4,741 passed, 0 failed, 0 errors, 739 skipped, 2 xfailed, 0 xpassed (L02 241, L06 48, L07 25 passed). D6's condition is met (§26.5). No merge has occurred. MERGED (verified 2026-10-30, after the record above): pull request #6 merged `45b941c` into `main` as GitHub's merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c` (first parent `4646626`, second parent `45b941c`; its tree is identical to `45b941c`'s); the pull request's own runs, fast [41076622556](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41076622556) and regression [41076622639](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41076622639), succeeded (summary `clean`). This closure record was first committed in `17630a9` on `claude/rf4-implementation`, which pull request #6 did not include, and reaches `main` in a later documentation-only commit | After REG-A02: the owner's merge decision at a named candidate commit with its CI evidence, including how L02 (REG-X01) is treated, since §21 waives it for acceptance only | Owner | REG-A01, REG-A02 | CLOSED WITH EVIDENCE |
 
 *The owner's decisions D1 to D6 at the audited baseline `044cbf5` are recorded in §26.5 (2026-10-26), committed as the decision-record commit `ca74572`. D5, acceptance and freeze, was approved conditionally. Accepted and frozen at V, effective once the post-V check gives empty output. On 2026-10-27, after D, §26.7 steps 1 and 2 were applied above: REG-A13 (step 1); then REG-A01, and after it REG-A08, A09, A10, A11 and A21 (step 2, with D5 prerequisite 2). Every other status is unchanged. Later on 2026-10-27, after the owner's decision D7 (§26.5), §26.7 step 3 was applied: REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only, and REG-X03 added (Part X). At the freeze-record commit V, REG-A02 stays OPEN (the owner's decision, 2026-10-28): it closes only in a later documentation-only commit, once the post-V check (§26.7, step 7) gives empty output with exit status 0. That check gave empty output with exit status 0 on 2026-10-28, and REG-A02 was closed in the documentation-only commit that records it. REG-G01's Depends gained REG-X03 on 2026-10-27, to match REG-X03's closure condition. §26.4 states the status each item takes, and when (§26.7).*
 
@@ -3438,9 +3439,9 @@ item.
 | BLOCKER | 14 | 13 | 0 | 1 (REG-A01) | 0 |
 | REQUIRED CORRECTION | 6 | 2 (REG-B34, REG-C03) | 0 | 4 (REG-X01, REG-C01, REG-C02, REG-C04) | 0 |
 | NON-BLOCKING | 15 | 1 (REG-X03) | 0 | 5 (REG-A04, REG-A10, REG-A11, REG-A12, REG-A22) | 9 (REG-A13, REG-A14 to REG-A20, REG-X02) |
-| OWNER DECISION | 28 | 24 | 1 (REG-A23) | 2 (REG-A02, REG-A03) | 1 (REG-A05) |
+| OWNER DECISION | 28 | 24 | 0 | 3 (REG-A02, REG-A03, REG-A23) | 1 (REG-A05) |
 | UNVERIFIED | 16 | 11 | 0 | 3 (REG-A08, REG-A09, REG-A21) | 2 (REG-A06, REG-A07) |
-| **All** | **79** | **51** | **1** | **15** | **12** |
+| **All** | **79** | **51** | **0** | **16** | **12** |
 
 Updated on 2026-10-27 for §26.7 steps 1 and 2: REG-A13 DEFERRED WITH RATIONALE (D3); REG-A01 CLOSED WITH EVIDENCE (D5
 prerequisite 2); then REG-A08 and REG-A09 CLOSED WITH EVIDENCE, and REG-A10, A11 and A21 CLOSED WITH EVIDENCE for R-F4
@@ -3454,6 +3455,8 @@ CLOSED WITH EVIDENCE 14. Updated again on 2026-10-30, after REG-X01's exit crite
 change of decision HB2-CLOCK-1 and L02 passing in CI; §25.4): REG-X01 CLOSED WITH EVIDENCE, so OPEN becomes 52
 and CLOSED WITH EVIDENCE 15. Updated again on 2026-10-30 for the owner's merge decision D6 (§26.5): REG-A23 IN
 PROGRESS, so OPEN becomes 51 and IN PROGRESS 1. REG-A23 closes only once the D6 record commit's own CI is recorded.
+Updated again later on 2026-10-30, after that CI succeeded (§26.5): REG-A23 CLOSED WITH EVIDENCE, so IN PROGRESS
+becomes 0 and CLOSED WITH EVIDENCE 16.
 
 By part: A 23, X 3, G 6, B 43, C 4.
 
@@ -3483,6 +3486,12 @@ separate owner decision and is not authorized. Nothing in Part B is a prerequisi
 *(2026-10-30: step 3 is decided. D6 (§26.5) approves the tested candidate `7efafc8` for the merge process, subject
 to the D6 record commit passing its own CI; REG-A23 is IN PROGRESS until that CI is recorded.)*
 
+*(Later on 2026-10-30: that CI succeeded on the D6 record commit `45b941c` (runs 41059823976 and 41059824119), so
+REG-A23 is CLOSED WITH EVIDENCE. Nothing is merged.)*
+
+*(Merged on 2026-10-30: pull request #6 merged D6's merge target `45b941c` into `main` (merge commit `912ab01`).
+Steps 4 to 8 are unchanged; the merge authorizes none of them.)*
+
 ### 25.8 Verdicts
 
 **Merge: DO NOT MERGE** (`claude/rf4-implementation`, candidate `7074ea5` or the commit recording this section).
@@ -3496,7 +3505,14 @@ to the D6 record commit passing its own CI; REG-A23 is IN PROGRESS until that CI
 **Merge, superseded on 2026-10-30** (the verdict above stays as recorded on 2026-10-26): the owner's decision D6
 (§26.5) approves the tested candidate `7efafc8` for the merge process, subject to the D6 record commit passing its own
 CI; that commit is the merge target. At the candidate both workflows succeed (runs 41057878548 and 41057878542;
-summary `clean`; L02 241 passed). Nothing is merged yet.
+summary `clean`; L02 241 passed). Later on 2026-10-30 both also succeeded on the D6 record commit `45b941c` (runs
+41059823976 and 41059824119; summary `clean`), so D6's condition is met and REG-A23 is CLOSED WITH EVIDENCE.
+Nothing is merged yet.
+
+**Merged on 2026-10-30** through pull request #6 (verified the same day). GitHub's merge commit
+`912ab0177a1476bd6af79e1884af2c899a9e6e2c` has `4646626` as its first parent and D6's merge target `45b941c` as its
+second, and its tree is identical to `45b941c`'s. The tested candidate `7efafc8` is that target's parent. The merge
+authorizes nothing beyond itself (§26.5).
 
 **Restore: DO NOT EXECUTE RESTORE.**
 - Runbook §6 blocks the checkpoint's restored copy until a separately reviewed and approved procedure exists (`c398029`;
@@ -3539,6 +3555,8 @@ summary `clean`; L02 241 passed). Nothing is merged yet.
 > **That check gave empty output on 2026-10-28, so the freeze is in effect. Merging was not authorized until D6
 > was decided again on 2026-10-30 (§26.5): the tested candidate `7efafc8` is approved for the merge process,
 > subject to the commit recording D6 passing its own CI.**
+> **Merged into `main` on 2026-10-30 through pull request #6: merge commit `912ab01`, whose second parent is D6's
+> merge target `45b941c` (§26.5).**
 > - **The owner's decisions D1 to D7 are recorded in §26.5.** The owner approved D1 to D6 on 2026-10-26, in the
 >   conversation in which this section was prepared, and D7 on 2026-10-27; Claude recorded them in the owner's words. No
 >   signature exists.
@@ -3725,7 +3743,7 @@ unchanged.
 | REG-A21 | UNVERIFIED: "Five assumptions carried as acceptance criteria: dictionary key order not preserved; non-finite floats refused; copied-cell derivation depends on F4.1; F3 read-back fidelity, checked by `f3_input_sha256`; the default decimal context, reported by `verify`" (detailed below) | OPEN | Recorded assumptions | D1: accepted, subject to the pilot | D1's acceptance of the five assumptions for R-F4 component freeze is recorded at the decision-record commit. The register status becomes CLOSED WITH EVIDENCE, for that purpose only, at §26.7 step 2, once REG-A01, on which it depends, has closed. Applied on 2026-10-27, after REG-A01. This records no validation. Real-document validation of the assumptions remains OUTSTANDING under REG-A07, at the pilot (REG-G05); REG-A07, the pilot and the related release gates stay open until actually satisfied |
 | REG-A04 | NON-BLOCKING: "The L02 baseline failure, `tests/test_hb2_postgres.py::test_l4_seeding_reads_both_archives` (line 588)" | CLOSED WITH EVIDENCE (§21's waiver, for R-F4 acceptance only) | — | D4: confirmed at this baseline | Unchanged |
 | REG-A02 | OWNER DECISION: "Component acceptance and the freeze record: R-F4 frozen, F5 frozen again, the HB-1 to HB-6 pin-only amendments recorded" | OPEN | Stays open until the owner approves | D5: approved conditionally. Accepted and frozen at V, effective once the post-V check gives empty output | CLOSED WITH EVIDENCE only when the freeze takes effect. Recorded at D as "at the freeze-record commit V (§26.1; §26.7, step 6)"; on 2026-10-28 the owner decided that REG-A02 stays OPEN at V and closes only in a later documentation-only commit, once the post-V check (§26.7, step 7) has given empty output with exit status 0 and that evidence is recorded. Until then, OPEN. Applied on 2026-10-28: the post-V check gave empty output with exit status 0, and REG-A02 is CLOSED WITH EVIDENCE in the documentation-only commit that records it |
-| REG-A23 | OWNER DECISION: "Merging `claude/rf4-implementation` into `main`" | OPEN | A separate decision | D6: not authorized | OPEN: a separate recorded owner decision is needed before any merge. Applied on 2026-10-30: D6 decided (§26.5); REG-A23 is IN PROGRESS until the D6 record commit's own CI is recorded (§25.4) |
+| REG-A23 | OWNER DECISION: "Merging `claude/rf4-implementation` into `main`" | OPEN | A separate decision | D6: not authorized | OPEN: a separate recorded owner decision is needed before any merge. Applied on 2026-10-30: D6 decided (§26.5); REG-A23 is IN PROGRESS until the D6 record commit's own CI is recorded (§25.4). Later on 2026-10-30: that CI succeeded on `45b941c` (runs 41059823976, 41059824119); REG-A23 CLOSED WITH EVIDENCE (§25.4) |
 
 **REG-A21's five assumptions**, as `docs/R_F4_DESIGN.md` §11 records them, with their guards:
 1. **Dictionary ordering and canonical hashing:** "dictionary key order is not preserved, and nothing depends on it";
@@ -4385,6 +4403,35 @@ the post-V check gives empty output; no commit records a check of its own tree.
     isolated restore stays blocked. **DO NOT EXECUTE RESTORE.**
   - **It does not** merge anything, or authorize a merge before its condition is met. It authorizes no staging,
     provisioning, deployment, live CSE request, arming, pilot, bulk retrieval or restore, and changes no frozen file.
+  - **The condition, met on 2026-10-30.** Verified that day through GitHub's public API (job conclusions and check-run
+    annotations; the job logs need sign-in and were not read). Both runs are for the D6 record commit's exact SHA,
+    `45b941c93961fae0055c61761b35fe8208862815`, first attempt. That commit is not the tested candidate
+    `7efafc82d065938e88473fabe7c9ede8908af294` (its parent), and differs from it in documentation only:
+    - fast run [41059823976](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41059823976):
+      success; offline 2,109 passed, 606 skipped;
+    - regression run [41059824119](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41059824119):
+      success, all 22 jobs (the 21 test groups and the summary); summary verdict `clean`; 4,741 passed, 0 failed,
+      0 errors, 739 skipped, 2 xfailed, 0 xpassed; L02 241 passed; L06 48 passed; L07 25 passed;
+    - so D6's condition is met, and REG-A23 is CLOSED WITH EVIDENCE (§25.4).
+  - **The closure's scope.** The merge target D6 names is `45b941c`. This closure is recorded in a later
+    documentation-only commit, which is not D6's merge target; D6 does not decide whether that commit is merged with
+    `45b941c`. No merge has occurred, and no pull request exists (GitHub API, 2026-10-30). The closure authorizes
+    nothing beyond D6: no staging, provisioning, deployment, pilot, live CSE request, real-document acquisition, bulk
+    retrieval or restore. **DO NOT EXECUTE RESTORE.**
+  - **Merged on 2026-10-30.** Verified that day with `git` and GitHub's public API: pull request #6
+    (`rf4-d6-approved-45b941c` into `main`) was merged at 15:11:02 UTC. Three different commits, not interchangeable:
+    - the tested candidate, `7efafc82d065938e88473fabe7c9ede8908af294`;
+    - D6's merge target and the pull request's head, `45b941c93961fae0055c61761b35fe8208862815`. Besides its push runs
+      above, the pull request's own runs succeeded on it: fast
+      [41076622556](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41076622556) and regression
+      [41076622639](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/41076622639), summary `clean`;
+    - GitHub's merge commit, `912ab0177a1476bd6af79e1884af2c899a9e6e2c`: first parent `4646626` (`main` before the
+      merge), second parent `45b941c`. Its tree is identical to `45b941c`'s, so the merge itself changed no file.
+    - The pull request held 69 commits (`77cfb84` to `45b941c`) and 46 files. It did not include `17630a9`, the
+      REG-A23 closure record, which reaches `main` in a later documentation-only commit with its text unchanged.
+    - The merge authorizes nothing beyond itself: no staging, provisioning, deployment, pilot, live CSE request,
+      real-document acquisition, bulk retrieval or restore. REG-X03, REG-G01 to REG-G06, REG-A05, REG-A07 and REG-B00
+      to REG-B42 stay as recorded. **DO NOT EXECUTE RESTORE.**
 
 **D7. REG-A12: the readings of gaps (b) and (c2), and the six conclusions** (REG-A12; D5 prerequisite 3)
 - [x] Adopt the narrower reading under (b), the narrower reading under (c2), and all six conclusions as prepared under
@@ -4520,4 +4567,4 @@ the post-V check gives empty output; no commit records a check of its own tree.
   Correct the dates, the HB-1 note's list and that clause. No pin value changes. Not made in this commit.
 - **After the freeze,** any change to a frozen file needs the owner's change control (design §8.2).
 
-**Status: decisions D1 to D6 recorded at D (`ca74572`), and D7 at F (`adce25a`); D5's four prerequisites satisfied, the fourth by the drift check against F, recorded here; REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; REG-A02 CLOSED WITH EVIDENCE on 2026-10-28, after the post-V check gave empty output with exit status 0 (§26.7, step 7; `1171f928221c7c06974b75eb0796a4ff05ae5337`; preparer-run, not independently reproduced). R-F4: Accepted and frozen at V, effective once the post-V check gives empty output; that check gave empty output, so the freeze is in effect. Merge: D6 (2026-10-30) approves the tested candidate `7efafc8` for the merge process, subject to the D6 record commit passing its own CI; nothing is merged (REG-A23 IN PROGRESS). DO NOT EXECUTE RESTORE.**
+**Status: decisions D1 to D6 recorded at D (`ca74572`), and D7 at F (`adce25a`); D5's four prerequisites satisfied, the fourth by the drift check against F, recorded here; REG-A12 CLOSED WITH EVIDENCE for R-F4 component freeze only; REG-A02 CLOSED WITH EVIDENCE on 2026-10-28, after the post-V check gave empty output with exit status 0 (§26.7, step 7; `1171f928221c7c06974b75eb0796a4ff05ae5337`; preparer-run, not independently reproduced). R-F4: Accepted and frozen at V, effective once the post-V check gives empty output; that check gave empty output, so the freeze is in effect. Merge: D6 (2026-10-30) approves the tested candidate `7efafc8` for the merge process, subject to the D6 record commit passing its own CI, which it did on 2026-10-30 (`45b941c`; runs 41059823976 and 41059824119); REG-A23 CLOSED WITH EVIDENCE; merged into `main` on 2026-10-30 through pull request #6 (merge commit `912ab01`, second parent `45b941c`). DO NOT EXECUTE RESTORE.**

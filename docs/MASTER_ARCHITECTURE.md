@@ -1868,6 +1868,12 @@ R-F4 branch (`claude/rf4-implementation`, not merged), R-F4's additive
 §4, §7); it is implemented, not independently audited, accepted or
 frozen.
 
+*(2026-10-30: R-F4 was merged into `main` through pull request #6
+(merge commit `912ab01`), so `main`'s migration sequence now reaches
+0018. R-F4 is independently audited, accepted and frozen
+(`docs/R_F4_IMPLEMENTATION.md` §26). The paragraph above records the
+position before the merge.)*
+
 Historical notes:
 
 -   `0006` was associated with the old Supabase security/RLS boundary
@@ -2077,7 +2083,8 @@ Still open after real-data validation:
     and replaces none. R-F4 is designed and accepted
     (`docs/R_F4_DESIGN.md`, 2026-10-14; release sequence Q1) and
     implemented in two owner-authorized stages on the controlled
-    branch `claude/rf4-implementation` (not merged): Stage 1, the new
+    branch `claude/rf4-implementation` (merged on 2026-10-30, below):
+    Stage 1, the new
     package, migration 0018 and its tests; Stage 2, F5's `_persist`
     wired to it, the approved frozen-test and RDV edits and the HB-1
     to HB-6 pin cascade. Its independent audit is complete (2026-10-26;
@@ -2088,10 +2095,11 @@ Still open after real-data validation:
     2026-10-28 (run by Claude, not independently reproduced; §26.7,
     step 7 there), so the freeze is in effect. HB-Q7's R-F4 condition
     is therefore met; meeting it authorizes nothing, and HB-7's other
-    gates remain outstanding. R-F4 is not merged; the owner's merge
-    decision D6 (2026-10-30) approves the tested candidate `7efafc8`
-    for the merge process, subject to the commit recording D6 passing
-    its own CI (§26.5 there).
+    gates remain outstanding. R-F4 is merged into `main` (2026-10-30,
+    pull request #6, merge commit `912ab01`, whose second parent is the
+    D6 merge target `45b941c`); the owner's merge decision D6 approved
+    the tested candidate `7efafc8` (§26.5 there). The merge authorizes
+    nothing further.
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2777,7 +2785,8 @@ architecture should be implemented in dependency order.
     persistence of F6.2 §10--§11 is a separate phase (requirement
     R-F4, Phase 2 design §11.5; F6.4 §23 Q3), designed and accepted
     (`docs/R_F4_DESIGN.md`, 2026-10-14), implemented on the controlled
-    branch `claude/rf4-implementation` (not merged) and independently
+    branch `claude/rf4-implementation` (merged into `main` on
+    2026-10-30) and independently
     audited. R-F4 status: Accepted and frozen at V, effective once the
     post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26);
     that check gave empty output on 2026-10-28 (run by Claude, not
@@ -2847,7 +2856,8 @@ follows the release sequence of §43.1. R-F4 is designed and accepted
 staging and the live pilot is release sequence Q1 (accepted
 2026-10-14): R-F4 is frozen before Docker staging, and the pilot runs on
 that build. It is implemented on the controlled branch
-`claude/rf4-implementation` (Stages 1 and 2; not merged) and
+`claude/rf4-implementation` (Stages 1 and 2; merged into `main` on
+2026-10-30) and
 independently audited (2026-10-26; the owner confirmed the conclusion on
 2026-10-27). R-F4 status: Accepted and frozen at V, effective once the
 post-V check gives empty output (V is its freeze-record commit,
@@ -2855,10 +2865,11 @@ post-V check gives empty output (V is its freeze-record commit,
 2026-10-28 (run by Claude, not independently reproduced), so the freeze
 is in effect. HB-Q7's R-F4 condition is therefore met; meeting it
 authorizes nothing, and HB-7 remains subject to all of its other gates.
-R-F4 is not merged: the owner's merge decision D6 (2026-10-30;
-`docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate
-`7efafc8` for the merge process, subject to the commit recording D6
-passing its own CI.
+R-F4 is merged into `main` (2026-10-30, pull request #6, merge commit
+`912ab01`, whose second parent is the D6 merge target `45b941c`) under
+the owner's merge decision D6 (`docs/R_F4_IMPLEMENTATION.md` §26.5),
+which approved the tested candidate `7efafc8`. The merge authorizes
+nothing further: Docker staging and every later gate stay as recorded.
 
 ## Phase 2 --- Historical financial backfill
 
