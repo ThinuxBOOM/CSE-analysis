@@ -116,6 +116,13 @@ that date); recorded by Claude. It changes exactly one line of one frozen HB-2 t
   it covers R-F4 acceptance only and authorizes no merge.
 - **It authorizes nothing else:** no merge, staging, provisioning, deployment, live CSE request, arming, pilot, bulk
   retrieval or restore.
+- **Validated (2026-10-30).** The change is commit `f319ca7ec2b048666eb3affbdb0c1e5e57419ad3`. The targeted test
+  passed in a single local run by Claude (2026-10-29: 1 passed in 8.99 s, `cse-p1-test`, PostgreSQL 17.11, no network;
+  not independently reproduced). In GitHub Actions on that commit, fast run 40981999915 succeeded (2,109 passed, 606
+  skipped), and regression run 40981999902 succeeded with the summary verdict `clean`: L02 (job 123824022585)
+  241 passed, exit 0, on PostgreSQL 17.11; all 21 groups 4,741 passed, 0 failed, 739 skipped, 2 xfailed. The
+  assumptions above held in both runs; they remain timing and environment assumptions. REG-X01 is CLOSED WITH
+  EVIDENCE (`docs/R_F4_IMPLEMENTATION.md` §25.4). The approval and the pre-validation text above are unchanged.
 
 Dead slices are expired by the transport's own spool-aware recovery (a spooled response becomes `recovered_from_spool`
 without another request; otherwise `unrecorded`), not by HB-1's `store.expire_dead_leases`.

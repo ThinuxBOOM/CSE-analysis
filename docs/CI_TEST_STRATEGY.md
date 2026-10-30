@@ -377,6 +377,12 @@ first GitHub Actions run (§9).
 elapsed time is reported as a new failure. This was checked against a real report and against altered copies. Only
 the owner changes the list.
 
+**Corrected (2026-10-30).** The test's fake clock was changed under HB-2 change control (decision HB2-CLOCK-1, commit
+`f319ca7`; `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md`, HB-2 implementation status). From that commit the test passes:
+in regression run [40981999902](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40981999902), L02 is
+241 passed and the summary verdict is `clean`. The text above describes the failure as it was. `KNOWN_BASELINE`
+is unchanged: it matches only this failure's signature, which no longer occurs, and only the owner removes it (§12).
+
 ### 7.2 What the first GitHub Actions run found on Windows, and what changed
 
 The first regression run (§9) failed two Windows groups that had passed on the owner's Windows machine. Both are

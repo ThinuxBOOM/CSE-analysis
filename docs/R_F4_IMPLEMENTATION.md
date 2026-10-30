@@ -2564,6 +2564,10 @@ fake clock records requests at a fixed 2026-10-03 instant, which PostgreSQL's re
 **It stays open.** Correcting it changes a frozen HB-2 test, so it needs HB-2 change control (and its pin
 consequences, if any), under a separate owner decision. It is not done here, and this waiver does not authorize it.
 
+*(2026-10-30: corrected under HB-2 change control by decision HB2-CLOCK-1, in `f319ca7`; L02 passes in CI and
+REG-X01 is CLOSED WITH EVIDENCE (§25.4). §21 is kept as decided on 2026-10-22, and the waiver's scope (§21.5) is
+unchanged: R-F4 acceptance only, no merge.)*
+
 ### 21.5 Scope
 
 **It covers only this one test failure,** identified by its recorded signature, for the R-F4 acceptance process. A
@@ -3286,7 +3290,7 @@ Columns: **Cat.** is the category; **Depends** names the items that must close f
 
 | ID | Cat. | Requirement or failure condition | Sources | Evidence and its limits | Closure condition | Owner / role | Depends | Status |
 |---|---|---|---|---|---|---|---|---|
-| REG-X01 | REQUIRED CORRECTION | HB2-CLOCK: the frozen HB-2 test compares a fake clock fixed at 2026-10-03 03:00 UTC with PostgreSQL's real `now()` | §21.1, §21.4 | TEST EXECUTED: fails at `7074ea5` (§25.1). SOURCE: mechanism recorded in §21.1, not re-read in this pass. CHANGE CONTROL (2026-10-29): decision HB2-CLOCK-1 approved one line of the test (its fake clock), recorded in `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (HB-2 implementation status) and committed with that edit. L02 passing in CI: not yet shown | An HB-2 change under its change control, its pin consequences, and L02 passing in CI | Owner (HB-2 change control) | — | OPEN |
+| REG-X01 | REQUIRED CORRECTION | HB2-CLOCK: the frozen HB-2 test compares a fake clock fixed at 2026-10-03 03:00 UTC with PostgreSQL's real `now()` | §21.1, §21.4 | TEST EXECUTED: fails at `7074ea5` (§25.1). SOURCE: mechanism recorded in §21.1, not re-read in this pass. CHANGE CONTROL (2026-10-29): decision HB2-CLOCK-1 approved one line of the test (its fake clock), recorded in `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (HB-2 implementation status) and committed with that edit. EXIT CRITERION MET (2026-10-30): the change is commit `f319ca7ec2b048666eb3affbdb0c1e5e57419ad3`, one line of the test plus these records; its pin consequences: none (no preflight pins the test file, and the 16 paths of §26.1 are unchanged against F). TEST EXECUTED, a single local run by Claude (2026-10-29, `cse-p1-test`, PostgreSQL 17.11, no network): the test passed, 1 passed in 8.99 s. TEST EXECUTED in GitHub Actions on that commit: fast run [40981999915](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40981999915) success, offline 2,109 passed, 606 skipped; regression run [40981999902](https://github.com/ThinuxBOOM/CSE-analysis/actions/runs/40981999902) success, summary job 123824877458 verdict `clean`, L02 job 123824022585 241 passed (exit 0) on PostgreSQL 17.11, all 21 groups 4,741 passed, 0 failed, 0 errors, 739 skipped, 2 xfailed, 0 xpassed. Read on 2026-10-30 from the public API's check-run annotations and the run page; the job logs need sign-in and were not read. INDEPENDENTLY REPRODUCED: none | An HB-2 change under its change control, its pin consequences, and L02 passing in CI | Owner (HB-2 change control) | — | CLOSED WITH EVIDENCE |
 | REG-X02 | NON-BLOCKING | HB5-W1: `os.path.commonpath` raises `ValueError` for paths on different Windows drives in HB-5's `write_json` | §19.4, §20.1 item 4 | SOURCE REVIEWED: `worker/backfill_f6/reports.py:34`. TEST EXECUTED: reproduced by Claude, 2026-10-21 (§19.4); CI run 39162102932. OWNER APPROVED: separate issue, not a release blocker on Linux (2026-10-22) | Kept deferred while Linux is the only supported platform. A fix needs HB-5 change control and an HB-6 pin cascade | Owner | — | DEFERRED WITH RATIONALE |
 | REG-X03 | NON-BLOCKING | P1's verification of the migration ledger. `verify_server` checks the privileges granted to PUBLIC on `ops` tables and that `cse_worker` lacks USAGE on `ops`; it does not check INSERT granted on `ops.schema_migrations` to a named role, such as `cse_reader` or `cse_backup`, which both have USAGE on `ops`. While the ledger has no 0018 row, a role so granted could insert a forged one that neither R-F4's preflight nor P1's `migrate verify` tells apart from a genuine one. Nor does `verify_server` check the ledger's row-level security, inheritance, partitioning or persistence. Found on 2026-10-27, while assessing REG-A12's gap (c2) | §26.5, gap (c2); `worker/ops/verify_server.py:23-30`, `117-168`; `supabase/migrations/0009_local_security_boundary.sql:60` | SOURCE REVIEWED (2026-10-27): `verify_server` checks PUBLIC's privileges on `public` and `ops` tables (`:120-123`), the worker's lack of UPDATE, DELETE and TRUNCATE on the append-only tables (`:125-132`) and of USAGE on `ops` (`:133-135`), DELETE and TRUNCATE grants beyond the owner (`:136-141`), the append-only triggers (`:143-159`) and a clean ledger (`:161-168`). Granting INSERT on the ledger needs its owner, under the ownership premise of §26.5, gap (c2), which is untested. NOT VERIFIED: no such grant was made or tested. Outside R-F4's requirements under D7's adopted reading of gap (c2) | An owner decision, recorded before REG-G01's staging gate closes (REG-G01 depends on it): a change to P1's `verify_server` under P1's change control, or the risk recorded as an accepted P1 residual | Owner (P1 change control) | — | OPEN |
 
@@ -3428,11 +3432,11 @@ item.
 | Category | Total | OPEN | IN PROGRESS | CLOSED WITH EVIDENCE | DEFERRED WITH RATIONALE |
 |---|---|---|---|---|---|
 | BLOCKER | 14 | 13 | 0 | 1 (REG-A01) | 0 |
-| REQUIRED CORRECTION | 6 | 3 (REG-X01, REG-B34, REG-C03) | 0 | 3 (REG-C01, REG-C02, REG-C04) | 0 |
+| REQUIRED CORRECTION | 6 | 2 (REG-B34, REG-C03) | 0 | 4 (REG-X01, REG-C01, REG-C02, REG-C04) | 0 |
 | NON-BLOCKING | 15 | 1 (REG-X03) | 0 | 5 (REG-A04, REG-A10, REG-A11, REG-A12, REG-A22) | 9 (REG-A13, REG-A14 to REG-A20, REG-X02) |
 | OWNER DECISION | 28 | 25 | 0 | 2 (REG-A02, REG-A03) | 1 (REG-A05) |
 | UNVERIFIED | 16 | 11 | 0 | 3 (REG-A08, REG-A09, REG-A21) | 2 (REG-A06, REG-A07) |
-| **All** | **79** | **53** | **0** | **14** | **12** |
+| **All** | **79** | **52** | **0** | **15** | **12** |
 
 Updated on 2026-10-27 for §26.7 steps 1 and 2: REG-A13 DEFERRED WITH RATIONALE (D3); REG-A01 CLOSED WITH EVIDENCE (D5
 prerequisite 2); then REG-A08 and REG-A09 CLOSED WITH EVIDENCE, and REG-A10, A11 and A21 CLOSED WITH EVIDENCE for R-F4
@@ -3442,7 +3446,9 @@ gap (c2), added to Part X as NON-BLOCKING and OPEN. So the register has 79 items
 REG-X03 opened), and CLOSED WITH EVIDENCE becomes 13. The counts are unchanged at the freeze-record commit V:
 REG-A02 stays OPEN until the post-V check gives empty output (§26.7, step 7). Updated again on 2026-10-28, after the
 post-V check gave empty output with exit status 0 (§26.7, step 7): REG-A02 CLOSED WITH EVIDENCE, so OPEN becomes 53 and
-CLOSED WITH EVIDENCE 14.
+CLOSED WITH EVIDENCE 14. Updated again on 2026-10-30, after REG-X01's exit criterion was met (the HB-2
+change of decision HB2-CLOCK-1 and L02 passing in CI; §25.4): REG-X01 CLOSED WITH EVIDENCE, so OPEN becomes 52
+and CLOSED WITH EVIDENCE 15.
 
 By part: A 23, X 3, G 6, B 43, C 4.
 
