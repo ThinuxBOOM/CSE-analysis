@@ -1,15 +1,37 @@
 # R-F4: full F4 structure persistence (design record)
 
-**Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). Implementation is **not yet authorized**. Nothing is
-implemented, independently audited, accepted as a component or frozen. Staging, the pilot, production deployment and
-live operation are separate, later milestones (§10). This record changes no code, migration, test, pin or other
-document.
+**Status:** DESIGN ACCEPTED (owner decisions of 2026-10-14, §2). **Implementation authorized** by the owner on
+2026-10-14 for the §8.1 scope under the §8.2 sequence, **one stage at a time**: Stage 1 (§8.2 step 2, the new code and
+its tests) is implemented, with its audit corrections, on the controlled branch `claude/rf4-implementation`.
+**Stage 2** (§8.2 steps 3–6: F5's `_persist` wired to R-F4, the approved frozen-test and RDV edits, the HB-1 to HB-6 pin
+cascade, the end-to-end tests, the regression controls and the records) was **authorized by the owner on 2026-10-16** and
+is implemented on the same branch: owner commit `fa464d2` (pushed), then follow-up commits listed with their evidence in
+`docs/R_F4_IMPLEMENTATION.md`. For §8.1 item 13 the owner selected Option B on 2026-10-17 (F6.2 stays frozen; this
+record carries the amendment text) and then, the same day, formally waived the item for this implementation package:
+**item 13 is WAIVED BY OWNER** (§11). The independent audit of Stage 2 reported five
+findings (Findings 1–3 on 2026-10-17, Findings 4–5 at the review of their remediation); their remediation is
+implemented on the same branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8), as are the guard's unqualified name
+resolution with its test evidence (§9, §11), finding RF4-A1, the reader's and `verify`'s name resolution and
+`verify`'s snapshot (§12), `verify`'s snapshot metadata and failure paths (§13), the HB-4 integration tests (§14),
+`verify`'s scope and the preflight's column check (§15), and the preflight's table properties with `verify` under
+row-level security (§16), and the runbook's preflight-then-`verify` order (§17). The independent audit of Stage 2 is
+**complete**: its conclusion, PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5` (2026-10-26), was confirmed by the
+owner on 2026-10-27. R-F4 as a component: **Accepted and frozen at V, effective once the post-V check gives empty
+output** (V is its freeze-record commit, `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28
+(run by Claude, not independently reproduced; `docs/R_F4_IMPLEMENTATION.md` §26.7, step 7), so the freeze is in effect.
+It is **not** merged. The owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the
+tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI. Staging,
+the pilot, production deployment and live operation are separate, later milestones (§10); Stage 2's authorization
+authorizes none of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code,
+migration, test or pin.
 
 | Milestone | Status |
 |---|---|
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
-| Implementation and change-control authorization | **Not given**. It is the next owner action (§8.2) |
-| Implementation, tests, independent audit, component acceptance and freeze | Not started |
+| Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
+| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
+| Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13: Option B selected, then the item waived by the owner, 2026-10-17 (§11). Accepted and frozen at V, effective once the post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7) |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit is **complete** (2026-10-26; PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`), and the owner confirmed its conclusion on 2026-10-27; the findings it and the earlier reviews raised are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7 to §24). It inspected the CI evidence; no test was independently re-run. Component acceptance and the freeze: approved conditionally by the owner (D5, 2026-10-26), its four prerequisites satisfied. **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7; run by Claude, not independently reproduced). Not merged; the owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -25,7 +47,8 @@ document.
 The `RF4-` prefix keeps these apart from F6.4's M1–M5 (F6.4 design §6) and F8's OD-1 to OD-6.
 
 **Baseline and evidence.** The code baseline is `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. `main` is now
-`e6a4881`, which adds only this record, so the code is identical. The evidence is of three kinds:
+`4646626`, which adds only this record (`e6a4881`, then its update), so the code is identical; Stage 1 branched from
+it. The design evidence is of three kinds:
 - reading the baseline's code;
 - **reported synthetic results** of the OD-13 simulation. These ran on disposable scratch copies on 2026-10-14, were
   run by Claude and have not been independently re-executed. They used a simulated schema that differs from §4;
@@ -87,6 +110,9 @@ There is no remaining open owner decision about the R-F4 design. Deferred items,
   - The order is F6.2 §10's: F3, then the issuer link, then F4, then F5.
   - The fallback is required because HB-4 builds its stores with four keys
     (`worker/backfill_documents/worker.py:328-330`) and stays unchanged.
+  - **As implemented (Stage 2):** the call is `f4.save(got["f4"], classification_id, got["classification"])`. The
+    store also takes the F3 dict F5 consumed (already in `got`), from which it computes `f3_input_sha256` (§4.3); the
+    two-argument form above is shorthand.
 - **The module docstring** ("Never persisted: … unmapped rows/cells") is corrected.
 - **Unchanged:** `run()`, `main()`, F2, F3, F4, F5's builder, mapper, vocabulary and stores, and all of HB-4.
 
@@ -141,7 +167,16 @@ inherited columns are copies (`:1355`).
 - NaN or ±∞ floats;
 - non-finite `Decimal`s;
 - tuples, non-string keys, keys beginning with `$`, and subclassed types;
-- any value of a type its column doesn't expect.
+- any value of a type its column doesn't expect;
+- an integer outside its column's SQL range (`integer` or `bigint`), or of more than 4,300 digits where it is stored
+  as text or inside `jsonb` (Stage 1 corrections).
+
+**Long integers are portable (Stage 1 correction after the independent source audit).** The 4,300-digit limit is
+R-F4's own contract, not the running interpreter's: Python's int-string conversion limit (`sys.set_int_max_str_digits`)
+can be set as low as 640 digits. R-F4 converts long integers itself, in pieces below that minimum, when it writes number
+text, writes and reads `jsonb` (its own JSON writer, and a `jsonb` decoder registered on the reader's cursors only),
+and hashes. So evidence within the contract that one process writes, another reads back exactly, whatever either's
+setting. The JSON writer reproduces `json.dumps` character for character, so the hashes are unchanged.
 
 **Why these encodings (reported probe and census, 2026-10-14):**
 - **`numeric`** drops the sign of zero and rewrites positive exponents, and psycopg2 sends a non-finite `Decimal` as
@@ -176,6 +211,11 @@ inherited columns are copies (`:1355`).
 - PUBLIC is revoked. `cse_worker` may SELECT and INSERT; `cse_reader` may SELECT; `cse_backup` reads through
   `pg_read_all_data`.
 - `f5_reject_mutation` triggers stop UPDATE, DELETE and TRUNCATE for every role.
+- **Known limitation of this design (recorded 2026-10-16, Stage 1 audit finding F-4; not changed):** append-only does
+  not close an extraction once saved. A role with INSERT (`cse_worker`) can still add statement, column, row or cell
+  rows to an extraction that is already committed. That is **detected, not prevented**: the child counts and the
+  content hash no longer match, so the reader refuses the extraction and `verify` reports it `incomplete` or
+  `corrupt`. Preventing it would be a design change for the owner to decide.
 - There is no `SECURITY DEFINER`, no row-level security, no new role, no advisory-lock literal, no `bytea` and no
   `*path` column (HB-B8).
 - Retention is permanent (F6.2 §11).
@@ -220,10 +260,78 @@ inherited columns are copies (`:1355`).
   - the F5 rebuild for every F5 run;
   - F5 runs that have no F4 extraction.
 
-  A runbook §6 step adds it to each checkpoint, on the restored copy.
-- **R-F4 preflight** is new, in the package. It checks that:
-  - 0018 is applied at its pinned hash;
-  - the five tables and their privileges (§4.4) are in place.
+  It runs in one transaction set to `REPEATABLE READ, READ ONLY` before its first query. So the enumeration and every
+  read-back see one snapshot, and PostgreSQL refuses any write. The report names that snapshot by its identity
+  (`pg_snapshot`: PostgreSQL's `pg_current_snapshot()`) and records apart when the transaction began
+  (`transaction_started_at`), a lower bound on the snapshot's time, not its time. A connection in autocommit mode is
+  refused, and a failure is raised as itself even when the rollback after it fails too
+  (`docs/R_F4_IMPLEMENTATION.md` §13).
+
+  **Scope (2026-10-20).** Without a limit `verify` is a full scan, the only kind that can be clean. `--limit N` (an
+  integer of at least 1) checks the first N extractions and the first N F5 runs, by id: a partial scan, reported as
+  such (`scope`) and never clean, so the command exits 1 whatever it finds. A limit of 0 or below is refused: a
+  `ValueError`, and for the command a usage error (exit 2) before any connection (`docs/R_F4_IMPLEMENTATION.md` §15).
+
+  **Run it only after a clean preflight (2026-10-20).** `verify` reads what its role can see. With row-level security
+  on a table it reads, `cse_reader` can see part of the evidence or none, and by the code `verify` then reports
+  clean: a policy hiding a bad F5 run, or row-level security without a policy, which hides everything
+  (`tests/test_rf4_postgres.py` p52 tests both; its first run is GitHub Actions). `verify` is not changed and repairs
+  nothing. The preflight reads the catalogue, not the rows, and refuses those configurations
+  (`docs/R_F4_IMPLEMENTATION.md` §16).
+
+  **Audit finding RF4-A1 (2026-10-20).** Before its first unqualified query, `verify` checks the current session's
+  name resolution with the writer's check (the in-band bullet below). On an unsafe session it returns a refused,
+  unclean report and reads nothing. Every public reader function makes the same check and raises `SchemaUnavailable`.
+  The session itself is judged: a login that enters `cse_reader` by `SET ROLE` keeps its own search path and
+  temporary schema (`docs/R_F4_IMPLEMENTATION.md` §12).
+
+  The runbook runs it at deployment (§12) and on each checkpoint's restored copy (§6), each time after a clean
+  preflight and as a full scan; a limited scan, an unverifiable ledger or a nonzero exit is not acceptance
+  (2026-10-20, `docs/R_F4_IMPLEMENTATION.md` §17).
+- **R-F4 preflight** is new, in the package (`python -m worker.financial_f4_store preflight`). It makes three
+  **separate** checks and reports each on its own; one never stands in for another:
+  1. **file**: the checked-out `0018_f4_structure_persistence.sql` is identical (LF-normalised, as P1's runner hashes
+     it) to the code's pin;
+  2. **ledger**: `ops.schema_migrations` records version 18, `0018_f4_structure_persistence.sql`, at the pinned
+     SHA-256. Its result is `verified`, `failed`, or `unverifiable` when the connection cannot read the ledger;
+  3. **objects**: the live database as it is now: the five tables; every constraint 0018 creates, by name, with its type
+     and its definition (key columns, a foreign key's referenced table, columns and actions, a check's expression),
+     validated, and no constraint 0018 does not create (audit Finding 3, 2026-10-17); every column 0018 creates, by
+     name, with its type, its `NOT NULL` (a column property on PostgreSQL 17, not a constraint), its default, no
+     identity or generation and its type's default collation, and no other column (2026-10-20,
+     `docs/R_F4_IMPLEMENTATION.md` §15); for `cse_worker` and `cse_reader` the privileges of §4.4 that each must have
+     and must not have (a forbidden INSERT or UPDATE is found whether granted on the table or on a single column); the
+     guard and append-only triggers, present, enabled and exactly as 0018 creates them, and no other trigger enabled
+     (the in-band check below); the guard function without `SECURITY DEFINER` and without EXECUTE for either role; and,
+     for `cse_worker` and `cse_reader`, the search path their new sessions get from the catalogue (their setting in this
+     database, their role setting, this database's setting, the setting for all roles, else the server's) meets the
+     name-resolution invariant of the in-band check below (audit, 2026-10-17); and each of the five tables, and each F3
+     and F5 table the reader and `verify` read, is an ordinary, permanent table with row-level security neither enabled
+     nor forced, no policy, not a partition and with no inheritance parent or child (2026-10-20,
+     `docs/R_F4_IMPLEMENTATION.md` §16). The constraint and column definitions are compared as PostgreSQL 17 renders
+     them (`pg_get_constraintdef`, search path `public`; `format_type`; `pg_get_expr`); another major version may render
+     them differently, and the preflight then reports a problem rather than passing.
+
+  It reports **clean** (exit 0) only when the file and the objects pass **and** the ledger was read and verified.
+  Exit 1 means a check found a problem. Exit 2 means nothing was found wrong but the ledger could not be read: that is
+  **not** a pass.
+
+  **Who can verify the ledger** (no privilege is added for it):
+  - a login with `cse_reader`'s privileges: migration 0009 already gives `cse_reader` USAGE on schema `ops` and
+    SELECT on its tables (`supabase/migrations/0009_local_security_boundary.sql:60,117`). The login must **inherit**
+    those privileges (a member with INHERIT) or its session must have **set role** `cse_reader`. A member that does
+    neither cannot read the ledger, and the preflight reports it `unverifiable`, never clean. No such login is
+    provisioned yet (P1 keeps `cse_reader` as a group role for later analysis logins);
+  - the migration role, the owner-level route: `preflight --migration-role` connects as P1's runner does (user
+    `CSE_DB_USER` or `cse_migrator`) and reads the ledger as `cse_owner`, the way the runner's own `status` does,
+    inside a read-only transaction that is rolled back.
+
+  `cse_worker` has no access to `ops`, by design. Run as `cse_worker`, the preflight reports the ledger as
+  `unverifiable` and is never clean; it does not skip the check silently. The object checks name both roles
+  explicitly, so one run checks both roles' privileges whoever runs it.
+
+  P1's own `cse-ops migrate verify` shows that every applied migration matches the **checked-out** file. It does not
+  compare 0018 with R-F4's code pin; the R-F4 preflight does.
 
   **No frozen preflight calls it.** HB-1's database check covers only 0016's objects
   (`worker/financial_backfill/preflight.py:226-262`), and HB-4's preflight stays unchanged. So in HB-4's path, a
@@ -233,8 +341,31 @@ inherited columns are copies (`:1355`).
   **The smallest governed resolution, with no frozen change:**
   - the preflight runs as an operational step: in staging after migrations, in the production smoke tests, and in
     every checkpoint's `verify` (§10);
-  - in-band, the store also checks the schema on first use for each connection and raises a typed error. That is an
-    implementation detail.
+  - in-band, the store also checks the schema and raises a typed error (`SchemaUnavailable`). As implemented in Stage 1
+    (its owner-directed correction), the check runs on **every** save, inside the store's savepoint and before any
+    insert: one catalogue query covers the five tables, the current role's SELECT and INSERT, and every guard and
+    append-only trigger: present, enabled, and exactly as 0018 creates it (audit Finding 2, 2026-10-17): the function it
+    runs by identity (schema `public`, no arguments: a same-named function in another schema is refused) and by
+    definition (language, the caller's rights, and its body exactly as migration 0007 or 0018 writes it, pinned by hash)
+    and configuration (`proconfig`: migrations 0007 and 0018 set none; a function-level `search_path` would change which
+    `report_document_classifications` the guard's unqualified name reads, with the body unchanged: audit Finding 4), its
+    timing and events, and no WHEN condition, arguments, column list, constraint trigger or transition table; and each
+    table's enabled triggers are exactly 0018's (audit Finding 5): BEFORE triggers fire in name order, so an extra one
+    named after the guard could change a row the guard has accepted. "Enabled" is as before: firing in normal operation
+    (`O` origin or `A` always). Of the function's catalogue entry only what changes what it does when the trigger fires
+    is compared (identity, language, body, rights, configuration); volatility, strictness, cost, parallel safety,
+    leakproofness and its owner are not (`worker/financial_f4_store/schema.py`). Nothing is cached, so a schema change
+    made while a process runs is seen at its next save. This is stricter than the "first use for each connection" first
+    proposed here, and is still an implementation detail. **Name resolution (audit, 2026-10-17).** The guard reads
+    `report_document_classifications`, and the store and reader their tables, by unqualified names, and its comparisons
+    use unqualified operators; with no function-level configuration they resolve through the saving session's search
+    path and temporary schema, however these were set (role, role-in-database, database or server settings, the client's
+    options, a `SET`). Before that catalogue query, therefore, the store checks the session's own resolution
+    (`schema.search_path_problems`, every name and operator in it qualified with `pg_catalog`): before `public` the
+    session may search only `pg_catalog`, its own temporary schema while that holds no relation or type, and the default
+    `"$user"` while no schema named after the role exists and the role may not create one; any other schema before
+    `public` is refused whether or not it exists or holds a table now; `public` must be in the path, and `pg_catalog`
+    may not come after it. Migration 0018 is unchanged.
 
 ## 6. Transactions, failure and retry
 
@@ -245,7 +376,8 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
 | Transaction | **One per batch** of up to 20 filings: `_persist` runs per filing, and everything commits once after the loop (`worker/extract_financial_candidates.py:111-127`). Each filing's F3, F4 and F5 rows stay atomic within it | **One per filing:** `_persist` plus the ledger event `persisted` (`worker/backfill_documents/worker.py:325-344`) |
 | An F4 save fails at filing *k* | The store rolls back its savepoint and re-raises, and `run()` raises. Filings 1 to *k*−1 are uncommitted and roll back when the connection closes (`main()`'s `finally`, `:172-182`) or when the caller rolls back. Later filings are never saved, and no report is written | The filing's whole transaction rolls back, and the failure is recorded in a separate transaction as `retry_wait` or `failed` (`:455-466`). The slice continues |
 | Retry | None built in. Running again repeats the batch, downloading every document again, because F2 has already deleted them | The next slice claims the item again and downloads the document again, up to `item_max_attempts` times (default 3, `worker/backfill_ops/decisions.py:40`). HB-2's circuit breaker counts request outcomes only (`worker/backfill_transport/slice.py:244-245`), so a systematic save fault can cost up to that many downloads per document, within the armed budgets |
-| Duplicate run | `already_present` for F3, F4 and F5, but the document is still downloaded | A saved item is never claimed again |
+| Duplicate run | `already_present` for F3, F4 and F5, but the document is still downloaded. For F4 only once the saved extraction reads back intact (child counts, decoding, content hash); otherwise its typed refusal (`incomplete`, `corrupt`, `version_incompatible`), with nothing written (Stage 1 correction) | A saved item is never claimed again |
+| An F3 row of the same F3 key already persisted with other content | F3's store returns `already_present` and keeps the earlier row; R-F4's store then finds that the row persisted under `classification_id` does not hash to the `f3_input_sha256` of the classification F5 consumed, and refuses (`ConflictingEvidence`) before any insert, on the `inserted` and the `already_present` paths (audit Finding 1, 2026-10-17). `run()` raises and its whole batch is uncommitted | The filing rolls back and is recorded `retry_wait`, then `failed`; each retry downloads the document again and meets the same refusal until the F3 evidence is resolved by the owner |
 
 - **Consequence of an F4 save failure** (part of RF4-M2): it stops F3 and F5 being saved for that filing in HB-4, and
   for the whole batch in `run()`. This follows from F6.2 §10's single transaction and from HB-Q7. A non-fatal F4 save
@@ -253,7 +385,22 @@ The two callers behave differently. R-F4 keeps both behaviours, and acceptance c
 - **Pre-existing difference, not changed:** `run()`'s batch transaction is not "one transaction per filing" as F6.2 §10
   words it (`docs/F6.2_DESIGN.md:341`). R-F4 neither introduces nor fixes this. It is recorded as a separate finding.
 - **Concurrent writers:** the insert is skipped if the key already exists, so a second writer waits, then gets
-  `already_present`. This is not yet tested.
+  `already_present`. Stage 1 tests this **at the store level only** (`tests/test_rf4_postgres.py`, p10): two
+  connections save the same key under PostgreSQL's default READ COMMITTED isolation, and the result is one set of rows
+  and no deadlock. Stage 2 tests it **through F5's `run()`** (p24): two runs of one filing, each on its own
+  connection. The second waits on the first's uncommitted rows (at its first conflicting insert, F3's), then finds F3,
+  F4 and F5 already present: one set of rows, no deadlock. **Not tested:** concurrency through HB-4's slice (HB-4
+  claims each item under its slice's lease), or an HB-4 slice and a manual `run()` saving the same filing at once.
+- **Status note (2026-10-20).** The "Not tested" above records the state when it was written. HB-4 on a database
+  without 0018 was untested then too (`docs/R_F4_IMPLEMENTATION.md` §6.2). Both are tested since, in
+  `tests/test_rf4_postgres.py` (`docs/R_F4_IMPLEMENTATION.md` §14):
+  - **p47:** an HB-4 slice and F5's `run()` save one filing at once, in each order, and a second HB-4 slice is refused
+    while the first holds the filing;
+  - **p48:** HB-4 on a database without 0018 rolls the filing back and records `retry_wait` or `failed`.
+
+  These results are evidence only: Claude-reported local runs, and GitHub Actions results. They are not an
+  independent audit, and not R-F4's acceptance. What they do not cover is recorded with them
+  (`docs/R_F4_IMPLEMENTATION.md` §14.4).
 
 ## 7. Migration and version policy
 
@@ -333,6 +480,11 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 | 2 | `worker/financial_backfill/preflight.py` (HB-1) | `FROZEN_FILES`: the F5 file's new hash, plus `worker/financial_f4_store/__init__.py` and every module `_persist` imports from it. `FROZEN_VERSIONS`: adds `("worker.financial_f4_store", "STORE_VERSION", "f4.store.1")` (V1). No rule changes |
 | 3–7 | The preflights of HB-2 (`worker/backfill_transport/`), HB-3 (`worker/backfill_discovery/`), HB-4 (`worker/backfill_documents/`), HB-5 (`worker/backfill_f6/`) and HB-6 (`worker/backfill_ops/`), each `preflight.py` | Hash only: each one's pin of the preflight before it, updated until no pin changes |
 
+**Stage 2 requirement recorded from Stage 1 (2026-10-16; not done in Stage 1):** item 2's closure of "every module
+`_persist` imports" from the package includes `worker/financial_f4_store/schema.py`, which Stage 1 added and
+`store.py` imports for its in-band check. As built in Stage 1, the closure is `__init__.py`, `store.py`, `codec.py`,
+`reader.py`, `errors.py` and `schema.py`; Stage 2 re-derives it from the final code before the cascade.
+
 **Frozen tests and test support to change:**
 
 | # | File | Change |
@@ -352,7 +504,7 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 | # | Document | Updates |
 |---|---|---|
-| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above |
+| 13 | `docs/F6.2_DESIGN.md` §10 | The accepted amendment text above. **WAIVED BY OWNER (2026-10-17, §11); not applied.** On 2026-10-17 the owner first selected Option B: F6.2 stays frozen; `docs/F6.2_DESIGN.md` (LF SHA-256 `4c97c6a8…`) and the frozen tests that pin it (`tests/test_f63_determinism.py:251`, `tests/test_f64_unit.py:378`) are unchanged; this record carries the amendment text. That selection did not satisfy the item, which stayed open; the owner then formally waived the item's outstanding requirement for this implementation package (§11). Those three files remain unchanged |
 | 14 | `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` | §4.1 F5 row; the HB-B1/HB-B9 note; §10.1; §10.2 (`STORE_VERSION`); §11.1; §11.2 and §20 (capacity); §11.5 and §27 (status); §21 (R-F4 `verify`); §22 (F5 replay from the database); §23.4 (the frozen-test edits); a new Appendix D entry; pin-only notes in the HB-1 to HB-6 freeze records |
 | 15 | `docs/MASTER_ARCHITECTURE.md` | §51 (0018), §52 and §55 |
 | 16 | `docs/ops/PHASE2_BACKFILL.md` | §6 (R-F4 `verify`), §11 (testing), §12 (migrations 0001–0018; R-F4 preflight in deployment) |
@@ -372,8 +524,10 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
 
 ### 8.2 Change-control sequence for the implementation stage
 
-1. **Owner implementation authorization**, naming the §8.1 scope. This is the next owner action. Implementation then
-   proceeds on a controlled branch from `main` (`e6a4881`).
+1. **Owner implementation authorization**, naming the §8.1 scope. **Given 2026-10-14**, stage by stage: Stage 1 is
+   step 2 below; Stage 2 (steps 3–4) needs a separate owner authorization after the owner's review of Stage 1.
+   Implementation proceeds on the controlled branch `claude/rf4-implementation`, from `main` at `4646626` (code
+   identical to `e6a4881`).
 2. **New code first** (items 10–12), with no frozen file touched yet. Then the targeted unit and PostgreSQL tests.
 3. **Frozen edits:** item 1 (F5), item 8 (the lifecycle test), and item 9 plus its consistency test.
 4. **The pin cascade last** (items 2–7), once every pinned file's content is final:
@@ -386,11 +540,25 @@ them. The revision 4 note at the top of the Phase 2 design (line 26) is a dated 
    and the freeze record: R-F4 frozen, F5 frozen again, and the HB-1 to HB-6 pin-only amendments recorded.
 8. **The Q1 release sequence** continues from §10, step 8.
 
+**Progress (2026-10-17).** Steps 1–2 (Stage 1) are done and owner-committed. Stage 2 was authorized on 2026-10-16: steps
+3–6 are done on `claude/rf4-implementation` (`fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`), except item
+13, which is not applied: the owner selected Option B and then **waived** the item for this package on 2026-10-17 (§11).
+Step 7's hand-off is that branch. The independent audit of Stage 2 reported five findings on 2026-10-17; their
+remediation is on the branch (`docs/R_F4_IMPLEMENTATION.md` §7, §8; the guard's name resolution: §9, §11; finding
+RF4-A1: §12; `verify`'s snapshot metadata: §13; the HB-4 integration tests: §14; `verify`'s scope and the preflight's
+columns: §15; table properties and row-level security: §16), awaiting the owner's independent review. The audit is not
+complete; acceptance and freeze have not started.
+
 ## 9. Acceptance (RF4-M4, accepted 2026-10-14)
 
-Every test below is **planned**; none has run. The OD-13 outcomes are reported synthetic results, not independently
-re-executed. No real-document evidence exists. The two callers are tested separately, because they fail and retry
-differently (§6).
+These are the acceptance tests. **Stage 1** ran the parts that need no frozen change, at the store level
+(`tests/test_rf4_unit.py`, `tests/test_rf4_postgres.py`): its results are Claude's reports, on synthetic layouts, not
+independently re-executed. The parts that go through F5's `run()` and HB-4's slice (RT-14 end to end, rollback and
+retry), the regression controls and mutation testing ran in **Stage 2** (`tests/test_rf4_postgres.py` p18–p24, controls
+B, P, S and I, mutation testing; results in `docs/R_F4_IMPLEMENTATION.md`), as Claude's reports, not independently
+re-executed. The OD-13 outcomes are reported
+synthetic results, not independently re-executed. No real-document evidence exists. The two callers are tested
+separately, because they fail and retry differently (§6).
 
 | Test | Layer | What it requires |
 |---|---|---|
@@ -404,7 +572,7 @@ differently (§6).
 | **Tamper and versions** | Integration | Rows edited or deleted (triggers bypassed in a test database) are reported as `corrupt` or `incomplete`. An unknown store version gives `version_incompatible` |
 | **Migration** | Integration | A fresh install of 0001–0018; an upgrade from 0017; a refusal for an edited or missing 0018; an old build on a new database is flagged by `verify` |
 | **Access rules** | Integration | The privileges in §4.4 |
-| **R-F4 preflight** | Integration | It passes on a migrated database. It refuses when 0018 is missing, edited or under-privileged. The store's in-band schema check raises its typed error before any insert |
+| **R-F4 preflight** | Integration | It passes on a migrated database. It refuses when 0018 is missing, edited or under-privileged, when a live constraint or column differs from 0018's, or when a table it or `verify` relies on has row-level security, a policy, another persistence, kind, partitioning or inheritance. It reports the file, the ledger and the objects separately, and is never clean while the ledger is unverifiable (`cse_worker`). The store's in-band schema check raises its typed error before any insert when a table, a privilege or a trigger is missing, disabled or altered |
 | **Regression controls** | Full suites, Linux and Windows | **B:** the baseline. **P:** the package's non-behavioural parts only (re-pinned with a comment-only F5 edit, the R-F4 package present but not called, 0018 applied, `STORE_VERSION` added); P's failures must equal B's. **S:** the change with stale pins, showing refusals only. **I:** the change, which after the approved test edits must equal B, with identical skips. The suites that call `_persist` must show non-zero passes and no skips. Plus mutation testing |
 | **Real documents** | Governed pilot | At pilot acceptance, not at freeze (§10): seals intact, and the F5 rebuild 100% equal on every saved pilot document |
 
@@ -415,12 +583,12 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
-| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Not given**: the next owner action |
-| 3 | Implementation on a controlled branch | Not started |
-| 4 | Targeted and integration tests (§9) | Not started |
-| 5 | Full regression with controls B, P, S and I; mutation testing | Not started |
-| 6 | Independent audit of the code and evidence | Not started |
-| 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | Not started |
+| 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
+| 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 waived by the owner, 2026-10-17 (Option B selected first; §11). Audit Findings 1–5 remediated (2026-10-17), awaiting review |
+| 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()`. Added 2026-10-20 (`docs/R_F4_IMPLEMENTATION.md` §14): concurrency between HB-4's slice and `run()` (p47), with a second HB-4 slice refused, and HB-4 on a database without 0018 (p48). Two HB-4 slices cannot run at once (P2's global lock, §6) |
+| 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
+| 6 | Independent audit of the code and evidence | **Complete** (2026-10-26): PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`, confirmed by the owner on 2026-10-27 (`docs/R_F4_IMPLEMENTATION.md` §26.3.1). A source review and an inspection of the CI artifacts and JUnit reports; no test independently re-run. Stage 2's findings were remediated on the branch first (`docs/R_F4_IMPLEMENTATION.md` §7 to §24) |
+| 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26): the owner's conditional approval (D5, 2026-10-26), with its four prerequisites satisfied, the last being the drift check against the freeze-candidate commit F (`adce25a`, 2026-10-27). **Complete:** the post-V check gave empty output with exit status 0 on 2026-10-28 (`docs/R_F4_IMPLEMENTATION.md` §26.7, step 7; commit `1171f92`; run by Claude, not independently reproduced). Not a merge, which needs a separate owner decision; it authorizes no operational step |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
 | 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
 | 10 | Production deployment: the rehearsal, provisioning and smoke tests | Not started. **No server is provisioned** |
@@ -454,7 +622,7 @@ The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12
 RDV option R-b later.
 
 **Not authorized** by this record or by the accepted decisions:
-- implementation (until milestone 2);
+- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them. The component freeze was authorized later and separately, by the owner's decision D5, and took effect through the freeze sequence of `docs/R_F4_IMPLEMENTATION.md` §26 (post-V check, 2026-10-28). The merge process for the tested candidate `7efafc8` was approved later by the owner's decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5), subject to the commit recording D6 passing its own CI, and nothing is merged; every other item in this list remains unauthorized;
 - infrastructure provisioning;
 - contacting CSE;
 - live acquisition;
@@ -464,9 +632,60 @@ RDV option R-b later.
 
 ## 11. Open items and assumptions
 
-- **Open owner decisions on the design:** none. The next owner action is implementation authorization (§8.2).
+- **§8.1 item 13: WAIVED BY OWNER (2026-10-17).**
+  - *History.* The accepted F6.2 §10 amendment could not be applied within the approved package:
+    `docs/F6.2_DESIGN.md` is pinned byte for byte by two frozen tests, of F6.3
+    (`tests/test_f63_determinism.py::test_f61_f5_and_the_f62_design_are_unchanged`, line 251) and F6.4
+    (`tests/test_f64_unit.py::test_u9_frozen_files_are_unchanged`, line 378), which §8.1 does not list for change. On
+    2026-10-17 the owner selected Option B: **F6.2's freeze is preserved**, and **this record retains the amendment
+    text** (§8). Selecting Option B did not by itself satisfy the item (its requirement, the amendment applied to
+    `docs/F6.2_DESIGN.md` §10, stayed unmet), so the item was recorded as open until it was satisfied or a separate
+    owner-approved waiver or amendment was recorded.
+  - *The waiver.* Later on 2026-10-17 the owner decided, explicitly: "I formally waive R-F4 design item 13 for this
+    implementation package." This is that separate owner-approved waiver.
+  - **Scope:** item 13's outstanding requirement only (the amendment applied to `docs/F6.2_DESIGN.md` §10), and only
+    for this R-F4 implementation package.
+  - **Rationale:** to preserve the frozen F6.2 baseline and its hash-pinned tests, while the amendment text is
+    retained in this design record (§8).
+  - **Unchanged, and not to be changed under this waiver:** `docs/F6.2_DESIGN.md` (LF SHA-256 `4c97c6a8…`),
+    `tests/test_f63_determinism.py` and `tests/test_f64_unit.py`.
+  - **Not covered:** the waiver does not authorize any change to F6.2 or its frozen tests; it waives no other audit
+    finding, package item or release gate; and it is not R-F4's component acceptance, the independent audit's
+    approval, or a freeze authorization (§10, milestones 6 and 7).
+- **Effect on acceptance.** The amendment documents F6.2's storage contract; no code or test depends on it, and R-F4's
+  behaviour is fully specified here (§4.2, §4.3). With the waiver, item 13 is no longer an outstanding item of the
+  approved §8.1 package for this implementation package: it is complete on that item by waiver, not by applying the
+  amendment, and the independent audit and component acceptance treat the item as waived. Nothing else they review
+  changes.
+- **Independent audit of Stage 2: five findings (2026-10-17), remediated on the branch** under this record's scope, with
+  no change to migration 0018 or its pin (`docs/R_F4_IMPLEMENTATION.md` §7, §8): (1) the store verifies the persisted F3
+  classification against the `f3_input_sha256` of the one F5 consumed before any insert (§6); (2) the in-band check and
+  the preflight verify each trigger's function identity and definition and the trigger's own properties (§5); (3) the
+  preflight verifies each constraint's type and definition (§5). `store.py`, `schema.py` and `errors.py` are pinned by
+  HB-1, so the HB-1 to HB-6 pin cascade was run again (pin-only). Findings 4 and 5, raised at the review of that
+  remediation, are remediated the same way (`docs/R_F4_IMPLEMENTATION.md` §8): (4) the trigger check also compares each
+  trigger function's configuration (`proconfig`) with its migration's (none), so a function-level `search_path` is
+  refused; (5) each table's enabled triggers must be exactly 0018's (§5). The guard's unqualified name resolution is
+  remediated in `d6924e7` (§5: the store's in-band name-resolution check and the preflight's per-role check); the
+  cases left unexercised there are tested in `1252c56`, which also fixes two defects that testing found
+  (`docs/R_F4_IMPLEMENTATION.md` §9, §11). Finding RF4-A1 (2026-10-20, the owner's review of `4be6fa9`) is
+  remediated the same way: the reader and `verify` check the session's own name resolution before their unqualified
+  queries, and `verify` reads one REPEATABLE READ, READ ONLY snapshot (`docs/R_F4_IMPLEMENTATION.md` §12). The
+  owner's review of `95da822` led to §13: the snapshot's identity and the transaction's start time recorded apart,
+  autocommit connections refused, and a failure never replaced by the rollback's error. §14 tests HB-4's two
+  integration gaps (§6), and the owner's later review led to §15: a limited `verify` is partial and never clean, and
+  the preflight checks every column. §16 adds the tables' row-level security, persistence, kind and inheritance:
+  read from the code, `verify` can report clean under row-level security (p52 tests it). The remediation awaits the
+  owner's independent review; the audit is not complete.
+- **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
+  0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
+  concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.
+- **Next owner actions:** the independent review of the audit remediation (§10, milestone 6); then component
+  acceptance and the freeze record (milestone 7). §8.1 item 13 needs no further decision for this package: it is
+  waived (above).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
-  in-band check and no frozen change (§5, §10).
+  in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
+  that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.
 - **Deferred:**
   - a job that writes re-mapped F5 runs;
   - `run()`'s batch-transaction finding;

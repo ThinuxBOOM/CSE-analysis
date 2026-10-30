@@ -1862,7 +1862,11 @@ Worker code must not operate as the database owner.
 Current migration sequence reaches 0017 (F8's additive
 `0017_f8_asof_configuration.sql`, after Phase 2 HB-1's additive
 `0016_historical_backfill_ledger.sql`, after F6.4's additive
-`0015_financial_truth_persistence.sql`); `0006` remains unused.
+`0015_financial_truth_persistence.sql`); `0006` remains unused. On the
+R-F4 branch (`claude/rf4-implementation`, not merged), R-F4's additive
+`0018_f4_structure_persistence.sql` follows 0017 (`docs/R_F4_DESIGN.md`
+§4, §7); it is implemented, not independently audited, accepted or
+frozen.
 
 Historical notes:
 
@@ -2070,7 +2074,24 @@ Still open after real-data validation:
     structure persistence (R-F4; Phase 2 design §11.5) must be
     implemented, independently audited, accepted and frozen before
     HB-7 / HB-S4 bulk document retrieval. This adds a gate to HB-7
-    and replaces none. R-F4 has not been designed or implemented.
+    and replaces none. R-F4 is designed and accepted
+    (`docs/R_F4_DESIGN.md`, 2026-10-14; release sequence Q1) and
+    implemented in two owner-authorized stages on the controlled
+    branch `claude/rf4-implementation` (not merged): Stage 1, the new
+    package, migration 0018 and its tests; Stage 2, F5's `_persist`
+    wired to it, the approved frozen-test and RDV edits and the HB-1
+    to HB-6 pin cascade. Its independent audit is complete (2026-10-26;
+    the owner confirmed its conclusion on 2026-10-27). R-F4 status:
+    Accepted and frozen at V, effective once the post-V check gives
+    empty output (V is its freeze-record commit,
+    `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on
+    2026-10-28 (run by Claude, not independently reproduced; §26.7,
+    step 7 there), so the freeze is in effect. HB-Q7's R-F4 condition
+    is therefore met; meeting it authorizes nothing, and HB-7's other
+    gates remain outstanding. R-F4 is not merged; the owner's merge
+    decision D6 (2026-10-30) approves the tested candidate `7efafc8`
+    for the merge process, subject to the commit recording D6 passing
+    its own CI (§26.5 there).
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2221,6 +2242,13 @@ Correction included in the frozen baseline:
     exception between intent and outcome caught by a caller); the
     lease stays active and the next slice recovers the attempt
     spool-first.
+
+Change control after the freeze: decision HB2-CLOCK-1 (2026-10-29)
+approved a one-line edit of one frozen HB-2 test,
+`test_l4_seeding_reads_both_archives`, whose fake clock disagreed
+with PostgreSQL's real `now()` (REG-X01). No HB-2 code changed. The
+decision is recorded in the Phase 2 design's HB-2 implementation
+status.
 
 HB-2 makes no CSE request by itself: owner decision HB-X2 (G-1's
 extension to Phase 2 and the User-Agent contact), prerequisite HB-P1
@@ -2747,9 +2775,15 @@ architecture should be implemented in dependency order.
 -   formalize F6.2 storage changes --- done for F6 storage:
     implemented by F6.4 (migration 0015). The full F4 structure
     persistence of F6.2 §10--§11 is a separate phase (requirement
-    R-F4, Phase 2 design §11.5; F6.4 §23 Q3), not yet designed or
-    implemented; its sequencing is owner decision HB-Q7 (2026-10-13,
-    below);
+    R-F4, Phase 2 design §11.5; F6.4 §23 Q3), designed and accepted
+    (`docs/R_F4_DESIGN.md`, 2026-10-14), implemented on the controlled
+    branch `claude/rf4-implementation` (not merged) and independently
+    audited. R-F4 status: Accepted and frozen at V, effective once the
+    post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26);
+    that check gave empty output on 2026-10-28 (run by Claude, not
+    independently reproduced; `docs/R_F4_IMPLEMENTATION.md` §26.7,
+    step 7), so the freeze is in effect. Its sequencing is owner
+    decision HB-Q7 (2026-10-13, below);
 -   F6.3 reconciliation --- implemented and frozen (`3c497c7d`);
 -   F6.4 persistence --- implemented and frozen (`54d71c47`);
 -   real-data validation --- implemented and frozen (`12bc8f2c`; §52);
@@ -2808,9 +2842,23 @@ This adds a gate to HB-7 and waives none. HB-7 still requires the live
 pilot, the owner's review and acceptance of its report, HB-Q9, the
 backup checkpoints and the owner's arming decisions with their budgets
 (Phase 2 design §14.1, §21, §27). Like every implementation step, R-F4
-follows the release sequence of §43.1. R-F4 has not been designed or
-implemented; its design, its implementation and its position relative
-to Docker staging and the live pilot are open owner decisions.
+follows the release sequence of §43.1. R-F4 is designed and accepted
+(`docs/R_F4_DESIGN.md`, 2026-10-14). Its position relative to Docker
+staging and the live pilot is release sequence Q1 (accepted
+2026-10-14): R-F4 is frozen before Docker staging, and the pilot runs on
+that build. It is implemented on the controlled branch
+`claude/rf4-implementation` (Stages 1 and 2; not merged) and
+independently audited (2026-10-26; the owner confirmed the conclusion on
+2026-10-27). R-F4 status: Accepted and frozen at V, effective once the
+post-V check gives empty output (V is its freeze-record commit,
+`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on
+2026-10-28 (run by Claude, not independently reproduced), so the freeze
+is in effect. HB-Q7's R-F4 condition is therefore met; meeting it
+authorizes nothing, and HB-7 remains subject to all of its other gates.
+R-F4 is not merged: the owner's merge decision D6 (2026-10-30;
+`docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate
+`7efafc8` for the merge process, subject to the commit recording D6
+passing its own CI.
 
 ## Phase 2 --- Historical financial backfill
 
@@ -2820,7 +2868,7 @@ to Docker staging and the live pilot are open owner decisions.
 -   reconciliation;
 -   coverage audit.
 
-Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 4).
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 7).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
@@ -3279,3 +3327,73 @@ Every implementation prompt must explicitly state:
 15. how the user-facing reasoning can be grounded in the actual inputs.
 
 If those questions cannot be answered, the implementation is not ready.
+
+## 68.1 Claude-assisted development and task execution
+
+These rules govern how work is requested from Claude and how Claude
+carries it out and reports it. They add no authority of their own:
+every acceptance criterion, freeze condition, release gate, protected
+path, owner decision and operational prohibition elsewhere in this
+document and in the component design and implementation records
+remains authoritative and prevails over anything here.
+
+1.  **Project integrity takes precedence over speed.** Never weaken an
+    acceptance criterion, omit a material risk, misrepresent evidence
+    or close an unresolved gate to make faster progress. Perform the
+    audits and verification that correctness, traceability, safety or
+    the acceptance criteria require, and do not skip them merely
+    because the owner is impatient with the process. Equally, do not
+    add audits, repeated checks, cosmetic cleanup or scope without a
+    concrete justification.
+2.  **Maximize useful work per Claude turn.** Prompts are precise,
+    comprehensive and scoped so that Claude can complete as much
+    compatible, authorized work as possible in one turn. Where
+    appropriate, a prompt directs Claude to:
+    -   inspect the current Git state and the relevant files, history,
+        requirements and evidence;
+    -   investigate the whole explicitly defined scope, not stop at the
+        first finding;
+    -   cross-check findings against authoritative evidence and the
+        acceptance criteria;
+    -   distinguish verified facts, reported results, assumptions,
+        uncertainties and owner decisions;
+    -   complete all authorized, in-scope changes together;
+    -   perform the relevant verification and inspect the complete
+        diff;
+    -   report remaining risks, limitations, unresolved decisions and
+        the next actionable step.
+
+    Do not split work across prompts out of habit when it can be
+    completed safely and coherently in one turn.
+3.  **Bundle work intelligently, not recklessly.** Combine tasks when
+    their scope, prerequisites, authorization and verification methods
+    are compatible. Keep them separate when combining them would
+    compromise safety, bypass an approval boundary, obscure a failure,
+    touch protected implementation paths without authorization, or make
+    the result harder to review.
+4.  **Preserve explicit authorization boundaries.** Every prompt defines
+    its permitted scope and its stop conditions. Claude does not infer
+    permission to stage, commit, push, merge, deploy, run database
+    operations, contact the live CSE or perform a restore because the
+    action seems the logical next step. Explicit owner authorization is
+    required wherever this project's rules require it, and existing
+    freeze conditions, release gates, protected paths and operational
+    prohibitions remain authoritative.
+5.  **Use evidence-based stopping criteria.** A task or audit is
+    complete when its defined scope has been investigated, its findings
+    have been addressed or explicitly dispositioned, its required checks
+    have passed, and its remaining risks and decisions are recorded. Do
+    not reopen completed work because further auditing is theoretically
+    possible; reopen it when new evidence, a concrete contradiction, a
+    failed check, a requirement or an unresolved risk justifies it.
+6.  **Make completion reports independently reviewable.** Claude's
+    final report states:
+    -   what was examined and what was changed;
+    -   the exact files and the relevant diff;
+    -   the checks performed and their actual results;
+    -   what was not checked or not independently verified;
+    -   remaining risks, open gates and required owner decisions;
+    -   the Git state, and commit and push status where applicable.
+
+    A reported check is never described as independently verified
+    unless independent verification actually occurred.

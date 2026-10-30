@@ -5,11 +5,13 @@ anything persisted.
 
     report_filings -> F2 temp document -> F3 classify -> F4 extract -> F5 build   (document exists)
                    -> F2 deletes the document (verified)
-                   -> [--write-db] F3 classification + filing->issuer link + F5 run/statements/columns/rows/candidates
+                   -> [--write-db] F3 classification + filing->issuer link + F4 extraction (R-F4)
+                      + F5 run/statements/columns/rows/candidates
 
 Nothing is persisted when the consumer fails or the deletion is not verified.
-Never persisted: the PDF, its text, unmapped rows/cells. The report file holds
-counts and statuses only - never values or labels.
+Never persisted: the PDF and its text. F4's complete output - every statement, column, row and cell, unmapped
+ones included - is persisted by R-F4 (worker/financial_f4_store, migration 0018; docs/R_F4_DESIGN.md). The
+report file holds counts and statuses only - never values or labels.
 
 Governance gate: at most MAX_FILINGS_PER_RUN documents per invocation, pending
 the CSE terms-of-use decision (the same cap as F2-F4).
@@ -72,7 +74,7 @@ def make_consumer(filings_by_id, results, *, extract_text=document_text.extract_
         cls = rc.classify(text, meta, cse_filing_id=doc.cse_filing_id, sha256=doc.sha256)
         ext = se.extract_document(doc.path, cls, filing_id=doc.cse_filing_id, sha256=doc.sha256, layout_text=text,
                                   word_extractor=extract_words)
-        results[doc.cse_filing_id] = {"classification": cls.to_dict(), "result": f5.build(ext, cls),
+        results[doc.cse_filing_id] = {"classification": cls.to_dict(), "f4": ext, "result": f5.build(ext, cls),
                                       "document_bytes": doc.byte_length}
     return consumer
 
@@ -96,7 +98,8 @@ def _count(items):
 
 def run(filings, *, temp_root=None, request_delay_seconds=1.0, fetcher=None, extract_text=document_text.extract_text,
         extract_words=None, require_poppler=True, stores=None, on_result=None) -> dict:
-    """stores: None (dry run) or {"conn", "classification", "issuer", "candidates"} Postgres stores."""
+    """stores: None (dry run) or {"conn", "classification", "issuer", "candidates"} Postgres stores, optionally with
+    "f4" (R-F4's store; without it _persist uses PostgresF4Store on stores["conn"])."""
     if len(filings) > MAX_FILINGS_PER_RUN:
         raise ValueError(f"{len(filings)} documents requested; at most {MAX_FILINGS_PER_RUN} per run "
                          f"(production-scale retrieval is gated pending the CSE terms-of-use decision)")
@@ -139,9 +142,14 @@ def _persist(stores, got):
     f3 = stores["classification"].save(cls, got["document_bytes"])
     cid = classification_id(stores["conn"], cls)
     link = stores["issuer"].link_filing(cls["cse_filing_id"])
+    f4_store = stores.get("f4")
+    if f4_store is None:                        # HB-4 builds its stores with four keys (docs/R_F4_DESIGN.md section 3)
+        from .financial_f4_store.store import PostgresF4Store
+        f4_store = PostgresF4Store(stores["conn"])
+    f4 = f4_store.save(got["f4"], cid, cls)
     status, run_id = stores["candidates"].save(got["result"], cid, link)
     return {"f3": f3, "classification_id": cid, "issuer_link": link and {k: link[k] for k in ("status", "basis")},
-            "f5": status, "run_id": run_id}
+            "f4": f4, "f5": status, "run_id": run_id}
 
 
 def main(argv=None):
@@ -154,7 +162,8 @@ def main(argv=None):
     p.add_argument("--temp-root", default=None)
     p.add_argument("--request-delay-seconds", type=float, default=1.0)
     p.add_argument("--report-file", required=True)
-    p.add_argument("--write-db", action="store_true", help="persist (DATABASE_URL; migrations 0005, 0007, 0008)")
+    p.add_argument("--write-db", action="store_true",
+                   help="persist (DATABASE_URL; migrations 0005, 0007, 0008 and R-F4's 0018)")
     args = p.parse_args(argv)
     if args.f1_state and not args.ids:
         p.error("--f1-state needs --ids")

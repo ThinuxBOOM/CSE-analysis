@@ -1,0 +1,212 @@
+# PostgreSQL integration and full regression (docs/CI_TEST_STRATEGY.md, workflow B).
+#
+# The established 19 groups of the earlier local evidence (docs/R_F4_IMPLEMENTATION.md section 5.2; .github/ci/groups.py):
+#   - L01-L16 on Linux: each group in its own job and its own runner, in the tracked test container
+#     (.github/ci/linux.Dockerfile: Ubuntu 24.04, Python 3.12, PostgreSQL 17 from PGDG, Poppler 24.02.0) started with
+#     --network none, as an unprivileged user, with P1_PG_BINDIR=/usr/lib/postgresql/17/bin and the scratch cluster
+#     for the F1/F3/F5 suites (.github/ci/linux_tests.sh);
+#   - W1-W3 on Windows: the same files in three parts, Python 3.14 with pinned packages (.github/ci/windows-requirements.txt),
+#     CSE's host names blocked in the hosts file, temporary files on the workspace's drive. PostgreSQL and POSIX-only
+#     suites skip there by their own gates.
+# Together each side runs every tests/test_*.py file exactly once: this is the full regression. Two extra Linux groups:
+# X1 runs the single database-view test no partition group can run (DATABASE_URL), and X2 runs R-F4's planted-fault
+# (mutation) tests (RF4_MUTANTS=1; .github/ci/groups.py). The evidence-corpus and real-document suites skip everywhere.
+# No CSE request is possible and no secret is used.
+# A final job summarises all JUnit reports; it fails on any failure, and says whether each one is the recorded
+# baseline (matched by its whole signature) or new.
+name: CI regression (PostgreSQL 17 + Windows)
+
+on:
+  push:
+    branches: [claude/rf4-implementation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: ${{ matrix.group }} (Linux, PostgreSQL 17)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [L01, L02, L03, L04, L05, L06, L07, L08, L09, L10, L11, L12, L13, L14, L15, L16, X1, X2]
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Prepare the report directory
+        run: |
+          OUT="$RUNNER_TEMP/reports/ci-regression-${{ matrix.group }}"
+          mkdir -p "$OUT" && chmod 777 "$OUT"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Check the test-group partition
+        run: python3 .github/ci/groups.py --check
+
+      - name: Build the test container (PostgreSQL 17 from PGDG, Poppler 24.02.0)
+        run: |
+          for try in 1 2 3; do
+            if docker build -t cse-ci-linux -f .github/ci/linux.Dockerfile .github/ci > "$OUT/docker-build.log" 2>&1; then
+              exit 0
+            fi
+            echo "docker build failed (try $try)"; sleep 30
+          done
+          tail -n 60 "$OUT/docker-build.log"
+          exit 1
+
+      - name: Run ${{ matrix.group }}
+        env:
+          GIT_SHA: ${{ github.sha }}
+          GIT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          docker run --rm --network none -e GIT_SHA -e GIT_HEAD_SHA -v "$PWD:/src:ro" -v "$OUT:/out" \
+            cse-ci-linux bash /src/.github/ci/linux_container.sh "${{ matrix.group }}" /out
+
+      - name: Summarise
+        if: always()
+        run: python3 .github/ci/summarize.py "$(dirname "$OUT")" "$OUT/summary.json" "${{ matrix.group }}"
+
+      - name: Upload the reports and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-regression-${{ matrix.group }}
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  windows:
+    name: ${{ matrix.group }} (Windows)
+    runs-on: windows-2025
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [W1, W2, W3]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+
+      - name: Install the pinned test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --no-input -r .github/ci/windows-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Block CSE's host names, and check
+        run: |
+          $hosts = "$env:SystemRoot\System32\drivers\etc\hosts"
+          $names = 'www.cse.lk', 'cdn.cse.lk', 'cse.lk'
+          $lines = foreach ($n in $names) { "0.0.0.0 $n"; ":: $n" }
+          Add-Content -Path $hosts -Value ("`r`n" + ($lines -join "`r`n"))
+          ipconfig /flushdns | Out-Null
+          python .github/ci/check_cse_unreachable.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run ${{ matrix.group }}
+        env:
+          GIT_SHA: ${{ github.sha }}
+          GIT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GROUP: ${{ matrix.group }}
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP "reports\ci-regression-$env:GROUP"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          # The runner's default temporary directory is on another drive than the checkout and is reached through an
+          # 8.3 short name (docs/CI_TEST_STRATEGY.md section 2.2). Temporary files go to a long-named directory on the
+          # checkout's drive instead, as on the machine the earlier Windows evidence came from; the run stops (exit 13)
+          # if that does not hold.
+          $defaultTemp = $env:TEMP
+          $workspace = (Get-Item -LiteralPath $env:GITHUB_WORKSPACE).FullName
+          $temp = (New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'pytest-temp')).FullName
+          if ($temp.Substring(0, 2) -ne $workspace.Substring(0, 2) -or $temp -match '~\d') {
+            "13" | Set-Content "$out\exit_code"
+            Write-Output "::error title=Temporary directory::$temp is not on the workspace's drive ($workspace), or has a short name"
+            exit 13
+          }
+          $env:TEMP = $temp
+          $env:TMP = $temp
+          $files = @(python .github/ci/groups.py $env:GROUP)
+          if ($LASTEXITCODE -ne 0) { "10" | Set-Content "$out\exit_code"; exit 10 }
+          $os = Get-CimInstance Win32_OperatingSystem
+          $versions = @(python .github/ci/env_report.py)
+          $reach = @(python .github/ci/check_cse_unreachable.py) | ForEach-Object { "  $_" }
+          @("commit (github.sha): $env:GIT_SHA", "commit (head):       $env:GIT_HEAD_SHA", "group: $env:GROUP",
+            "date: $((Get-Date).ToUniversalTime().ToString('s'))Z", "os: $($os.Caption) $($os.Version)",
+            "workspace: $workspace", "temp dir (runner default): $defaultTemp") + $versions +
+            @("pdftotext: $(if (Get-Command pdftotext -ErrorAction SilentlyContinue) { 'present' } else { 'absent' })") +
+            @("cse reachability:") + $reach + @("tests:") + ($files | ForEach-Object { "  $_" }) |
+            Set-Content -Encoding utf8 "$out\environment.txt"
+          $env:PYTHONDONTWRITEBYTECODE = '1'
+          $ErrorActionPreference = 'Continue'      # pytest's exit code decides the step, not its stderr
+          python -m pytest -p no:cacheprovider -q -rfEs --junitxml="$out\junit.xml" -o junit_suite_name=$env:GROUP @files 2>&1 |
+            Tee-Object -FilePath "$out\pytest.log"
+          $rc = $LASTEXITCODE
+          "$rc" | Set-Content "$out\exit_code"
+          exit $rc
+
+      - name: Summarise
+        if: always()
+        env:
+          GROUP: ${{ matrix.group }}
+        run: |
+          python .github/ci/summarize.py "$env:RUNNER_TEMP\reports" "$env:RUNNER_TEMP\reports\ci-regression-$env:GROUP\summary.json" $env:GROUP
+          exit $LASTEXITCODE
+
+      - name: Upload the reports and logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-regression-${{ matrix.group }}
+          path: ${{ runner.temp }}\reports\ci-regression-${{ matrix.group }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  summary:
+    name: Summary of all groups
+    needs: [linux, windows]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download every group's reports
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ci-regression-*
+          path: ${{ runner.temp }}/reports
+
+      - name: Summarise all groups (fails on any failure; says which are the recorded baseline and which are new)
+        run: |
+          python3 .github/ci/summarize.py "$RUNNER_TEMP/reports" "$RUNNER_TEMP/summary.json" \
+            $(python3 .github/ci/groups.py --ci-groups)
+
+      - name: Upload the summary
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-regression-summary
+          path: |
+            ${{ runner.temp }}/summary.json
+            ${{ runner.temp }}/summary.md
+          if-no-files-found: warn
+          retention-days: 30

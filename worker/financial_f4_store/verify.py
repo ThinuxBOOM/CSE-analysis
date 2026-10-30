@@ -1,0 +1,142 @@
+"""
+R-F4's `verify` (docs/R_F4_DESIGN.md section 5), modelled on F6.4's: re-proves what is stored, read-only.
+
+- every extraction: its version, child counts and content hash (it reads back exactly), and its F3 input hash;
+- every F5 run: it has a saved F4 extraction ('missing' otherwise, e.g. a run saved before R-F4), and F5 rebuilt from
+  the saved F3 and F4 evidence reproduces the run's stored content_sha256 ('f5_mismatch' otherwise;
+  'f5_rebuild_refused' when F5's own consistency check refuses under the declared decimal context).
+
+A problem is reported, never repaired. It runs in one READ ONLY transaction, so the reader role can run it, and every
+change, even one a role with INSERT would be allowed, is refused by PostgreSQL itself.
+
+Scope (2026-10-20). `limit=None`, the default, is a full scan: every extraction and every F5 run. Only a full scan can
+be clean. A limit N (an int of at least 1) checks only the first N extractions and the first N F5 runs, by id: a
+partial scan, whose report says so (`scope`: complete false) and is never clean, whatever it finds, even when N covers
+every row (verify does not count what it did not read). Any other limit (0, a negative number, a bool, a float, a
+string) is a ValueError before anything is sent.
+
+One snapshot (audit finding RF4-A1, 2026-10-20). The transaction is REPEATABLE READ, set before its first query, so the
+enumeration, the F4 read-backs, the F3 read-backs and the F5 rebuilds all see the database as it was at that query,
+whatever another transaction commits meanwhile. A change committed during the run is not in this report; the next
+verify sees it. A connection in autocommit mode is refused: there every statement is its own transaction, with its own
+snapshot, even when the session's defaults make each one REPEATABLE READ and READ ONLY.
+
+The report's `snapshot` records:
+- `isolation` and `read_only`: the transaction's settings, as PostgreSQL reports them;
+- `pg_snapshot`: the snapshot itself, pg_current_snapshot() as text (xmin:xmax:in-progress transaction ids). Under
+  REPEATABLE READ every statement of the transaction has this snapshot. It identifies which transactions' changes the
+  report saw: pg_visible_in_snapshot(xid, pg_snapshot) tells, for any transaction id, whether verify read its work;
+- `transaction_started_at`: transaction_timestamp(), when PostgreSQL received the BEGIN of verify's transaction. The
+  snapshot is taken later, at the transaction's first query; PostgreSQL records no time for that, so this is a lower
+  bound on the snapshot's time, not the snapshot's time and not its identity.
+
+A failure ends the run with the failure itself: the transaction is rolled back, and if the rollback fails too (the
+connection was lost, say), the caller still gets the first failure, with the rollback's error as a note on it.
+
+Name resolution (audit finding RF4-A1). The enumeration names its tables without a schema, as the reader does. Before
+it, the session's own name resolution is checked (schema.search_path_problems, the writer's check, unchanged); a
+session that could resolve a name outside public and pg_catalog gets a refused report: not clean, nothing read
+(`name_resolution`). The reader checks again before each of its own reads; a refusal there ends the run, also not clean.
+"""
+import psycopg2.extensions
+
+from .. import financial_candidates as f5
+from . import STORE_VERSION, codec, reader, schema
+from .errors import EvidenceRefused, SchemaUnavailable
+
+_SNAPSHOT = """select pg_catalog.current_setting('transaction_isolation'),
+                      pg_catalog.current_setting('transaction_read_only'),
+                      pg_catalog.pg_current_snapshot()::pg_catalog.text,
+                      pg_catalog.transaction_timestamp()"""
+
+
+def verify(conn, *, rebuild=True, limit=None):
+    """The report {store_version, scope, snapshot, extractions, runs, rebuilt, problems: [{kind, ...}], clean}. `conn`
+    must not be in autocommit mode and must have no open transaction; verify rolls its own read-only transaction back.
+    `limit`: None for a full scan, or an int N >= 1 for a partial scan, never clean (module docstring)."""
+    scope = _scope(limit)
+    if conn.autocommit:
+        raise ValueError("verify needs a connection outside autocommit mode: there each statement is its own "
+                         "transaction, with its own snapshot")
+    if conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+        raise ValueError("verify needs a connection with no open transaction")
+    report = {"store_version": STORE_VERSION, "scope": scope, "snapshot": None, "extractions": 0, "runs": 0,
+              "rebuilt": 0, "problems": []}
+    try:
+        _verify(conn, report, rebuild, limit)
+    except BaseException as exc:
+        _roll_back_after(conn, exc)
+        raise
+    conn.rollback()
+    report["clean"] = scope["complete"] and not report["problems"]
+    return report
+
+
+def _scope(limit):
+    """The report's `scope`, or ValueError: a limit of None is a full scan, an int N >= 1 (not a bool) a partial one."""
+    if limit is None:
+        return {"complete": True, "limit": None}
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+        raise ValueError(f"verify's limit must be None (a full scan) or an integer of at least 1, not {limit!r}")
+    return {"complete": False, "limit": limit,
+            "detail": f"a partial scan: only the first {limit} extraction(s) and the first {limit} F5 run(s), by id, "
+                      "were checked; the rest of the database was not, so this report is never clean"}
+
+
+def _roll_back_after(conn, failure):
+    """Roll back after `failure` without hiding it: a rollback that fails too (on a lost connection psycopg2 raises
+    InterfaceError) becomes a note on `failure`, which the caller still gets."""
+    try:
+        conn.rollback()
+    except Exception as exc:
+        failure.add_note(f"verify's rollback also failed: {type(exc).__name__}: {exc}")
+
+
+def _verify(conn, report, rebuild, limit):
+    with conn.cursor() as cur:
+        cur.execute("set transaction isolation level repeatable read, read only")          # before any query
+        unsafe = schema.search_path_problems(cur)              # pg_catalog-qualified: the snapshot's first query
+        cur.execute(_SNAPSHOT)
+        isolation, read_only, pg_snapshot, started = cur.fetchone()
+        report["snapshot"] = {"isolation": isolation, "read_only": read_only == "on", "pg_snapshot": pg_snapshot,
+                              "transaction_started_at": started.isoformat()}
+        if (isolation, read_only) != ("repeatable read", "on"):
+            raise RuntimeError(f"verify's transaction is {isolation}, read_only={read_only}")
+        if unsafe:
+            report["problems"].append({"kind": "name_resolution", "detail": "; ".join(unsafe)})
+            return
+        only = "" if limit is None else " limit %d" % limit                 # an int >= 1 (_scope)
+        cur.execute("select id, classification_id, f3_input_sha256 from financial_f4_extractions order by id" + only)
+        extractions = cur.fetchall()
+        cur.execute("select id from financial_extraction_runs order by id" + only)
+        runs = [r[0] for r in cur.fetchall()]
+    try:
+        _check(conn, report, extractions, runs, rebuild)
+    except SchemaUnavailable as exc:                       # the session's resolution changed during the run
+        report["problems"].append({"kind": "name_resolution", "detail": exc.detail,
+                                   "after": {"extractions": report["extractions"], "runs": report["runs"]}})
+
+
+def _check(conn, report, extractions, runs, rebuild):
+    for eid, cid, f3_sha in extractions:
+        report["extractions"] += 1
+        try:
+            reader.load_extraction(conn, eid)
+            if codec.f3_input_sha256(reader.load_classification(conn, cid)) != f3_sha:
+                raise EvidenceRefused("corrupt", f"extraction {eid}: the F3 classification read back differs "
+                                                 f"from the input F5 consumed (f3_input_sha256)")
+        except EvidenceRefused as exc:
+            report["problems"].append({"kind": exc.kind, "extraction_id": str(eid), "detail": exc.detail})
+    for run_id in runs:
+        report["runs"] += 1
+        try:
+            if rebuild:
+                result, stored = reader.rebuild_f5(conn, run_id)
+                report["rebuilt"] += 1
+                if f5.content_sha256(result) != stored:
+                    raise EvidenceRefused("f5_mismatch", f"F5 run {run_id}: the rebuilt content_sha256 differs "
+                                                         f"from the stored one")
+            elif reader.extraction_id_for(conn, reader.run_key(conn, run_id)) is None:
+                raise EvidenceRefused("missing", f"F5 run {run_id} has no saved F4 extraction")
+        except EvidenceRefused as exc:
+            report["problems"].append({"kind": exc.kind, "run_id": str(run_id), "detail": exc.detail})

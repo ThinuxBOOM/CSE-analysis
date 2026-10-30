@@ -362,8 +362,10 @@ def _guard(conn):
 
 
 def persist_filing(conn, issuer_store, doc):
-    """One corpus filing in ONE transaction, exactly in extract_financial_candidates._persist's order: F3
-    classification, its id, the filing's issuer decision (frozen f5.issuer.2), the F5 run."""
+    """One corpus filing in ONE transaction, in extract_financial_candidates._persist's order for the pre-R-F4 subset:
+    F3 classification, its id, the filing's issuer decision (frozen f5.issuer.2), the F5 run. R-F4's F4 save (between
+    the issuer decision and the F5 run in _persist) is not made: the corpus holds no F4 evidence and RDV-R3 forbids
+    inventing it (docs/R_F4_DESIGN.md section 8 row 6, option R-a; tests/test_rf4_unit.py checks the order)."""
     from worker.financial_candidates_store import PostgresCandidateStore, classification_id
     from worker.report_classification_store import PostgresClassificationStore
     c, result, retrieval = doc["classification"], doc["result"], doc["retrieval"]
