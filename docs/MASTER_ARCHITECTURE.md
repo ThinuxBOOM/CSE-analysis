@@ -2088,8 +2088,10 @@ Still open after real-data validation:
     2026-10-28 (run by Claude, not independently reproduced; §26.7,
     step 7 there), so the freeze is in effect. HB-Q7's R-F4 condition
     is therefore met; meeting it authorizes nothing, and HB-7's other
-    gates remain outstanding. R-F4 is not merged, and no merge is
-    authorized.
+    gates remain outstanding. R-F4 is not merged; the owner's merge
+    decision D6 (2026-10-30) approves the tested candidate `7efafc8`
+    for the merge process, subject to the commit recording D6 passing
+    its own CI (§26.5 there).
 
 The real-data validation owner questions remain future decisions and
 operational requirements, not completed work:
@@ -2852,8 +2854,11 @@ post-V check gives empty output (V is its freeze-record commit,
 `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on
 2026-10-28 (run by Claude, not independently reproduced), so the freeze
 is in effect. HB-Q7's R-F4 condition is therefore met; meeting it
-authorizes nothing, HB-7 remains subject to all of its other gates, and
-no merge is authorized.
+authorizes nothing, and HB-7 remains subject to all of its other gates.
+R-F4 is not merged: the owner's merge decision D6 (2026-10-30;
+`docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate
+`7efafc8` for the merge process, subject to the commit recording D6
+passing its own CI.
 
 ## Phase 2 --- Historical financial backfill
 

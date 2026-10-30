@@ -19,10 +19,11 @@ row-level security (§16), and the runbook's preflight-then-`verify` order (§17
 owner on 2026-10-27. R-F4 as a component: **Accepted and frozen at V, effective once the post-V check gives empty
 output** (V is its freeze-record commit, `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28
 (run by Claude, not independently reproduced; `docs/R_F4_IMPLEMENTATION.md` §26.7, step 7), so the freeze is in effect.
-It is **not** merged, and no merge is authorized. Staging, the pilot, production
-deployment and live operation are separate, later milestones (§10); Stage 2's authorization authorizes none
-of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code, migration, test or
-pin.
+It is **not** merged. The owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the
+tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI. Staging,
+the pilot, production deployment and live operation are separate, later milestones (§10); Stage 2's authorization
+authorizes none of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code,
+migration, test or pin.
 
 | Milestone | Status |
 |---|---|
@@ -30,7 +31,7 @@ pin.
 | Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
 | Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
 | Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13: Option B selected, then the item waived by the owner, 2026-10-17 (§11). Accepted and frozen at V, effective once the post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7) |
-| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit is **complete** (2026-10-26; PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`), and the owner confirmed its conclusion on 2026-10-27; the findings it and the earlier reviews raised are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7 to §24). It inspected the CI evidence; no test was independently re-run. Component acceptance and the freeze: approved conditionally by the owner (D5, 2026-10-26), its four prerequisites satisfied. **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7; run by Claude, not independently reproduced). Not merged; no merge is authorized |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit is **complete** (2026-10-26; PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`), and the owner confirmed its conclusion on 2026-10-27; the findings it and the earlier reviews raised are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7 to §24). It inspected the CI evidence; no test was independently re-run. Component acceptance and the freeze: approved conditionally by the owner (D5, 2026-10-26), its four prerequisites satisfied. **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7; run by Claude, not independently reproduced). Not merged; the owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -621,7 +622,7 @@ The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12
 RDV option R-b later.
 
 **Not authorized** by this record or by the accepted decisions:
-- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them. The component freeze was authorized later and separately, by the owner's decision D5, and took effect through the freeze sequence of `docs/R_F4_IMPLEMENTATION.md` §26 (post-V check, 2026-10-28); a merge and every other item in this list remain unauthorized;
+- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them. The component freeze was authorized later and separately, by the owner's decision D5, and took effect through the freeze sequence of `docs/R_F4_IMPLEMENTATION.md` §26 (post-V check, 2026-10-28). The merge process for the tested candidate `7efafc8` was approved later by the owner's decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5), subject to the commit recording D6 passing its own CI, and nothing is merged; every other item in this list remains unauthorized;
 - infrastructure provisioning;
 - contacting CSE;
 - live acquisition;

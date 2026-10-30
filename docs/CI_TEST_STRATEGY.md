@@ -583,6 +583,9 @@ Passing CI on a commit does not remove any limitation recorded in `docs/R_F4_IMP
   it.
 - **Audit and gates.** The Stage 2 independent audit is not complete, and R-F4 is not accepted or frozen. CI results
   are inputs to that review, not its outcome.
+  *(Superseded on 2026-10-30: the audit is complete, and the owner confirmed its conclusion on 2026-10-27; R-F4 is
+  accepted and frozen, in effect since the post-V check of 2026-10-28 (`docs/R_F4_IMPLEMENTATION.md` §26). CI results
+  remain inputs to the owner's decisions, not decisions; the merge decision is D6 (§26.5 there).)*
 
 ## 12. Maintaining it
 
