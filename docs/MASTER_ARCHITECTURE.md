@@ -2879,7 +2879,7 @@ nothing further: Docker staging and every later gate stay as recorded.
 -   reconciliation;
 -   coverage audit.
 
-Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 7).
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 8).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
