@@ -19,19 +19,20 @@ row-level security (§16), and the runbook's preflight-then-`verify` order (§17
 owner on 2026-10-27. R-F4 as a component: **Accepted and frozen at V, effective once the post-V check gives empty
 output** (V is its freeze-record commit, `docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28
 (run by Claude, not independently reproduced; `docs/R_F4_IMPLEMENTATION.md` §26.7, step 7), so the freeze is in effect.
-It is **not** merged. The owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the
-tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI. Staging,
-the pilot, production deployment and live operation are separate, later milestones (§10); Stage 2's authorization
-authorizes none of them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code,
+It is **merged** into `main` (2026-10-30, pull request #6, merge commit `912ab01`). The owner's merge decision D6
+(`docs/R_F4_IMPLEMENTATION.md` §26.5) approved the tested candidate `7efafc8` for the merge process, and the merge
+took D6's merge target, `45b941c`, after its own CI succeeded. Staging, the pilot, production deployment and live
+operation are separate, later milestones (§10); neither Stage 2's authorization nor the merge authorizes any of
+them. The implementation record is `docs/R_F4_IMPLEMENTATION.md`. This record changes no code,
 migration, test or pin.
 
 | Milestone | Status |
 |---|---|
 | Design decisions (RF4-M1 to RF4-M5; release sequence Q1) | **Accepted** by the owner, 2026-10-14 |
 | Implementation and change-control authorization | **Given** 2026-10-14 for the §8.1 scope, stage by stage. Stage 1 authorized 2026-10-14; Stage 2 authorized 2026-10-16 (not the freeze, a merge, staging, deployment, live acquisition, the pilot or bulk retrieval) |
-| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); not merged to `main`). Results are Claude's reports, not independently re-executed |
+| Stage 1: new code and its targeted tests (§8.1 items 10–12) | **Implemented** on `claude/rf4-implementation` (owner commits `77cfb84`, then corrections `dc6302d`, `7c56cac`, `c5b1c12`, `b00affc`, `8f1f9fd` (the independent source audit's two findings) and `6834280` (the re-audit's two minor findings); merged into `main` on 2026-10-30 with the rest of R-F4, pull request #6). Results are Claude's reports, not independently re-executed |
 | Stage 2: F5 wiring, the frozen-test and RDV edits, the pin cascade; full regression with controls; records | **Implemented** on `claude/rf4-implementation`: owner commit `fa464d2` (pushed) and the follow-up commits and evidence in `docs/R_F4_IMPLEMENTATION.md` (Claude's reports). §8.1 item 13: Option B selected, then the item waived by the owner, 2026-10-17 (§11). Accepted and frozen at V, effective once the post-V check gives empty output (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7) |
-| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit is **complete** (2026-10-26; PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`), and the owner confirmed its conclusion on 2026-10-27; the findings it and the earlier reviews raised are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7 to §24). It inspected the CI evidence; no test was independently re-run. Component acceptance and the freeze: approved conditionally by the owner (D5, 2026-10-26), its four prerequisites satisfied. **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7; run by Claude, not independently reproduced). Not merged; the owner's merge decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5) approves the tested candidate `7efafc8` for the merge process, subject to the commit recording D6 passing its own CI |
+| Independent audit, component acceptance and freeze | Stage 1: independently audited and re-audited; their four findings corrected (`8f1f9fd`, `6834280`). Stage 2: the independent audit is **complete** (2026-10-26; PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`), and the owner confirmed its conclusion on 2026-10-27; the findings it and the earlier reviews raised are remediated on the branch (`docs/R_F4_IMPLEMENTATION.md` §7 to §24). It inspected the CI evidence; no test was independently re-run. Component acceptance and the freeze: approved conditionally by the owner (D5, 2026-10-26), its four prerequisites satisfied. **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26); that check gave empty output on 2026-10-28 (§26.7, step 7; run by Claude, not independently reproduced). Merged into `main` on 2026-10-30 through pull request #6 (merge commit `912ab01`, whose second parent is D6's merge target `45b941c`); the owner's merge decision D6 (`docs/R_F4_IMPLEMENTATION.md` §26.5) approved the tested candidate `7efafc8` |
 | Docker staging; acceptance of the integrated build; production deployment | Not started. No staging environment or production server exists |
 | HB-S3 pilot and owner pilot acceptance; HB-S4 / HB-7 | Not started; gated (§10) |
 
@@ -584,7 +585,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
 | 2 | Implementation and change-control authorization (§8.1, §8.2) | **Given**, stage by stage: Stage 1 on 2026-10-14, Stage 2 on 2026-10-16 |
-| 3 | Implementation on a controlled branch | **Done, pending audit.** Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. Not merged. §8.1 item 13 waived by the owner, 2026-10-17 (Option B selected first; §11). Audit Findings 1–5 remediated (2026-10-17), awaiting review |
+| 3 | Implementation on a controlled branch | **Done, and merged into `main`** on 2026-10-30 (pull request #6, merge commit `912ab01`, whose second parent is the D6 merge target `45b941c`; `docs/R_F4_IMPLEMENTATION.md` §26.5). Stage 1: owner commits `77cfb84` to `6834280`. Stage 2: owner commit `fa464d2` and the follow-ups in `docs/R_F4_IMPLEMENTATION.md`. §8.1 item 13 waived by the owner, 2026-10-17 (Option B selected first; §11). Audit Findings 1–5 remediated (2026-10-17); the independent audit is complete (2026-10-26: PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`, confirmed by the owner on 2026-10-27; row 6, `docs/R_F4_IMPLEMENTATION.md` §26.3.1). Acceptance and freeze are row 7, and the merge decision is D6. The merge is not an audit step: its pull-request CI is not an independent re-execution, and it added no audit evidence |
 | 4 | Targeted and integration tests (§9) | **Run** (Stages 1 and 2), as Claude's reports on synthetic layouts, not independently re-executed: the store-level suites, and RT-14, RT-15, RT-3, RT-4, rollback and retry, and idempotency through F5's `run()` and HB-4's slice, and concurrency through `run()`. Added 2026-10-20 (`docs/R_F4_IMPLEMENTATION.md` §14): concurrency between HB-4's slice and `run()` (p47), with a second HB-4 slice refused, and HB-4 on a database without 0018 (p48). Two HB-4 slices cannot run at once (P2's global lock, §6) |
 | 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
 | 6 | Independent audit of the code and evidence | **Complete** (2026-10-26): PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`, confirmed by the owner on 2026-10-27 (`docs/R_F4_IMPLEMENTATION.md` §26.3.1). A source review and an inspection of the CI artifacts and JUnit reports; no test independently re-run. Stage 2's findings were remediated on the branch first (`docs/R_F4_IMPLEMENTATION.md` §7 to §24) |
@@ -622,7 +623,7 @@ The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12
 RDV option R-b later.
 
 **Not authorized** by this record or by the accepted decisions:
-- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them. The component freeze was authorized later and separately, by the owner's decision D5, and took effect through the freeze sequence of `docs/R_F4_IMPLEMENTATION.md` §26 (post-V check, 2026-10-28). The merge process for the tested candidate `7efafc8` was approved later by the owner's decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5), subject to the commit recording D6 passing its own CI, and nothing is merged; every other item in this list remains unauthorized;
+- the component freeze, a merge to `main`, staging, deployment, live acquisition, the pilot or bulk retrieval: Stage 2's authorization (2026-10-16) authorizes none of them. The component freeze was authorized later and separately, by the owner's decision D5, and took effect through the freeze sequence of `docs/R_F4_IMPLEMENTATION.md` §26 (post-V check, 2026-10-28). The merge process for the tested candidate `7efafc8` was approved later by the owner's decision D6 (2026-10-30; `docs/R_F4_IMPLEMENTATION.md` §26.5), subject to the commit recording D6 passing its own CI, which it did; the merge was made on 2026-10-30 through pull request #6 (merge commit `912ab01`); every other item in this list remains unauthorized;
 - infrastructure provisioning;
 - contacting CSE;
 - live acquisition;
@@ -675,14 +676,23 @@ RDV option R-b later.
   autocommit connections refused, and a failure never replaced by the rollback's error. §14 tests HB-4's two
   integration gaps (§6), and the owner's later review led to §15: a limited `verify` is partial and never clean, and
   the preflight checks every column. §16 adds the tables' row-level security, persistence, kind and inheritance:
-  read from the code, `verify` can report clean under row-level security (p52 tests it). The remediation awaits the
-  owner's independent review; the audit is not complete.
+  read from the code, `verify` can report clean under row-level security (p52 tests it). Until 2026-10-26 the
+  remediation awaited the owner's independent review. That review is complete: the independent audit of Stage 2
+  concluded PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5` on 2026-10-26, and the owner confirmed its
+  conclusion on 2026-10-27 (§10, milestone 6; `docs/R_F4_IMPLEMENTATION.md` §26.3.1). It was a source review and
+  an inspection of the CI evidence; no test was independently re-run.
 - **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
   0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
   concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.
-- **Next owner actions:** the independent review of the audit remediation (§10, milestone 6); then component
-  acceptance and the freeze record (milestone 7). §8.1 item 13 needs no further decision for this package: it is
-  waived (above).
+- **Next owner actions** (updated 2026-11-01). The two actions named here before are done: the independent review of
+  the audit remediation (§10, milestone 6; above), and component acceptance and the freeze record (milestone 7).
+  R-F4 was accepted and frozen at V (`ddcd80a`), effective once the post-V check gave empty output with exit status 0
+  on 2026-10-28 (run by Claude, not independently reproduced; recorded in `1171f92`). It was then merged into `main`
+  on 2026-10-30 through pull request #6: GitHub's merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c` has D6's
+  merge target `45b941c` as its second parent and the same tree, and the tested candidate was `7efafc8` (§10,
+  milestone 3; `docs/R_F4_IMPLEMENTATION.md` §26.5). The next milestones are 8 to 13 (§10), each with its own owner
+  decision; neither the freeze nor the merge authorizes any of them. §8.1 item 13 needs no further decision for this
+  package: it is waived (above).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
   in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
   that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.
