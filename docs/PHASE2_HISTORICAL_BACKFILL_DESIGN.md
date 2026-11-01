@@ -73,11 +73,14 @@ two §23.4 frozen-test edits. The frozen baseline includes:
   undetected; 37 of 37 planted mutations of 0016 killed;
 - D-3, resolved: no pre-correction version of migration 0016 was ever applied to a persistent database.
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; each
+re-pin is dated below; heading corrected 2026-11-01).*
 `worker/financial_backfill/preflight.py`: `FROZEN_FILES` pins F5's `worker/extract_financial_candidates.py` at
 `8bdf472aec40…` (was `9b94d745710b…`) and adds the R-F4 modules `_persist` imports (`worker/financial_f4_store/`
 `__init__`, `codec`, `errors`, `reader`, `schema`, `store`; `errors`, `schema` and `store` re-pinned 2026-10-17 for the
-audit remediation, `docs/R_F4_IMPLEMENTATION.md` §7); `FROZEN_VERSIONS` adds `worker.financial_f4_store.STORE_VERSION`
+audit remediation, `docs/R_F4_IMPLEMENTATION.md` §7 to §9, the current `errors` and `store` pins from `d6924e7`;
+`schema` re-pinned again on 2026-10-18, `1252c56`, §11; `reader` on 2026-10-20, `95da822`, §12); `FROZEN_VERSIONS`
+adds `worker.financial_f4_store.STORE_VERSION`
 `f4.store.1` (V1). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and
 do not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
 
@@ -102,7 +105,8 @@ are implemented:
   count towards the circuit breaker;
 - A10: the User-Agent is P2's exact `user_agent()` value (`cse-analysis-capture/p2.capture.1 ...`).
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; the pin
+below dates from `95da822`, 2026-10-20; heading corrected 2026-11-01).*
 `worker/backfill_transport/preflight.py`: its pin of `worker/financial_backfill/preflight.py` is `bea9f43be920…` (was
 `0fbc73e46ae0…`). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and
 do not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
@@ -224,7 +228,8 @@ environment limitation, not evidence of equivalence.
 unchanged at the audited HEAD `30bba72`. The merge into `main` and the new frozen baseline follow the owner's
 acceptance of F8 revision 3 (MA §55).
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; the pin
+below dates from `95da822`, 2026-10-20; heading corrected 2026-11-01).*
 `worker/backfill_discovery/preflight.py`: its pin of `worker/backfill_transport/preflight.py` is `2a70eb110062…` (was
 `d66a1470fea4…`). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and
 do not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
@@ -405,7 +410,8 @@ composition itself present.
   tests install a sentinel handler of their own.
 - `run()` on a slice that is not open fails at once instead of offering the same item again.
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; the pin
+below dates from `95da822`, 2026-10-20; heading corrected 2026-11-01).*
 `worker/backfill_documents/preflight.py`: its pin of `worker/backfill_discovery/preflight.py` is `7ef41029098b…` (was
 `cab061db4539…`). HB-4's code is otherwise unchanged; its `_persist` call now also saves F4 through R-F4's fallback
 (`docs/R_F4_DESIGN.md` §3). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2,
@@ -585,7 +591,8 @@ implementation `4d28663` plus the correction its freeze audit required, committe
   evidence. The candidate level ignored holds (stage 8 already showed them), so it never reported `held`. It now uses
   the same held filings as stage 8. `test_a6` checks both levels with a real L7 hold.
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; the pin
+below dates from `95da822`, 2026-10-20; heading corrected 2026-11-01).*
 `worker/backfill_f6/preflight.py`: its pin of `worker/backfill_documents/preflight.py` is `f5170b2a59d0…` (was
 `54332425ed69…`). No rule changes; the pins follow R-F4's approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and
 do not approve it; this HB stays frozen, re-pinned, and R-F4 itself is not yet frozen.
@@ -748,7 +755,8 @@ This record is committed after it.
     leasing or credit company;
   - `general` otherwise; `unknown` with no name.
 
-*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17, R-F4 audit remediation).*
+*R-F4 pin-only amendment (2026-10-16, R-F4 Stage 2; re-pinned 2026-10-17 to 2026-10-20, R-F4 audit remediation; the pin
+and the hash below date from `95da822`, 2026-10-20; heading corrected 2026-11-01).*
 `worker/backfill_ops/preflight.py`: its pin of `worker/backfill_f6/preflight.py` is `29320e6aaa65…` (was
 `63f5bcaae57f…`); its own hash is now `d0429416087d…`, which nothing pins. No rule changes; the pins follow R-F4's
 approved change (`docs/R_F4_DESIGN.md` §8 row 2, RF4-M1) and do not approve it; this HB stays frozen, re-pinned, and
