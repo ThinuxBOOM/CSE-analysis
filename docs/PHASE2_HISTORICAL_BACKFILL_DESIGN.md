@@ -919,7 +919,7 @@ functions and never edits or wraps their logic.
 | F2 `document_retrieval` | `process_batch([filing], consumer, role="primary", fetcher=<governed fetcher>, temp_root=…)` with one filing: exactly F5 `run()`'s call. It adds F2's leftover check and returns the full retrieval record. Also `validate_temp_root`. The `fetcher` parameter is F2's own injection point (its tests use it) | `RequestsFetcher` (default User-Agent). It never persists a document, text or temporary path |
 | F3 `report_classification`, `document_text`, store (0005) | Through F5's consumer; `PostgresClassificationStore.save` | A new classifier version; persisted text |
 | F4 `statement_extraction`, `pdf_words` | Through F5's consumer; `pdf_words.require_tools()` before any download | Companion (`path2`) retrieval: the frozen F5 path never uses it |
-| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | The functions F5's `run()` composes, called as it calls them: `load_filings_from_db` (the filing row F3 and F5 read), `make_consumer` (F3 → F4 → F5 in memory), `attach_timestamps` and F5's own `_persist` (F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`; since R-F4's Stage 2, not yet frozen, an F4 save through R-F4's `PostgresF4Store` (0018) between the link and the candidate save, `docs/R_F4_DESIGN.md` §3). Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
+| F5 `extract_financial_candidates`, `financial_candidates`, stores (0007, 0008) | The functions F5's `run()` composes, called as it calls them: `load_filings_from_db` (the filing row F3 and F5 read), `make_consumer` (F3 → F4 → F5 in memory), `attach_timestamps` and F5's own `_persist` (F3 save → `classification_id` → `PostgresIssuerStore.link_filing` → `PostgresCandidateStore.save`; since R-F4's Stage 2, not yet frozen, an F4 save through R-F4's `PostgresF4Store` (0018) between the link and the candidate save, `docs/R_F4_DESIGN.md` §3). *(2026-11-01: R-F4 is now independently audited, accepted and frozen, and merged into `main` on 2026-10-30, pull request #6, `912ab01`; §11.5, §27.)* Issuer: `observations_from_*`, `record_observations`, `resolve_securities`, `link_filing`; `decide_securities` / `disputed_sec_ids` for **read-only simulation** (§7.7) | Any decision function change, any direct write to 0007 or 0008, any synthetic observation |
 | F6.1, F6.3 | Only through F6.4's jobs | Direct calls in production paths |
 | F6.4 `financial_truth_store` (0015) | `jobs.validate`, `jobs.pending_runs`, `jobs.reconcile` (incl. `only_issuer`), `jobs.register_configuration`, `jobs.configuration_from_present_runs`, `jobs.designate` (owner path), `verify`, `preflight`, the views | A new F6 table, column or job kind; backfill job state in F6 tables |
 | P1 `worker/ops` | Settings, `spool` (content-addressed, write-once), the migration runner and ledger, backups unchanged | Any P1 change; units in `ops/systemd` |
@@ -1458,6 +1458,9 @@ complete output (migration 0018) between `link_filing` and the candidate save, t
 own connection (HB-4's four stores are unchanged; `_persist` falls back to R-F4's store). It is part of the same
 transaction: an F4 save failure rolls the whole filing back and is recorded as `retry_wait` or `failed`, like any
 other failure inside `_persist`.
+*(2026-11-01: R-F4's Stage 2 is implemented, independently audited (2026-10-26; the owner confirmed the conclusion on
+2026-10-27), accepted and frozen (in effect since the post-V check of 2026-10-28), and merged into `main` on
+2026-10-30 through pull request #6, merge commit `912ab01`; §11.5, §27. The merge authorizes nothing further (§27).)*
 
 ### 10.2 Tool and version pins (checked by the preflight before any download)
 
@@ -1473,7 +1476,7 @@ other failure inside `_persist`.
   | Issuer rule | `f5.issuer.2` |
   | F6 | `f6.validation.1`, `f6.inputs.1`, `f6.op1.partition.1`, `f6.admission.1`, `f6.identity.1`, `f6.reconciliation.1` |
   | F6.4 | `f6.store.1` |
-  | R-F4 | `f4.store.1` (`STORE_VERSION`, added to HB-1's pinned versions by R-F4's version policy V1; not yet frozen) |
+  | R-F4 | `f4.store.1` (`STORE_VERSION`, added to HB-1's pinned versions by R-F4's version policy V1; not yet frozen) *(2026-11-01: R-F4 is now independently audited, accepted and frozen, and merged into `main` on 2026-10-30, pull request #6, `912ab01`; §11.5, §27.)* |
 
 - **The armed tuple.** The owner's arming decision records this tuple. A deployed code revision whose frozen-file hashes
   differ is refused (HB-B9).
@@ -1520,7 +1523,7 @@ other failure inside `_persist`.
 | **Provenance** | The above, by foreign keys and envelopes | Views `financial_fact_provenance`, `financial_fact_state`, `financial_reconciliation_current`, `financial_validation_run_current`, … (0015) |
 | F6 job state | F6.4 | T10 `financial_f6_jobs`, T11 `financial_f6_job_events` (kinds `validate` / `reconcile` / `cleanup` only) |
 | **Backfill job state** | **None existing: HB-X1** | The Phase 2 ledger (§11.4) |
-| **F4 structure (R-F4)** | R-F4 `PostgresF4Store`, called by F5's `_persist` (R-F4 Stage 2; implemented, not yet frozen) | `financial_f4_extractions`, `financial_f4_statements`, `financial_f4_columns`, `financial_f4_rows`, `financial_f4_cells` (0018; `docs/R_F4_DESIGN.md` §4) |
+| **F4 structure (R-F4)** | R-F4 `PostgresF4Store`, called by F5's `_persist` (R-F4 Stage 2; implemented, not yet frozen) *(2026-11-01: R-F4 is now independently audited, accepted and frozen, and merged into `main` on 2026-10-30, pull request #6, `912ab01`; §11.5, §27.)* | `financial_f4_extractions`, `financial_f4_statements`, `financial_f4_columns`, `financial_f4_rows`, `financial_f4_cells` (0018; `docs/R_F4_DESIGN.md` §4) |
 
 This table was written before R-F4: the F4 row is its one addition, by R-F4's own change control.
 
@@ -2139,6 +2142,9 @@ imported by production code (HB-B8). Parity is tested on the RDV evidence (§23)
 database without CSE: R-F4's reader rebuilds F4's output exactly and reads F3 back from 0005, and F5's own builder,
 under the declared decimal context, reproduces the stored `content_sha256` (R-F4's `verify`). F3 and F4 themselves still
 need the document again, as above, and so does a filing saved before R-F4.
+*(2026-11-01: R-F4's Stage 2 is implemented, independently audited (2026-10-26; the owner confirmed the conclusion on
+2026-10-27), accepted and frozen (in effect since the post-V check of 2026-10-28), and merged into `main` on
+2026-10-30 through pull request #6, merge commit `912ab01`; §11.5, §27. The merge authorizes nothing further (§27).)*
 
 **Determinism guards:**
 - discovery closure before F3 (HB-U5);

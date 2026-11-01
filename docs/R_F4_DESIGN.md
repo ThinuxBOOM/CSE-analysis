@@ -676,14 +676,23 @@ RDV option R-b later.
   autocommit connections refused, and a failure never replaced by the rollback's error. §14 tests HB-4's two
   integration gaps (§6), and the owner's later review led to §15: a limited `verify` is partial and never clean, and
   the preflight checks every column. §16 adds the tables' row-level security, persistence, kind and inheritance:
-  read from the code, `verify` can report clean under row-level security (p52 tests it). The remediation awaits the
-  owner's independent review; the audit is not complete.
+  read from the code, `verify` can report clean under row-level security (p52 tests it). Until 2026-10-26 the
+  remediation awaited the owner's independent review. That review is complete: the independent audit of Stage 2
+  concluded PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5` on 2026-10-26, and the owner confirmed its
+  conclusion on 2026-10-27 (§10, milestone 6; `docs/R_F4_IMPLEMENTATION.md` §26.3.1). It was a source review and
+  an inspection of the CI evidence; no test was independently re-run.
 - **F5 text corrections after `fa464d2` (owner-directed, 2026-10-16).** `main()`'s `--write-db` help now names migration
   0018 and `run()`'s docstring the optional `"f4"` store. Both are text only: §3's "unchanged: `run()`, `main()`"
   concerns their behaviour, which is unchanged. The file's hash changed, so the HB-1 to HB-6 pin cascade was run again.
-- **Next owner actions:** the independent review of the audit remediation (§10, milestone 6); then component
-  acceptance and the freeze record (milestone 7). §8.1 item 13 needs no further decision for this package: it is
-  waived (above).
+- **Next owner actions** (updated 2026-11-01). The two actions named here before are done: the independent review of
+  the audit remediation (§10, milestone 6; above), and component acceptance and the freeze record (milestone 7).
+  R-F4 was accepted and frozen at V (`ddcd80a`), effective once the post-V check gave empty output with exit status 0
+  on 2026-10-28 (run by Claude, not independently reproduced; recorded in `1171f92`). It was then merged into `main`
+  on 2026-10-30 through pull request #6: GitHub's merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c` has D6's
+  merge target `45b941c` as its second parent and the same tree, and the tested candidate was `7efafc8` (§10,
+  milestone 3; `docs/R_F4_IMPLEMENTATION.md` §26.5). The next milestones are 8 to 13 (§10), each with its own owner
+  decision; neither the freeze nor the merge authorizes any of them. §8.1 item 13 needs no further decision for this
+  package: it is waived (above).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an
   in-band check and no frozen change (§5, §10). Before proceeding past a migration, the ledger is verified by a route
   that can read it (§5; runbook §12); a `cse_worker` run reports it as unverifiable.
