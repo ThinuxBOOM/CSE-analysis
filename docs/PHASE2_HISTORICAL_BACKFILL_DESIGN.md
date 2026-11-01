@@ -1,7 +1,7 @@
 # Phase 2: Historical financial backfill (design)
 
-**Status:** design (revision 7: revision 4 records owner decision HB-Q7, and revisions 5 to 7 record R-F4's
-implementation, freeze record and post-V check; the rest of its design content is unchanged).
+**Status:** design (revision 8: revision 4 records owner decision HB-Q7, and revisions 5 to 8 record R-F4's
+implementation, freeze record, post-V check and merge into `main`; the rest of its design content is unchanged).
 **Implementation step HB-1 (the backfill ledger) is
 implemented and frozen** on `main` at `40748c3`, and **implementation step HB-2 (the governed CSE transport) is
 implemented and frozen** on `main` at `1896280` (Master Architecture §52). **Implementation step HB-3 (discovery and
@@ -45,6 +45,22 @@ gave empty output with exit status 0 on 2026-10-28 (run by Claude, not independe
 R-F4's freeze is in effect and HB-Q7's R-F4 condition on HB-7 / HB-S4 is met. Meeting it authorizes nothing: the other
 gates of HB-7 / HB-S4 remain, and R-F4 is not merged. The sections it touches are listed in Appendix D, D19; the
 revision 4, 5 and 6 paragraphs above are dated entries and stay as written.
+
+Revision 8 (2026-11-01) records R-F4's merge into `main` (`docs/R_F4_IMPLEMENTATION.md` §26.5). R-F4's Stage 2
+independent audit completed on 2026-10-26, and the owner confirmed its conclusion on 2026-10-27. R-F4 was accepted
+and frozen at V (`ddcd80a`), and the freeze took effect when the post-V check gave empty output with exit status 0 on
+2026-10-28 (recorded in `1171f928221c7c06974b75eb0796a4ff05ae5337`; run by Claude, not independently reproduced).
+Pull request #6 merged R-F4 into `main` on 2026-10-30. Three different commits are involved: the tested candidate,
+`7efafc82d065938e88473fabe7c9ede8908af294`; the merge target approved by owner decision D6, which is the pull
+request's head, `45b941c93961fae0055c61761b35fe8208862815` (its parent is the tested candidate); and GitHub's merge
+commit, `912ab0177a1476bd6af79e1884af2c899a9e6e2c`, whose first parent is the earlier `main` (`4646626`) and second
+parent `45b941c`, with a tree identical to `45b941c`'s. The pull request did not include `17630a9`, which first
+recorded REG-A23's closure; its evidence was carried into the documentation by the later documentation-only commit
+`44f7034` on `claude/rf4-post-merge-docs`, which has not been merged into `main`. The merge
+neither satisfies nor waives the remaining gates of HB-7 / HB-S4 (§14.1, §21, §27), including the owner's acceptance
+of the live pilot, HB-Q9's capacity confirmation, the recorded backup checkpoints and a separate HB-S4 arming, and it
+authorizes nothing further. The sections it touches are listed in Appendix D, D20; the revision 4 to 7 paragraphs
+above are dated entries and stay as written.
 
 **HB-1 implementation status** (recorded at freeze; the design text is unchanged). HB-Q1 and HB-Q3 were approved and
 HB-X1 and HB-X3 are resolved by HB-1: migration `0016_historical_backfill_ledger.sql` (LF-normalised SHA-256
@@ -1617,6 +1633,13 @@ blocker HB-X1** and **not** written. The requirements it must meet are below. Th
   independently reproduced), so R-F4 is accepted and frozen at V and the freeze is in effect. HB-Q7's R-F4 condition on
   HB-7 / HB-S4 is met; meeting it authorizes nothing. Their other gates remain (§14.1, §21, §27). Not merged: no owner
   merge decision exists.
+- **R-F4 status (2026-10-30, after the merge; recorded 2026-11-01), superseding the entry above.** R-F4 is
+  independently audited, accepted and frozen (above), and merged into `main`: pull request #6 merged it on 2026-10-30
+  as GitHub's merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c`. That merge commit is neither the tested
+  candidate (`7efafc8`) nor the D6-approved merge target and pull request head (`45b941c`): its second parent is
+  `45b941c`, and its tree is identical to `45b941c`'s (`docs/R_F4_IMPLEMENTATION.md` §26.5). HB-Q7's R-F4 condition on
+  HB-7 / HB-S4 is met. Their other gates remain (§14.1, §21, §27), and neither meeting that condition nor the merge
+  authorizes anything further.
 
 ## 12. Provenance
 
@@ -2507,7 +2530,7 @@ hard-code assumptions about the canonical financial-truth layer.
 | The Master Architecture not edited | Met when the design was written and closed (revisions 1–3, which did not edit it): the proposed cross-reference was then in the phase report only. Later updates have edited it, among them the HB-1 freeze record, which added the cross-reference (`54bce75`, 2026-10-02; Master Architecture §52, §55), and the owner-approved documentation update that records owner decision HB-Q7 (revision 4; Appendix D, D15), which edited §51, §52 and §55 |
 | Design closure: every blocker and owner question re-checked against the repository; defects corrected in this document only | Appendix D |
 
-## Appendix D. Design corrections (revisions 2 to 7)
+## Appendix D. Design corrections (revisions 2 to 8)
 
 D1–D13 (revision 2) were found by re-checking revision 1 against the repository at `59ac143`. D14 (revision 3) was found
 at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) records an owner decision. D16
@@ -2515,7 +2538,8 @@ at `62a24f6`, before implementation step HB-1 wrote anything. D15 (revision 4) r
 to this document. D17 (revision 5) records R-F4's implementation, made under R-F4's own change control
 (`docs/R_F4_DESIGN.md` §8), in the sections it touches; it changes no Phase 2 rule. D18 (revision 6) records R-F4's
 freeze record in the same way; it changes no Phase 2 rule or gate. D19 (revision 7) records the post-V check's outcome
-in the same way; it changes no Phase 2 rule or gate.
+in the same way; it changes no Phase 2 rule or gate. D20 (revision 8) records R-F4's merge into `main` in the same
+way; it changes no Phase 2 rule, gate or owner decision.
 - D1–D13 change no frozen stage, blocker conclusion or owner default.
 - D14 widens blocker HB-X3 from one frozen-test edit to two. It changes no frozen stage, and the owner approved it on
   2026-10-02.
@@ -2546,3 +2570,4 @@ in the same way; it changes no Phase 2 rule or gate.
 | D17 | Status (revision 5), §4.1, §4.2 (R-F4 note), §10.1, §10.2, §11.1, §11.2, §11.5, §21, §22, §23.4, §27, the HB-1 to HB-6 implementation and freeze records (pin-only notes), Appendix D | The design described F5's `_persist` without R-F4's F4 save, the frozen pins and version tuple without R-F4's, and R-F4 as not designed or implemented | Records R-F4 as designed and accepted (2026-10-14) and implemented in Stages 1 and 2 on `claude/rf4-implementation` (not merged, not yet independently audited after Stage 2, accepted or frozen); the F4 save in `_persist`'s order; `f4.store.1` in the armed tuple; the 0018 tables; the capacity estimate; R-F4's `verify` at checkpoints; replay of F5 from the database; R-F4's two approved frozen-test edits; the HB-1 to HB-6 pin-only amendments. HB-Q7's gate is unchanged and not met | `docs/R_F4_DESIGN.md` §3, §5, §7, §8; `docs/R_F4_IMPLEMENTATION.md` |
 | D18 | Status (revision 6), §11.5, Appendix D | §11.5 and the revision log recorded R-F4 as not yet independently audited after Stage 2, accepted or frozen, and HB-Q7's gate on HB-7 / HB-S4 as not met | Records R-F4's completed independent audit (2026-10-26, its conclusion confirmed by the owner on 2026-10-27) and its freeze record: Accepted and frozen at V, effective once the post-V check gives empty output. HB-Q7's R-F4 condition is met only once the freeze is effective; the other gates of HB-7 / HB-S4 and every Phase 2 rule unchanged. The revision 5 entry and §11.5's R-F4 status entry of 2026-10-16 stay as written | `docs/R_F4_IMPLEMENTATION.md` §26 |
 | D19 | Status (revision 7), §11.5, Appendix D | §11.5 and the revision log recorded R-F4 as accepted and frozen at V, effective once the post-V check gives empty output, with that check's outcome not yet recorded | Records that the post-V check gave empty output with exit status 0 on 2026-10-28 (run by Claude, not independently reproduced), so R-F4's freeze is in effect and HB-Q7's R-F4 condition is met; meeting it authorizes nothing; the other gates of HB-7 / HB-S4 and every Phase 2 rule unchanged. The revision 6 entry and §11.5's earlier R-F4 status entries stay as written | `docs/R_F4_IMPLEMENTATION.md` §26.7, step 7; commit `1171f92` |
+| D20 | Status (revision 8), §11.5, Appendix D | The latest revision (7) and §11.5's latest R-F4 status entry said that R-F4 is not merged. That was accurate when written, and stopped describing the current status when pull request #6 merged R-F4 into `main` on 2026-10-30 | Records the merge: pull request #6 and GitHub's merge commit `912ab01` (first parent `4646626`, second parent the D6-approved merge target `45b941c`, tree identical to it), kept distinct from the tested candidate `7efafc8`. HB-Q7's R-F4 condition is met, the other gates of HB-7 / HB-S4 remain, and neither authorizes anything further. No Phase 2 rule, gate, owner decision, frozen implementation or operational authorization changes. Revisions 4 to 7 and §11.5's earlier R-F4 status entries stay as written | Pull request #6 (merged 2026-10-30); merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c`; `docs/R_F4_IMPLEMENTATION.md` §26.5 |
