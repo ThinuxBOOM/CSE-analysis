@@ -49,7 +49,10 @@ The `RF4-` prefix keeps these apart from F6.4's M1–M5 (F6.4 design §6) and F8
 
 **Baseline and evidence.** The code baseline is `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. `main` is now
 `4646626`, which adds only this record (`e6a4881`, then its update), so the code is identical; Stage 1 branched from
-it. The design evidence is of three kinds:
+it. *(2026-11-02, with Phase 2 design revision 9: no longer current. The statement that `main` is now `4646626` was
+accurate when written, on 2026-10-16 (`c5b1c12`). `4646626`, committed on 2026-10-14, is the commit Stage 1 branched
+from that day (`77cfb84`'s parent). R-F4 was merged into `main` through pull request #6 on 2026-10-30, as merge commit
+`912ab0177a1476bd6af79e1884af2c899a9e6e2c`, whose first parent is `4646626`.)* The design evidence is of three kinds:
 - reading the baseline's code;
 - **reported synthetic results** of the OD-13 simulation. These ran on disposable scratch copies on 2026-10-14, were
   run by Claude and have not been independently re-executed. They used a simulated schema that differs from §4;

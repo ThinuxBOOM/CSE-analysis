@@ -1468,6 +1468,13 @@ provisioned yet (§52, §54).
 (owner decision). It has not been built or deployed: no Docker file,
 compose file, staging image or CI/CD configuration exists for it.
 
+*(2026-11-02: no longer current in one respect. Under the owner's
+authorization of 2026-11-02 (milestone 8, T1), the staging harness
+exists: a Docker file and its driver in `ops/staging/`, described in
+`docs/ops/STAGING.md`, with staging images built for shakedown runs. No
+Compose file or CI/CD configuration was added. Staging is not accepted,
+and nothing is deployed: REG-G01 stays open.)*
+
 ### Environment progression
 
 ``` text
@@ -2879,7 +2886,7 @@ nothing further: Docker staging and every later gate stay as recorded.
 -   reconciliation;
 -   coverage audit.
 
-Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 8).
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 9).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),

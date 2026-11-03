@@ -227,6 +227,9 @@ privileges and guards. Machine-specific values and the contact e-mail live only 
   `verify` and preflight, and its persistence end to end through F5's `run()` and HB-4's document slice (rebuild,
   rollback and retry, idempotency). The results are recorded in `docs/R_F4_IMPLEMENTATION.md`; R-F4 is not yet
   frozen.
+  *(2026-11-02: no longer current. R-F4 is accepted and frozen, in effect since the post-V check of 2026-10-28, and was
+  merged into `main` on 2026-10-30 through pull request #6, merge commit `912ab01` (`docs/R_F4_IMPLEMENTATION.md`
+  §26.5).)*
 
 Verification at the freeze audit (2026-10-13, on `9f05041`):
 - the HB-6 suites: 36 unit and 19 PostgreSQL tests pass;
@@ -246,9 +249,12 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
 - **R-F4 (`docs/R_F4_DESIGN.md`, `docs/R_F4_IMPLEMENTATION.md`).** Only for a build that includes R-F4. R-F4 is
   implemented (Stages 1 and 2) on the branch `claude/rf4-implementation` and is **not** yet independently audited after
   Stage 2, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen before Docker
-  staging. Stage 2 wires F5's `_persist` to it, so such a build **needs** migration 0018: without it every filing's
-  save is refused (`SchemaUnavailable`) and recorded as a failure. On such a build the owner runs, **in this order**,
-  each step only after the one before it passed:
+  staging. *(2026-11-02: the preceding sentence is no longer current. R-F4 is independently audited, accepted and
+  frozen, in effect since the post-V check of 2026-10-28, and merged into `main` on 2026-10-30 through pull request #6,
+  merge commit `912ab01`, so every build of `main` includes it (`docs/R_F4_IMPLEMENTATION.md` §26.5). The steps below
+  are unchanged.)* Stage 2 wires F5's `_persist` to it, so such a build **needs** migration 0018: without it every
+  filing's save is refused (`SchemaUnavailable`) and recorded as a failure. On such a build the owner runs, **in this
+  order**, each step only after the one before it passed:
   1. **Migration 0018**, through P1's runner (the authorized migration process), after 0001–0017.
   2. **The R-F4 preflight**, on a connection that can verify the migration ledger. It checks three things separately:
      - the checked-out 0018 against the code's pin;
