@@ -451,7 +451,7 @@ changes):
    superuser role or in `pg_write_all_data`; by default only the bootstrap superuser holds that ADMIN. Superuser
    compromise is outside the P1 model.
 
-**Acceptance and freeze (2026-11-04).** P1-CC-1 is **ACCEPTED / FROZEN**, decided [delegated] by the orchestrator under
+**Acceptance and freeze (2026-11-04).** P1-CC-1 is **ACCEPTED / FROZEN**, effective once CI is clean at the record's head (below), decided [delegated] by the orchestrator under
 the owner's standing delegation, on the two independent audits: AR-0001-1 (round 1, PASS WITH FINDINGS, no Blocker or
 Major; its Minor finding F-1 corrected in round 2) and AR-0001-2 (round 2, PASS WITH FINDINGS, no Blocker or Major; its
 Minor finding G-1 accepted as residual 4 above).
@@ -465,5 +465,6 @@ Minor finding G-1 accepted as residual 4 above).
   Staging stays NOT ACCEPTED, and REG-G01 stays OPEN.
 - **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done yet**, so nothing here is
   evidence that the real login works with peer authentication. REG-A05 stays DEFERRED WITH RATIONALE.
-- **Register:** REG-X03 is CLOSED WITH EVIDENCE (`docs/R_F4_IMPLEMENTATION.md` §25.4); REG-A05, REG-A06 and REG-G01
-  keep their statuses.
+- **Register:** REG-X03 is IN PROGRESS (`docs/R_F4_IMPLEMENTATION.md` §25.4). It closes in a later documentation-only
+  commit that records the clean CI at this record's head; if that CI is not clean, the freeze is not in effect and
+  REG-X03 stays IN PROGRESS. REG-A05, REG-A06 and REG-G01 keep their statuses.

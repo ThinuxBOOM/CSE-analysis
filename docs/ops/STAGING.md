@@ -147,7 +147,8 @@ writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection lis
 | ST-29 | `stage_checks.sh regx03` | P1's extended `verify_server` (REG-X03) through the frozen `p1-verify` probe; section 9 |
 | ST-32 | `stage_checks.sh seqkinds` | REG-B32 (UR-8), read-only |
 
-ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen (`docs/ops/P1_PLATFORM.md` §13); their
+ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
+(`docs/ops/P1_PLATFORM.md` §13); their
 procedures exist (section 9) and ran once, as development evidence, in campaign t2s1 (section 10); the acceptance run
 is T3 Phase B on `main`*). Deferred by dependency: ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
 
