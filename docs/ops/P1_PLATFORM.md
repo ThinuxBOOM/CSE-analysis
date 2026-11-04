@@ -390,12 +390,49 @@ unchanged):
 
 No preflight pin map (HB-1 to HB-6, R-F4) covers any of these four files.
 
+*Round 2 (2026-11-04):* `worker/ops/verify_server.py` re-pinned again, from
+`132af17e74c566ac5a09394219787a11bc34f99feed391968ba20e102b8a6958` to
+`d54e24f7f09e6b6d9b6ee254b7d3743f9577c366609081f2920cdb305a1c9a34`. No other pin changed.
+
 **New tests:** `tests/test_p1_cc1_unit.py` (the new checks with a scripted cursor) and `tests/test_p1_cc1_postgres.py`
 (real PostgreSQL 17 throwaway clusters: the login after bootstrap and after re-running it, a session as the login, and
 `verify_server` failing for each violation). The staging harness's application-write probe
 (`ops/staging/inner/stage_checks.sh`) also covers `cse-verifier`.
 
-**Not done (status).** Implemented and tested on throwaway clusters only; not independently audited, accepted, frozen or
-merged. **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done**, so nothing here is
+**Round 2 (2026-11-04): correction of audit finding F-1.** The independent audit of round 1 (AR-0001-1, PASS WITH
+FINDINGS) showed that a login outside the six roles with a SET-only membership in `cse_owner`, directly or through
+`cse_migrator`, could `SET ROLE cse_owner` and write a forged ledger row while every check passed. The orchestrator
+decided [delegated] to fix it. `verify_server` gains `owner_members_designed_only`: any role other than `cse_owner`,
+`cse_migrator` and the bootstrap superuser `postgres` that is a member of `cse_owner` by any path
+(`pg_has_role(…, 'MEMBER')`, whatever the INHERIT and SET options) FAILs, named with whether it can SET ROLE and whether
+it inherits. It is a new check, so every existing check keeps its behaviour; the ledger write check's PASS detail now
+says what it tests (direct, PUBLIC and inherited privileges; superusers and `pg_*` roles not tested there; SET ROLE
+routes to `cse_owner` reported by the new check). New tests cover the three audited shapes (a SET-only login with
+`cse_reader`, the same with a direct CONNECT grant, a login granted `cse_migrator`), an inheriting member, a member with
+neither option, an extra superuser, the forged write each audited shape allows, and the designed `cse_migrator` path
+alone passing.
+
+**What `verify_server` does not check** (boundaries, recorded so that the freeze does not overstate coverage; from the
+round 1 audit's notes):
+- the logins' passwords (`PASSWORD NULL` is enforced by the bootstrap, not verified; harmless while
+  `pg_hba_local_peer_only` holds), connection limits and VALID UNTIL;
+- settings that reach the verifier's sessions without being its own: `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`,
+  settings on `cse_reader`;
+- ledger privileges other than INSERT, UPDATE, DELETE and TRUNCATE (TRIGGER, MAINTAIN, REFERENCES), rules on the
+  ledger, and policies while row-level security is off;
+- a SET-only membership in a role other than `cse_owner` that holds a ledger write privilege (for example the
+  predefined `pg_write_all_data`, which the ledger check does not test);
+- other roles granted `cse_verifier` (members of the login);
+- owner-level manipulation: the owner or a superuser can disable the append-only triggers, insert as the owner, or
+  change the ledger between runs (REG-A11's accepted class);
+- peer authentication itself: the OS user `cse-verifier` and the installed `pg_ident.conf` are verified only at staging
+  (`docs/R_F4_IMPLEMENTATION.md` §20.6);
+- the restored copy: `worker/ops/restore_check.py` asserts the five original roles only, not `cse_verifier`.
+
+Re-running the bootstrap re-enforces the login's attributes and its own grant's options; it does not remove a membership
+row granted by another grantor or an extra membership. `verify_server` detects those.
+
+**Not done (status).** Implemented and tested on throwaway clusters only. Round 1 was independently audited (AR-0001-1:
+PASS WITH FINDINGS); the round 2 correction is not yet audited. Not accepted, frozen or merged. **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done**, so nothing here is
 evidence that the real login works with peer authentication. REG-A05, REG-A06, REG-X03 and REG-G01 keep their recorded
 statuses.

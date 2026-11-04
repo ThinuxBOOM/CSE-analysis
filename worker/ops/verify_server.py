@@ -18,7 +18,9 @@ Change control P1-CC-1 (2026-11-03; M8 OD-7 and OD-8; docs/ops/P1_PLATFORM.md) a
 - REG-X03, the migration ledger ops.schema_migrations: no role other than its owner cse_owner holds INSERT, UPDATE,
   DELETE or TRUNCATE on it, directly or through an inheriting membership (INSERT and UPDATE also as column grants),
   and PUBLIC holds none; it is an ordinary, permanent table, neither partitioned nor a partition, without row-level
-  security (enabled or forced), and neither an inheritance child nor an inheritance parent.
+  security (enabled or forced), and neither an inheritance child nor an inheritance parent;
+- round 2 (AR-0001-1 finding F-1): no role other than cse_owner, cse_migrator and the bootstrap superuser postgres is
+  a member of cse_owner by any path (owner_members_designed_only), since such a role can SET ROLE to the ledger's owner.
 Each violation is a FAIL whose detail names the offender.
 """
 import argparse
@@ -105,6 +107,7 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
     m = _one(cur, "select m.inherit_option, m.set_option from pg_auth_members m join pg_roles r on r.oid = m.roleid "
                   "join pg_roles u on u.oid = m.member where r.rolname = 'cse_owner' and u.rolname = 'cse_migrator'")
     rep.add("migrator_set_role_owner_only", m == (False, True), f"(inherit, set)={m}")
+    owner_members_check(cur, rep)
     other = _one(cur, "select string_agg(u.rolname || '->' || r.rolname, ', ') from pg_auth_members m "
                       "join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member "
                       "where u.rolname = any(%s) and not (r.rolname = 'cse_owner' and u.rolname = 'cse_migrator') "
@@ -190,6 +193,29 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
             rep.add("migration_ledger_clean", False, str(exc))
 
 
+OWNER_MEMBERS_ALLOWED = ("cse_owner", "cse_migrator", "postgres")
+
+
+def owner_members_check(cur, rep):
+    """P1-CC-1 round 2 (AR-0001-1 finding F-1): who can act as the owner. Any role other than cse_owner itself,
+    cse_migrator (the designed SET ROLE path of the migration runner) and the bootstrap superuser postgres that is a
+    member of cse_owner by any path (pg_has_role ... 'MEMBER': direct or through a chain such as login -> cse_migrator
+    -> cse_owner, whatever the INHERIT and SET options) FAILs, named with what it can do (SET ROLE, inherited USAGE).
+    Such a role can SET ROLE cse_owner and then write the migration ledger (REG-X03) or anything else the owner owns.
+    pg_has_role treats a superuser as a member of every role, so an extra superuser is named here too (and by
+    only_bootstrap_superuser). A missing cse_owner FAILs without querying it."""
+    if not _one(cur, "select exists (select 1 from pg_roles where rolname = %s)", (LEDGER_OWNER,))[0]:
+        rep.add("owner_members_designed_only", False, f"{LEDGER_OWNER} missing")
+        return
+    others = _one(cur, "select string_agg(r.rolname || ' (set=' || pg_has_role(r.oid, o.oid, 'SET') || ' usage=' "
+                       "|| pg_has_role(r.oid, o.oid, 'USAGE') || ')', ', ' order by r.rolname) "
+                       "from pg_roles r, pg_roles o where o.rolname = %s and r.rolname::text <> all(%s) "
+                       "and pg_has_role(r.oid, o.oid, 'MEMBER')", (LEDGER_OWNER, list(OWNER_MEMBERS_ALLOWED)))[0]
+    rep.add("owner_members_designed_only", others is None,
+            f"other members of {LEDGER_OWNER} (any path): {others}" if others
+            else f"members of {LEDGER_OWNER}: cse_migrator (the designed SET ROLE path) and the bootstrap superuser only")
+
+
 VERIFIER_CHECKS = ("verifier_membership_reader_only", "verifier_no_database_create_or_temporary",
                    "verifier_no_role_settings")
 
@@ -240,6 +266,9 @@ def ledger_checks(cur, rep):
       is reported only if it gains a write privilege of its own or through an inheriting membership. Its SET ROLE route
       to cse_owner is the designed owner path: the migration runner writes the ledger as cse_owner inside each
       migration transaction. That route is checked by migrator_set_role_owner_only, not exempted here by name.
+    - SET ROLE routes are not privileges: a role that can SET ROLE cse_owner (directly or through cse_migrator) is
+      reported by owner_members_designed_only (round 2, AR-0001-1 F-1). A SET-only member of another role that holds a
+      write privilege (a predefined pg_* role, for example pg_write_all_data) is not checked.
     PUBLIC's own grants (table and column ACLs) are named separately as PUBLIC.
 
     Shape: an ordinary table (relkind 'r'), not a partition (relispartition) and so not partitioned; permanent
@@ -266,7 +295,10 @@ def ledger_checks(cur, rep):
                   (oid, list(LEDGER_WRITES), oid, list(LEDGER_WRITES)))[0]
     offenders = ", ".join(x for x in (public, roles) if x)
     rep.add("ledger_writable_only_by_owner", not offenders,
-            f"{LEDGER} writable by: {offenders}" if offenders else f"only {LEDGER_OWNER} (and superusers)")
+            f"{LEDGER} writable by: {offenders}" if offenders else
+            f"no role but {LEDGER_OWNER} holds INSERT/UPDATE/DELETE/TRUNCATE on {LEDGER} directly, through PUBLIC or "
+            f"by inheritance (superusers and pg_* roles not tested here; SET ROLE routes to {LEDGER_OWNER}: "
+            "owner_members_designed_only)")
     kind, persistence, rls, force, is_partition = _one(
         cur, "select relkind, relpersistence, relrowsecurity, relforcerowsecurity, relispartition from pg_class "
              "where oid = %s", (oid,))

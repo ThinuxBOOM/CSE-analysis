@@ -376,6 +376,7 @@ def test_migration_0014_is_additive_append_only_and_least_privileged():
 FROZEN_P1_P2 = {   # SHA-256 (LF-normalised) at the accepted P2 baseline 00af041: P3 builds on these, never edits them
     # Re-pinned under P1 change control P1-CC-1 (2026-11-03; M8 OD-7/OD-8, docs/ops/P1_PLATFORM.md): exactly
     # pg_ident.conf, provision.sh, bootstrap_cluster.sql and verify_server.py. Every other pin is unchanged.
+    # P1-CC-1 round 2 (2026-11-04, AR-0001-1 finding F-1): verify_server.py re-pinned again; nothing else.
     "ops/bin/cse-capture": "82afae1e33ca023d0e74a1f23ad3723c052f1633bb06eba792e5c6ecc8647bf0",
     "ops/bin/cse-ops": "168073d920afb84ea2ea491c23de524c9d2909f4001e791b57a91f441fa6d778",
     "ops/config/backup.env.example": "136c73d211808ba5921a1e9b934f034b53f6fbaecd01e4183ebb46965a2ca361",
@@ -420,7 +421,7 @@ FROZEN_P1_P2 = {   # SHA-256 (LF-normalised) at the accepted P2 baseline 00af041
     "worker/ops/restore_check.py": "0fda8c614856605a43f7ad147e35c7ac3d7a5d2d947277d005df4d86e57fa233",
     "worker/ops/settings.py": "ad0fc837cae7dd9c75f996db9d9cfc0468c2a75dd2d43bc4b540aef325370254",
     "worker/ops/spool.py": "48e15c2d4cccf4bb421006c533fbfeaecf95539e01cdbacd68da6931820b116b",
-    "worker/ops/verify_server.py": "132af17e74c566ac5a09394219787a11bc34f99feed391968ba20e102b8a6958",
+    "worker/ops/verify_server.py": "d54e24f7f09e6b6d9b6ee254b7d3743f9577c366609081f2920cdb305a1c9a34",
 }
 
 

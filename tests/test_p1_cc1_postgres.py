@@ -21,7 +21,13 @@ section 20.6, steps 1-6, not part of this change).
         INSERT / UPDATE / DELETE / TRUNCATE on ops.schema_migrations for cse_reader, cse_backup, cse_verifier or
         PUBLIC, an inheritance child (and parent), row-level security, an UNLOGGED ledger, a partitioned ledger
         (recreated in the transaction), the ledger as a partition, and the ledger replaced by a view. Each case is made
-        by the superuser inside a transaction that is rolled back.
+        by the superuser inside a transaction that is rolled back. Round 2 (AR-0001-1 finding F-1): a login with a
+        SET-only membership in cse_owner (with cse_reader, or with a direct CONNECT grant), a login granted
+        cse_migrator, an inheriting member of cse_owner and an extra superuser FAIL owner_members_designed_only
+    g6  round 2: the designed path alone passes: cse_migrator is cse_owner's only member besides the bootstrap
+        superuser, it can SET ROLE cse_owner without inheriting its privileges, and owner_members_designed_only PASSes;
+        each F-1 shape is a real write route (as that login, SET LOCAL ROLE cse_owner and INSERT into the ledger
+        succeed, rolled back), and the check names it
 """
 import os
 import socket
@@ -42,7 +48,7 @@ RF4_TABLES = ("financial_f4_extractions", "financial_f4_statements", "financial_
               "financial_f4_cells")
 NEW_CHECKS = ("role_cse_verifier", "verifier_membership_reader_only", "verifier_no_database_create_or_temporary",
               "verifier_no_role_settings", "ledger_writable_only_by_owner", "ledger_ordinary_table", "ledger_permanent",
-              "ledger_no_row_level_security", "ledger_no_inheritance")
+              "ledger_no_row_level_security", "ledger_no_inheritance", "owner_members_designed_only")
 
 
 def free_port():
@@ -169,7 +175,11 @@ def test_g3_verify_server_passes_on_the_provisioned_cluster(pg, monkeypatch, cap
     assert not [i for i in rep.items if i["status"] != "PASS"], rep.items
     for check in NEW_CHECKS:
         assert items[check]["status"] == "PASS", check
-    assert items["ledger_writable_only_by_owner"]["detail"] == "only cse_owner (and superusers)"
+    assert items["ledger_writable_only_by_owner"]["detail"] == (
+        "no role but cse_owner holds INSERT/UPDATE/DELETE/TRUNCATE on ops.schema_migrations directly, through PUBLIC "
+        "or by inheritance (superusers and pg_* roles not tested here; SET ROLE routes to cse_owner: "
+        "owner_members_designed_only)")
+    assert items["owner_members_designed_only"]["detail"] ==         "members of cse_owner: cse_migrator (the designed SET ROLE path) and the bootstrap superuser only"
     # the command line, database checks only (the OS checks need a provisioned host: staging, not this container)
     for k, v in {"CSE_DB_HOST": pg.sockdir, "CSE_DB_PORT": str(pg.port), "CSE_DB_NAME": "cse"}.items():
         monkeypatch.setenv(k, v)
@@ -302,6 +312,22 @@ NEGATIVE = [
     ("replaced-by-view", ["alter table ops.schema_migrations rename to schema_migrations_orig",
                           "create view ops.schema_migrations as select * from ops.schema_migrations_orig"],
      "ledger_ordinary_table", "relkind='v'"),
+    # round 2 (AR-0001-1 F-1): any other member of cse_owner, by any path, can SET ROLE to the ledger's owner
+    ("owner-set-only-login", ["create role p1cc1_setonly login", "grant cse_reader to p1cc1_setonly",
+                              "grant cse_owner to p1cc1_setonly with inherit false, set true"],
+     "owner_members_designed_only", "p1cc1_setonly (set=true usage=false)"),
+    ("owner-set-only-connect", ["create role p1cc1_setconn login", "grant connect on database cse to p1cc1_setconn",
+                                "grant cse_owner to p1cc1_setconn with inherit false, set true"],
+     "owner_members_designed_only", "p1cc1_setconn (set=true usage=false)"),
+    ("owner-via-migrator", ["create role p1cc1_chain login", "grant cse_migrator to p1cc1_chain"],
+     "owner_members_designed_only", "p1cc1_chain (set=true usage=false)"),
+    ("owner-inheriting-member", ["create role p1cc1_heir2 login", "grant cse_owner to p1cc1_heir2 with inherit true"],
+     "owner_members_designed_only", "p1cc1_heir2 (set=true usage=true)"),
+    ("owner-member-no-set", ["create role p1cc1_noset login",
+                             "grant cse_owner to p1cc1_noset with inherit false, set false"],
+     "owner_members_designed_only", "p1cc1_noset (set=false usage=false)"),
+    ("owner-extra-superuser", ["create role p1cc1_super superuser login"], "owner_members_designed_only",
+     "p1cc1_super (set=true usage=true)"),
 ]
 
 
@@ -335,3 +361,63 @@ def test_g5_after_the_cases_the_cluster_passes_again(pg):
         c.rollback()
         c.close()
     assert not [k for k, i in items.items() if i["status"] != "PASS"], items
+
+
+# ------------------------------------------------------------------------------------------------ g6 (round 2)
+
+def test_g6_the_designed_migrator_path_alone_passes(pg):
+    c = su(pg, autocommit=False)
+    try:
+        with c.cursor() as cur:
+            items = run_checks(cur)
+            cur.execute("select r.rolname from pg_roles r where pg_has_role(r.oid, 'cse_owner', 'MEMBER') "
+                        "and r.rolname <> 'cse_owner' order by 1")
+            members = [r[0] for r in cur.fetchall()]
+            cur.execute("select pg_has_role('cse_migrator', 'cse_owner', 'SET'), "
+                        "pg_has_role('cse_migrator', 'cse_owner', 'USAGE')")
+            migrator = cur.fetchone()
+    finally:
+        c.rollback()
+        c.close()
+    assert members == ["cse_migrator", "postgres"]
+    assert migrator == (True, False)
+    assert items["owner_members_designed_only"]["status"] == "PASS"
+    assert items["migrator_set_role_owner_only"]["status"] == "PASS"
+    assert not [k for k, i in items.items() if i["status"] != "PASS"], items
+
+
+@pytest.mark.parametrize("name, grants", [
+    ("p1cc1_r_setonly", ["grant cse_reader to p1cc1_r_setonly",
+                         "grant cse_owner to p1cc1_r_setonly with inherit false, set true"]),
+    ("p1cc1_r_setconn", ["grant connect on database cse to p1cc1_r_setconn",
+                         "grant cse_owner to p1cc1_r_setconn with inherit false, set true"]),
+    ("p1cc1_r_chain", ["grant cse_migrator to p1cc1_r_chain"]),
+])
+def test_g6_each_f1_shape_is_a_real_write_route_and_is_named(pg, name, grants):
+    """AR-0001-1's E1b, E1c and E2: the route is real (the login forges a ledger row as cse_owner, rolled back), and
+    verify_server names the login. The role is created and dropped here (committed DDL on the throwaway cluster)."""
+    import psycopg2
+    s = su(pg)
+    q(s, f"create role {name} login")
+    try:
+        for g in grants:
+            q(s, g)
+        c = pg.connect(dbname="cse", user=name)
+        try:
+            with c.cursor() as cur:
+                cur.execute("set local role cse_owner")
+                cur.execute("insert into ops.schema_migrations (version, filename, sha256, runner_version) "
+                            "values (9990, '9990_forged.sql', repeat('0', 64), 'forged')")
+                assert cur.rowcount == 1
+        finally:
+            c.rollback()
+            c.close()
+        with s.cursor() as cur:
+            items = run_checks(cur)
+        assert items["owner_members_designed_only"]["status"] == "FAIL"
+        assert f"{name} (set=true usage=false)" in items["owner_members_designed_only"]["detail"]
+        assert q(s, "select count(*) from ops.schema_migrations where version = 9990") == [(0,)]
+    finally:
+        q(s, f"drop owned by {name}")
+        q(s, f"drop role {name}")
+        s.close()

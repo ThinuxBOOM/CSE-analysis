@@ -17,6 +17,10 @@ tests/test_p1_cc1_postgres.py.
         cse_verifier -> cse_reader; the new checks run before the ledger-clean step's rollback
     u9  the static files: four pg_ident mappings, provision.sh's users step creates cse-verifier in group cse, and the
         bootstrap creates and enforces the login
+    u10 round 2 (AR-0001-1 finding F-1): owner_members_designed_only passes when cse_owner's only members (any path)
+        are cse_migrator and postgres, FAILs naming each other member (a SET-only login, a CONNECT-granted one, a login
+        granted cse_migrator), FAILs without querying when cse_owner is missing, asks pg_has_role(..., 'MEMBER'), and
+        runs in db_checks right after migrator_set_role_owner_only; the ledger check's PASS detail says what it checks
 """
 import os
 import sys
@@ -209,6 +213,7 @@ def test_u8_db_checks_wiring(inherit, status, tmp_path):
         assert check in items and order.index(check) < order.index("migration_ledger_clean"), check
     first_rollback = [s for s, _ in cur.log].index("ROLLBACK")
     assert first_rollback > max(i for i, (s, _) in enumerate(cur.log) if "from pg_inherits" in s)
+    assert order.index("owner_members_designed_only") == order.index("migrator_set_role_owner_only") + 1
 
 
 # ------------------------------------------------------------------------------------------------ u9
@@ -233,3 +238,48 @@ def test_u9_pg_ident_provision_and_bootstrap():
     assert "alter role cse_verifier inherit;" in boot
     assert "grant cse_reader to cse_verifier with admin false, inherit true, set false;" in boot
     assert "grant connect on database %I to cse_migrator, cse_worker, cse_reader, cse_backup'" in boot  # unchanged
+
+
+# ------------------------------------------------------------------------------------------------ u10 (round 2)
+
+def owner_rules(exists=True, others=None):
+    return [("select exists (select 1 from pg_roles where rolname", (exists,)),
+            ("pg_has_role(r.oid, o.oid, 'MEMBER')", (others,))]
+
+
+def test_u10_owner_members_pass_on_the_designed_path():
+    items, cur = run(vs.owner_members_check, owner_rules())
+    assert items == {"owner_members_designed_only": {
+        "check": "owner_members_designed_only", "status": "PASS",
+        "detail": "members of cse_owner: cse_migrator (the designed SET ROLE path) and the bootstrap superuser only"}}
+    sql, args = cur.log[1]
+    assert "pg_has_role(r.oid, o.oid, 'MEMBER')" in sql and "r.rolname::text <> all(%s)" in sql
+    assert args == ("cse_owner", ["cse_owner", "cse_migrator", "postgres"])
+    assert vs.OWNER_MEMBERS_ALLOWED == ("cse_owner", "cse_migrator", "postgres")
+
+
+@pytest.mark.parametrize("others", [
+    "audit_setonly (set=true usage=false)",                                   # E1b: SET-only, with cse_reader
+    "audit_setconn (set=true usage=false)",                                   # E1c: SET-only, direct CONNECT
+    "audit_chain (set=true usage=false)",                                     # E2: login -> cse_migrator -> cse_owner
+    "audit_chain (set=true usage=false), audit_setonly (set=true usage=false)",
+])
+def test_u10_every_other_member_fails_and_is_named(others):
+    items, _ = run(vs.owner_members_check, owner_rules(others=others))
+    i = items["owner_members_designed_only"]
+    assert i["status"] == "FAIL" and i["detail"] == f"other members of cse_owner (any path): {others}"
+
+
+def test_u10_a_missing_owner_fails_without_querying_it():
+    items, cur = run(vs.owner_members_check, owner_rules(exists=False))
+    assert items["owner_members_designed_only"]["status"] == "FAIL"
+    assert items["owner_members_designed_only"]["detail"] == "cse_owner missing"
+    assert len(cur.log) == 1
+
+
+def test_u10_the_ledger_pass_detail_says_what_is_checked():
+    items, _ = run(vs.ledger_checks, ledger_rules())
+    assert items["ledger_writable_only_by_owner"]["detail"] == (
+        "no role but cse_owner holds INSERT/UPDATE/DELETE/TRUNCATE on ops.schema_migrations directly, through PUBLIC "
+        "or by inheritance (superusers and pg_* roles not tested here; SET ROLE routes to cse_owner: "
+        "owner_members_designed_only)")
