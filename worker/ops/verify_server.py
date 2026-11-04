@@ -5,10 +5,21 @@ Security / provisioning verification (P1). Read-only: it changes nothing.
 
 Connects as the postgres superuser over the local socket (needed to read pg_hba_file_rules and data_directory) and
 checks the cluster against the P1 model: PostgreSQL 17 with data checksums and durable settings, socket-only listener,
-peer-only local authentication, the five cse_* roles and their attributes/memberships, ownership by the NOLOGIN owner,
+peer-only local authentication, the six cse_* roles and their attributes/memberships, ownership by the NOLOGIN owner,
 nothing granted to PUBLIC, least privilege for the worker, append-only triggers, and a clean migration ledger. With
 OS checks enabled it also checks the Ubuntu release, time synchronisation, and the backup layout (separate device,
 ownership, modes, credentials not world-readable). Exit status 1 if any check FAILs.
+
+Change control P1-CC-1 (2026-11-03; M8 OD-7 and OD-8; docs/ops/P1_PLATFORM.md) added:
+- the reader login cse_verifier (docs/R_F4_IMPLEMENTATION.md section 20.6), the sixth role: LOGIN and INHERIT, no
+  elevated attribute; exactly one membership, in cse_reader WITH INHERIT TRUE, SET FALSE and ADMIN false, which
+  no_unexpected_memberships exempts by name; no CREATE or TEMPORARY on the database; no pg_db_role_setting row in any
+  database;
+- REG-X03, the migration ledger ops.schema_migrations: no role other than its owner cse_owner holds INSERT, UPDATE,
+  DELETE or TRUNCATE on it, directly or through an inheriting membership (INSERT and UPDATE also as column grants),
+  and PUBLIC holds none; it is an ordinary, permanent table, neither partitioned nor a partition, without row-level
+  security (enabled or forced), and neither an inheritance child nor an inheritance parent.
+Each violation is a FAIL whose detail names the offender.
 """
 import argparse
 import json
@@ -19,7 +30,11 @@ import sys
 
 from . import migrate as ops_migrate, settings as ops_settings
 
-ROLES = {"cse_owner": False, "cse_migrator": True, "cse_worker": True, "cse_reader": False, "cse_backup": True}
+ROLES = {"cse_owner": False, "cse_migrator": True, "cse_worker": True, "cse_reader": False, "cse_backup": True,
+         "cse_verifier": True}
+VERIFIER, VERIFIER_GROUP = "cse_verifier", "cse_reader"         # P1-CC-1: the one login for R-F4's `verify`
+LEDGER, LEDGER_OWNER = "ops.schema_migrations", "cse_owner"     # REG-X03
+LEDGER_WRITES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE")
 APPEND_ONLY = {
     "public.raw_market_observations", "public.raw_index_observations", "public.report_filing_observations",
     "public.report_document_classifications", "public.report_statement_periods", "public.report_classification_evidence",
@@ -75,10 +90,14 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
         if name not in got:
             rep.add(f"role_{name}", False, "missing")
             continue
-        can_login, sup, crole, cdb, repl, bypass, _inherit = got[name]
-        rep.add(f"role_{name}", can_login == login and not any((sup, crole, cdb, repl, bypass)),
-                f"login={can_login} superuser={sup} createrole={crole} createdb={cdb} replication={repl} "
-                f"bypassrls={bypass}")
+        can_login, sup, crole, cdb, repl, bypass, inherit = got[name]
+        ok = can_login == login and not any((sup, crole, cdb, repl, bypass))
+        detail = (f"login={can_login} superuser={sup} createrole={crole} createdb={cdb} replication={repl} "
+                  f"bypassrls={bypass}")
+        if name == VERIFIER:                                     # P1-CC-1: the login also has the INHERIT attribute
+            ok = ok and bool(inherit)
+            detail += f" inherit={inherit}"
+        rep.add(f"role_{name}", ok, detail)
     cur.execute("select rolname from pg_roles where rolsuper order by rolname")
     supers = [r[0] for r in cur.fetchall()]
     rep.add("only_bootstrap_superuser", supers == ["postgres"], f"superusers={supers}",
@@ -89,10 +108,12 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
     other = _one(cur, "select string_agg(u.rolname || '->' || r.rolname, ', ') from pg_auth_members m "
                       "join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member "
                       "where u.rolname = any(%s) and not (r.rolname = 'cse_owner' and u.rolname = 'cse_migrator') "
-                      "and not (r.rolname = 'pg_read_all_data' and u.rolname = 'cse_backup')", (list(ROLES),))[0]
+                      "and not (r.rolname = 'pg_read_all_data' and u.rolname = 'cse_backup') "
+                      "and not (r.rolname = 'cse_reader' and u.rolname = 'cse_verifier')", (list(ROLES),))[0]
     rep.add("no_unexpected_memberships", other is None, other or "none")
     rb = _one(cur, "select pg_has_role('cse_backup', 'pg_read_all_data', 'MEMBER')")[0]
     rep.add("backup_reads_all_data", rb, f"cse_backup member of pg_read_all_data={rb}")
+    verifier_checks(cur, rep)
 
     owner = _one(cur, "select r.rolname from pg_database d join pg_roles r on r.oid = d.datdba "
                       "where d.datname = current_database()")[0]
@@ -157,6 +178,7 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
         if not (row_ud and stmt_trunc):
             missing.append(rel)
     rep.add("append_only_triggers_enabled", not missing, ", ".join(missing) or f"{len(APPEND_ONLY)} tables protected")
+    ledger_checks(cur, rep)
 
     if migrations_dir:
         try:
@@ -166,6 +188,99 @@ def db_checks(cur, rep, expect_hba=("peer",), allow_listen=("",), migrations_dir
             rep.add("migration_ledger_clean", ok, json.dumps({k: d[k] for k in ("pending", "problems")}))
         except Exception as exc:  # noqa: BLE001
             rep.add("migration_ledger_clean", False, str(exc))
+
+
+VERIFIER_CHECKS = ("verifier_membership_reader_only", "verifier_no_database_create_or_temporary",
+                   "verifier_no_role_settings")
+
+
+def verifier_checks(cur, rep):
+    """P1-CC-1: the reader login cse_verifier (docs/R_F4_IMPLEMENTATION.md section 20.6). Its attributes are checked
+    with the other roles (ROLES). Here: its one membership, its database privileges and its role settings. A missing
+    login FAILs every check without querying it (has_database_privilege raises for an unknown role)."""
+    if not _one(cur, "select exists (select 1 from pg_roles where rolname = %s)", (VERIFIER,))[0]:
+        for check in VERIFIER_CHECKS:
+            rep.add(check, False, f"{VERIFIER} missing")
+        return
+    # exactly one membership row: cse_reader with (inherit, set, admin) = (true, false, false), whoever granted it
+    cur.execute("select r.rolname, m.inherit_option, m.set_option, m.admin_option, g.rolname from pg_auth_members m "
+                "join pg_roles r on r.oid = m.roleid join pg_roles u on u.oid = m.member "
+                "join pg_roles g on g.oid = m.grantor where u.rolname = %s order by 1, 5", (VERIFIER,))
+    rows = cur.fetchall()
+    rep.add("verifier_membership_reader_only", [tuple(r[:4]) for r in rows] == [(VERIFIER_GROUP, True, False, False)],
+            "; ".join(f"{VERIFIER}->{r[0]} (inherit={r[1]} set={r[2]} admin={r[3]} grantor={r[4]})" for r in rows)
+            or "no membership")
+    # privileges held directly or through an inheriting membership (cse_reader's, PUBLIC's)
+    create, temp = _one(cur, "select has_database_privilege(%s, current_database(), 'CREATE'), "
+                             "has_database_privilege(%s, current_database(), 'TEMPORARY')", (VERIFIER, VERIFIER))
+    rep.add("verifier_no_database_create_or_temporary", not (create or temp),
+            f"{VERIFIER} on the current database: CREATE={create} TEMPORARY={temp}")
+    # any database, including setdatabase = 0 (ALTER ROLE ... SET without IN DATABASE)
+    settings = _one(cur, "select string_agg(coalesce(d.datname, '(all databases)') || ': ' "
+                         "|| array_to_string(s.setconfig, ', '), '; ' order by d.datname) from pg_db_role_setting s "
+                         "left join pg_database d on d.oid = s.setdatabase "
+                         "where s.setrole = (select oid from pg_roles where rolname = %s)", (VERIFIER,))[0]
+    rep.add("verifier_no_role_settings", settings is None, f"{VERIFIER} settings: {settings}" if settings else "none")
+
+
+LEDGER_CHECKS = ("ledger_writable_only_by_owner", "ledger_ordinary_table", "ledger_permanent",
+                 "ledger_no_row_level_security", "ledger_no_inheritance")
+
+
+def ledger_checks(cur, rep):
+    """REG-X03 (M8 OD-8 = a): who may write the migration ledger, and its table shape.
+
+    Write privileges: every role except the ledger's owner cse_owner, the superusers and the predefined pg_* roles is
+    tested with has_table_privilege (DELETE, TRUNCATE) and has_any_column_privilege (INSERT, UPDATE, which may also be
+    granted per column). Both count privileges held directly, through PUBLIC, and through memberships WITH INHERIT.
+    - Superusers hold every privilege; they are checked by only_bootstrap_superuser (postgres alone).
+    - The predefined roles cannot log in; pg_write_all_data would always report INSERT/UPDATE/DELETE. A role that
+      inherits one of them, or any grant made to one of them, is reported through that role.
+    - cse_migrator is a member of cse_owner WITH INHERIT FALSE, SET TRUE. It holds no privilege of the owner's, so it
+      is reported only if it gains a write privilege of its own or through an inheriting membership. Its SET ROLE route
+      to cse_owner is the designed owner path: the migration runner writes the ledger as cse_owner inside each
+      migration transaction. That route is checked by migrator_set_role_owner_only, not exempted here by name.
+    PUBLIC's own grants (table and column ACLs) are named separately as PUBLIC.
+
+    Shape: an ordinary table (relkind 'r'), not a partition (relispartition) and so not partitioned; permanent
+    (relpersistence 'p'); no row-level security, enabled or forced; no pg_inherits row naming it as child or parent."""
+    oid = _one(cur, "select to_regclass(%s)::oid", (LEDGER,))[0]
+    if oid is None:
+        for check in LEDGER_CHECKS:
+            rep.add(check, False, f"{LEDGER} missing")
+        return
+    roles = _one(cur, "select string_agg(r.rolname || ':' || p.priv, ', ' order by r.rolname, p.ord) "
+                      "from pg_roles r cross join unnest(%s::text[]) with ordinality as p(priv, ord) "
+                      "where r.rolname <> %s and not r.rolsuper and r.rolname !~ '^pg_' and case "
+                      "when p.priv in ('INSERT', 'UPDATE') then has_any_column_privilege(r.oid, %s::oid, p.priv) "
+                      "else has_table_privilege(r.oid, %s::oid, p.priv) end",
+                 (list(LEDGER_WRITES), LEDGER_OWNER, oid, oid))[0]
+    public = _one(cur, "select string_agg(distinct x, ', ') from ("
+                       "select 'PUBLIC:' || a.privilege_type as x from pg_class c, "
+                       "aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a "
+                       "where c.oid = %s and a.grantee = 0 and a.privilege_type = any(%s) "
+                       "union all select 'PUBLIC:' || a.privilege_type || '(' || t.attname || ')' "
+                       "from pg_attribute t, aclexplode(t.attacl) a "
+                       "where t.attrelid = %s and t.attacl is not null and a.grantee = 0 "
+                       "and a.privilege_type = any(%s)) q",
+                  (oid, list(LEDGER_WRITES), oid, list(LEDGER_WRITES)))[0]
+    offenders = ", ".join(x for x in (public, roles) if x)
+    rep.add("ledger_writable_only_by_owner", not offenders,
+            f"{LEDGER} writable by: {offenders}" if offenders else f"only {LEDGER_OWNER} (and superusers)")
+    kind, persistence, rls, force, is_partition = _one(
+        cur, "select relkind, relpersistence, relrowsecurity, relforcerowsecurity, relispartition from pg_class "
+             "where oid = %s", (oid,))
+    rep.add("ledger_ordinary_table", kind == "r" and not is_partition,
+            f"{LEDGER} relkind={kind!r} relispartition={is_partition}")
+    rep.add("ledger_permanent", persistence == "p", f"{LEDGER} relpersistence={persistence!r}")
+    rep.add("ledger_no_row_level_security", not rls and not force,
+            f"{LEDGER} relrowsecurity={rls} relforcerowsecurity={force}")
+    inh = _one(cur, "select string_agg(x, ', ' order by x) from ("
+                    "select 'child ' || i.inhrelid::regclass::text as x from pg_inherits i where i.inhparent = %s "
+                    "union all select 'parent ' || i.inhparent::regclass::text from pg_inherits i "
+                    "where i.inhrelid = %s) q", (oid, oid))[0]
+    rep.add("ledger_no_inheritance", inh is None,
+            f"{LEDGER} inheritance: {inh}" if inh else "no inheritance parent or child")
 
 
 def _owner_mode(path):

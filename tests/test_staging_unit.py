@@ -1,0 +1,468 @@
+"""
+Milestone 8 Docker staging harness, static guards (docs/ops/STAGING.md). The harness's boundaries are checked here, not
+only documented, so that a later edit cannot loosen one silently:
+
+    s1  every staging container: --network none, --restart no, no bind mount, no Docker socket, no --privileged
+    s2  no restore: nothing invokes P1's restore check, pg_restore, `provision.sh all` or `selftest`
+        (DO NOT EXECUTE RESTORE); the restore-executing tests are deselected in the runner, by exact node id
+    s3  the R1 gate: the restore-check service's refusal drop-in is installed before `provision.sh units`, and the
+        timer is disabled after every `units`
+    s4  never armed, never CSE: no arming or owner command, no CSE host name, no contact e-mail value
+    s5  nothing destructive: no container, volume or image removal; evidence and secrets outside the repository
+    s6  the image: the CI's digest-pinned base, P1's own `packages` step, Poppler 24.02.0 enforced, no secret in a layer
+    s7  shell syntax (Linux)
+
+The corrections made after the T1 campaign (docs/ops/STAGING.md section 8), each run against the harness's own code
+(shell functions extracted from the scripts, or the driver with a stub `docker` first on PATH; no container, no
+network). They need a POSIX bash (Linux, or Git Bash on Windows) and are skipped, not passed, without one:
+
+    h1  ST-21b: a oneshot unit's result is read only once that invocation has ended (never from `is-active`)
+    h2  ST-21a: the leak check uses the secret as P1 reads it (no CR, no newline) and keeps its controls
+    h3  ST-04: the container's configuration (docker inspect) and its effective capabilities and mounts are asserted
+    h4  every run records the exact harness file versions (PROVENANCE lines; inject manifests in the driver log)
+    h5  fingerprint snapshots are never reused or overwritten, and are compared by `fpcompare`
+    h6  the synthetic seed records its command, identity, parameters, input hash, timestamps and result
+"""
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
+STAGING = os.path.join(REPO, "ops", "staging")
+
+
+def read(*parts):
+    with open(os.path.join(STAGING, *parts), encoding="utf-8") as f:
+        return f.read().replace("\r\n", "\n")
+
+
+def harness_files():
+    out = []
+    for d, _dirs, files in os.walk(STAGING):
+        out += [os.path.join(d, f) for f in files if not f.endswith(".lock")]
+    return sorted(out)
+
+
+def code_lines(text):
+    """Lines that are not comments (shell, Python and Dockerfile comments start with #)."""
+    return [l for l in text.splitlines() if not l.lstrip().startswith("#")]
+
+
+def test_s1_every_container_is_offline_never_restarted_and_has_no_bind_mount():
+    drv = read("staging.sh")
+    flags = drv[drv.index("rung_flags() {"):drv.index("wait_systemd() {")]
+    assert "--network none --restart no --cgroupns private --cap-add SYS_ADMIN" in flags
+    runner = drv[drv.index("cmd_runner() {"):drv.index("cmd_canary() {")]
+    assert "docker create" in runner and "--network none --restart no" in runner
+    assert drv.count("docker run ") == 2 and drv.count("docker create ") == 1      # trial, up; runner
+    for f in harness_files():
+        code = "\n".join(code_lines(open(f, encoding="utf-8").read()))
+        # the socket may appear only in a check of its absence (stage_checks.sh, isolation_check.py)
+        code = code.replace("! -e /var/run/docker.sock", "").replace("! -e /run/docker.sock", "")
+        assert "docker.sock" not in code.replace('not any("docker.sock" in (', ""), f
+        assert "type=bind" not in code, f
+        assert not re.search(r"--privileged(?![^\n]*(echo|not implemented|L3))", code), f
+    docker_lines = [l for l in code_lines(drv) if "docker " in l or l.lstrip().startswith("--")]
+    assert docker_lines and not any(re.search(r"(^|\s)(-v|--volume)\s", l) for l in docker_lines)
+    assert drv.count("type=volume,src=") == 3
+
+
+def test_s2_nothing_restores_and_the_restore_tests_are_deselected_by_exact_node_id():
+    for f in harness_files():
+        code = "\n".join(code_lines(open(f, encoding="utf-8").read()))
+        for forbidden in ("worker.ops.restore_check", "pg_restore", "cse-ops\" restore_check", "cse-ops restore_check",
+                          "provision.sh all", "selftest"):
+            assert forbidden not in code, (f, forbidden)
+        assert not re.search(r'"\$P1"\s+all\b', code), f
+    drv = read("staging.sh")
+    ids = re.findall(r'"(tests/test_[a-z0-9_]+\.py::test_[a-z0-9_]+)"', drv)
+    assert len(ids) == 9
+    for node in ids:
+        path, name = node.split("::")
+        assert f"def {name}(" in open(os.path.join(REPO, path), encoding="utf-8").read(), node
+    assert {n.split("::")[0] for n in ids} == {"tests/test_p1_postgres.py", "tests/test_f64_postgres.py",
+                                              "tests/test_rf4_runbook_rehearsal.py"}
+    assert "PYTEST_ADDOPTS" in drv and "--deselect" in drv
+
+
+def test_s3_the_r1_gate_precedes_units_and_the_timer_is_disabled_after_them():
+    prov = read("inner", "stage_provision.sh")
+    assert "ConditionPathExists=/etc/cse/staging/R1-AUTHORIZED" in prov
+    assert "systemctl disable --now cse-backup-restore-check.timer" in prov
+    for branch in ("fresh)", "to-0017)"):
+        body = prov[prov.index(f"  {branch}"):]
+        body = body[:body.index(";;")]
+        assert body.index("r1_gate") < body.index('"$P1"'), branch
+    for branch in ("fresh)", "finish-upgrade)", "again)"):
+        body = prov[prov.index(f"  {branch}"):]
+        body = body[:body.index(";;")]
+        assert " units" in body and body.index(" units") < body.index("r1_timer_off"), branch
+    assert "R1-AUTHORIZED" not in "\n".join(l for l in code_lines(prov) if ">" in l and "R1-AUTHORIZED" in l
+                                            and "ConditionPathExists" not in l)
+
+
+def test_s4_never_armed_never_cse_and_no_contact_address():
+    for f in harness_files():
+        code = "\n".join(code_lines(open(f, encoding="utf-8").read()))
+        assert "cse.lk" not in code, f
+        assert not re.search(r"cse-(backfill|scheduler|capture|financial)\"?\s+(arm|disarm|acknowledge-block|"
+                             r"resolve-hold|designate|capture|sweep|resume)\b", code), f
+        assert not re.search(r"worker\.(backfill_ops|scheduler|market_capture)\s+(arm|capture|sweep)\b", code), f
+        assert "record_arming" not in code, f
+        assert not re.search(r"CSE_CAPTURE_CONTACT_EMAIL=[^\s'\"]", code), f
+        assert "RESTIC_PASSWORD=" not in code, f
+
+
+def test_s5_nothing_destructive_and_evidence_and_secrets_stay_outside_the_repository():
+    drv = read("staging.sh")
+    code = "\n".join(code_lines(drv))
+    for forbidden in ("docker rm", "docker volume rm", "docker rmi", "docker image rm", "prune", " --rm"):
+        assert forbidden not in code, forbidden
+    evid = re.search(r'EVID="\$\{CSE_STAGING_EVIDENCE:-([^}]+)\}"', drv).group(1)
+    secrets = re.search(r'SECRETS="\$\{CSE_STAGING_SECRETS:-([^}]+)\}"', drv).group(1)
+    assert evid.startswith("/d/cse-staging/") and secrets.startswith("$LOCALAPPDATA/cse-staging/")
+    assert "$EVID" not in secrets and "$REPO" not in evid
+
+
+def test_s6_the_image_uses_the_ci_base_p1s_packages_step_and_poppler_24_02_0_and_holds_no_secret():
+    df = read("Dockerfile")
+    ci = open(os.path.join(REPO, ".github", "ci", "linux.Dockerfile"), encoding="utf-8").read()
+    base = re.search(r"ubuntu:24\.04@sha256:[0-9a-f]{64}", df).group(0)
+    assert base in ci
+    assert "bash /opt/cse-staging/provision.sh packages" in df
+    assert 'grep -qx "pdftotext version 24.02.0"' in df
+    assert "python3-pytest" not in df[df.index("AS host"):df.index("AS runner")]
+    assert not re.search(r"(?i)(password|secret|token)\s*=", "\n".join(code_lines(df)))
+
+
+def test_s7_shell_syntax():
+    bash = shutil.which("bash")
+    if not bash or os.name != "posix":
+        return
+    for f in harness_files():
+        if f.endswith(".sh"):
+            subprocess.run([bash, "-n", f], check=True)
+
+
+# ---- the post-T1 corrections (h1-h6) -------------------------------------------------------------------------------
+
+def posix_bash():
+    """Linux's bash, or Git Bash on Windows (never the WSL launcher, whose paths are another machine's)."""
+    if os.name == "posix":
+        cands = [shutil.which("bash")]
+    else:
+        cands = [os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Git", "bin", "bash.exe")]
+    for b in cands:
+        if b and os.path.isfile(b):
+            try:
+                if subprocess.run([b, "-c", "printf ok"], capture_output=True, text=True, timeout=60).stdout == "ok":
+                    return b
+            except (OSError, subprocess.SubprocessError):
+                pass
+    pytest.skip("no POSIX bash (Linux bash or Git Bash) to run the harness's own shell code")
+
+
+def bash_path(p):
+    """A path as posix_bash() sees it (Git Bash: /c/...)."""
+    p = str(p)
+    if os.name == "nt" and len(p) > 1 and p[1] == ":":
+        return "/" + p[0].lower() + p[2:].replace("\\", "/")
+    return p
+
+
+def shell_function(text, name):
+    """The source of the shell function `name` (one line, or up to a `}` in column 0)."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"{name}() {{"))
+    if lines[start].rstrip().endswith("}"):
+        return lines[start] + "\n"
+    end = next(i for i in range(start + 1, len(lines)) if lines[i] == "}")
+    return "\n".join(lines[start:end + 1]) + "\n"
+
+
+def shell_assignment(text, name):
+    """The source of `name=...` or a multi-line array `name=(...)`."""
+    lines = text.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"{name}="))
+    end = start
+    if lines[start].startswith(f"{name}=("):
+        end = next(i for i in range(start, len(lines)) if lines[i].rstrip().endswith(")"))
+    return "\n".join(lines[start:end + 1]) + "\n"
+
+
+def run_bash(tmp_path, script, env=None):
+    f = tmp_path / "case.sh"
+    f.write_text(script, encoding="utf-8", newline="\n")
+    e = dict(os.environ, PYEXE=bash_path(sys.executable), **(env or {}))
+    return subprocess.run([posix_bash(), bash_path(f)], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", env=e, timeout=300)
+
+
+def sha_lf(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read().replace(b"\r", b"")).hexdigest()
+
+
+STUB_DOCKER = """#!/usr/bin/env bash
+# a stand-in for the docker CLI: records each call and answers what the driver asks; never touches Docker
+printf '%s\\n' "$*" >> "$STUB_LOG"
+case "$1" in
+  inspect) if [[ $2 == -f ]]; then echo "sha256:0000stubimage"; else cat "$STUB_INSPECT"; fi ;;
+  exec)
+    shift; [[ $1 == -i ]] && shift; shift
+    case "$*" in
+      *"sha256sum -- *"*) cat "$STUB_HASHES" ;;
+      *"sha256sum /var/lib/cse-staging/layouts.pkl"*) echo "$STUB_LAYOUTS_SHA  /var/lib/cse-staging/layouts.pkl" ;;
+      *seed_synthetic.py*) echo '{"mode": "full", "filings": 3, "stub": true}' ;;
+      *stage_checks.sh*|*stage_scenarios.sh*) echo "PASS stub check" ;;
+    esac ;;
+esac
+exit 0
+"""
+
+INJECTED = ["seed_synthetic.py", "stage_checks.sh", "stage_provision.sh", "stage_scenarios.sh", "stage_tree.py"]
+
+
+def inspect_record(campaign="ut", suffix="", **changes):
+    """A staging host's `docker inspect` record as T1's rung L1 and cmd_up create it (then `changes` applied)."""
+    prefix = f"cse-stg-{campaign}{'-' + suffix if suffix else ''}-"
+    vols = {"pgdata": "/var/lib/postgresql", "backup": "/srv/cse-backup", "offsite": "/srv/cse-backup/offsite-test"}
+    hc = {"Privileged": False, "NetworkMode": "none", "RestartPolicy": {"Name": "no"}, "CgroupnsMode": "private",
+          "CapAdd": ["CAP_SYS_ADMIN"], "Binds": None, "Devices": [], "DeviceRequests": None, "PidMode": "",
+          "IpcMode": "private", "UTSMode": "", "UsernsMode": "", "SecurityOpt": None,
+          "Tmpfs": {"/run": "", "/run/lock": "", "/srv/cse-staging-smalldisk": "size=64m"}}
+    rec = {"HostConfig": hc, "Config": {"Labels": {"cse.staging.campaign": campaign}},
+           "Mounts": [{"Type": "volume", "Name": prefix + v, "Source": f"/var/lib/docker/volumes/{prefix}{v}/_data",
+                       "Destination": d} for v, d in vols.items()]}
+    for k, v in changes.items():
+        if k == "Mounts":
+            rec["Mounts"] = v
+        else:
+            hc[k] = v
+    return [rec]
+
+
+def driver(tmp_path, *args, inspect=None, hashes=None, layouts=None):
+    """staging.sh with a stub docker first on PATH, its evidence and secrets in tmp_path; returns (process, evidence)."""
+    stub = tmp_path / "stub"
+    stub.mkdir(exist_ok=True)
+    (stub / "docker").write_text(STUB_DOCKER, encoding="utf-8", newline="\n")
+    (stub / "python").write_text(f'#!/bin/sh\nexec "{bash_path(sys.executable)}" "$@"\n', encoding="utf-8", newline="\n")
+    for f in stub.iterdir():
+        f.chmod(0o755)
+    evid = tmp_path / "evid"
+    (tmp_path / "inspect.json").write_text(json.dumps(inspect or inspect_record()), encoding="utf-8")
+    if hashes is None:
+        hashes = {n: sha_lf(os.path.join(STAGING, "inner" if n.startswith("stage_") else "", n)) for n in INJECTED}
+    (tmp_path / "hashes.txt").write_text("".join(f"{h}  {n}\n" for n, h in hashes.items()), encoding="utf-8",
+                                         newline="\n")
+    lay_sha = ""
+    if layouts is not None:
+        (evid / "runner" / "harvest").mkdir(parents=True, exist_ok=True)
+        (evid / "runner" / "harvest" / "layouts.pkl").write_bytes(layouts)
+        lay_sha = hashlib.sha256(layouts).hexdigest()
+    env = {"PATH": str(stub) + os.pathsep + os.environ.get("PATH", ""),
+           "CSE_STAGING_REV": "0123456789abcdef0123456789abcdef01234567", "CSE_STAGING_CAMPAIGN": "ut",
+           "CSE_STAGING_EVIDENCE": bash_path(evid), "CSE_STAGING_SECRETS": bash_path(tmp_path / "secrets"),
+           "STUB_LOG": bash_path(tmp_path / "docker-calls.log"), "STUB_INSPECT": bash_path(tmp_path / "inspect.json"),
+           "STUB_HASHES": bash_path(tmp_path / "hashes.txt"), "STUB_LAYOUTS_SHA": lay_sha}
+    quoted = " ".join("'" + a.replace("'", "'\\''") + "'" for a in args)
+    p = run_bash(tmp_path, f'bash "{bash_path(os.path.join(STAGING, "staging.sh"))}" {quoted}\n', env)
+    return p, evid
+
+
+def test_h1_a_oneshot_result_is_read_only_after_that_invocation_has_ended(tmp_path):
+    sc = read("inner", "stage_scenarios.sh")
+    assert "is-active" not in "\n".join(code_lines(sc))
+    body = shell_function(sc, "midrun_outage")
+    assert 'unit_done cse-backup-dump.service "$inv" 120' in body and 'unit_journal "$inv"' in body
+    assert '"Failed with result"' in body and "status=0" in body
+    fn = shell_function(sc, "unit_done")
+    stub = ('systemctl() { local c; c=$(( $(cat "$CNT") + 1 )); echo $c > "$CNT"; local l; l=$(sed -n "${c}p" "$STATES")\n'
+            '  [[ -n $l ]] || l=$(tail -n 1 "$STATES"); read -r i a r s <<< "$l"\n'
+            "  printf 'InvocationID=%s\\nActiveState=%s\\nResult=%s\\nExecMainStatus=%s\\n' \"$i\" \"$a\" \"$r\" \"$s\"; }\n"
+            "sleep() { :; }\n")
+
+    def case(states, timeout):
+        (tmp_path / "states").write_text(states, encoding="utf-8", newline="\n")
+        (tmp_path / "cnt").write_text("0", encoding="utf-8")
+        p = run_bash(tmp_path, stub + fn + f'out=$(unit_done cse-backup-dump.service abc {timeout}); '
+                                          'echo "rc=$? out=$out polls=$(cat "$CNT")"\n',
+                     {"STATES": bash_path(tmp_path / "states"), "CNT": bash_path(tmp_path / "cnt")})
+        assert p.returncode == 0, p.stderr
+        return p.stdout.strip()
+
+    # while the new run is 'activating', Result still says the previous run's 'success': it must not be reported
+    assert case("abc activating success 0\nabc activating success 0\nabc failed exit-code 1\n", 30) \
+        == "rc=0 out=result=exit-code status=1 polls=3"
+    assert case("abc activating success 0\nabc inactive success 0\n", 30) == "rc=0 out=result=success status=0 polls=2"
+    assert case("abc activating success 0\n", 0) == "rc=1 out=still activating after 0 s polls=1"
+    assert case("abc activating success 0\nxyz activating success 0\n", 30) \
+        == "rc=2 out=invocation abc replaced by xyz polls=2"
+
+
+def test_h2_the_leak_check_uses_the_secret_as_p1_reads_it_and_keeps_its_controls(tmp_path):
+    sc = read("inner", "stage_scenarios.sh")
+    body = shell_function(sc, "offsite_failure")
+    assert "-f /etc/cse/credentials/offsite-password" not in sc
+    assert body.count('pass "control:') == 3 and body.count('bad "control:') == 3
+    assert 'leak_scan "$cred" /srv/cse-backup/status /tmp/ledger-text.out' in body
+    assert body.index("control:") < body.index("/srv/cse-backup/status")
+    fns = shell_function(sc, "secret_pattern") + shell_function(sc, "leak_scan")
+    secret = "FAKEcanary-h2-0001"
+    (tmp_path / "cred").write_bytes(secret.encode() + b"\r\n")          # as T1's secret was written on Windows
+    (tmp_path / "short").write_bytes(b" ab\r\n")
+    (tmp_path / "leak").mkdir()
+    (tmp_path / "leak" / "status.json").write_bytes(b'{"error": "x ' + secret.encode() + b' y"}')   # LF-free, inline
+    (tmp_path / "clean").mkdir()
+    (tmp_path / "clean" / "status.json").write_bytes(b'{"error": "nothing"}\n')
+    t = {k: bash_path(tmp_path / k) for k in ("cred", "short", "leak", "clean", "pattern")}
+    p = run_bash(tmp_path, 'python3() { "$PYEXE" "$@"; }\n' + fns +
+                 f'secret_pattern "{t["cred"]}" > "{t["pattern"]}"; echo "pattern=$?"\n'
+                 f'leak_scan "{t["cred"]}" "{t["leak"]}"; echo "leak=$?"\n'
+                 f'leak_scan "{t["cred"]}" "{t["clean"]}"; echo "clean=$?"\n'
+                 f'leak_scan "{t["cred"]}" "{t["clean"]}/absent"; echo "unreadable=$?"\n'
+                 f'leak_scan "{t["short"]}" "{t["leak"]}"; echo "short=$?"\n'
+                 f'leak_scan "{t["cred"]}" <(secret_pattern "{t["cred"]}" | awk \'{{printf "{{\\"e\\": \\"x %s y\\"}}", $0}}\'); '
+                 'echo "inline-control=$?"\n')
+    assert p.returncode == 0, p.stderr
+    assert (tmp_path / "pattern").read_bytes() == secret.encode() + b"\n"     # no CR: the bytes P1 itself uses
+    assert p.stdout.split() == ["pattern=0", "leak=0", "clean=1", "unreadable=2", "short=2", "inline-control=0"]
+    assert secret not in p.stdout + p.stderr
+
+
+def test_h3_isolation_is_asserted_from_outside_and_inside_the_container(tmp_path):
+    chk = os.path.join(STAGING, "isolation_check.py")
+
+    def check(record, *args):
+        p = subprocess.run([sys.executable, chk, "--campaign", "ut", *args], input=json.dumps(record),
+                           capture_output=True, text=True, timeout=60)
+        return p.returncode, p.stdout
+
+    rc, out = check(inspect_record())
+    assert rc == 0 and "FAIL" not in out and out.count("PASS") == 17, out
+    rc, out = check(inspect_record(CapAdd=["CAP_SYS_ADMIN", "CAP_NET_ADMIN"]), "--cap-add", "SYS_ADMIN", "net_admin")
+    assert rc == 0, out                                                     # rung L2 with its named capability
+    bad = {"Privileged": True, "NetworkMode": "bridge", "RestartPolicy": {"Name": "unless-stopped"},
+           "CgroupnsMode": "host", "CapAdd": ["CAP_SYS_ADMIN", "CAP_NET_ADMIN"], "Binds": ["C:\\data:/data"],
+           "PidMode": "host", "SecurityOpt": ["seccomp=unconfined"], "Devices": [{"PathOnHost": "/dev/sda"}],
+           "Tmpfs": {"/run": "", "/mnt/extra": ""},
+           "Mounts": inspect_record()[0]["Mounts"] + [{"Type": "bind", "Source": "/var/run/docker.sock",
+                                                      "Destination": "/var/run/docker.sock"}]}
+    for k, v in bad.items():
+        rc, out = check(inspect_record(**{k: v}))
+        assert rc == 1 and "FAIL" in out, (k, out)
+    rc, out = check(inspect_record(suffix="up"), "--suffix", "up")
+    assert rc == 0, out
+    rc, out = check(inspect_record(suffix="up"))                           # another host's volumes
+    assert rc == 1 and "FAIL mounts" in out
+
+    sch = read("inner", "stage_checks.sh")
+    iso = shell_function(sch, "isolation")
+    assert 'bad "capabilities:' in iso and 'bad "mounts:' in iso
+    defs = "".join(shell_assignment(sch, n) for n in ("CAPS", "DOCKER_DEFAULT_CAPS", "HOST_MOUNTS"))
+    defs += "".join(shell_function(sch, n) for n in ("cap_names", "want_caps", "mount_points"))
+    pseudo = "proc /proc proc rw 0 0\ntmpfs /run tmpfs rw 0 0\noverlay / overlay rw 0 0\n"
+    t1 = "".join(f"/dev/sdd {m} ext4 rw 0 0\n" for m in ("/etc/hostname", "/etc/hosts", "/etc/resolv.conf",
+                                                          "/srv/cse-backup", "/srv/cse-backup/offsite-test",
+                                                          "/var/lib/postgresql"))
+    (tmp_path / "mounts-t1").write_text(pseudo + t1, encoding="utf-8", newline="\n")
+    (tmp_path / "mounts-bind").write_text(pseudo + t1 + "C:\\ /mnt/host 9p rw 0 0\n", encoding="utf-8", newline="\n")
+    p = run_bash(tmp_path, defs +
+                 'echo "l1=$(cap_names 00000000a82425fb)"; echo "want=$(want_caps)"\n'
+                 'echo "default=$(cap_names 00000000a80425fb)"; echo "privileged=$(cap_names 000001ffffffffff)"\n'
+                 'echo "l2=$(want_caps SYS_ADMIN cap_net_admin)"\n'
+                 f'[[ "$(mount_points "{bash_path(tmp_path / "mounts-t1")}")" == "$HOST_MOUNTS" ]]; echo "t1-mounts=$?"\n'
+                 f'[[ "$(mount_points "{bash_path(tmp_path / "mounts-bind")}")" == "$HOST_MOUNTS" ]]; echo "bind=$?"\n')
+    assert p.returncode == 0, p.stderr
+    got = dict(line.split("=", 1) for line in p.stdout.splitlines())
+    l1 = ("AUDIT_WRITE CHOWN DAC_OVERRIDE FOWNER FSETID KILL MKNOD NET_BIND_SERVICE NET_RAW SETFCAP SETGID SETPCAP "
+          "SETUID SYS_ADMIN SYS_CHROOT")
+    assert got["l1"] == got["want"] == l1                                   # T1's observed CapEff 0xa82425fb
+    assert got["default"] != got["want"] and got["privileged"] != got["want"]
+    assert "NET_ADMIN" in got["l2"].split() and "SYS_ADMIN" in got["l2"].split()
+    assert got["t1-mounts"] == "0" and got["bind"] == "1"
+
+    # the driver's `isolation`: the inspect check, then the in-container check, each with its own record
+    for name, record, want in (("l1", inspect_record(), 0), ("bridged", inspect_record(NetworkMode="bridge"), 1)):
+        (tmp_path / name).mkdir()
+        p, evid = driver(tmp_path / name, "isolation", inspect=record)
+        assert p.returncode == want, p.stdout + p.stderr
+        log = (evid / "results" / "main-isolation-inspect.txt").read_text(encoding="utf-8")
+        assert log.startswith("PROVENANCE ") and log.rstrip().endswith(f"exit {want}")
+        assert ("PASS network: none" if want == 0 else "FAIL network: none") in log
+        assert (evid / "results" / "main-stage_checks-isolation.txt").exists()
+
+
+def test_h4_every_run_and_inject_records_the_exact_harness_versions(tmp_path):
+    hashes = {n: sha_lf(os.path.join(STAGING, "inner" if n.startswith("stage_") else "", n)) for n in INJECTED}
+    hashes["stage_tree.py"] = "0" * 64                                     # a copy that is not the working tree's
+    p, evid = driver(tmp_path, "run", "", "stage_checks.sh", "invariants", hashes=hashes)
+    assert p.returncode == 0, p.stdout + p.stderr
+    lines = (evid / "results" / "main-stage_checks-invariants.txt").read_text(encoding="utf-8").splitlines()
+    prov = [line for line in lines if line.startswith("PROVENANCE ")]
+    assert lines[:len(prov)] == prov and lines[len(prov)] == "PASS stub check" and lines[-1] == "exit 0"
+    assert "campaign=ut" in prov[0] and "revision=0123456789abcdef" in prov[0] and "image=sha256:0000stubimage" in prov[0]
+    assert f"PROVENANCE staging.sh sha256={sha_lf(os.path.join(STAGING, 'staging.sh'))} (the driver)" in prov
+    for n in INJECTED:
+        flag = "DIFFERENT" if n == "stage_tree.py" else "same"
+        assert f"PROVENANCE {n} sha256={hashes[n]} working-tree={flag}" in prov, n
+    p, evid = driver(tmp_path, "inject")
+    assert p.returncode == 0, p.stdout + p.stderr
+    log = (evid / "logs" / "driver.log").read_text(encoding="utf-8")
+    for n in INJECTED:
+        assert f"inject: cse-stg-ut-host {n} sha256={sha_lf(os.path.join(STAGING, 'inner' if n.startswith('stage_') else '', n))}" in log, n
+    runner = read("staging.sh")
+    runner = runner[runner.index("cmd_runner() {"):runner.index("cmd_canary() {")]
+    for item in ('"$EVID/runner/$run.provenance.txt"', "run_group.sh sha256", "deselected:", "tree under test"):
+        assert item in runner, item
+
+
+def test_h5_fingerprint_snapshots_are_never_reused_and_are_compared_by_fpcompare(tmp_path):
+    sch = read("inner", "stage_checks.sh")
+    fp = shell_function(sch, "fingerprint")
+    assert 'snapshot_dir "${1:-run}"' in fp and "/var/lib/cse-staging/fingerprint" not in fp
+    assert 'fpcompare) fpcompare "${2:?snapshot directory A}" "${3:?snapshot directory B}"' in sch
+    defs = "fail=0\n" + "".join(shell_function(sch, n) for n in ("pass", "bad", "info", "snapshot_dir", "fpcompare"))
+    defs += shell_assignment(sch, "FP_COMPONENTS")
+    p = run_bash(tmp_path, f'STATE="{bash_path(tmp_path / "state")}"\n' + defs + """
+a=$(snapshot_dir before-again); b=$(snapshot_dir before-again); c=$(snapshot_dir after-again)
+echo "distinct=$([[ -d $a && -d $b && $a != "$b" ]] && echo yes)"
+snapshot_dir 'bad/label' >/dev/null; echo "bad-label=$?"
+for d in "$a" "$c"; do for f in "${FP_COMPONENTS[@]}"; do echo "same $f" > "$d/$f"; done; done
+echo "attempt one left behind" > "$b/schema.sql"
+fpcompare "$a" "$c" > "$STATE/cmp1"; echo "identical-pass=$(grep -c '^PASS identical' "$STATE/cmp1")"
+echo "fail-after-identical=$fail"
+echo changed >> "$c/grants.txt"; rm "$c/units.txt"
+fpcompare "$a" "$c" > "$STATE/cmp2"; grep -E '^FAIL' "$STATE/cmp2"; echo "fail-after-change=$fail"
+echo "kept=$(ls "$STATE/fingerprints" | wc -l) $(cat "$b/schema.sql")"
+""")
+    assert p.returncode == 0, p.stderr
+    out = p.stdout.splitlines()
+    assert "distinct=yes" in out and "bad-label=1" in out
+    assert "identical-pass=7" in out and "fail-after-identical=0" in out
+    assert "FAIL differs: grants.txt (1 lines)" in out and "FAIL missing: units.txt" in out and "fail-after-change=1" in out
+    assert "kept=3 attempt one left behind" in out                          # the earlier attempts are all still there
+
+
+def test_h6_the_seed_records_its_command_identity_parameters_input_and_result(tmp_path):
+    p, evid = driver(tmp_path, "seed", "", "full", "990001", "3", layouts=b"synthetic layouts for the test")
+    assert p.returncode == 0, p.stdout + p.stderr
+    log = (evid / "results" / "main-seed-full.txt").read_text(encoding="utf-8")
+    lay = hashlib.sha256(b"synthetic layouts for the test").hexdigest()
+    assert log.startswith("PROVENANCE utc=") and "PROVENANCE seed_synthetic.py sha256=" in log
+    assert "PROVENANCE seed: mode=full start-fid=990001 count=3 identity=cse-worker" in log
+    assert f"PROVENANCE seed: layouts.pkl sha256={lay} (runner/harvest/layouts.pkl), in the container sha256={lay}" in log
+    assert ("PROVENANCE seed: command: docker exec cse-stg-ut-host bash -c \"chmod 0644 /var/lib/cse-staging/layouts.pkl"
+            " && cd / && runuser -u cse-worker -- env PYTHONDONTWRITEBYTECODE=1 python3 /opt/cse-staging/seed_synthetic.py"
+            " --layouts /var/lib/cse-staging/layouts.pkl --mode full --start-fid 990001 --count 3\"") in log
+    assert '{"mode": "full", "filings": 3, "stub": true}' in log
+    assert re.search(r"PROVENANCE seed: finished utc=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ exit=0\nexit 0\n$", log)
+    p, _ = driver(tmp_path, "seed", "", "full", "99000x", "3", layouts=b"x")
+    assert p.returncode == 2                                                # parameters are validated before anything

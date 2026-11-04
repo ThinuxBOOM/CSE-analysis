@@ -374,6 +374,8 @@ def test_migration_0014_is_additive_append_only_and_least_privileged():
 # ------------------------------------------------------------------------------------------------ freeze
 
 FROZEN_P1_P2 = {   # SHA-256 (LF-normalised) at the accepted P2 baseline 00af041: P3 builds on these, never edits them
+    # Re-pinned under P1 change control P1-CC-1 (2026-11-03; M8 OD-7/OD-8, docs/ops/P1_PLATFORM.md): exactly
+    # pg_ident.conf, provision.sh, bootstrap_cluster.sql and verify_server.py. Every other pin is unchanged.
     "ops/bin/cse-capture": "82afae1e33ca023d0e74a1f23ad3723c052f1633bb06eba792e5c6ecc8647bf0",
     "ops/bin/cse-ops": "168073d920afb84ea2ea491c23de524c9d2909f4001e791b57a91f441fa6d778",
     "ops/config/backup.env.example": "136c73d211808ba5921a1e9b934f034b53f6fbaecd01e4183ebb46965a2ca361",
@@ -381,9 +383,9 @@ FROZEN_P1_P2 = {   # SHA-256 (LF-normalised) at the accepted P2 baseline 00af041
     "ops/config/cse.env.example": "b9d720be242b8c38ca3443cd42d6c04d6e531ea9c1831a39b1ea0fd252e7b765",
     "ops/postgres/90-cse.conf": "ef6618463b466e2d2b4f0badffef9cd9e8967615fefa565889dadb2131591b23",
     "ops/postgres/pg_hba.conf": "a4d0bedc87ed4d70ec0961af64691ebe01d7ff292e5d87c3b28be74c0d26f551",
-    "ops/postgres/pg_ident.conf": "eedc972d782e61ce38a1bcfc4fe1ccdc26c49fc4ef8c752f5a59d7667e818de7",
-    "ops/provision/provision.sh": "9d13fbc4fda99ab912a6d41cb344504fa98b7533a4bed730705a75dd8fc3ebfc",
-    "ops/provision/sql/bootstrap_cluster.sql": "b2047237890f3e41a5585f2d0a52346362c0815bbc0ed41fac361a4e18941fd6",
+    "ops/postgres/pg_ident.conf": "8a42f72d6ff6d2762222f104f0ae6b86d3f9f4da3e995f99c3016c5d068e8cb1",
+    "ops/provision/provision.sh": "375562490b8c0ae055ae47bc6f7e640bbe5c10eb9e9431555e55e3c5f0861513",
+    "ops/provision/sql/bootstrap_cluster.sql": "854d895bc4bf5f826573472dfcc64a7381ff11a290804d96f8a578f95710af45",
     "ops/systemd/cse-backup-dump.service": "d87ad00ee9364e6d83d7ba8919a6d001973dfe5e662c2c2bb733fb3fb71ef731",
     "ops/systemd/cse-backup-dump.timer": "a69c27d0606bc2932e96c55028166630b4d265d0f343d1f4a64a37e164347718",
     "ops/systemd/cse-backup-offsite-check.service": "55a611c2dae758dd3b4665910929fe0b14ad4c8a5dffb81fe6c838a3cde40c6a",
@@ -418,7 +420,7 @@ FROZEN_P1_P2 = {   # SHA-256 (LF-normalised) at the accepted P2 baseline 00af041
     "worker/ops/restore_check.py": "0fda8c614856605a43f7ad147e35c7ac3d7a5d2d947277d005df4d86e57fa233",
     "worker/ops/settings.py": "ad0fc837cae7dd9c75f996db9d9cfc0468c2a75dd2d43bc4b540aef325370254",
     "worker/ops/spool.py": "48e15c2d4cccf4bb421006c533fbfeaecf95539e01cdbacd68da6931820b116b",
-    "worker/ops/verify_server.py": "c735aa1f07d0ba3982cf727995878b6cf677054a2a0e1bc65995b5a54d698dca",
+    "worker/ops/verify_server.py": "132af17e74c566ac5a09394219787a11bc34f99feed391968ba20e102b8a6958",
 }
 
 
