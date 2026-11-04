@@ -1954,7 +1954,8 @@ provision the reader login `cse_verifier` (§50;
 the migration ledger to `verify_server`. It re-pins those four files in
 P3's `FROZEN_P1_P2` and adds `cse_verifier` to the role or mapping
 lists of four frozen tests (P1, F6.4 and HB-1). *(2026-11-04: P1-CC-1
-is **accepted and frozen**, decided [delegated] under the owner's
+is **accepted and frozen**, effective once CI is clean at the record's
+head, decided [delegated] under the owner's
 standing delegation on two independent audits (AR-0001-1 and AR-0001-2,
 both PASS WITH FINDINGS, no Blocker or Major). Frozen code: `59f9228`
 (round 1) and `0a653a8` (round 2, which adds the check that no role but
@@ -1962,8 +1963,8 @@ both PASS WITH FINDINGS, no Blocker or Major). Frozen code: `59f9228`
 on the branch `claude/m8-t2-p1cc1`, pull request #8. CI at `59f9228`
 was clean (runs 41748579189 and 41748579202). The freeze is effective
 once `ci-fast` and `ci-regression` on pull request #8, at the head that
-contains the freeze record, finish clean. REG-X03 is CLOSED WITH
-EVIDENCE; REG-A05, REG-A06 and REG-G01 are unchanged, and staging
+contains the freeze record, finish clean. REG-X03 is IN PROGRESS
+until that CI is recorded; REG-A05, REG-A06 and REG-G01 are unchanged, and staging
 verification (R-F4 §20.6 steps 1–6) has not been done.)* The record is
 `docs/ops/P1_PLATFORM.md` §13. Under §43.1 the changed build must be
 re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29); until then

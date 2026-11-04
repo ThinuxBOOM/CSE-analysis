@@ -139,7 +139,7 @@ writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection lis
 | ST-26 | second build (no cache) + fingerprints of two provisioning histories | |
 | ST-32 | `stage_checks.sh seqkinds` | REG-B32 (UR-8), read-only |
 
-Deferred by dependency: ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen
+Deferred by dependency: ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
 (`docs/ops/P1_PLATFORM.md` §13); T2 completes with its merge into `main`. ST-27 to ST-29 no longer wait for T2's
 implementation but for their harness procedures and an authorized campaign on the T2 build*), ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
 
