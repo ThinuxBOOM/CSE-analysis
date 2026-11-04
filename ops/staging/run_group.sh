@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runner entry point (docs/ops/STAGING.md, ST-24/ST-25): .github/ci/linux_container.sh's job without a bind mount. The
 # driver copies the tree under test to /home/tester/app (docker cp) before the container starts, with no network; the
-# group runs as `tester` through CI's own, unmodified .github/ci/linux_tests.sh, and PYTEST_ADDOPTS carries the
-# deselection of the tests that execute a restore (never run in staging without the owner's explicit authorization).
+# group runs as `tester` through CI's own, unmodified .github/ci/linux_tests.sh. PYTEST_ADDOPTS is passed through
+# (the driver passes it empty: nothing is deselected, so the tests that execute a restore into a disposable cluster run
+# here, in this no-network container; owner, 2026-11-04).
 #   cse-staging-run-group <group>          a CI group, results in /home/tester/out/<group>
 #   cse-staging-run-group harvest          the synthetic F4 word layers for the seed, /home/tester/out/layouts.pkl
 set -euo pipefail

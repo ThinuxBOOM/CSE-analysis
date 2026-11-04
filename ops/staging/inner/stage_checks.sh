@@ -19,6 +19,12 @@
 #   stage_checks.sh seqkinds      ST-32  REG-B32 / UR-8: the sequence kinds (read-only catalogue query)
 #   stage_checks.sh datadigest L  ST-08  every table's rows (sorted row texts) under the label L, before the upgrade
 #   stage_checks.sh dataverify L  ST-08  every row digested under L is still present and unchanged
+#   stage_checks.sh rf4verify     ST-27  R-F4's full `verify` (runbook section 12 steps 2-5): the preflight through the
+#                                 migration role, then `verify` AS THE LOGIN cse_verifier; exit 0, clean, complete scope
+#   stage_checks.sh reader        ST-28  the real reader login, R-F4 section 20.6 steps 1-5 (REG-A06); steps 1, 2, 4 and
+#                                 5 run as the OS user cse-verifier over the Unix socket, by peer authentication: never
+#                                 SET ROLE, never a superuser session (step 6 needs a restored copy: not run here)
+#   stage_checks.sh regx03        ST-29  P1's verify_server (REG-X03, P1-CC-1) through the frozen p1-verify probe
 # Exit 0 when every check passed; 1 otherwise. Output: PASS/FAIL/INFO lines.
 set -uo pipefail
 APP=/opt/cse/app
@@ -36,6 +42,38 @@ as_role() {  # as_role worker|backup|owner SQL  (owner = cse-migrator, SET LOCAL
     backup) runuser -u cse-backup -- psql -XAt -U cse_backup -d cse -v ON_ERROR_STOP=1 -c "$2" ;;
     owner) runuser -u cse-migrator -- psql -XAt -U cse_migrator -d cse -v ON_ERROR_STOP=1 -c "$2" ;;
   esac
+}
+
+# The reader login (P1-CC-1; R-F4 section 20.6, runbook section 12 step 4). The URL names the role: without it libpq asks
+# for the role `cse-verifier` (the OS user) and the peer map, which maps that OS user to cse_verifier only, refuses it.
+VERIFIER_URL='postgresql://cse_verifier@/cse?host=/var/run/postgresql'
+RF4="$STATE/rf4"
+login_psql() {  # the login's own session: OS user cse-verifier, peer authentication over the socket, no password
+  runuser -u cse-verifier -- env -u PGPASSWORD PGPASSFILE=/nonexistent/pgpass PGCONNECT_TIMEOUT=10 psql -XAt -v ON_ERROR_STOP=1 -d "$VERIFIER_URL" "$@"
+}
+login_verify() {  # runbook section 12 step 4, verbatim: the full verify (no --limit), as the login
+  (cd / && runuser -u cse-verifier -- env PYTHONPATH="$APP" PYTHONDONTWRITEBYTECODE=1 DATABASE_URL="$VERIFIER_URL" \
+    python3 -m worker.financial_f4_store verify)
+}
+migration_preflight() {  # runbook section 12 step 2: the ledger read through the migration role (owner-level)
+  (cd / && runuser -u cse-migrator -- env PYTHONPATH="$APP" PYTHONDONTWRITEBYTECODE=1 CSE_DB_NAME=cse CSE_DB_USER=cse_migrator \
+    python3 -m worker.financial_f4_store preflight --migration-role)
+}
+super_counts() {  # the two tables verify enumerates, as the bootstrap superuser: "extractions runs"
+  psu "select (select count(*) from financial_f4_extractions) || ' ' || (select count(*) from financial_extraction_runs)"
+}
+rf4_dir() { mkdir -p "$RF4" && mktemp -d "$RF4/$1-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX"; }  # a new directory each run, never reused
+run_json() {  # run_json DIR NAME CMD...: stdout -> DIR/NAME.json, stderr -> DIR/NAME.err; the exit status in $RC; the JSON echoed
+  local d=$1 n=$2; shift 2
+  "$@" > "$d/$n.json" 2> "$d/$n.err"; RC=$?
+  info "$n: exit $RC; saved $d/$n.json ($(wc -c < "$d/$n.json") bytes)"
+  awk '{print "    | " $0}' "$d/$n.json"                # awk, not sed: the last line gets its newline even without one
+  if [[ -s "$d/$n.err" ]]; then info "$n: stderr"; sed 's/^/    ! /' "$d/$n.err" | head -20; fi
+}
+jassert() {  # jassert NAME FILE PYTHON-EXPRESSION-OF-d: PASS when it evaluates to True
+  local v
+  v=$(python3 -c 'import json, sys; d = json.load(open(sys.argv[1])); print(eval(sys.argv[2]))' "$2" "$3" 2>&1 | tail -n 1)
+  [[ $v == True ]] && pass "$1" || bad "$1 (evaluated: $v)"
 }
 
 # Capability names by bit (linux/capability.h) and Docker's default set. The approved rungs add SYS_ADMIN (L1) and, at L2
@@ -290,13 +328,164 @@ dataverify() {  # every row recorded by `datadigest LABEL` is still present and 
   info "rows added since '$1': ${grown:-none}"
 }
 
+# ---- the reader login: ST-27, ST-28, ST-29 (P1-CC-1; R-F4 section 20.6; runbook section 12) -------------------------------
+# The login's own sessions go through `runuser -u cse-verifier` and VERIFIER_URL, nothing else: no SET ROLE, no superuser
+# session (the whole point of section 20.6). The superuser appears only where the text asks for it: the counts that
+# step 4 compares with (super_counts) and the controls that show the authentication is peer (reader_peer_controls).
+
+refused_with() {  # refused_with NAME REGEX CMD...: the command fails AND its message matches (not a failure for another reason)
+  local name=$1 re=$2; shift 2
+  if "$@" >/tmp/stg.out 2>&1; then bad "$name (NOT refused)"
+  elif grep -Eq "$re" /tmp/stg.out; then pass "$name: $(grep -Eo "$re" /tmp/stg.out | head -1)"
+  else bad "$name (refused, but not for the expected reason)"; sed 's/^/      /' /tmp/stg.out | head -5; fi
+}
+
+preflight_clean() {  # preflight_clean DIR LABEL: the R-F4 preflight through the migration role: exit 0, "clean": true
+  run_json "$1" preflight-migration-role migration_preflight
+  [[ $RC -eq 0 ]] && pass "$2: the preflight through the migration role exits 0" || bad "$2: the preflight exits $RC"
+  jassert "$2: the preflight is clean (\"clean\": true)" "$1/preflight-migration-role.json" 'd["clean"] is True'
+}
+
+rf4verify() {  # ST-27: runbook section 12 steps 2-5
+  local d
+  d=$(rf4_dir rf4verify) || { bad "rf4verify: no new evidence directory under $RF4"; return; }
+  info "ST-27: evidence directory in the container: $d"
+  info "ST-27: step 4 runs as the OS user cse-verifier with DATABASE_URL=$VERIFIER_URL (peer authentication, no password)"
+  preflight_clean "$d" "step 2/3"
+  run_json "$d" verify-as-login login_verify
+  [[ $RC -eq 0 ]] && pass "step 4/5: verify as the login exits 0" || bad "step 4/5: verify as the login exits $RC"
+  jassert "step 5: \"clean\": true" "$d/verify-as-login.json" 'd["clean"] is True'
+  jassert "step 5: \"scope\": {\"complete\": true, ...} and no limit" "$d/verify-as-login.json" \
+    'd["scope"]["complete"] is True and d["scope"]["limit"] is None'
+  jassert "step 5: no problem reported" "$d/verify-as-login.json" 'd["problems"] == []'
+  jassert "step 5: the scan read data (extractions > 0, runs > 0, every run rebuilt): not a vacuous pass" "$d/verify-as-login.json" \
+    'd["extractions"] > 0 and d["runs"] > 0 and d["rebuilt"] == d["runs"]'
+}
+
+reader_step1() {  # section 20.6 step 1: connect through the URL as cse-verifier; current_user = session_user = the login; no SET ROLE
+  local out
+  out=$(login_psql -c "select current_user, session_user, current_setting('role'), pg_has_role(current_user, 'cse_reader', 'USAGE'), inet_client_addr() is null" 2>&1)
+  info "step 1 (current_user | session_user | role setting | USAGE on cse_reader | Unix socket): $out"
+  [[ "$out" == 'cse_verifier|cse_verifier|none|t|t' ]] \
+    && pass "step 1: current_user = session_user = cse_verifier, no SET ROLE (role setting none), a member of cse_reader with USAGE, over the Unix socket" \
+    || bad "step 1: unexpected session: [$out]"
+}
+
+reader_peer_controls() {  # what makes it peer authentication with no password (superuser and other OS users: controls, not steps)
+  [[ "$(psu "select rolpassword is null from pg_authid where rolname = 'cse_verifier'")" == t ]] \
+    && pass "peer authentication: cse_verifier has no password (pg_authid.rolpassword is null)" || bad "cse_verifier has a password"
+  refused_with "peer authentication: the worker's OS user cannot connect as cse_verifier" 'Peer authentication failed' \
+    runuser -u cse-worker -- env PGPASSFILE=/nonexistent/pgpass psql -XAt -U cse_verifier -d cse -c "select 1"
+  refused_with "peer authentication: the login's OS user cannot connect as cse_worker" 'Peer authentication failed' \
+    runuser -u cse-verifier -- env PGPASSFILE=/nonexistent/pgpass psql -XAt -U cse_worker -d cse -c "select 1"
+  refused_with "the URL must name the role (without it libpq asks for the role cse-verifier, the OS user)" 'Peer authentication failed' \
+    runuser -u cse-verifier -- env PGPASSFILE=/nonexistent/pgpass psql -XAt -d cse -c "select 1"
+}
+
+reader_step2() {  # section 20.6 step 2: pg_roles attributes, CREATE and TEMPORARY, pg_db_role_setting; read by the login itself
+  local out want
+  want="login=true inherit=true superuser=false createrole=false createdb=false replication=false bypassrls=false database_create=false database_temporary=false role_settings=0"
+  out=$(login_psql -c "select format('login=%s inherit=%s superuser=%s createrole=%s createdb=%s replication=%s bypassrls=%s database_create=%s database_temporary=%s role_settings=%s',
+      r.rolcanlogin::text, r.rolinherit::text, r.rolsuper::text, r.rolcreaterole::text, r.rolcreatedb::text, r.rolreplication::text,
+      r.rolbypassrls::text, has_database_privilege(current_user, current_database(), 'CREATE')::text,
+      has_database_privilege(current_user, current_database(), 'TEMPORARY')::text,
+      (select count(*) from pg_db_role_setting s where s.setrole = r.oid)::text) from pg_roles r where r.rolname = current_user" 2>&1)
+  info "step 2 (pg_roles, has_database_privilege, pg_db_role_setting): $out"
+  [[ "$out" == "$want" ]] && pass "step 2: LOGIN and INHERIT, none of the five attributes, no CREATE or TEMPORARY, no pg_db_role_setting row" \
+    || bad "step 2: [$out] differs from [$want]"
+  info "step 2 (memberships, read by the login): $(login_psql -c "select coalesce(string_agg(g.rolname || ' inherit=' || m.inherit_option || ' set=' || m.set_option || ' admin=' || m.admin_option, '; '), 'none') from pg_auth_members m join pg_roles g on g.oid = m.roleid where m.member = (select oid from pg_roles where rolname = current_user)" 2>&1)"
+}
+
+reader_step4() {  # section 20.6 step 4: the full verify as the login; a repeatable-read read-only snapshot; counts equal a superuser's
+  local d=$1 sc mine
+  run_json "$d" step4-verify-as-login login_verify
+  [[ $RC -eq 0 ]] && pass "step 4: verify as the login exits 0" || bad "step 4: verify as the login exits $RC"
+  jassert "step 4: \"clean\": true" "$d/step4-verify-as-login.json" 'd["clean"] is True'
+  jassert "step 4: \"scope\": {\"complete\": true, ...} and no limit" "$d/step4-verify-as-login.json" 'd["scope"]["complete"] is True and d["scope"]["limit"] is None'
+  jassert "step 4: the snapshot is repeatable read and read-only" "$d/step4-verify-as-login.json" \
+    'd["snapshot"]["isolation"] == "repeatable read" and d["snapshot"]["read_only"] is True'
+  sc=$(super_counts)
+  mine=$(login_psql -c "select (select count(*) from financial_f4_extractions) || ' ' || (select count(*) from financial_extraction_runs)" 2>&1)
+  info "step 4: counts (extractions runs): the superuser reads [$sc], the login reads [$mine]"
+  [[ "$sc" =~ ^[0-9]+\ [0-9]+$ && "$sc" == "$mine" ]] && pass "step 4: the login sees the same table counts as the superuser" \
+    || bad "step 4: the login's table counts [$mine] differ from the superuser's [$sc]"
+  jassert "step 4: verify's own counts equal the superuser's ($sc) and are not zero" "$d/step4-verify-as-login.json" \
+    "[str(d['extractions']), str(d['runs'])] == '$sc'.split() and d['extractions'] > 0 and d['runs'] > 0"
+}
+
+reader_step5() {  # section 20.6 step 5: an INSERT into one R-F4 table as the login is refused (42501), in a transaction rolled back
+  local before after out sql rc
+  read -r -d '' sql <<'SQL'
+begin;
+do $$ begin
+  begin
+    insert into public.financial_f4_extractions default values;
+    raise exception 'INSERT NOT REFUSED' using errcode = 'XX000';
+  exception when insufficient_privilege then
+    raise notice 'refused: sqlstate=% message=%', sqlstate, sqlerrm;
+  end;
+end $$;
+rollback;
+SQL
+  before=$(super_counts)
+  out=$(login_psql -c "$sql" 2>&1); rc=$?
+  info "step 5 (INSERT INTO financial_f4_extractions as the login, inside begin ... rollback; exit $rc): $out"
+  [[ $rc -eq 0 && "$out" == *"refused: sqlstate=42501 message=permission denied for table financial_f4_extractions"* ]] \
+    && pass "step 5: the INSERT is refused with insufficient privilege (42501), inside a transaction that is rolled back" \
+    || bad "step 5: the INSERT was not refused with insufficient privilege (exit $rc)"
+  after=$(super_counts)
+  [[ "$before" == "$after" ]] && pass "step 5: nothing changed ($after)" || bad "step 5: counts changed from [$before] to [$after]"
+}
+
+reader() {  # ST-28: REG-A06 and R-F4 section 20.6 steps 1-5
+  local d
+  d=$(rf4_dir reader) || { bad "reader: no new evidence directory under $RF4"; return; }
+  info "ST-28: evidence directory in the container: $d"
+  info "ST-28: every step 1, 2, 4 and 5 session is the OS user cse-verifier, DATABASE_URL=$VERIFIER_URL (peer, no password, no SET ROLE)"
+  reader_step1
+  reader_peer_controls
+  reader_step2
+  preflight_clean "$d" "step 3"
+  reader_step4 "$d"
+  reader_step5
+  info "ST-28: step 6 (steps 3-4 on a restored copy) needs a restore: not run (R-F4 section 20.6; ST-30/ST-31)"
+}
+
+regx03() {  # ST-29: P1's verify_server (REG-X03, P1-CC-1) through the frozen probe that tolerates only the container clock
+  local d rc out
+  d=$(rf4_dir regx03) || { bad "regx03: no new evidence directory under $RF4"; return; }
+  info "ST-29: evidence directory in the container: $d"
+  rm -f /tmp/p1_verify_db.json /tmp/p1_verify_os.json
+  bash "$APP/ops/tests/p3_container_probes.sh" p1-verify > "$d/p1-verify-probe.txt" 2>&1; rc=$?
+  cp /tmp/p1_verify_db.json /tmp/p1_verify_os.json "$d/" 2>/dev/null
+  sed 's/^/    | /' "$d/p1-verify-probe.txt"
+  [[ $rc -eq 0 ]] && pass "P1's verify_server through the frozen probe: no FAIL except the container clock" || bad "the p1-verify probe exits $rc"
+  out=$(python3 - "$d/p1_verify_db.json" <<'PY'
+import json, sys
+REQUIRED = ("role_cse_verifier", "verifier_membership_reader_only", "verifier_no_database_create_or_temporary",
+            "verifier_no_role_settings", "owner_members_designed_only", "ledger_writable_only_by_owner",
+            "ledger_ordinary_table", "ledger_permanent", "ledger_no_row_level_security", "ledger_no_inheritance")
+checks = json.load(open(sys.argv[1]))["checks"]
+by = {c["check"]: c for c in checks}
+for c in checks:
+    print("INFO verify_server %s: %s" % (c["check"], c["status"]))
+for name in REQUIRED:
+    c = by.get(name)
+    print("PASS" if c and c["status"] == "PASS" else "FAIL", "verify_server %s: %s" % (name, c["detail"] if c else "absent from the report"))
+PY
+  )
+  echo "$out"
+  grep -q '^FAIL' <<< "$out" && fail=1
+  [[ -n "$out" ]] || bad "regx03: the report could not be read"
+}
+
 cmd=${1:-}
 case "$cmd" in
-  ledger|roles|preflights|units|filesystem|invariants|metrics|seqkinds) "$cmd" ;;
+  ledger|roles|preflights|units|filesystem|invariants|metrics|seqkinds|rf4verify|reader|regx03) "$cmd" ;;
   isolation) shift; isolation "$@" ;;
   fingerprint) fingerprint "${2:-run}" ;;
   fpcompare) fpcompare "${2:?snapshot directory A}" "${3:?snapshot directory B}" ;;
   datadigest|dataverify) "$cmd" "${2:?a label}" ;;
-  *) echo "usage: $0 isolation [CAP...]|ledger|roles|preflights|units|filesystem|invariants|fingerprint [L]|fpcompare A B|metrics|seqkinds|datadigest L|dataverify L" >&2; exit 2 ;;
+  *) echo "usage: $0 isolation [CAP...]|ledger|roles|preflights|units|filesystem|invariants|fingerprint [L]|fpcompare A B|metrics|seqkinds|datadigest L|dataverify L|rf4verify|reader|regx03" >&2; exit 2 ;;
 esac
 exit $fail

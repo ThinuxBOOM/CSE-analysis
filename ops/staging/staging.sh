@@ -51,17 +51,10 @@ HOST_IMAGE="cse-staging:$REV12${BUILD:+-$BUILD}"
 RUNNER_IMAGE="cse-staging-runner:$REV12${BUILD:+-$BUILD}"
 RAM_FLOOR_PCT=5
 DISK_FLOOR_GB=20
-DESELECT=(
-  "tests/test_p1_postgres.py::test_restore_check_restores_into_scratch_cluster"
-  "tests/test_p1_postgres.py::test_restore_check_detects_a_dump_that_does_not_match_its_manifest"
-  "tests/test_f64_postgres.py::test_p16_dump_restore_check_then_verify_on_the_restored_copy"
-  "tests/test_rf4_runbook_rehearsal.py::test_c1_on_a_restored_copy_the_checkpoint_is_accepted"
-  "tests/test_rf4_runbook_rehearsal.py::test_c2_corrupt_evidence_carried_by_the_dump_fails_verify_on_the_copy"
-  "tests/test_rf4_runbook_rehearsal.py::test_c3_a_ledger_that_disagrees_with_the_pin_fails_the_preflight_on_the_copy"
-  "tests/test_rf4_runbook_rehearsal.py::test_c4_row_level_security_on_the_copy_stops_the_sequence_before_verify"
-  "tests/test_rf4_runbook_rehearsal.py::test_c5_an_unverifiable_ledger_on_the_copy_is_not_a_pass"
-  "tests/test_rf4_runbook_rehearsal.py::test_c6_a_limited_scan_of_the_copy_is_not_accepted"
-)
+# No test is deselected (owner, 2026-11-04): the nine regression tests that execute a restore into a disposable cluster
+# (tests/test_p1_postgres.py 2, tests/test_f64_postgres.py 1, tests/test_rf4_runbook_rehearsal.py 6) run inside the
+# runner container, which has no network, in the container's own throwaway clusters. Restore stays out of the host
+# container: the R1 gate is unchanged, and no restore functionality exists in this driver.
 
 winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi; }
 note() { mkdir -p "$EVID/logs"; echo "[staging $(date -u +%FT%TZ)] $*" | tee -a "$EVID/logs/driver.log"; }
@@ -334,21 +327,19 @@ cmd_runner() {  # the tree under test: the commit, overlaid with the working tre
   mkdir -p "$EVID/runner"
   tmp=$(mktemp -d)
   python "$HERE/tree_tar.py" "$REPO" "$REV" "$tmp/tree.tar" --prefix app/ --overlay > "$EVID/runner/overlay-$run.txt"
-  local addopts=""
-  local d; for d in "${DESELECT[@]}"; do addopts+=" --deselect $d"; done
   docker create --name "$name" --network none --restart no --memory 1536m --memory-swap 1536m --pids-limit 4096 \
     --label "cse.staging.campaign=$CAMPAIGN" --label "cse.staging.revision=$REV" \
-    -e "GIT_SHA=$REV" -e "GIT_HEAD_SHA=$REV" -e "PYTEST_ADDOPTS=$addopts" \
+    -e "GIT_SHA=$REV" -e "GIT_HEAD_SHA=$REV" -e "PYTEST_ADDOPTS=" \
     "$RUNNER_IMAGE" cse-staging-run-group "$group" > /dev/null
   { echo "PROVENANCE utc=$(date -u +%FT%TZ) campaign=$CAMPAIGN revision=$REV container=$name image=$RUNNER_IMAGE $(docker inspect -f '{{.Image}}' "$name")"
     echo "PROVENANCE staging.sh sha256=$(sha_of "$HERE/staging.sh") (the driver)"
     echo "PROVENANCE run_group.sh sha256: build context $([[ -f $CTX/run_group.sh ]] && sha256sum < "$CTX/run_group.sh" | cut -c1-64 || echo missing), working tree $(sha_of "$HERE/run_group.sh")"
-    echo "PROVENANCE deselected: ${#DESELECT[@]} node ids, sha256=$(printf '%s\n' "${DESELECT[@]}" | sha256sum | cut -c1-64)"
+    echo "PROVENANCE deselected: none (0 node ids; no deselection option is passed, so the restore-executing tests run); the container's $(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$name" | grep '^PYTEST_ADDOPTS=' | sed 's/=$/ (empty)/')"
     echo "PROVENANCE tree under test: tar sha256=$(sha256sum < "$tmp/tree.tar" | cut -c1-64) (the commit plus the overlay in overlay-$run.txt)"
   } > "$EVID/runner/$run.provenance.txt"
   docker cp - "$name:/home/tester" < "$tmp/tree.tar"
   rm -rf "$tmp"
-  note "runner $run: start ($name, no network, the restore-executing tests deselected)"
+  note "runner $run: start ($name, no network, nothing deselected: the restore-executing tests run)"
   set +e
   docker start -a "$name" > "$EVID/runner/$run.console.log" 2>&1
   local rc=$?
