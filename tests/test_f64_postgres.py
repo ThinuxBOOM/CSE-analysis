@@ -233,7 +233,7 @@ def test_p1_migration_ledger_verifier_and_every_preflight(env):
     assert q(su, "select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = "
                  "'public' and p.proname like 'f6\\_%%'") == [(len(HELPER_FUNCTIONS) + len(preflight.TRIGGER_FUNCTIONS),)]
     assert q(su, "select rolname from pg_roles where rolname like 'cse%%' order by 1") == \
-        [("cse_backup",), ("cse_migrator",), ("cse_owner",), ("cse_reader",), ("cse_worker",)]
+        [("cse_backup",), ("cse_migrator",), ("cse_owner",), ("cse_reader",), ("cse_verifier",), ("cse_worker",)]   # P1-CC-1
     assert q(su, "select count(*) from pg_class where relname = any(%s) and (relrowsecurity or relkind <> 'r')",
              (list(TABLES),)) == [(0,)]
     m = env.conn("cse_migrator")

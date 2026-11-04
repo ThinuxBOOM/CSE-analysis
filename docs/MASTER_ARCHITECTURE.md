@@ -1850,7 +1850,11 @@ Established local role model:
 -   `cse_migrator`;
 -   `cse_worker`;
 -   `cse_reader`;
--   `cse_backup`.
+-   `cse_backup`;
+-   `cse_verifier`: the one reader login for R-F4's `verify`, a member
+    of `cse_reader` WITH INHERIT TRUE, SET FALSE, peer-mapped from the
+    OS user `cse-verifier` (P1 change control P1-CC-1, 2026-11-03;
+    `docs/ops/P1_PLATFORM.md` §3, §13).
 
 Production services must not be:
 
@@ -1940,6 +1944,21 @@ F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 
 P3 was implemented, independently reviewed and passed its acceptance
 gate (§53). It is **frozen/accepted** at commit `40e15bcc`.
+
+Change control after the P1 freeze: P1-CC-1 (2026-11-03; M8 OD-7 =
+A and M8 OD-8 = a, decided [delegated] under the owner's standing
+delegation) changes four frozen P1 files (`bootstrap_cluster.sql`,
+`pg_ident.conf`, `provision.sh`'s users step, `verify_server.py`) to
+provision the reader login `cse_verifier` (§50;
+`docs/R_F4_IMPLEMENTATION.md` §20.6) and to add the REG-X03 checks of
+the migration ledger to `verify_server`. It re-pins those four files in
+P3's `FROZEN_P1_P2` and adds `cse_verifier` to the role or mapping
+lists of four frozen tests (P1, F6.4 and HB-1). It is implemented on
+the branch `claude/m8-t2-p1cc1` and is not yet audited, merged or
+frozen; staging verification (R-F4 §20.6 steps 1–6) has not been done, and
+REG-A05, REG-A06, REG-X03 and REG-G01 are unchanged. The record is
+`docs/ops/P1_PLATFORM.md` §13. Under §43.1 the changed build must be
+re-staged.
 
 F6.3 --- the pure financial-truth layer (`worker/financial_truth/`:
 validation, admission, source observations, economic-fact identity and

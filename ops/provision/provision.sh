@@ -78,7 +78,8 @@ step_packages() {
 step_users() {
   log "service users and groups"
   getent group cse >/dev/null || groupadd --system cse
-  for u in cse-worker cse-backup cse-migrator; do
+  # cse-verifier: the reader login's OS user (P1-CC-1); group cse gives it the socket (group cse, mode 0770)
+  for u in cse-worker cse-backup cse-migrator cse-verifier; do
     if ! id -u "$u" >/dev/null 2>&1; then
       useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin "$u"
     fi

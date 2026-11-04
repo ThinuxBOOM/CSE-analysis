@@ -266,14 +266,22 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
      - the migration role (owner-level):
        `sudo -u cse-migrator env PYTHONPATH=/opt/cse/app CSE_DB_USER=cse_migrator python3 -m worker.financial_f4_store preflight --migration-role`;
      - or, with `DATABASE_URL` set to it, a login that inherits `cse_reader`'s privileges or whose session sets role
-       `cse_reader` (none is provisioned yet). A member that does neither gets `unverifiable`, which is not a pass.
+       `cse_reader`. P1 provisions one such login, `cse_verifier`, peer-mapped from the OS user `cse-verifier` (P1
+       change control P1-CC-1, 2026-11-03; `docs/ops/P1_PLATFORM.md` §3, §13; not yet verified at staging,
+       `docs/R_F4_IMPLEMENTATION.md` §20.6):
+       `sudo -u cse-verifier env PYTHONPATH=/opt/cse/app DATABASE_URL='postgresql://cse_verifier@/cse?host=/var/run/postgresql' python3 -m worker.financial_f4_store preflight`.
+       A member that does neither gets `unverifiable`, which is not a pass.
   3. **Continue only on exit 0 with `"clean": true`.** Exit 1 is a problem to fix. Exit 2 means the ledger could not
      be read (`"status": "unverifiable"`, as for a `cse_worker` connection, which has no access to `ops`): it is
      **not** a pass. Re-run by one of the routes above. P1's `cse-ops migrate verify` compares the ledger with the
      checked-out files only, not with R-F4's pin.
   4. **The full R-F4 `verify`**: no `--limit`, read-only, as the reader role, with `DATABASE_URL` set to a login that
-     inherits `cse_reader`'s privileges or whose session sets role `cse_reader` (none is provisioned yet):
-     `python -m worker.financial_f4_store verify`. It comes after the preflight because it reads only what its role
+     inherits `cse_reader`'s privileges or whose session sets role `cse_reader` (P1 provisions `cse_verifier` for this,
+     OS user `cse-verifier`, over the Unix socket; the URL names the role, since peer authentication maps
+     `cse-verifier` to `cse_verifier` only):
+     `python -m worker.financial_f4_store verify`, that is,
+     `sudo -u cse-verifier env PYTHONPATH=/opt/cse/app DATABASE_URL='postgresql://cse_verifier@/cse?host=/var/run/postgresql' python3 -m worker.financial_f4_store verify`.
+     It comes after the preflight because it reads only what its role
      can see: row-level security on a table it reads can hide evidence from it, and step 2 refuses that
      (`docs/R_F4_DESIGN.md` §5).
   5. **Continue only on exit 0 with `"clean": true` and `"scope": {"complete": true, …}`.** None of the following is

@@ -175,7 +175,7 @@ units() {
 filesystem() {
   [[ -z "$(find "$APP" -perm /022 -print -quit)" ]] && pass "application: no group/world-writable file" || bad "application has group/world-writable files"
   [[ "$(stat -c %U "$APP")" == root ]] && pass "application root-owned" || bad "application owner $(stat -c %U "$APP")"
-  for u in cse-worker cse-backup cse-migrator; do
+  for u in cse-worker cse-backup cse-migrator cse-verifier; do      # cse-verifier: P1-CC-1's reader login
     refused "$u cannot write the application" runuser -u "$u" -- touch "$APP/stg-probe"
   done
   [[ "$(stat -c '%U:%G %a' /srv/cse-backup/spool)" == "cse-worker:cse-backup 2750" ]] && pass "spool cse-worker:cse-backup 2750" \

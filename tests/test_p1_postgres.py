@@ -102,7 +102,8 @@ def test_bootstrap_roles_have_no_elevated_attributes(pg):
                     "cse_migrator": (True, False, False, False, False, False),
                     "cse_worker": (True, False, False, False, False, False),
                     "cse_reader": (False, False, False, False, False, False),
-                    "cse_backup": (True, False, False, False, False, False)}
+                    "cse_backup": (True, False, False, False, False, False),
+                    "cse_verifier": (True, False, False, False, False, False)}   # P1-CC-1
     assert q(c, "select m.inherit_option, m.set_option from pg_auth_members m join pg_roles r on r.oid = m.roleid "
                 "join pg_roles u on u.oid = m.member where r.rolname = 'cse_owner' and u.rolname = 'cse_migrator'") == [(False, True)]
     assert q(c, "select pg_has_role('cse_backup', 'pg_read_all_data', 'MEMBER')") == [(True,)]
