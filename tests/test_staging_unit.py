@@ -516,8 +516,8 @@ def test_h6_the_seed_records_its_command_identity_parameters_input_and_result(tm
 
 VERIFIER_URL = "postgresql://cse_verifier@/cse?host=/var/run/postgresql"
 LOGIN_STEPS = ("reader_step1", "reader_step2", "reader_step4", "reader_step5")     # 20.6 steps 1, 2, 4, 5: as the login
-NEW_FUNCTIONS = ("login_psql", "login_verify", "migration_preflight", "super_counts", "rf4_dir", "run_json", "jassert",
-                 "refused_with", "preflight_clean", "rf4verify", "reader_step1", "reader_peer_controls", "reader_step2",
+NEW_FUNCTIONS = ("login_psql", "login_verify", "migration_preflight", "verifier_preflight", "super_counts", "rf4_dir",
+                 "run_json", "jassert", "refused_with", "preflight_clean", "preflight_clean_as_login", "rf4verify", "reader_step1", "reader_peer_controls", "reader_step2",
                  "reader_step4", "reader_step5", "reader", "regx03")
 # a SET ROLE / SET SESSION AUTHORIZATION statement (the prose "no SET ROLE" in a message or a comment is not one)
 SET_ROLE = re.compile(r"\bset\s+(local\s+|session\s+)?role\s+(to\s+)?[\w\"']|\bset\s+(local\s+|session\s+)?authorization|"
@@ -544,6 +544,13 @@ def test_s8_the_logins_steps_run_as_the_login_by_peer_authentication_and_nothing
     assert "psql" not in code["login_verify"] and "postgres" not in code["login_verify"]
     # section 12 step 2 and section 20.6 step 3: the preflight through the migration role
     assert "runuser -u cse-migrator --" in code["migration_preflight"] and "--migration-role" in code["migration_preflight"]
+    # runbook section 12 step 2, second route (AR-0003-1, owner question): the preflight as the login, through DATABASE_URL
+    assert "runuser -u cse-verifier --" in code["verifier_preflight"] and 'DATABASE_URL="$VERIFIER_URL"' in code["verifier_preflight"]
+    assert "python3 -m worker.financial_f4_store preflight" in code["verifier_preflight"]
+    assert "--migration-role" not in code["verifier_preflight"] and "CSE_DB_USER" not in code["verifier_preflight"]
+    assert "psql" not in code["verifier_preflight"] and "postgres" not in code["verifier_preflight"]
+    assert "verifier_preflight" in code["preflight_clean_as_login"] and "financial_f4_store" not in code["preflight_clean_as_login"]
+    assert "clean" in code["preflight_clean_as_login"] and "RC -eq 0" in code["preflight_clean_as_login"]
     # steps 1, 2, 4 and 5: through the login, and through no other route
     for n in LOGIN_STEPS:
         assert re.search(r"\blogin_(psql|verify)\b", code[n]), n
@@ -559,7 +566,8 @@ def test_s8_the_logins_steps_run_as_the_login_by_peer_authentication_and_nothing
     for n, c in code.items():
         assert not SET_ROLE.search(c), n
     # ST-27 runs the preflight through the migration role and the verify as the login; ST-28 runs steps 1-5 (not 6)
-    assert "preflight_clean" in code["rf4verify"] and "login_verify" in code["rf4verify"]
+    assert "preflight_clean " in code["rf4verify"] and "login_verify" in code["rf4verify"]
+    assert "preflight_clean_as_login" in code["rf4verify"]                         # both preflight routes (runbook section 12)
     for n in ("reader_step1", "reader_peer_controls", "reader_step2", "preflight_clean", "reader_step4", "reader_step5"):
         assert n in code["reader"], n
     assert "reader_step6" not in sch and "step 6" in body["reader"]
@@ -570,7 +578,7 @@ def test_s8_the_logins_steps_run_as_the_login_by_peer_authentication_and_nothing
                       "cse-scheduler", "cse-financial", "worker.scheduler", "worker.market_capture", "worker.backfill",
                       "arming", "R1-AUTHORIZED", "getent", "dig ", "nslookup"):
         assert forbidden not in joined, forbidden
-    assert re.findall(r"worker\.[a-z_0-9.]+", joined) == ["worker.financial_f4_store", "worker.financial_f4_store"]
+    assert re.findall(r"worker\.[a-z_0-9.]+", joined) == ["worker.financial_f4_store"] * 3     # verify, both preflights
     # the dispatcher knows the three subcommands
     assert re.search(r"^  ledger\|roles\|.*\|rf4verify\|reader\|regx03\) \"\$cmd\" ;;$", sch, re.M)
 
@@ -597,6 +605,7 @@ GOOD_VERIFY = {"clean": True, "scope": {"complete": True, "limit": None}, "probl
 STUBS = """
 login_verify() { cat "$VERIFY_JSON"; return "${VERIFY_RC:-0}"; }
 migration_preflight() { cat "$PRE_JSON"; return "${PRE_RC:-0}"; }
+verifier_preflight() { cat "$VPRE_JSON"; return "${VPRE_RC:-0}"; }
 super_counts() { echo "${SUPER:-3 3}"; }
 login_psql() {
   case "$2" in
@@ -620,6 +629,7 @@ def write_json(tmp_path, name, obj):
 
 def test_h7_the_procedures_fail_when_a_condition_does_not_hold(tmp_path):
     base = {"PRE_JSON": write_json(tmp_path, "pre_ok.json", {"clean": True, "command": "preflight"}),
+            "VPRE_JSON": write_json(tmp_path, "vpre_ok.json", {"clean": True, "command": "preflight"}),
             "VERIFY_JSON": write_json(tmp_path, "ver_ok.json", GOOD_VERIFY)}
     pre_bad = write_json(tmp_path, "pre_bad.json", {"clean": False, "command": "preflight"})
 
@@ -628,9 +638,19 @@ def test_h7_the_procedures_fail_when_a_condition_does_not_hold(tmp_path):
         return run_procedure(tmp_path / name, name, funcs, STUBS + script, dict(base, **env))
 
     # ST-27: the good case, then each failing condition by itself
-    funcs = ("jassert", "run_json", "rf4_dir", "preflight_clean", "rf4verify")
+    funcs = ("jassert", "run_json", "rf4_dir", "preflight_clean", "preflight_clean_as_login", "rf4verify")
     out = run("ok", funcs, "rf4verify")
-    assert verdicts(out) == ["PASS"] * 7 and out[-1] == "fail=0", out
+    assert verdicts(out) == ["PASS"] * 9 and out[-1] == "fail=0", out
+    # the second preflight route (as the login): unclean, "unverifiable" (exit 2, as for a login that cannot read the ledger)
+    # and a crash are each a FAIL, and the migration-role route does not stand in for it
+    vpre_bad = write_json(tmp_path, "vpre_bad.json", {"clean": False, "command": "preflight"})
+    vpre_unverifiable = write_json(tmp_path, "vpre_unv.json", {"clean": False, "ledger": {"status": "unverifiable"}})
+    for label, env in (("login preflight unclean", dict(VPRE_JSON=vpre_bad, VPRE_RC="1")),
+                       ("login preflight unverifiable", dict(VPRE_JSON=vpre_unverifiable, VPRE_RC="2")),
+                       ("login preflight exit 0 but not clean", dict(VPRE_JSON=vpre_bad))):
+        out = run("vpre", funcs, "rf4verify", **env)
+        assert "FAIL" in verdicts(out) and out[-1] == "fail=1", (label, out)
+        assert verdicts(out).count("PASS") >= 7, (label, out)                       # the other steps are not hidden by it
     limited = dict(GOOD_VERIFY, clean=False, scope={"complete": False, "limit": 5, "detail": "partial"})
     cases = (
         ("unclean preflight", dict(PRE_JSON=pre_bad), 1),
@@ -690,6 +710,8 @@ def test_h8_st29_requires_pass_for_the_verifier_checks_the_owner_members_check_a
                 "ledger_ordinary_table", "ledger_permanent", "ledger_no_row_level_security", "ledger_no_inheritance")
     for n in required:
         assert f'"{n}"' in body, n
+    # fail closed (AR-0003-1 F-1): the evaluator's exit status and the count of the ten PASS lines decide, not the absence of FAIL
+    assert "erc=$?" in body and "[[ $erc -ne 0 ]]" in body and "[[ $npass -ne 10 ]]" in body
     # the names exist in the frozen verify_server (role_<name> is built from ROLES)
     vs = open(os.path.join(REPO, "worker", "ops", "verify_server.py"), encoding="utf-8").read()
     assert 'rep.add(f"role_{name}"' in vs and '"cse_verifier": True' in vs
@@ -700,11 +722,19 @@ def test_h8_st29_requires_pass_for_the_verifier_checks_the_owner_members_check_a
     app.mkdir(parents=True)
     checks = [{"check": n, "status": "PASS", "detail": "ok"} for n in required] \
         + [{"check": "time_synchronised", "status": "FAIL", "detail": "container"}]
+
+    def nodetail(rows, name):
+        return [{k: v for k, v in c.items() if k != "detail"} if c["check"] == name else c for c in rows]
+
     scenarios = {"ok": (checks, 0, 0),
                  "a check FAILs": ([dict(c, status="FAIL") if c["check"] == "ledger_no_inheritance" else c for c in checks], 0, 1),
                  "a check is absent": ([c for c in checks if c["check"] != "owner_members_designed_only"], 0, 1),
                  "a check only WARNs": ([dict(c, status="WARN") if c["check"] == "ledger_permanent" else c for c in checks], 0, 1),
-                 "the probe fails": (checks, 1, 1)}
+                 "the probe fails": (checks, 1, 1),
+                 # the auditor's case: a required check without `detail` makes the evaluator raise after printing its INFO
+                 # lines (before any PASS line, and with some of them printed): ST-29 must FAIL, not pass on "no FAIL line"
+                 "the evaluator crashes after its INFO lines": (nodetail(checks, "role_cse_verifier"), 0, 1),
+                 "the evaluator crashes after some PASS lines": (nodetail(checks, "owner_members_designed_only"), 0, 1)}
     for label, (rep, probe_rc, want_fail) in scenarios.items():
         (tmp_path / "rep.json").write_text(json.dumps({"checks": rep}), encoding="utf-8", newline="\n")
         probe = ('#!/usr/bin/env bash\ncp "$REPORT" /tmp/p1_verify_db.json\necho \'{"checks": []}\' > /tmp/p1_verify_os.json\n'
@@ -715,7 +745,10 @@ def test_h8_st29_requires_pass_for_the_verifier_checks_the_owner_members_check_a
         v = verdicts(out)
         assert out[-1] == f"fail={want_fail}", (label, out)
         if label == "ok":
-            assert v == ["PASS"] * 11, out                      # the probe, then the ten required checks
+            assert v == ["PASS"] * 12, out          # the probe, the ten required checks, then the evaluator's own exit
             assert any(line.startswith("INFO verify_server time_synchronised: FAIL") for line in out)
         else:
             assert "FAIL" in v, (label, out)
+            if "crashes" in label:
+                assert any(line.startswith("FAIL regx03: the evaluator exited ") for line in out), (label, out)
+                assert not any(line.startswith("PASS regx03:") for line in out), (label, out)

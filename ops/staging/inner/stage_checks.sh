@@ -20,7 +20,8 @@
 #   stage_checks.sh datadigest L  ST-08  every table's rows (sorted row texts) under the label L, before the upgrade
 #   stage_checks.sh dataverify L  ST-08  every row digested under L is still present and unchanged
 #   stage_checks.sh rf4verify     ST-27  R-F4's full `verify` (runbook section 12 steps 2-5): the preflight through the
-#                                 migration role, then `verify` AS THE LOGIN cse_verifier; exit 0, clean, complete scope
+#                                 migration role and, as the second route, as the login; then `verify` AS THE LOGIN
+#                                 cse_verifier; exit 0, clean, complete scope
 #   stage_checks.sh reader        ST-28  the real reader login, R-F4 section 20.6 steps 1-5 (REG-A06); steps 1, 2, 4 and
 #                                 5 run as the OS user cse-verifier over the Unix socket, by peer authentication: never
 #                                 SET ROLE, never a superuser session (step 6 needs a restored copy: not run here)
@@ -58,6 +59,10 @@ login_verify() {  # runbook section 12 step 4, verbatim: the full verify (no --l
 migration_preflight() {  # runbook section 12 step 2: the ledger read through the migration role (owner-level)
   (cd / && runuser -u cse-migrator -- env PYTHONPATH="$APP" PYTHONDONTWRITEBYTECODE=1 CSE_DB_NAME=cse CSE_DB_USER=cse_migrator \
     python3 -m worker.financial_f4_store preflight --migration-role)
+}
+verifier_preflight() {  # runbook section 12 step 2, second route: the preflight AS THE LOGIN through DATABASE_URL (no --migration-role)
+  (cd / && runuser -u cse-verifier -- env PYTHONPATH="$APP" PYTHONDONTWRITEBYTECODE=1 DATABASE_URL="$VERIFIER_URL" \
+    python3 -m worker.financial_f4_store preflight)
 }
 super_counts() {  # the two tables verify enumerates, as the bootstrap superuser: "extractions runs"
   psu "select (select count(*) from financial_f4_extractions) || ' ' || (select count(*) from financial_extraction_runs)"
@@ -346,12 +351,19 @@ preflight_clean() {  # preflight_clean DIR LABEL: the R-F4 preflight through the
   jassert "$2: the preflight is clean (\"clean\": true)" "$1/preflight-migration-role.json" 'd["clean"] is True'
 }
 
+preflight_clean_as_login() {  # preflight_clean_as_login DIR LABEL: the second route: exit 0 (2 is "unverifiable", not a pass), "clean": true
+  run_json "$1" preflight-as-login verifier_preflight
+  [[ $RC -eq 0 ]] && pass "$2: the preflight as the login (DATABASE_URL) exits 0" || bad "$2: the preflight as the login exits $RC (2 = the ledger could not be read: not a pass)"
+  jassert "$2: the preflight as the login is clean (\"clean\": true)" "$1/preflight-as-login.json" 'd["clean"] is True'
+}
+
 rf4verify() {  # ST-27: runbook section 12 steps 2-5
   local d
   d=$(rf4_dir rf4verify) || { bad "rf4verify: no new evidence directory under $RF4"; return; }
   info "ST-27: evidence directory in the container: $d"
   info "ST-27: step 4 runs as the OS user cse-verifier with DATABASE_URL=$VERIFIER_URL (peer authentication, no password)"
-  preflight_clean "$d" "step 2/3"
+  preflight_clean "$d" "step 2/3 (migration role)"
+  preflight_clean_as_login "$d" "step 2/3 (second route)"
   run_json "$d" verify-as-login login_verify
   [[ $RC -eq 0 ]] && pass "step 4/5: verify as the login exits 0" || bad "step 4/5: verify as the login exits $RC"
   jassert "step 5: \"clean\": true" "$d/verify-as-login.json" 'd["clean"] is True'
@@ -452,7 +464,7 @@ reader() {  # ST-28: REG-A06 and R-F4 section 20.6 steps 1-5
 }
 
 regx03() {  # ST-29: P1's verify_server (REG-X03, P1-CC-1) through the frozen probe that tolerates only the container clock
-  local d rc out
+  local d rc out erc npass
   d=$(rf4_dir regx03) || { bad "regx03: no new evidence directory under $RF4"; return; }
   info "ST-29: evidence directory in the container: $d"
   rm -f /tmp/p1_verify_db.json /tmp/p1_verify_os.json
@@ -474,9 +486,14 @@ for name in REQUIRED:
     print("PASS" if c and c["status"] == "PASS" else "FAIL", "verify_server %s: %s" % (name, c["detail"] if c else "absent from the report"))
 PY
   )
+  erc=$?                       # the evaluator's own exit status: a crash after its INFO lines must not look like a pass
   echo "$out"
   grep -q '^FAIL' <<< "$out" && fail=1
-  [[ -n "$out" ]] || bad "regx03: the report could not be read"
+  npass=$(grep -c '^PASS verify_server ' <<< "$out")
+  # fail closed (AR-0003-1 F-1): ST-29 passes only if the evaluator exited 0 AND all ten required checks are PASS lines
+  if [[ $erc -ne 0 ]]; then bad "regx03: the evaluator exited $erc, so the ten required checks are not established"
+  elif [[ $npass -ne 10 ]]; then bad "regx03: $npass of the 10 required checks are reported PASS"
+  else pass "regx03: the evaluator exited 0 and all 10 required checks are PASS"; fi
 }
 
 cmd=${1:-}
