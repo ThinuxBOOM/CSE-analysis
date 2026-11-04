@@ -1,6 +1,6 @@
 # P1 platform: local server, PostgreSQL 17, security, backups
 
-**Status:** P1 implementation, awaiting review.
+**Status:** P1 is frozen/accepted (MA §52). Its change control P1-CC-1 (§13) is accepted and frozen (2026-11-04), effective once CI is clean at the head that records it (§13).
 **Target:** Ubuntu 24.04 LTS home server that is **not** always on; PostgreSQL 17 (PGDG) is authoritative.
 **GitHub:** source control only.
 
@@ -421,7 +421,8 @@ round 1 audit's notes):
 - ledger privileges other than INSERT, UPDATE, DELETE and TRUNCATE (TRIGGER, MAINTAIN, REFERENCES), rules on the
   ledger, and policies while row-level security is off;
 - a SET-only membership in a role other than `cse_owner` that holds a ledger write privilege (for example the
-  predefined `pg_write_all_data`, which the ledger check does not test);
+  predefined `pg_write_all_data`, which the ledger check does not test), and membership in the bootstrap superuser role
+  (`GRANT postgres TO …`, after which `SET ROLE postgres` is possible): both are accepted residuals (1) and (4) below;
 - other roles granted `cse_verifier` (members of the login);
 - owner-level manipulation: the owner or a superuser can disable the append-only triggers, insert as the owner, or
   change the ledger between runs (REG-A11's accepted class);
@@ -432,7 +433,37 @@ round 1 audit's notes):
 Re-running the bootstrap re-enforces the login's attributes and its own grant's options; it does not remove a membership
 row granted by another grantor or an extra membership. `verify_server` detects those.
 
-**Not done (status).** Implemented and tested on throwaway clusters only. Round 1 was independently audited (AR-0001-1:
-PASS WITH FINDINGS); the round 2 correction is not yet audited. Not accepted, frozen or merged. **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done**, so nothing here is
-evidence that the real login works with peer authentication. REG-A05, REG-A06, REG-X03 and REG-G01 keep their recorded
-statuses.
+**Accepted residuals** (decided [delegated] on 2026-11-04, with the freeze; revisit any of them if the threat model
+changes):
+1. **A SET path into `pg_write_all_data`.** A role that can `SET ROLE pg_write_all_data` can write the ledger while every
+   check passes; the round 2 audit (AR-0001-2) confirmed this is a real route. Only a superuser, or a role holding ADMIN
+   on the target role, can grant membership in a superuser role or in `pg_write_all_data`; by default only the
+   bootstrap superuser holds that ADMIN. `only_bootstrap_superuser` checks that `postgres` is the only superuser.
+2. **The restore check does not assert `cse_verifier`** (AR-0001-1 F-3). `worker/ops/restore_check.py` checks the five
+   original roles only. The globals dump carries the login with `GRANT cse_reader TO cse_verifier WITH INHERIT TRUE,
+   SET FALSE`, as the round 1 audit verified, and the restore tests restored such a dump without errors in CI.
+3. **Login passwords are not checked** (AR-0001-1 F-4). Authentication is peer-only, so `pg_hba` has no password method
+   (`pg_hba_local_peer_only`), and the bootstrap re-applies `PASSWORD NULL` on every run.
+4. **Membership in the bootstrap superuser role** (AR-0001-2 G-1). A login granted `postgres` (`GRANT postgres TO x`)
+   can `SET ROLE postgres` and forge a ledger row while all 36 checks pass, because superuser status is gained by
+   `SET ROLE`, not inherited, and `owner_members_designed_only` follows memberships of `cse_owner` only. It is the same
+   class as residual 1: only a superuser, or a role holding ADMIN on the target role, can grant membership in a
+   superuser role or in `pg_write_all_data`; by default only the bootstrap superuser holds that ADMIN. Superuser
+   compromise is outside the P1 model.
+
+**Acceptance and freeze (2026-11-04).** P1-CC-1 is **ACCEPTED / FROZEN**, decided [delegated] by the orchestrator under
+the owner's standing delegation, on the two independent audits: AR-0001-1 (round 1, PASS WITH FINDINGS, no Blocker or
+Major; its Minor finding F-1 corrected in round 2) and AR-0001-2 (round 2, PASS WITH FINDINGS, no Blocker or Major; its
+Minor finding G-1 accepted as residual 4 above).
+- **Frozen code:** `59f9228` (round 1) and `0a653a8` (round 2, the correction of AR-0001-1 F-1), on the branch
+  `claude/m8-t2-p1cc1` (pull request #8 into `main`).
+- **CI at `59f9228`:** `ci-regression` run 41748579189 and `ci-fast` run 41748579202, both successful: all 22 jobs
+  succeeded and the summary is clean, including the nine restore-executing tests and the edited frozen assertions.
+- **Effective** once `ci-fast` and `ci-regression` on pull request #8, at the head that contains this record, finish
+  clean. Until then the freeze is recorded but not in effect.
+- **Re-staging:** under MA §43.1 the changed build must be re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29).
+  Staging stays NOT ACCEPTED, and REG-G01 stays OPEN.
+- **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done yet**, so nothing here is
+  evidence that the real login works with peer authentication. REG-A05 stays DEFERRED WITH RATIONALE.
+- **Register:** REG-X03 is CLOSED WITH EVIDENCE (`docs/R_F4_IMPLEMENTATION.md` §25.4); REG-A05, REG-A06 and REG-G01
+  keep their statuses.
