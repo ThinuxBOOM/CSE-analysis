@@ -140,6 +140,11 @@ The checkpoint's verification sequence in this section, the checks on the restor
 below, states the checks a checkpoint requires. It is **not** authorization to run them: they may run only once that
 isolated-restore procedure has been separately reviewed and approved.
 
+*(2026-11-04: forward pointer. A procedure for this isolated restore now exists: `docs/ops/ISOLATED_RESTORE.md`
+(REG-B01, `docs/R_F4_IMPLEMENTATION.md` §25.4), written under the owner's decisions OD-10 and OD-11 (decision request
+DR-0002). It is **pending its independent audit and the owner's approval**. Until it is approved and this section is
+changed under REG-B27, this section stays **BLOCKED**, and nothing here may use that procedure.)*
+
 On a build that includes R-F4, the checkpoint also runs R-F4's two checks **on the restored copy**, in the order of
 section 12, steps 2–5. Each command is pointed at the restored copy, not at production: `DATABASE_URL` for a reader
 login, or `CSE_DB_HOST`, `CSE_DB_PORT` and `CSE_DB_NAME` for `--migration-role`.

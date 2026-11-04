@@ -6,7 +6,8 @@
 #   - every staging container runs with --network none, --restart no, no host bind mount and no Docker socket; files
 #     go in and out with `docker cp` only, and images are built from a context outside the repository;
 #   - privilege rungs L1 and L2 only (CAP_SYS_ADMIN, private cgroup namespace). --privileged is not implemented;
-#   - no restore subcommand exists, and nothing here calls `provision.sh all` or `selftest` (DO NOT EXECUTE RESTORE);
+#   - nothing here calls `provision.sh all` or `selftest`; the only restore is `restore` (restore_driver.sh), which runs
+#     nothing without a valid, unused restore authorization of the owner (OD-12) and never targets production;
 #   - nothing here arms, captures, backfills or contacts CSE; the only network use is `docker build`'s apt access;
 #   - nothing here removes a container, volume, image or evidence file (the owner reviews them first).
 #
@@ -30,6 +31,8 @@
 #   staging.sh guard                one RAM and disk check (exit 1 below the floors)
 #   staging.sh canary               scan the evidence, journals, inspects and image histories for the test secret
 #   staging.sh collect [suffix]     journal export, docker inspect, image metadata into the evidence
+#   staging.sh restore R1|R2 RA [suffix]   ST-30 / ST-31 under the owner's restore authorization RA (a file, read only):
+#                                   restore_driver.sh, docs/ops/STAGING.md section 3, docs/ops/ISOLATED_RESTORE.md
 #
 # Provenance (H-4): every run, isolation and seed record opens with PROVENANCE lines (campaign, revision, container and
 # image, the driver's SHA-256, and the SHA-256 of each harness file as the container holds it, compared with the working
@@ -53,8 +56,8 @@ RAM_FLOOR_PCT=5
 DISK_FLOOR_GB=20
 # No test is deselected (owner, 2026-11-04): the nine regression tests that execute a restore into a disposable cluster
 # (tests/test_p1_postgres.py 2, tests/test_f64_postgres.py 1, tests/test_rf4_runbook_rehearsal.py 6) run inside the
-# runner container, which has no network, in the container's own throwaway clusters. Restore stays out of the host
-# container: the R1 gate is unchanged, and no restore functionality exists in this driver.
+# runner container, which has no network, in the container's own throwaway clusters. In the host container the R1 gate
+# is unchanged: only `restore R1` under a valid, unused restore authorization opens it, for one run (restore_driver.sh).
 
 winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi; }
 note() { mkdir -p "$EVID/logs"; echo "[staging $(date -u +%FT%TZ)] $*" | tee -a "$EVID/logs/driver.log"; }
@@ -407,5 +410,6 @@ case "${1:-}" in
   guard) guard ;;
   canary) cmd_canary ;;
   collect) shift; cmd_collect "$@" ;;
-  *) sed -n '2,36p' "$0"; exit 2 ;;
+  restore) shift; . "$HERE/restore_driver.sh"; cmd_restore "$@" ;;
+  *) sed -n '2,39p' "$0"; exit 2 ;;
 esac

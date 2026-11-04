@@ -31,6 +31,20 @@ statically and run against stubs of the login's sessions (no container, no netwo
         through SET ROLE or a superuser session; nothing in the new procedures restores, arms or reaches a network
     h7  the procedures' verdicts: each ST-27/ST-28 assertion fails when its condition does not hold
     h8  ST-29 requires PASS for the cse_verifier checks, owner_members_designed_only and the five ledger checks
+
+Restore under the owner's restore authorization (RA; OD-12, DR-0002; `staging.sh restore R1|R2 RA`, restore_driver.sh,
+restore_gate.py, restore/stage_restore.sh; the procedure ops/restore/isolated_restore.py; docs/ops/ISOLATED_RESTORE.md).
+The guards above are unchanged: without a valid RA the harness behaves exactly as before.
+
+    r1  the RA validation matrix: an expired, consumed, mismatched or malformed RA refuses (restore_gate.py)
+    r2  the driver, against a stub docker: every invalid RA refuses before anything runs, the RA is consumed before the
+        restore, a consumed RA refuses, and the RA's directory is byte-for-byte unchanged (no write into the vault)
+    r3  no code path restores without validation: the only restore code is reached through `restore`, after the RA check
+    r4  the harness never writes into the vault: the RA is opened read-only, once; nothing is written beside it
+    r5  the R2 container has no network and no shared volume or mount (its creation and its docker inspect check)
+    r6  nothing references P1 section 8 B step 5, except as a prohibition
+    r7  an identity check precedes each verification command (the procedure's own code, run against stub identities)
+    r8  the globals step (REG-B04): one exact error tolerated, every role and membership proven; the gates fail closed
 """
 import hashlib
 import json
@@ -752,3 +766,563 @@ def test_h8_st29_requires_pass_for_the_verifier_checks_the_owner_members_check_a
             if "crashes" in label:
                 assert any(line.startswith("FAIL regx03: the evaluator exited ") for line in out), (label, out)
                 assert not any(line.startswith("PASS regx03:") for line in out), (label, out)
+
+
+# ---- restore under the owner's restore authorization (r1-r8) ----------------------------------------------------------
+
+import argparse  # noqa: E402
+import datetime  # noqa: E402
+import importlib.util  # noqa: E402
+
+RESTORE_DIR = os.path.join(REPO, "ops", "restore")
+TOOL_FILE = os.path.join(RESTORE_DIR, "isolated_restore.py")
+REV40 = "0123456789abcdef0123456789abcdef01234567"
+IMG = "sha256:" + "ab" * 32
+NOW = datetime.datetime(2026, 11, 5, 12, 0, tzinfo=datetime.timezone.utc)
+
+
+def load(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+GATE = load(os.path.join(STAGING, "restore_gate.py"), "restore_gate")
+IR = load(TOOL_FILE, "isolated_restore")
+
+
+def ra_text(**changes):
+    """An RA as the vault's CSE Restore Authorization Template fills it (YAML front matter, then the body)."""
+    fields = {"type": "restore-authorization", "id": "RA-0001", "operation": "R1", "campaign": "ut",
+              "build_sha": REV40, "image_id": IMG, "target": "cse-stg-ut-host", "expires": "2026-11-06T18:00:00+05:30",
+              "single_use": "true", "decided": "2026-11-05", "owner_words": '"Yes, run R1 for campaign ut."',
+              "tags": "[cse]"}
+    drop = changes.pop("_drop", ())
+    extra = changes.pop("_extra", "")
+    fields.update(changes)
+    lines = [f"{k}: {v}" for k, v in fields.items() if k not in drop]
+    return "---\n" + "\n".join(lines) + "\n" + extra + "---\n# RA-0001: restore authorization\n\nBody text.\n"
+
+
+def ra_args(tmp_path, **changes):
+    a = {"operation": "R1", "campaign": "ut", "revision": REV40, "label_revision": REV40, "image_id": IMG,
+         "tagged_image_id": IMG, "target": "cse-stg-ut-host", "consumed": str(tmp_path / "evid" / "restore" / "c.log"),
+         "evidence": str(tmp_path / "evid")}
+    a.update(changes)
+    return argparse.Namespace(**a)
+
+
+def verdict(raw, ra_path, a, clock=NOW):
+    rows = list(GATE.validate(raw, ra_path, a, clock=clock))
+    return all(ok for ok, _ in rows), [t for ok, t in rows if not ok]
+
+
+def test_r1_the_ra_validation_matrix_refuses_every_invalid_ra(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    ra = vault / "RA-0001.md"
+    good = ra_text().encode()
+    a = ra_args(tmp_path)
+    ok, why = verdict(good, str(ra), a)
+    assert ok and why == [], why
+    assert verdict(good.replace(b"\n", b"\r\n"), str(ra), a)[0]          # a file saved with CRLF is the same RA
+    cases = {
+        # expired, or an expiry that is not an absolute time
+        "expired": ra_text(expires="2026-11-05T17:29:59+05:30"),
+        "expiry without an offset": ra_text(expires="2026-11-06T18:00:00"),
+        "expiry that is not a time": ra_text(expires="tomorrow"),
+        # mismatched against the harness's own values
+        "operation": ra_text(operation="R2"),
+        "operation not R1 or R2": ra_text(operation="R3"),
+        "campaign": ra_text(campaign="t2s1"),
+        "build_sha": ra_text(build_sha="f" * 40),
+        "build_sha short": ra_text(build_sha=REV40[:12]),
+        "image_id": ra_text(image_id="sha256:" + "cd" * 32),
+        "image_id without sha256:": ra_text(image_id="ab" * 32),
+        "target": ra_text(target="cse-stg-ut-r2"),
+        "a production target": ra_text(target="production"),
+        # malformed
+        "template id": ra_text(id="RA-NNNN"),
+        "type": ra_text(type="decision-request"),
+        "single use false": ra_text(single_use="false"),
+        "no owner words": ra_text(owner_words='""'),
+        "decided in the future": ra_text(decided="2026-11-09"),
+        "decided not a date": ra_text(decided="YYYY-MM-DD"),
+        "missing key": ra_text(_drop=("target",)),
+        "unknown key": ra_text(_extra="approved_by: someone\n"),
+        "duplicate key": ra_text(_extra="operation: R1\n"),
+        "not key: value": ra_text(_extra="just text\n"),
+    }
+    for label, text in cases.items():
+        ok, why = verdict(text.encode(), str(ra), a)
+        assert not ok and why, label
+    for label, raw in {"no front matter": b"# RA-0001\noperation: R1\n", "unclosed": b"---\nid: RA-0001\n",
+                       "empty": b"", "not UTF-8": b"---\nid: \xff\n---\n"}.items():
+        ok, why = verdict(raw, str(ra), a)
+        assert not ok and why[0].startswith("well-formed"), label
+    # the harness's values disagree among themselves: the image label or the tagged image is another build
+    for label, change in {"label": {"label_revision": "e" * 40}, "tagged image": {"tagged_image_id": "sha256:" + "0" * 64},
+                          "harness revision": {"revision": "e" * 40}, "other target": {"target": "cse-stg-ut-x-host"},
+                          "other campaign": {"campaign": "t3a"}, "operation asked": {"operation": "R2"}}.items():
+        ok, why = verdict(good, str(ra), ra_args(tmp_path, **change))
+        assert not ok, label
+    # consumed: by id, or by the same file under another id
+    log = tmp_path / "evid" / "restore" / "c.log"
+    log.parent.mkdir(parents=True)
+    log.write_text(f"2026-11-05T00:00:00+00:00\tRA-0001\t{'0' * 64}\tR1\tcse-stg-ut-host\tut\n", encoding="utf-8")
+    assert not verdict(good, str(ra), a)[0]
+    import hashlib as _h
+    log.write_text(f"2026-11-05T00:00:00+00:00\tRA-0009\t{_h.sha256(good).hexdigest()}\tR1\tx\tut\n", encoding="utf-8")
+    assert not verdict(good, str(ra), a)[0]
+    log.write_text("a malformed line\n", encoding="utf-8")
+    ok, why = verdict(good, str(ra), a)
+    assert not ok and any("cannot be read" in w for w in why)
+    log.unlink()
+    # the evidence directory inside the RA's directory (or the RA inside the evidence): refused
+    assert not verdict(good, str(ra), ra_args(tmp_path, evidence=str(vault / "evid")))[0]
+    assert not verdict(good, str(tmp_path / "evid" / "RA-0001.md"), a)[0]
+
+
+def test_r1b_the_ra_command_reads_the_ra_once_consumes_it_only_when_valid_and_never_writes_beside_it(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    ra = vault / "RA-0001.md"
+    ra.write_bytes(ra_text(expires="2099-01-01T00:00:00+05:30").encode())
+    before = sorted((p.name, p.stat().st_size, p.stat().st_mtime_ns, sha_lf(p)) for p in vault.iterdir())
+    log = tmp_path / "evid" / "restore" / "ra-consumed.log"
+    base = ["ra", "--ra", str(ra), "--operation", "R1", "--campaign", "ut", "--revision", REV40, "--label-revision",
+            REV40, "--image-id", IMG, "--tagged-image-id", IMG, "--target", "cse-stg-ut-host", "--consumed", str(log),
+            "--evidence", str(tmp_path / "evid")]
+    run = lambda *extra: subprocess.run([sys.executable, os.path.join(STAGING, "restore_gate.py"), *base, *extra],
+                                        capture_output=True, text=True, timeout=60)
+    p = run()
+    assert p.returncode == 0 and not log.exists(), p.stdout                 # validation alone writes nothing
+    p = run("--consume")
+    assert p.returncode == 0 and "CONSUMED RA-0001" in p.stdout, p.stdout
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1
+    p = run("--consume")
+    assert p.returncode == 1 and "FAIL single use" in p.stdout and "REFUSED" in p.stdout, p.stdout
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 1          # a refusal consumes nothing
+    after = sorted((p.name, p.stat().st_size, p.stat().st_mtime_ns, sha_lf(p)) for p in vault.iterdir())
+    assert after == before                                                   # the vault is untouched
+
+
+STUB_RESTORE = """#!/usr/bin/env bash
+# a stand-in for the docker CLI for `staging.sh restore`: records each call; never touches Docker
+printf '%s\\n' "$*" >> "$STUB_LOG"
+consumed() { grep -q "$STUB_RA_ID" "$STUB_CONSUMED" 2>/dev/null && echo yes || echo no; }
+case "$1" in
+  inspect)
+    if [[ $2 == -f ]]; then
+      case "$3" in *State.Running*) echo true ;; *.Image*) echo "$STUB_IMAGE" ;; esac
+    else cat "$STUB_R2_INSPECT"; fi ;;
+  image) case "$4" in *.Id*) echo "$STUB_TAGGED" ;; *revision*) echo "$STUB_LABEL" ;; esac ;;
+  ps) [[ -z ${STUB_EXISTS:-} ]] || echo "$STUB_EXISTS" ;;
+  run) echo "consumed-at-run=$(consumed)" >> "$STUB_LOG"; echo stubcontainer ;;
+  exec)
+    case "$*" in
+      *"stage_restore.sh r1-check"*) echo "PASS stub r1-check"; exit "${STUB_R1CHECK_RC:-0}" ;;
+      *"stage_restore.sh r1"*) echo "consumed-at-r1=$(consumed)" >> "$STUB_LOG"; echo "PASS stub r1" ;;
+      *"stage_restore.sh source"*) cat "$STUB_SOURCE" ;;
+      *"stage_restore.sh r2-teardown"*) echo "PASS stub teardown" ;;
+      *"stage_restore.sh r2 "*) echo "consumed-at-r2=$(consumed)" >> "$STUB_LOG"; echo "PASS stub r2" ;;
+      *"sha256sum"*) : ;;
+    esac ;;
+esac
+exit 0
+"""
+
+
+def r2_inspect(target="cse-stg-ut-r2", **hc_changes):
+    hc = {"NetworkMode": "none", "Privileged": False, "CapAdd": None, "Binds": None, "Tmpfs": None, "VolumesFrom": None,
+          "Mounts": None, "RestartPolicy": {"Name": "no"}, "Devices": [], "DeviceRequests": None, "PidMode": "",
+          "IpcMode": "private", "UTSMode": "", "UsernsMode": "", "CgroupnsMode": "private", "SecurityOpt": None}
+    mounts = hc_changes.pop("_mounts", [])
+    name = hc_changes.pop("_name", "/" + target)
+    image = hc_changes.pop("_image", IMG)
+    hc.update(hc_changes)
+    return [{"Name": name, "Image": image, "HostConfig": hc, "Mounts": mounts,
+             "Config": {"Labels": {"cse.staging.campaign": "ut", "cse.staging.role": "r2"}}}]
+
+
+SOURCE = {"system_identifier": "7400000000000000001", "dump": "/srv/cse-backup/pg/dumps/2026/11/cse_20261105T000000Z_ab12",
+          "verify_exit": 0, "ledger_run": {"id": 7, "run_kind": "local_dump", "status": "succeeded",
+                                           "artifact_key": "pg/dumps/2026/11/cse_20261105T000000Z_ab12",
+                                           "artifact_sha256": "1" * 64, "manifest_sha256": "2" * 64}}
+
+
+def restore_driver(tmp_path, op, ra_body, *, image=IMG, tagged=IMG, label=REV40, r1check_rc=0, exists="",
+                   inspect=None, source=None):
+    """`staging.sh restore OP RA` with a stub docker (and a stub RAM probe) first on PATH."""
+    stub = tmp_path / "stub"
+    stub.mkdir(exist_ok=True)
+    (stub / "docker").write_text(STUB_RESTORE, encoding="utf-8", newline="\n")
+    (stub / "python").write_text(f'#!/bin/sh\nexec "{bash_path(sys.executable)}" "$@"\n', encoding="utf-8", newline="\n")
+    (stub / "powershell.exe").write_text("#!/bin/sh\necho 50\n", encoding="utf-8", newline="\n")
+    for f in stub.iterdir():
+        f.chmod(0o755)
+    vault = tmp_path / "vault"
+    vault.mkdir(exist_ok=True)
+    ra = vault / "RA-0001.md"
+    if ra_body is not None:
+        ra.write_bytes(ra_body.encode())
+    evid = tmp_path / "evid"
+    (tmp_path / "r2.json").write_text(json.dumps(inspect or r2_inspect()), encoding="utf-8")
+    (tmp_path / "source.json").write_text(json.dumps(source or SOURCE), encoding="utf-8")
+    env = {"PATH": str(stub) + os.pathsep + os.environ.get("PATH", ""), "CSE_STAGING_REV": REV40,
+           "CSE_STAGING_CAMPAIGN": "ut", "CSE_STAGING_EVIDENCE": bash_path(evid),
+           "CSE_STAGING_SECRETS": bash_path(tmp_path / "secrets"), "STUB_LOG": bash_path(tmp_path / "docker-calls.log"),
+           "STUB_IMAGE": image, "STUB_TAGGED": tagged, "STUB_LABEL": label, "STUB_R1CHECK_RC": str(r1check_rc),
+           "STUB_EXISTS": exists, "STUB_R2_INSPECT": bash_path(tmp_path / "r2.json"),
+           "STUB_SOURCE": bash_path(tmp_path / "source.json"), "STUB_RA_ID": "RA-0001",
+           "STUB_CONSUMED": bash_path(evid / "restore" / "ra-consumed.log")}
+    p = run_bash(tmp_path, f'bash "{bash_path(os.path.join(STAGING, "staging.sh"))}" restore {op} "{bash_path(ra)}"\n', env)
+    calls = (tmp_path / "docker-calls.log").read_text(encoding="utf-8") if (tmp_path / "docker-calls.log").exists() else ""
+    consumed = evid / "restore" / "ra-consumed.log"
+    return p, calls, (consumed.read_text(encoding="utf-8") if consumed.exists() else ""), vault
+
+
+def vault_state(vault):
+    return sorted((p.name, p.stat().st_size, p.stat().st_mtime_ns, sha_lf(p)) for p in vault.iterdir())
+
+
+ACTING = ("exec", "cp ", "run ", "stop ")       # docker calls that change something (inspect, image and ps only read)
+
+
+def acting_calls(calls):
+    return [c for c in calls.splitlines() if c.startswith(ACTING) and not c.startswith("consumed-at")]
+
+
+def test_r2_the_driver_refuses_every_invalid_ra_before_anything_runs_and_consumes_a_valid_one_first(tmp_path):
+    good_r1 = ra_text(expires="2099-01-01T00:00:00+05:30", decided="2026-11-04")
+    good_r2 = ra_text(expires="2099-01-01T00:00:00+05:30", decided="2026-11-04", operation="R2", target="cse-stg-ut-r2")
+    # invalid: each refuses with nothing executed, copied, created or consumed, and the vault unchanged
+    invalid = {"expired": dict(op="R1", ra_body=ra_text(expires="2020-01-01T00:00:00+05:30")),
+               "operation mismatch": dict(op="R2", ra_body=good_r1),
+               "image of another build": dict(op="R1", ra_body=good_r1, image="sha256:" + "0" * 64),
+               "tag moved to another image": dict(op="R1", ra_body=good_r1, tagged="sha256:" + "0" * 64),
+               "image label of another revision": dict(op="R1", ra_body=good_r1, label="e" * 40),
+               "malformed": dict(op="R1", ra_body="no front matter\n"),
+               "missing file": dict(op="R1", ra_body=None),
+               "R1 technical check fails": dict(op="R1", ra_body=good_r1, r1check_rc=1),
+               "R2 target exists": dict(op="R2", ra_body=good_r2, exists="cse-stg-ut-r2"),
+               "R2 source incomplete": dict(op="R2", ra_body=good_r2, source=dict(SOURCE, verify_exit=1))}
+    for i, (label, kw) in enumerate(invalid.items()):
+        d = tmp_path / f"inv{i}"
+        d.mkdir()
+        op = kw.pop("op")
+        p, calls, consumed, vault = restore_driver(d, op, **kw)
+        assert p.returncode != 0, (label, p.stdout, p.stderr)
+        assert consumed == "", label
+        acts = acting_calls(calls)
+        assert not any("stage_restore.sh r1 " in c + " " or "stage_restore.sh r2 " in c for c in acts), (label, acts)
+        assert not any(c.startswith("run ") for c in acts), (label, acts)
+        if label not in ("R1 technical check fails", "R2 source incomplete"):
+            assert acts == [], (label, acts)        # refused at the RA: not even the read-only checks were copied in
+        log = next((d / "evid" / "results").glob(f"main-restore-{op}*.txt"))
+        assert "REFUSED" in log.read_text(encoding="utf-8"), label
+    # a valid R1: technical checks, then the RA consumed, then one run; the RA's directory is unchanged
+    d = tmp_path / "r1"
+    d.mkdir()
+    p, calls, consumed, vault = restore_driver(d, "R1", good_r1)
+    snap = vault_state(vault)
+    assert p.returncode == 0, p.stdout + p.stderr
+    lines = calls.splitlines()
+    i_check = next(i for i, c in enumerate(lines) if "stage_restore.sh r1-check" in c)
+    i_run = next(i for i, c in enumerate(lines) if c.endswith("stage_restore.sh r1"))
+    assert i_check < i_run and "consumed-at-r1=yes" in lines
+    assert len(consumed.splitlines()) == 1 and "\tRA-0001\t" in consumed and "\tR1\tcse-stg-ut-host\tut\t" in consumed
+    assert any(c.endswith("rm -f /opt/cse-restore/stage_restore.sh") for c in lines)   # no restore code stays in the host
+    assert not any("/opt/cse-staging/" in c and "stage_restore" in c for c in lines)
+    # the same RA again: consumed, refused, nothing run
+    p, calls2, consumed2, vault = restore_driver(d, "R1", None)
+    assert p.returncode != 0 and consumed2 == consumed
+    assert calls2[len(calls):].count("stage_restore.sh r1") == 0
+    assert vault_state(vault) == snap
+    # a valid R2: consumed before the container exists; the container has no network and no mount; the procedure runs
+    d = tmp_path / "r2"
+    d.mkdir()
+    p, calls, consumed, _ = restore_driver(d, "R2", good_r2)
+    assert p.returncode == 0, p.stdout + p.stderr
+    run = next(c for c in calls.splitlines() if c.startswith("run "))
+    assert "--network none --restart no" in run and "--name cse-stg-ut-r2" in run and f" {IMG} infinity" in run
+    for forbidden in ("--mount", "-v ", "--volume", "--tmpfs", "--privileged", "--cap-add", "--volumes-from", "--rm"):
+        assert forbidden not in run, forbidden
+    assert "consumed-at-run=yes" in calls and "consumed-at-r2=yes" in calls
+    assert "cp cse-stg-ut-host:/srv/cse-backup/pg/dumps/2026/11/cse_20261105T000000Z_ab12 -" in calls
+    assert calls.index("stage_restore.sh r2 ") < calls.index("stage_restore.sh r2-teardown") < calls.index("stop cse-stg-ut-r2")
+    # an R2 container that is not isolated: stopped, nothing copied into it, the procedure not run
+    for k, bad in {"bridge": dict(NetworkMode="bridge"), "a volume": dict(_mounts=[{"Type": "volume", "Name": "v"}]),
+                   "a bind": dict(Binds=["C:\\x:/x"]), "tmpfs": dict(Tmpfs={"/x": ""}),
+                   "another image": dict(_image="sha256:" + "9" * 64)}.items():
+        d = tmp_path / f"r2-{k.replace(' ', '-')}"
+        d.mkdir()
+        p, calls, consumed, _ = restore_driver(d, "R2", good_r2, inspect=r2_inspect(**bad))
+        assert p.returncode != 0 and "stop cse-stg-ut-r2" in calls, k
+        assert "stage_restore.sh r2 " not in calls, k
+        assert not any(c.startswith("cp ") and "cse-stg-ut-r2:" in c for c in calls.splitlines()), k
+
+
+def test_r3_no_code_path_restores_without_validation():
+    drv = read("staging.sh")
+    rd = read("restore_driver.sh")
+    inner = read("restore", "stage_restore.sh")
+    # staging.sh reaches the restore code through its `restore` case only
+    assert [l for l in drv.splitlines() if "restore_driver.sh" in l and not l.lstrip().startswith("#")] == \
+        ['  restore) shift; . "$HERE/restore_driver.sh"; cmd_restore "$@" ;;']
+    # stage_restore.sh: named by the restore driver only; never injected (inject copies inner/ and seed only) and never
+    # copied under /opt/cse-staging, from which `run` executes
+    for f in harness_files():
+        if f.endswith(("restore_driver.sh", "stage_restore.sh")):
+            continue
+        assert "stage_restore" not in open(f, encoding="utf-8").read(), f
+    inject = drv[drv.index("cmd_inject() {"):drv.index("sha_of() {")]
+    assert '"$HERE"/inner/*.sh' in inject and "restore/" not in inject
+    assert re.search(r"^RESTORE_TOOLS=/opt/cse-restore\b", rd, re.M) and "/opt/cse-staging" not in code_of(rd)
+    # in cmd_restore, the RA check precedes both operations; in each, the consuming check precedes the restore
+    cmd = shell_function(rd, "cmd_restore")
+    assert cmd.index('ra_gate "$log" ||') < cmd.index("restore_r1 ") and cmd.index('ra_gate "$log" ||') < cmd.index("restore_r2 ")
+    r1 = shell_function(rd, "restore_r1")
+    assert r1.index("stage_restore.sh\" r1-check") < r1.index("--consume") < r1.index("stage_restore.sh\" r1 ")
+    r2 = shell_function(rd, "restore_r2")
+    assert r2.index("--consume") < r2.index("docker run ") < r2.index("stage_restore.sh\" r2 ")
+    assert r2.index("restore_gate.py\" r2inspect") < r2.index("docker cp \"$host:$dump\"")
+    # the R1 path is created in exactly one place, r1(), which removes it again whatever happens (trap)
+    for f in harness_files():
+        code = "\n".join(code_lines(open(f, encoding="utf-8").read()))
+        if f.endswith("stage_restore.sh"):
+            continue
+        assert not re.search(r"(install|touch|>)[^\n]*R1-AUTHORIZED", code.replace("ConditionPathExists=", "")), f
+    body = shell_function(inner, "r1")
+    assert body.index("trap r1_close EXIT") < body.index('install -m 0600 /dev/null "$R1_PATH"') \
+        < body.index("systemctl start cse-backup-restore-check.service") < body.index("r1_close\n")
+    assert body.index("r1_check") < body.index('install -m 0600 /dev/null "$R1_PATH"')
+    assert len([l for l in code_lines(inner) if re.search(r'(install|touch|cp|>)\s[^|&;]*"?\$R1_PATH', l)]) == 1
+    close = shell_function(inner, "r1_close")
+    assert 'rm -f "$R1_PATH"' in close and "systemctl disable --now cse-backup-restore-check.timer" in close
+    # the procedure's restore commands exist only in the tool's Procedure.restore, and only with the copy's
+    # connection arguments; no harness file runs them itself
+    tool = open(TOOL_FILE, encoding="utf-8").read()
+    assert tool.count('t.tool("pg_restore")') == 1 and tool.count('"-f", globals_sql') == 1
+    restore_src = tool[tool.index("    def restore(self):"):tool.index("    def run(self, file_steps")]
+    assert 't.tool("pg_restore"), "-h", t.host, "-p", str(t.port)' in restore_src
+    assert restore_src.count("self.run_step(Step(") == 3
+    # the inner script restores only through the tool, after its environment checks and P1's provisioning
+    r2b = shell_function(inner, "r2")
+    assert r2b.index("isolated_env") < r2b.index("provision.sh\" preflight users dirs postgres") \
+        < r2b.index("isolated_restore.py\" run")
+    assert "bootstrap" not in r2b and "migrate" not in r2b                     # everything comes from the dump
+
+
+def test_r4_the_harness_never_writes_into_the_vault():
+    gate = read("restore_gate.py")
+    # the RA is opened once, read-only; the only file opened for writing is the consumption record, append-only
+    assert gate.count("open(a.ra, \"rb\")") == 1
+    opens = re.findall(r"open\(([^)]*)\)", gate)
+    writes = [o for o in opens if re.search(r'"(a|w|x|r\+|wb|ab)"', o)]
+    assert writes == ['a.consumed, "a", encoding="utf-8", newline="\\n"'], writes
+    assert "os.remove" not in gate and "unlink" not in gate and "rename" not in gate
+    for f in harness_files() + [TOOL_FILE]:
+        text = open(f, encoding="utf-8").read()
+        assert "Main Vault" not in text and "Obsidian" not in text, f
+    rd = "\n".join(code_lines(read("restore_driver.sh")))
+    # the RA path reaches only restore_gate.py, as --ra (winpath), and the log's echo line; never a write target
+    for line in rd.splitlines():
+        if re.search(r'\$(RA_FILE|ra)\b', line):
+            assert not re.search(r'>\s*"?\$(RA_FILE|ra)\b|tee[^|]*\$(RA_FILE|ra)\b|cp [^\n]*\$(RA_FILE|ra)\b', line), line
+    assert '"$EVID/restore/ra-consumed.log"' in rd
+
+
+def test_r5_the_r2_container_has_no_network_and_no_shared_volume_or_mount():
+    rd = read("restore_driver.sh")
+    r2 = shell_function(rd, "restore_r2")
+    run = r2[r2.index("docker run "):r2.index("> /dev/null", r2.index("docker run "))]
+    assert "--network none --restart no" in run and "--entrypoint /bin/sleep" in run
+    for forbidden in ("--mount", " -v ", "--volume", "--tmpfs", "--privileged", "--cap-add", "--volumes-from", "--device",
+                      "--pid=", "--pid host", "--ipc", "--userns", "--net=", "--network host", "docker.sock"):
+        assert forbidden not in run, forbidden
+    # the inspect check refuses every departure
+    ok = list(GATE.r2_checks(r2_inspect()[0], "ut", "cse-stg-ut-r2", IMG))
+    assert all(p for p, _ in ok), ok
+    bad = {"network": dict(NetworkMode="bridge"), "a named volume": dict(_mounts=[{"Type": "volume", "Name": "x"}]),
+           "an anonymous volume": dict(_mounts=[{"Type": "volume", "Name": "0f3a"}]), "a bind": dict(Binds=["/:/host"]),
+           "a tmpfs": dict(Tmpfs={"/run": ""}), "volumes from": dict(VolumesFrom=["cse-stg-ut-host"]),
+           "HostConfig mounts": dict(Mounts=[{"Type": "volume", "Source": "cse-stg-ut-backup"}]),
+           "privileged": dict(Privileged=True), "a capability": dict(CapAdd=["CAP_SYS_ADMIN"]),
+           "restart": dict(RestartPolicy={"Name": "unless-stopped"}), "a device": dict(Devices=[{"PathOnHost": "/dev/sda"}]),
+           "host pid": dict(PidMode="host"), "unconfined": dict(SecurityOpt=["seccomp=unconfined"]),
+           "another name": dict(_name="/cse-stg-ut-host"), "another image": dict(_image="sha256:" + "9" * 64)}
+    for label, change in bad.items():
+        assert not all(p for p, _ in GATE.r2_checks(r2_inspect(**change)[0], "ut", "cse-stg-ut-r2", IMG)), label
+    # inside the container, before anything is provisioned: only lo, no route, only Docker's /etc files, no cluster
+    env = shell_function(read("restore", "stage_restore.sh"), "isolated_env")
+    for item in ('"lo "', "/proc/net/route", '"/etc/hostname /etc/hosts /etc/resolv.conf"', "pg_lsclusters", "docker.sock"):
+        assert item in env, item
+
+
+P1_8B5 = re.compile(r"(§|section|sec\.?)\s*8\s*,?\s*B\b|8\s*B\s*,?\s*step\s*5|8B[-\s]?5|8 B-5", re.I)
+
+
+def test_r6_nothing_references_p1_section_8b_step_5_except_as_a_prohibition():
+    for f in harness_files() + [TOOL_FILE]:
+        text = open(f, encoding="utf-8").read()
+        assert not P1_8B5.search(text), f
+        # nor its commands: a restore without the copy's connection arguments
+        assert "sudo -u postgres psql -X -f" not in text and "sudo -u postgres pg_restore" not in text, f
+    doc = open(os.path.join(REPO, "docs", "ops", "ISOLATED_RESTORE.md"), encoding="utf-8").read().replace("\r\n", "\n")
+    hits = [s for s in re.split(r"(?<=[.;:])\s+|\n\n", doc) if P1_8B5.search(s)]
+    assert hits, "the procedure states the prohibition"
+    for s in hits:
+        assert re.search(r"\b(never|not|must not|forbid|forbidden|prohibit)", s, re.I), s
+
+
+def test_r7_an_identity_check_precedes_each_verification_command(tmp_path):
+    tool = open(TOOL_FILE, encoding="utf-8").read()
+    body = tool[tool.index("    def run_step(self, step):"):tool.index("    # ---- steps 5-7")]
+    assert body.index("read_identity(self.target, route)") < body.index("identity_problems(") \
+        < body.index("subprocess.run(step.argv")
+    assert body.index("if problems:") < body.index("subprocess.run(step.argv")
+    # the only subprocess that runs a step's command is in run_step; everything else is psql identity/fresh reads
+    assert tool.count("subprocess.run(step.argv") == 1
+    # the server form: the seven verification commands, in order, each with a route; the only step without one is
+    # P1's file check of the dump, which connects to nothing
+    target = IR.server_target()
+    files, verification = IR.server_steps(target, "/opt/cse/app", "/var/lib/cse-restore/in/d", 7)
+    assert [s.label for s in verification] == list(IR.SERVER_LABELS)
+    assert all(s.route is not None for s in verification)
+    assert [(s.label, s.route) for s in files] == [("p1-dump-verify", None)]
+    assert files[0].argv[-3:] == ["backup", "verify", "/var/lib/cse-restore/in/d"]
+    joined = {s.label: " ".join(s.argv) for s in verification}
+    assert "cse-financial verify" in joined["cse-financial-verify"] and "cse-backfill verify" in joined["cse-backfill-verify"]
+    assert "--limit" not in joined["rf4-verify-as-login"] and "runuser -u cse-verifier" in joined["rf4-verify-as-login"]
+    assert "--migration-role" in joined["rf4-preflight-migration-role"] and "runuser -u cse-migrator" in joined["rf4-preflight-migration-role"]
+    assert "--expect-p1-auth" in joined["p1-manifest-and-invariants"]
+    # behaviour: stub identities; a mismatch refuses and the command never runs; the copy's identity lets it run
+    recorded = {"system_identifier": "111", "port": 5432, "data_directory": "/var/lib/postgresql/17/main",
+                "server_version": "17.11", "unix_socket": True}
+    marker = tmp_path / "ran"
+    touch = [sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"]
+    proc = IR.Procedure(IR.Target("/nonexistent", "/var/run/postgresql", 5432, "postgres"), str(tmp_path / "d"),
+                        {"system_identifier": "222"}, str(tmp_path / "ev"))
+    proc.recorded = recorded
+    route = lambda: IR.Route("/var/run/postgresql", 5432, "test")
+    wrong = {"the source": dict(recorded, system_identifier="222"), "another cluster": dict(recorded, system_identifier="333"),
+             "another port": dict(recorded, port=5433), "another data directory": dict(recorded, data_directory="/x"),
+             "TCP": dict(recorded, unix_socket=False), "nothing answers": {"error": "no server"}}
+    original = IR.read_identity
+    try:
+        for label, found in wrong.items():
+            IR.read_identity = lambda _t, _r, found=found: found
+            with pytest.raises(IR.ProcedureError):
+                proc.run_step(IR.Step(label, touch, IR.gate_exit0, route=route, env=dict(os.environ)))
+            assert not marker.exists(), label
+            assert proc.record["steps"][-1]["ran"] is False
+        IR.read_identity = lambda _t, _r: dict(recorded)
+        proc.run_step(IR.Step("the copy", touch, IR.gate_exit0, route=route, env=dict(os.environ)))
+        assert marker.exists() and proc.record["steps"][-1]["identity_check"]["refused"] == []
+    finally:
+        IR.read_identity = original
+    assert IR.identity_problems(dict(recorded, system_identifier="222"), dict(recorded, system_identifier="222"), "222")
+    # routes: read the way each command reads its settings; a route the check cannot pin down refuses
+    assert IR.route_from_url("postgresql://cse_verifier@/cse?host=/var/run/postgresql&port=5432").as_dict() == \
+        {"host": "/var/run/postgresql", "port": 5432, "from": "DATABASE_URL"}
+    assert IR.route_from_url("host=/tmp/s port=54332 dbname=cse user=cse_verifier").port == 54332
+    for url in ("postgresql://cse_verifier@/cse", "postgresql://cse_verifier@db.example/cse?host=/x",
+                "postgresql://u@/cse?host=127.0.0.1", "dbname=cse"):
+        with pytest.raises(IR.ProcedureError):
+            IR.route_from_url(url)
+    sys.path.insert(0, REPO)
+    from worker.ops import settings as ops_settings
+    assert (IR.P1_DEFAULT_HOST, str(IR.P1_DEFAULT_PORT)) == (ops_settings.DEFAULTS["CSE_DB_HOST"], ops_settings.DEFAULTS["CSE_DB_PORT"])
+    envf = tmp_path / "cse.env"
+    envf.write_text(open(os.path.join(REPO, "ops", "config", "cse.env.example"), encoding="utf-8").read(), encoding="utf-8")
+    assert IR.route_from_env_file(str(envf)).as_dict()["host"] == "/var/run/postgresql"
+    envf.write_text("CSE_DB_HOST=$(other)\n", encoding="utf-8")
+    with pytest.raises(IR.ProcedureError):
+        IR.route_from_env_file(str(envf))
+
+
+GLOBALS_PG17 = """--
+-- PostgreSQL database cluster dump
+--
+
+\\restrict abc123
+
+SET default_transaction_read_only = off;
+
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+
+--
+-- Roles
+--
+
+CREATE ROLE cse_backup;
+ALTER ROLE cse_backup WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE cse_migrator;
+ALTER ROLE cse_migrator WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE cse_owner;
+ALTER ROLE cse_owner WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE cse_reader;
+ALTER ROLE cse_reader WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB NOLOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE cse_verifier;
+ALTER ROLE cse_verifier WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS;
+CREATE ROLE postgres;
+ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+
+--
+-- Role memberships
+--
+
+GRANT cse_owner TO cse_migrator WITH INHERIT FALSE, SET TRUE GRANTED BY postgres;
+GRANT cse_reader TO cse_verifier WITH INHERIT TRUE, SET FALSE GRANTED BY postgres;
+GRANT pg_read_all_data TO cse_backup WITH INHERIT TRUE GRANTED BY postgres;
+
+\\unrestrict abc123
+
+--
+-- PostgreSQL database cluster dump complete
+--
+"""
+
+
+def test_r8_globals_one_exact_error_tolerated_every_role_and_membership_proven_and_the_gates_fail_closed():
+    spec = IR.parse_globals(GLOBALS_PG17)
+    assert spec["unknown"] == [] and spec["roles"][-1] == "postgres" and len(spec["grants"]) == 3
+    assert spec["grants"][0] == {"role": "cse_owner", "member": "cse_migrator", "options": {"inherit": False, "set": True}}
+    assert IR.parse_globals(GLOBALS_PG17 + "DROP ROLE cse_reader;\n")["unknown"]           # an unknown statement
+    err = 'psql:/d/globals.sql:31: ERROR:  role "postgres" already exists'
+    assert IR.globals_errors(err, "postgres") == []
+    assert IR.globals_errors(err + "\n" + err, "postgres") == [err]                       # a second time: not tolerated
+    assert IR.globals_errors(err, "cse_restore_check") == [err]                           # another bootstrap name
+    other = 'psql:/d/globals.sql:9: ERROR:  role "cse_backup" already exists'
+    assert IR.globals_errors(other, "postgres") == [other]                                # not "any already exists"
+    assert IR.globals_errors("psql: FATAL:  terminating connection", "postgres")
+    attrs = lambda login: {"SUPERUSER": False, "INHERIT": True, "CREATEROLE": False, "CREATEDB": False, "LOGIN": login,
+                           "REPLICATION": False, "BYPASSRLS": False}
+    roles = {"cse_backup": attrs(True), "cse_migrator": attrs(True), "cse_owner": attrs(False), "cse_reader": attrs(False),
+             "cse_verifier": attrs(True), "postgres": {k: True for k in attrs(True)}}
+    members = [["cse_owner", "cse_migrator", False, False, True], ["cse_reader", "cse_verifier", False, True, False],
+               ["pg_read_all_data", "cse_backup", False, True, True]]
+    assert IR.globals_proof(spec, roles, members) == []
+    assert IR.globals_proof(spec, {k: v for k, v in roles.items() if k != "cse_verifier"}, members)
+    assert IR.globals_proof(spec, dict(roles, cse_owner=attrs(True)), members)             # NOLOGIN not applied
+    assert IR.globals_proof(spec, roles, members[1:])                                      # a membership missing
+    assert IR.globals_proof(spec, roles, [["cse_owner", "cse_migrator", False, True, True]] + members[1:])  # inherit
+    # the gates (runbook section 12 steps 3 and 5): nothing but a clean, complete, non-vacuous result passes
+    good = {"clean": True, "scope": {"complete": True, "limit": None}, "problems": [], "extractions": 3, "runs": 3,
+            "rebuilt": 3}
+    assert IR.gate_verify(0, json.dumps(good), "")[0]
+    for bad in (dict(good, clean=False), dict(good, scope={"complete": False, "limit": 1}),
+                dict(good, scope={"complete": True, "limit": 5}), dict(good, problems=[{"k": 1}]),
+                dict(good, extractions=0, runs=0, rebuilt=0), dict(good, rebuilt=2)):
+        assert not IR.gate_verify(0, json.dumps(bad), "")[0], bad
+    assert not IR.gate_verify(1, json.dumps(good), "")[0] and not IR.gate_verify(0, "not json", "")[0]
+    assert IR.gate_preflight(0, '{"clean": true}', "")[0]
+    assert not IR.gate_preflight(2, '{"clean": false, "ledger": {"status": "unverifiable"}}', "")[0]
+    assert not IR.gate_preflight(0, '{"clean": false}', "")[0]
+    assert IR.gate_f64_verify(0, '{"ok": true, "problems": []}', "")[0] and not IR.gate_f64_verify(0, '{"ok": false}', "")[0]
+    assert IR.gate_hb6_verify(0, '{"problems": [], "f64_verify": {"ok": true, "problems": []}}', "")[0]
+    assert not IR.gate_hb6_verify(0, '{"problems": ["x"], "f64_verify": {"problems": []}}', "")[0]
+    assert IR.gate_p1check(0, '{"problems": []}', "")[0] and not IR.gate_p1check(0, '{"problems": ["d"]}', "")[0]
