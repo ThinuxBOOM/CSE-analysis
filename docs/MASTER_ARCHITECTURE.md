@@ -1965,7 +1965,11 @@ was clean (runs 41748579189 and 41748579202). The freeze is effective
 once `ci-fast` and `ci-regression` on pull request #8, at the head that
 contains the freeze record, finish clean. REG-X03 is IN PROGRESS
 until that CI is recorded; REG-A05, REG-A06 and REG-G01 are unchanged, and staging
-verification (R-F4 §20.6 steps 1–6) has not been done.)* The record is
+verification (R-F4 §20.6 steps 1–6) has not been done.)* *(2026-11-09:
+the freeze is **in effect**: at `899c08f`, the head of pull request #8
+that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08.
+REG-X03 is CLOSED WITH EVIDENCE. Re-staging (milestone 8, T3 Phase B)
+is still required.)* The record is
 `docs/ops/P1_PLATFORM.md` §13. Under §43.1 the changed build must be
 re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29); until then
 staging stays not accepted.
