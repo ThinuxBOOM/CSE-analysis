@@ -118,7 +118,29 @@ def read_env_file(path):
 
 
 def route_from_env_file(path):
-    return route_from_settings(read_env_file(path), how=f"{path} (CSE_DB_HOST/CSE_DB_PORT, as the wrapper loads it)")
+    return route_from_env_files([path])
+
+
+# The files each wrapper sources, in its order (ops/bin/*): a later file overrides an earlier one, and only the first is
+# required. The identity check reads the same files, in the same order, right before the command (AR-0006-1 N-2).
+WRAPPER_ENV_FILES = {"cse-ops": ("cse.env", "backup.env"), "cse-financial": ("cse.env",),
+                     "cse-backfill": ("cse.env", "capture.env", "backfill.env")}
+
+
+def route_from_env_files(paths):
+    """The route a wrapper's command will take: its env files merged in order. A libpq variable (PG*) or DATABASE_URL in
+    any of them could redirect the connection past CSE_DB_HOST/CSE_DB_PORT, so it refuses."""
+    env, read = {}, []
+    for n, path in enumerate(paths):
+        if n > 0 and not os.path.exists(path):
+            continue                          # the wrappers source the later files only when they are readable
+        values = read_env_file(path)
+        bad = sorted(k for k in values if k.startswith("PG") or k == "DATABASE_URL")
+        if bad:
+            raise ProcedureError(f"{path} sets {bad}: a connection setting the identity check cannot follow")
+        env.update(values)
+        read.append(path)
+    return route_from_settings(env, how=f"{' then '.join(read)} (CSE_DB_HOST/CSE_DB_PORT, as the wrapper loads them)")
 
 
 def route_from_url(url):
@@ -537,9 +559,10 @@ class Procedure:
 
 # ------------------------------------------------------------------------------------------------ the server form
 
-def server_steps(target, app, dump_dir, ledger_run_id, env_file="/etc/cse/cse.env"):
+def server_steps(target, app, dump_dir, ledger_run_id, etc_dir="/etc/cse"):
     """The verification sequence on the server form (root in the isolated environment; P1's OS users; peer
-    authentication). The wrappers load env_file themselves, so their identity check reads the same file."""
+    authentication). Each wrapper loads its env files itself (WRAPPER_ENV_FILES), so its identity check reads the same
+    files, in the same order, right before it runs."""
     tool = os.path.abspath(__file__)
     wrapper = lambda name, *args: ["bash", posixpath.join(app, "ops", "bin", name), *args]
     py = lambda user, env, *args: ["runuser", "-u", user, "--", "env", "-i", *[f"{k}={v}" for k, v in env.items()],
@@ -549,7 +572,7 @@ def server_steps(target, app, dump_dir, ledger_run_id, env_file="/etc/cse/cse.en
     mig = dict(base, CSE_DB_HOST=target.host, CSE_DB_PORT=str(target.port), CSE_DB_NAME="cse", CSE_DB_USER="cse_migrator")
     url = f"postgresql://cse_verifier@/cse?host={target.host}&port={target.port}"
     login = dict(base, DATABASE_URL=url)
-    from_file = lambda: route_from_env_file(env_file)
+    from_files = lambda name: (lambda: route_from_env_files([os.path.join(etc_dir, f) for f in WRAPPER_ENV_FILES[name]]))
     files = [Step("p1-dump-verify", wrapper("cse-ops", "backup", "verify", dump_dir), gate_exit0, route=None)]
     verification = [
         Step("p1-manifest-and-invariants",
@@ -558,9 +581,9 @@ def server_steps(target, app, dump_dir, ledger_run_id, env_file="/etc/cse/cse.en
                                 "--superuser", target.superuser, "--dump", dump_dir, "--ledger-run", str(ledger_run_id),
                                 "--expect-p1-auth", "--app", app],
              gate_p1check, route=target.route),
-        Step("p1-migrate-verify", wrapper("cse-ops", "migrate", "verify"), gate_exit0, route=from_file),
-        Step("cse-financial-verify", wrapper("cse-financial", "verify"), gate_f64_verify, route=from_file),
-        Step("cse-backfill-verify", wrapper("cse-backfill", "verify"), gate_hb6_verify, route=from_file),
+        Step("p1-migrate-verify", wrapper("cse-ops", "migrate", "verify"), gate_exit0, route=from_files("cse-ops")),
+        Step("cse-financial-verify", wrapper("cse-financial", "verify"), gate_f64_verify, route=from_files("cse-financial")),
+        Step("cse-backfill-verify", wrapper("cse-backfill", "verify"), gate_hb6_verify, route=from_files("cse-backfill")),
         Step("rf4-preflight-migration-role",
              py("cse-migrator", mig, "-m", "worker.financial_f4_store", "preflight", "--migration-role"),
              gate_preflight, route=lambda: route_from_settings(mig)),

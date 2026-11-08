@@ -1,30 +1,43 @@
 """
-Host-side helper of ops/staging/staging.sh `restore` (ops/staging/restore_driver.sh; docs/ops/STAGING.md section 3;
-docs/ops/ISOLATED_RESTORE.md). Fail closed: any check that cannot be made is a refusal.
+Host-side helper of ops/staging/staging.sh `restore` (ops/staging/restore_driver.sh; docs/ops/STAGING.md sections 3
+and 11; docs/ops/ISOLATED_RESTORE.md). Fail closed: any check that cannot be made is a refusal.
 
     python restore_gate.py ra --ra FILE --operation R1|R2 --campaign C --revision SHA --label-revision SHA
-                              --image-id ID --tagged-image-id ID --target NAME --consumed LOG --evidence DIR [--consume]
+                              --image-id ID --tagged-image-id ID --target NAME --evidence DIR [--consume]
+    python restore_gate.py bind-r1 --campaign C --ra-id RA-NNNN --ra-sha SHA256 --run-id N
     docker inspect <r2 container> | python restore_gate.py r2inspect --campaign C --target NAME --image-id ID
     python restore_gate.py source --file SOURCE.json
 
 `ra` validates a restore authorization (owner decision OD-12, DR-0002; the vault's CSE Restore Authorization Template)
 against values the harness read itself (never from the RA or the caller): the operation, the campaign, the build SHA
 (the harness's revision and the image's revision label), the image ID (the host container's image and the tagged host
-image), the target, the expiry, and single use against the append-only consumption record. The RA file is opened
-read-only, once; nothing is ever written next to it. With --consume, a valid RA is recorded as used (one appended line)
-before anything runs; without it, nothing is written anywhere. Prints one PASS or FAIL line per check; exit 0 only when
-every check passed.
+image), the target, the expiry (at most 24 hours after `decided`), and single use.
+
+**The records are fixed (AR-0006-1 F-1).** The consumption record is always
+`D:\\cse-staging\\<campaign>\\restore\\ra-consumed.log` (RECORD_ROOT below), and single use is checked against the
+records of EVERY campaign under RECORD_ROOT. No setting or argument moves them: `restore` also refuses any evidence
+directory other than `D:\\cse-staging\\<campaign>`, and any record, evidence or RA path inside the vault (VAULT_ROOT) or
+inside the other's directory. The RA file is opened read-only, once; nothing is ever written next to it. With
+--consume, a valid RA is recorded as used (one appended line) before anything runs; without it, nothing is written.
+
+`bind-r1` records the `restore_check` run that a consumed R1 RA produced (`r1-runs.log` beside the consumption record;
+AR-0006-1 F-2). Prints one PASS or FAIL line per check; exit 0 only when every check passed.
 """
 import argparse
 import datetime
+import glob
 import hashlib
 import json
 import os
 import re
 import sys
 
+RECORD_ROOT = "D:/cse-staging"          # fixed: the evidence root and the home of every RA record (never overridable)
+VAULT_ROOT = "D:/Main Vault"            # fixed: nothing the harness writes may be inside it
+MAX_WINDOW = datetime.timedelta(hours=24)
 KEYS = ("type", "id", "operation", "campaign", "build_sha", "image_id", "target", "expires", "single_use", "decided",
         "owner_words", "tags")
+STAMP = r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d"
 
 
 class Malformed(ValueError):
@@ -61,27 +74,76 @@ def frontmatter(raw):
     return out
 
 
+def norm(path):
+    return os.path.normcase(os.path.realpath(path))
+
+
 def inside(path, root):
-    path, root = os.path.normcase(os.path.realpath(path)), os.path.normcase(os.path.realpath(root))
+    path, root = norm(path), norm(root)
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
+def record_dir(campaign, record_root=RECORD_ROOT):
+    return os.path.join(record_root, campaign, "restore")
+
+
+def consumption_record(campaign, record_root=RECORD_ROOT):
+    return os.path.join(record_dir(campaign, record_root), "ra-consumed.log")
+
+
+def r1_runs_record(campaign, record_root=RECORD_ROOT):
+    return os.path.join(record_dir(campaign, record_root), "r1-runs.log")
+
+
+def records(record_root=RECORD_ROOT):
+    """Every campaign's consumption record: an RA used in one campaign stays used in all of them."""
+    return sorted(glob.glob(os.path.join(record_root, "*", "restore", "ra-consumed.log")))
+
+
 def consumed_entries(log):
-    """The consumption record's lines as (id, sha256) pairs; a missing record is empty, an unreadable one refuses."""
-    if not os.path.exists(log):
-        return []
+    """A consumption record's lines as (id, sha256, operation, campaign) tuples; an unreadable record refuses."""
     out = []
     with open(log, encoding="utf-8") as f:
         for line in f:
             parts = line.rstrip("\n").split("\t")
-            if len(parts) < 3:
+            if len(parts) < 6 or not re.fullmatch(r"RA-\d{4}", parts[1]) or not re.fullmatch(r"[0-9a-f]{64}", parts[2]):
                 raise Malformed(f"the consumption record {log} has a malformed line")
-            out.append((parts[1], parts[2]))
+            out.append((parts[1], parts[2], parts[3], parts[5]))
     return out
 
 
-def validate(raw, ra_path, a, clock=None):
-    """Yields (passed, text) for every check of the RA bytes `raw` against the harness's own values `a`."""
+def stamp(value, what):
+    """An explicit, offset-carrying time (YYYY-MM-DDTHH:MM:SS+HH:MM)."""
+    if not re.fullmatch(STAMP, value):
+        raise ValueError(f"{what} {value!r} is not YYYY-MM-DDTHH:MM:SS+HH:MM")
+    return datetime.datetime.fromisoformat(value)
+
+
+def window_checks(ra, now):
+    """The expiry, `decided`, and the 24-hour maximum window. `decided` is a time with an offset, or a date (read as the
+    start of that day in the expiry's offset, the strictest reading)."""
+    try:
+        exp = stamp(ra["expires"], "expires")
+    except ValueError as exc:
+        yield False, f"expires: {exc}"
+        return
+    yield now < exp, f"expires: {ra['expires']} is after now ({now.isoformat(timespec='seconds')})"
+    try:
+        if re.fullmatch(r"\d{4}-\d\d-\d\d", ra["decided"]):
+            dec = datetime.datetime.combine(datetime.date.fromisoformat(ra["decided"]), datetime.time(), exp.tzinfo)
+        else:
+            dec = stamp(ra["decided"], "decided")
+    except ValueError as exc:
+        yield False, f"decided: {exc} (nor YYYY-MM-DD)"
+        return
+    yield dec <= now, f"decided: {ra['decided']} is not in the future"
+    yield dec < exp <= dec + MAX_WINDOW, \
+        f"window: expires {ra['expires']} is after decided {ra['decided']} and at most 24 hours after it"
+
+
+def validate(raw, ra_path, a, clock=None, record_root=RECORD_ROOT, vault_root=VAULT_ROOT):
+    """Yields (passed, text) for every check of the RA bytes `raw` against the harness's own values `a`. The roots are
+    module constants; only the tests pass others, to this function directly (the command line takes none)."""
     now = clock or datetime.datetime.now(datetime.timezone.utc)
     sha = hashlib.sha256(raw).hexdigest()
     try:
@@ -94,7 +156,8 @@ def validate(raw, ra_path, a, clock=None):
     yield bool(re.fullmatch(r"RA-\d{4}", ra["id"])), f"id is RA-<4 digits> ({ra['id']!r})"
     yield ra["operation"] in ("R1", "R2") and ra["operation"] == a.operation, \
         f"operation: the RA's {ra['operation']!r} is the requested {a.operation}"
-    yield ra["campaign"] == a.campaign, f"campaign: the RA's {ra['campaign']!r} is the harness's {a.campaign!r}"
+    yield bool(re.fullmatch(r"[a-z0-9]+", a.campaign)) and ra["campaign"] == a.campaign, \
+        f"campaign: the RA's {ra['campaign']!r} is the harness's {a.campaign!r} (lower-case letters and digits)"
     ok_sha = bool(re.fullmatch(r"[0-9a-f]{40}", ra["build_sha"]))
     yield ok_sha and ra["build_sha"] == a.revision == a.label_revision, \
         (f"build_sha: the RA's {ra['build_sha']!r} is the harness's revision {a.revision!r} and the image's revision "
@@ -104,30 +167,25 @@ def validate(raw, ra_path, a, clock=None):
         (f"image_id: the RA's {ra['image_id']!r} is the host container's image {a.image_id!r} and the tagged host "
          f"image {a.tagged_image_id!r} (docker inspect)")
     yield ra["target"] == a.target, f"target: the RA's {ra['target']!r} is the harness's {a.target!r}"
-    try:
-        exp = datetime.datetime.fromisoformat(ra["expires"])
-        if exp.tzinfo is None or not re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d", ra["expires"]):
-            raise ValueError("no explicit offset")
-        yield now < exp, f"expires: {ra['expires']} is after now ({now.isoformat(timespec='seconds')})"
-    except ValueError as exc:
-        yield False, f"expires: {ra['expires']!r} is not YYYY-MM-DDTHH:MM:SS+HH:MM ({exc})"
-    try:
-        decided = datetime.date.fromisoformat(ra["decided"])
-        yield decided <= now.date() + datetime.timedelta(days=1), f"decided: {ra['decided']} is not in the future"
-    except ValueError:
-        yield False, f"decided: {ra['decided']!r} is not YYYY-MM-DD"
+    yield from window_checks(ra, now)
     yield ra["single_use"] == "true", f"single_use is true ({ra['single_use']!r})"
     yield bool(ra["owner_words"].strip()), "owner_words: the owner's yes is recorded"
     try:
-        used = consumed_entries(a.consumed)
+        logs = records(record_root)
+        used = [e for log in logs for e in consumed_entries(log)]
         hit = [e for e in used if e[0] == ra["id"] or e[1] == sha]
-        yield not hit, (f"single use: neither {ra['id']} nor this file's sha256 is in the consumption record "
-                        f"{a.consumed} ({len(used)} earlier use(s))")
+        yield not hit, (f"single use: neither {ra['id']} nor this file's sha256 is in any consumption record under "
+                        f"{record_root} ({len(logs)} record(s), {len(used)} earlier use(s))")
     except (OSError, Malformed, UnicodeDecodeError) as exc:
-        yield False, f"single use: the consumption record cannot be read: {exc}"
+        yield False, f"single use: a consumption record cannot be read: {exc}"
+    fixed = os.path.join(record_root, a.campaign)
+    yield norm(a.evidence) == norm(fixed), \
+        f"evidence: {a.evidence} is the fixed evidence directory {fixed} (restore takes no other)"
     ra_dir = os.path.dirname(os.path.abspath(ra_path))
-    yield not inside(a.evidence, ra_dir) and not inside(ra_path, a.evidence), \
-        "the evidence directory and the RA's directory are separate (the harness never writes beside the RA)"
+    rec = consumption_record(a.campaign, record_root)
+    yield not any(inside(p, vault_root) or inside(p, ra_dir) for p in (a.evidence, rec)), \
+        f"no write inside the vault ({vault_root}) or beside the RA: evidence {a.evidence}, record {rec}"
+    yield not inside(ra_path, record_root), f"the RA is not inside the evidence root {record_root}"
 
 
 def cmd_ra(a):
@@ -141,16 +199,45 @@ def cmd_ra(a):
         print("REFUSED: the restore authorization is not valid for this operation; nothing was consumed or run")
         return 1
     if a.consume:
-        ra = frontmatter(raw)
-        os.makedirs(os.path.dirname(os.path.abspath(a.consumed)), exist_ok=True)
-        line = "\t".join((datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), ra["id"],
-                          hashlib.sha256(raw).hexdigest(), ra["operation"], ra["target"], ra["campaign"],
-                          ra["build_sha"], ra["image_id"]))
-        with open(a.consumed, "a", encoding="utf-8", newline="\n") as f:     # append-only
+        ra, sha = frontmatter(raw), hashlib.sha256(raw).hexdigest()
+        rec = consumption_record(a.campaign)
+        os.makedirs(os.path.dirname(rec), exist_ok=True)
+        line = "\t".join((datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), ra["id"], sha,
+                          ra["operation"], ra["target"], ra["campaign"], ra["build_sha"], ra["image_id"]))
+        with open(rec, "a", encoding="utf-8", newline="\n") as f:     # append-only
             f.write(line + "\n")
             f.flush()
             os.fsync(f.fileno())
-        print(f"CONSUMED {ra['id']} (sha256 {hashlib.sha256(raw).hexdigest()}) in {a.consumed}")
+        print(f"CONSUMED {ra['id']} (sha256 {sha}) in {rec}")
+    return 0
+
+
+def bind_checks(a, record_root=RECORD_ROOT):
+    """The R1 run to bind: its RA is a consumed R1 RA of this campaign, and neither is bound already."""
+    yield bool(re.fullmatch(r"[a-z0-9]+", a.campaign)), f"campaign {a.campaign!r}"
+    yield bool(re.fullmatch(r"[1-9]\d*", a.run_id)), f"run id {a.run_id!r} is a ledger id"
+    entries = consumed_entries(consumption_record(a.campaign, record_root)) \
+        if os.path.exists(consumption_record(a.campaign, record_root)) else []
+    yield (a.ra_id, a.ra_sha, "R1", a.campaign) in entries, f"{a.ra_id} ({a.ra_sha}) is a consumed R1 RA of {a.campaign}"
+    runs = r1_runs_record(a.campaign, record_root)
+    bound = [l.split("\t") for l in open(runs, encoding="utf-8").read().splitlines()] if os.path.exists(runs) else []
+    yield not any(b[1] == a.run_id or b[2] == a.ra_id for b in bound if len(b) > 2), \
+        f"neither run {a.run_id} nor {a.ra_id} is bound already ({len(bound)} binding(s))"
+
+
+def cmd_bind_r1(a):
+    ok = True
+    for passed, text in bind_checks(a):
+        print(("PASS " if passed else "FAIL ") + "bind-r1: " + text)
+        ok = ok and passed
+    if not ok:
+        return 1
+    with open(r1_runs_record(a.campaign), "a", encoding="utf-8", newline="\n") as f:     # append-only
+        f.write("\t".join((datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), a.run_id,
+                           a.ra_id, a.ra_sha, a.campaign)) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    print(f"BOUND restore_check run {a.run_id} to {a.ra_id} in {r1_runs_record(a.campaign)}")
     return 0
 
 
@@ -223,9 +310,12 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="command", required=True)
     r = sub.add_parser("ra")
     for k in ("ra", "operation", "campaign", "revision", "label_revision", "image_id", "tagged_image_id", "target",
-              "consumed", "evidence"):
+              "evidence"):
         r.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
     r.add_argument("--consume", action="store_true")
+    b = sub.add_parser("bind-r1")
+    for k in ("campaign", "ra_id", "ra_sha", "run_id"):
+        b.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
     i = sub.add_parser("r2inspect")
     for k in ("campaign", "target", "image_id"):
         i.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
@@ -233,7 +323,7 @@ def main(argv=None):
     s.add_argument("--file", required=True)
     a = ap.parse_args(argv)
     try:
-        return {"ra": cmd_ra, "r2inspect": cmd_r2inspect, "source": cmd_source}[a.command](a)
+        return {"ra": cmd_ra, "bind-r1": cmd_bind_r1, "r2inspect": cmd_r2inspect, "source": cmd_source}[a.command](a)
     except (OSError, ValueError) as exc:
         print(f"FAIL {a.command}: {type(exc).__name__}: {exc}")
         print("REFUSED: nothing was consumed or run")

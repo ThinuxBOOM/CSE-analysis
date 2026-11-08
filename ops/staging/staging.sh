@@ -257,9 +257,14 @@ new_log() {  # new_log NAME -> a results path that does not exist yet (evidence 
   echo "$log"
 }
 
+RUN_SCRIPTS=" stage_checks.sh stage_provision.sh stage_scenarios.sh stage_tree.py "   # `run` executes these inner scripts only
+
 cmd_run() {
   local suffix=$1 script=$2; shift 2
   local name tag log
+  # an allowlisted name, never a path: no `/`, no `..`, so no other file in the container can be reached (AR-0006-1 N-3)
+  [[ $script != */* && $script != *..* && "$RUN_SCRIPTS" == *" $script "* ]] \
+    || { echo "run: '$script' is not one of the inner scripts:$RUN_SCRIPTS" >&2; exit 2; }
   name=$(host_name "$suffix")
   tag="${script%.*}"; [[ -z "${1:-}" || "$1" == */* ]] || tag+="-$1"
   log=$(new_log "${suffix:-main}-$tag")

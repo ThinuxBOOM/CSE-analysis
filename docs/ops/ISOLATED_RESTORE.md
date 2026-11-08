@@ -26,9 +26,9 @@ Where this document and those records differ, they win.
 ## 1. What the procedure does
 
 It restores one P1 dump into a fresh PostgreSQL 17 cluster that is the **only cluster of an isolated environment**. It
-keeps that copy running, and runs the checkpoint's whole verification sequence against it. Before every command that
-connects to a database, it checks that the command's own connection reaches the copy. Then it tears down the copy, and
-only the copy.
+keeps that copy running, and runs the checkpoint's whole verification sequence against it. Once the copy's identity is
+recorded (step 4), it checks before every later command that connects to a database that the command's own connection
+reaches the copy. Then it tears down the copy, and only the copy.
 
 **Production is never a target.**
 - The procedure runs inside the isolated environment only.
@@ -70,7 +70,7 @@ Runbook §6's four conditions and OD-10's identity check, each mapped to the pro
 | C2 | Keep the copy available for verification | Step 9 runs against the running copy; only step 11 stops it, after the evidence is saved |
 | C3 | Configure appropriate authentication | Step 2 installs P1's own `pg_hba.conf` and `pg_ident.conf` (two peer lines, four mappings; no TCP listener; no password). Step 9a checks them on the copy (`pg_hba_file_rules`, `pg_ident_file_mappings`, `listen_addresses`). This settles REG-B34 |
 | C4 | Every verification command connects to the copy, not to production | C1's isolation, and C5 before each command |
-| C5 | A target-identity check before every command (OD-10) | Step 5 and every later step. The tool reads the identity of the server that the command's own settings reach: `/etc/cse/cse.env` for the wrappers, `CSE_DB_HOST` and `CSE_DB_PORT` for the migration role, the `DATABASE_URL` host and port for the reader login. The command runs only when `system_identifier`, `port` and `data_directory` equal the copy's values recorded at step 4, **and** `system_identifier` differs from the source's. Any other result refuses, and the command never runs |
+| C5 | A target-identity check before every command (OD-10) | Step 5 and every later step. The tool reads the identity of the server that the command's own settings reach: for each wrapper, the env files it sources, in its order (`cse-ops`: `/etc/cse/cse.env` then `backup.env`; `cse-financial`: `cse.env`; `cse-backfill`: `cse.env`, `capture.env`, `backfill.env`), refusing any file that sets a libpq variable (`PG*`) or `DATABASE_URL`, which could redirect the connection past `CSE_DB_HOST`/`CSE_DB_PORT`; `CSE_DB_HOST` and `CSE_DB_PORT` for the migration role; the `DATABASE_URL` host and port for the reader login. Steps 1–4 (the environment, P1's provisioning, provenance, and the reads that record the copy's identity) come before it. The command runs only when `system_identifier`, `port` and `data_directory` equal the copy's values recorded at step 4, **and** `system_identifier` differs from the source's. Any other result refuses, and the command never runs |
 
 ## 4. The procedure
 
@@ -151,7 +151,10 @@ stderr.
     `D:\cse-staging\<campaign>\restore\r2-<UTC>\evidence`.
 11. **Teardown of the copy only.** The identity check runs again, and the stop command must name the copy's recorded
     data directory (`pg_ctlcluster 17 main stop`). Afterwards the copy must no longer answer. At staging, the driver
-    then stops the R2 container. It does not remove it: the owner decides on deletion.
+    then stops the R2 container and **deletes it** (`docker rm` of exactly that name) once its evidence is saved: it holds
+    a restored copy of the staging data, and the owner's condition for throwaway restore containers is "deleted
+    afterwards" (2026-11-04; AR-0006-1 disposition). If the evidence could not be saved, it is stopped and kept, and the
+    owner decides.
 
 ## 5. The checklist (owner's review)
 
@@ -182,9 +185,11 @@ stderr.
   **What these tests do not cover:** peer authentication and P1's OS users (the test clusters trust their private
   sockets, as in §24), the wrappers themselves (their modules run directly), and isolation by environment (the source
   and the copy share the test container; i2 tests the identity check instead).
-- **`tests/test_staging_unit.py` r1–r8:** the harness's RA validation and refusals, its order of operations, the R2
-  container's isolation, the absence of any P1 §8 B step 5 reference (except as a prohibition), the identity check
-  before each command, and the globals and gates.
+- **`tests/test_staging_unit.py` r1–r8 and r9–r12:** the harness's RA validation and refusals (including the fixed,
+  non-relocatable consumption record and the 24-hour window), its order of operations, the R2 container's isolation and
+  deletion, the absence of any P1 §8 B step 5 reference (except as a prohibition), the identity check before each
+  command and each wrapper's route, the globals and gates, `stage_restore.sh`'s R1 and R2 decisions run against stubs,
+  and the binding of R1's run to its RA in the invariant checks.
 - **Not run by these tests:** R1 and R2 themselves. Those are T3 Phase C (ST-30, ST-31), each under a restore
   authorization written after the owner's yes for that campaign. Their evidence, and this procedure's audit and
   approval, are what REG-B01 needs before it can close.
@@ -197,7 +202,9 @@ stderr.
   - the dump carries its own ledger run.
 
   That is weaker than an identifier taken inside the dump's snapshot, which needs P1 change control (16-I's
-  P1-CC-PROV). Whether the ledger binding meets REG-B06 is the owner's decision.
+  P1-CC-PROV). *2026-11-04, decided [delegated] within OD-10 (CSE Decision Log, "B-0006 scope questions"): this
+  ledger binding satisfies REG-B06 for this project, and P1-CC-PROV is not authorized. REG-B06 stays OPEN until Phase
+  C's R2 evidence shows the check working.*
 - **Root inside the isolated environment** could start another cluster between two identity checks. The environment
   holds nothing else and is short-lived; production is not reachable from it.
 - **At milestone 12** the isolated environment and the dump's transfer are the owner's to provide. Runbook §6 stays
