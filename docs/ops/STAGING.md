@@ -148,7 +148,7 @@ writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection lis
 | ST-32 | `stage_checks.sh seqkinds` | REG-B32 (UR-8), read-only |
 
 ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
-(`docs/ops/P1_PLATFORM.md` §13); their
+(`docs/ops/P1_PLATFORM.md` §13); 2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`; their
 procedures exist (section 9) and ran once, as development evidence, in campaign t2s1 (section 10); the acceptance run
 is T3 Phase B on `main`*). Deferred by dependency: ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
 
@@ -221,7 +221,7 @@ is unchanged.
 ## 9. The reader-login procedures ST-27 to ST-29 (`stage_checks.sh rf4verify`, `reader`, `regx03`)
 
 Added for campaign t2s1 (section 10), on the T2 build (`a7e0501`, P1-CC-1 accepted and frozen, effective once CI is clean at the record's head:
-`docs/ops/P1_PLATFORM.md` section 13). Run in the host container after fresh provisioning and the synthetic seed, each through
+`docs/ops/P1_PLATFORM.md` section 13; *2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`*). Run in the host container after fresh provisioning and the synthetic seed, each through
 `staging.sh run "" stage_checks.sh <subcommand>`, so each record opens with the PROVENANCE lines of section 5.
 
 **The login.** Every session of the reader login is the OS user `cse-verifier` (`runuser -u cse-verifier`) over the Unix
