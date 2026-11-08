@@ -8,6 +8,12 @@
 -- per-database migration (the migration role has no CREATEROLE). Migration 0009
 -- then applies the in-database privilege model and refuses to run if any role
 -- is missing or over-privileged.
+--
+-- Change control P1-CC-1 (2026-11-03): cse_verifier, the one reader login for
+-- R-F4's `verify` (docs/R_F4_IMPLEMENTATION.md section 20.6). LOGIN, INHERIT,
+-- no elevated attribute, no password; a member of cse_reader WITH INHERIT TRUE,
+-- SET FALSE (no ADMIN); no database privilege of its own (CONNECT through
+-- cse_reader); no role setting. 0009 does not name it.
 -- =============================================================================
 \set ON_ERROR_STOP on
 
@@ -16,7 +22,8 @@ declare
   spec record;
 begin
   for spec in select * from (values ('cse_owner', false), ('cse_migrator', true), ('cse_worker', true),
-                                    ('cse_reader', false), ('cse_backup', true)) as t(name, can_login) loop
+                                    ('cse_reader', false), ('cse_backup', true),
+                                    ('cse_verifier', true)) as t(name, can_login) loop
     if not exists (select 1 from pg_roles where rolname = spec.name) then
       execute format('create role %I %s', spec.name, case when spec.can_login then 'login' else 'nologin' end);
     end if;
@@ -33,6 +40,10 @@ alter role cse_owner noinherit;
 grant cse_owner to cse_migrator with inherit false, set true;
 -- the backup role reads everything (pg_dump) without owning or writing anything
 grant pg_read_all_data to cse_backup;
+-- P1-CC-1: the reader login inherits cse_reader's privileges and cannot SET ROLE to it; re-running re-enforces the
+-- attribute and the membership's options (PostgreSQL 16+ updates the options of an existing grant by the same grantor)
+alter role cse_verifier inherit;
+grant cse_reader to cse_verifier with admin false, inherit true, set false;
 
 select format('create database %I owner cse_owner encoding ''UTF8'' template template0', :'dbname')
  where not exists (select 1 from pg_database where datname = :'dbname') \gexec

@@ -286,7 +286,7 @@ def test_s1_least_privilege_ownership_no_definer_no_rls(env):
     assert q(su, "select count(*) from information_schema.role_routine_grants where grantee = 'PUBLIC' and "
                  "routine_name like 'hb\\_%%'") == [(0,)]
     assert q(su, "select rolname from pg_roles where rolname like 'cse%%' order by 1") == \
-        [("cse_backup",), ("cse_migrator",), ("cse_owner",), ("cse_reader",), ("cse_worker",)]   # no new role
+        [("cse_backup",), ("cse_migrator",), ("cse_owner",), ("cse_reader",), ("cse_verifier",), ("cse_worker",)]   # no new role (P1-CC-1 aside)
 
 
 def test_s2_owner_decisions_are_refused_to_the_worker_three_ways(env):

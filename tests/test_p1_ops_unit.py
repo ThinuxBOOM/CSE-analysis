@@ -408,7 +408,7 @@ def test_pg_config_is_socket_only_and_peer_only():
         assert line in conf
     ident = [l.split() for l in open(os.path.join(OPS, "postgres", "pg_ident.conf"), encoding="utf-8")
              if l.strip() and not l.lstrip().startswith("#")]
-    assert {r[2] for r in ident} == {"cse_worker", "cse_backup", "cse_migrator"}
+    assert {r[2] for r in ident} == {"cse_worker", "cse_backup", "cse_migrator", "cse_verifier"}   # P1-CC-1
 
 
 def test_systemd_units_are_backup_only_hardened_and_retrying():

@@ -1,6 +1,6 @@
 # P1 platform: local server, PostgreSQL 17, security, backups
 
-**Status:** P1 implementation, awaiting review.
+**Status:** P1 is frozen/accepted (MA §52). Its change control P1-CC-1 (§13) is accepted and frozen (2026-11-04); the freeze is in effect since clean CI at the head that records it (2026-11-08, §13).
 **Target:** Ubuntu 24.04 LTS home server that is **not** always on; PostgreSQL 17 (PGDG) is authoritative.
 **GitHub:** source control only.
 
@@ -86,8 +86,9 @@ All roles are created once by `bootstrap_cluster.sql`. None has `SUPERUSER`, `CR
 | `cse_owner` | **no** | Database `cse`, schemas `public`/`ops`, every table, view, sequence and function | Everything, as owner (subject to the append-only triggers) | Nobody logs in; only reachable via `SET ROLE` |
 | `cse_migrator` | yes | nothing | Member of `cse_owner` **WITH INHERIT FALSE, SET TRUE**: no privileges of its own; the runner does `SET LOCAL ROLE cse_owner` inside each migration transaction | `cse-migrator` (the operator runs `sudo -u cse-migrator …`) |
 | `cse_worker` | yes | nothing | Exactly the grant blocks documented in 0001/0004/0005/0007/0008: SELECT/INSERT on raw, source and evidence tables; UPDATE only on tables mutable by design; plus SELECT on `daily_completeness`. **No** UPDATE/DELETE/TRUNCATE on any source or evidence table; no CREATE; no access to `ops` | `cse-worker` (P2 services) |
-| `cse_reader` | **no** | nothing | SELECT on `public` and `ops` (plus default privileges for future owner-created tables) | A group role for later dashboard or analysis logins |
+| `cse_reader` | **no** | nothing | SELECT on `public` and `ops` (plus default privileges for future owner-created tables) | A group role for later dashboard or analysis logins. Since P1-CC-1 (§13) it has one member, the login `cse_verifier`; later dashboard or analysis logins stay separate members |
 | `cse_backup` | yes | nothing | Member of `pg_read_all_data` (read-only everywhere); SELECT/INSERT/UPDATE on `ops.backup_runs` only | `cse-backup` (backup units) |
+| `cse_verifier` | yes | nothing | Member of `cse_reader` **WITH INHERIT TRUE, SET FALSE** (no ADMIN): only `cse_reader`'s privileges, by inheritance, and it cannot `SET ROLE cse_reader`. No database privilege of its own (CONNECT through `cse_reader`; no CREATE or TEMPORARY), no role setting. Added by P1-CC-1 (§13) | `cse-verifier` (R-F4's `verify` and the preflight's reader route, `docs/ops/PHASE2_BACKFILL.md` §12) |
 | PUBLIC | — | — | Nothing: no CONNECT on `cse`, no USAGE/CREATE on `public`/`ops`, no table privileges | — |
 | `postgres` | yes | extension members (pgcrypto) | Bootstrap superuser; administration only | `postgres` OS user (`local all postgres peer`) |
 
@@ -103,7 +104,7 @@ A superuser, or the owner explicitly running `ALTER TABLE … DISABLE TRIGGER`, 
 ## 4. Authentication and network
 
 - `listen_addresses = ''`: **no TCP listener**.
-- The socket `/var/run/postgresql/.s.PGSQL.5432` is group `cse` with mode 0770. Only the service users and `postgres` can even reach it.
+- The socket `/var/run/postgresql/.s.PGSQL.5432` is group `cse` with mode 0770. Only the service users (`cse-worker`, `cse-backup`, `cse-migrator` and, since P1-CC-1 (§13), the reader login's OS user `cse-verifier`) and `postgres` can even reach it.
 - `pg_hba.conf` has two lines:
   - `local all postgres peer`
   - `local cse all peer map=cse`
@@ -341,3 +342,133 @@ bash ops/tests/provision_in_docker.sh                                    # clean
 - **Documentation and naming are still Supabase-era in places.** The README and the `supabase/migrations` directory name are unchanged (renaming is deferred; tests depend on the path), and the two expired GitHub workflows remain. That cleanup is deferred (M10).
 - **There is no purge path for CSE data yet, by design.** Append-only triggers, write-once spool files and immutable backups make deleting data deliberately hard. G-1 ([decision record](../governance/G-1_CSE_DATA_USE.md) §6) requires P2 to design an owner-authorised purge/retention procedure covering the active database, spool copies and backups, without weakening these protections.
 - **The P2 archive table's body column type is not settled.** F2's guard test forbids `bytea` in any migration (`tests/test_document_retrieval.py`), so P2 must choose a column type for raw response bodies, or scope that guard to document tables in a reviewed change.
+
+## 13. Change control P1-CC-1 (2026-11-03)
+
+**Decisions.** M8 OD-7 = option A and M8 OD-8 = option (a), both taken on 2026-11-03 by the orchestrator under the
+owner's standing delegation **[delegated]**, together with the T2 implementation and commit authorization (the vault's
+decision log and its decision request DR-0001; brief B-0001). P1 is frozen; this change is made under MA §43.1's change
+control, and the changed build is re-staged before it is accepted. *(2026-11-09: "accepted" here means milestone 9's
+acceptance of the integrated build, MA §43.1. P1-CC-1's own acceptance and freeze are recorded below and are in effect;
+re-staging, milestone 8, T3 Phase B, is still required before the integrated build is accepted.)*
+
+**What changed.**
+- **The reader login `cse_verifier`** (`docs/R_F4_IMPLEMENTATION.md` §20.6): LOGIN, INHERIT, NOSUPERUSER, NOCREATEDB,
+  NOCREATEROLE, NOREPLICATION, NOBYPASSRLS, PASSWORD NULL; exactly one membership, in `cse_reader` WITH INHERIT TRUE,
+  SET FALSE (ADMIN false); no `pg_db_role_setting` row; no database privilege of its own. Its OS user `cse-verifier` is a
+  system user (nologin shell, no home) in group `cse`, mapped by `pg_ident` (`cse  cse-verifier  cse_verifier`). No
+  migration changed: 0009 checks only the five roles it names.
+- **REG-X03 (`verify_server`):** no role other than `cse_owner` may hold INSERT, UPDATE, DELETE or TRUNCATE on
+  `ops.schema_migrations`, directly or through an inheriting membership (INSERT and UPDATE also as column grants), and
+  PUBLIC none; the ledger must be an ordinary, permanent table, neither partitioned nor a partition, without row-level
+  security (enabled or forced), and neither an inheritance child nor parent. Superusers are covered by
+  `only_bootstrap_superuser`. `cse_migrator` (SET without INHERIT on `cse_owner`) holds none of the owner's privileges,
+  so it is reported only if it gains a write privilege of its own; its `SET ROLE` route is the designed owner path,
+  checked by `migrator_set_role_owner_only`.
+
+**Files (P1, frozen, changed):** `ops/provision/sql/bootstrap_cluster.sql` (creates and re-enforces the login and its
+membership), `ops/postgres/pg_ident.conf` (the fourth mapping), `ops/provision/provision.sh` (`step_users` creates
+`cse-verifier`), `worker/ops/verify_server.py` (the checks above).
+
+**Frozen-test edits** (each a mechanical addition of the login, its mapping or the new hashes; every other assertion
+unchanged):
+- `tests/test_p1_ops_unit.py` `test_pg_config_is_socket_only_and_peer_only`: the `pg_ident` role set gains
+  `cse_verifier`;
+- `tests/test_p1_postgres.py` `test_bootstrap_roles_have_no_elevated_attributes`: the exact `cse%` role map gains
+  `cse_verifier` (login, no elevated attribute);
+- `tests/test_f64_postgres.py` `test_p1_migration_ledger_verifier_and_every_preflight` and `tests/test_hb1_postgres.py`
+  `test_s1_least_privilege_ownership_no_definer_no_rls`: the expected `cse%` role list gains `cse_verifier`;
+- `tests/test_p3_scheduler_unit.py` `FROZEN_P1_P2`: re-pinned for exactly the four files below, with a comment naming
+  P1-CC-1; every other pin unchanged.
+
+**Pins** (`FROZEN_P1_P2`, SHA-256 of the LF-normalised file):
+
+| File | Before | After |
+|---|---|---|
+| `ops/postgres/pg_ident.conf` | `eedc972d782e61ce38a1bcfc4fe1ccdc26c49fc4ef8c752f5a59d7667e818de7` | `8a42f72d6ff6d2762222f104f0ae6b86d3f9f4da3e995f99c3016c5d068e8cb1` |
+| `ops/provision/provision.sh` | `9d13fbc4fda99ab912a6d41cb344504fa98b7533a4bed730705a75dd8fc3ebfc` | `375562490b8c0ae055ae47bc6f7e640bbe5c10eb9e9431555e55e3c5f0861513` |
+| `ops/provision/sql/bootstrap_cluster.sql` | `b2047237890f3e41a5585f2d0a52346362c0815bbc0ed41fac361a4e18941fd6` | `854d895bc4bf5f826573472dfcc64a7381ff11a290804d96f8a578f95710af45` |
+| `worker/ops/verify_server.py` | `c735aa1f07d0ba3982cf727995878b6cf677054a2a0e1bc65995b5a54d698dca` | `132af17e74c566ac5a09394219787a11bc34f99feed391968ba20e102b8a6958` |
+
+No preflight pin map (HB-1 to HB-6, R-F4) covers any of these four files.
+
+*Round 2 (2026-11-04):* `worker/ops/verify_server.py` re-pinned again, from
+`132af17e74c566ac5a09394219787a11bc34f99feed391968ba20e102b8a6958` to
+`d54e24f7f09e6b6d9b6ee254b7d3743f9577c366609081f2920cdb305a1c9a34`. No other pin changed.
+
+**New tests:** `tests/test_p1_cc1_unit.py` (the new checks with a scripted cursor) and `tests/test_p1_cc1_postgres.py`
+(real PostgreSQL 17 throwaway clusters: the login after bootstrap and after re-running it, a session as the login, and
+`verify_server` failing for each violation). The staging harness's application-write probe
+(`ops/staging/inner/stage_checks.sh`) also covers `cse-verifier`.
+
+**Round 2 (2026-11-04): correction of audit finding F-1.** The independent audit of round 1 (AR-0001-1, PASS WITH
+FINDINGS) showed that a login outside the six roles with a SET-only membership in `cse_owner`, directly or through
+`cse_migrator`, could `SET ROLE cse_owner` and write a forged ledger row while every check passed. The orchestrator
+decided [delegated] to fix it. `verify_server` gains `owner_members_designed_only`: any role other than `cse_owner`,
+`cse_migrator` and the bootstrap superuser `postgres` that is a member of `cse_owner` by any path
+(`pg_has_role(…, 'MEMBER')`, whatever the INHERIT and SET options) FAILs, named with whether it can SET ROLE and whether
+it inherits. It is a new check, so every existing check keeps its behaviour; the ledger write check's PASS detail now
+says what it tests (direct, PUBLIC and inherited privileges; superusers and `pg_*` roles not tested there; SET ROLE
+routes to `cse_owner` reported by the new check). New tests cover the three audited shapes (a SET-only login with
+`cse_reader`, the same with a direct CONNECT grant, a login granted `cse_migrator`), an inheriting member, a member with
+neither option, an extra superuser, the forged write each audited shape allows, and the designed `cse_migrator` path
+alone passing.
+
+**What `verify_server` does not check** (boundaries, recorded so that the freeze does not overstate coverage; from the
+round 1 audit's notes):
+- the logins' passwords (`PASSWORD NULL` is enforced by the bootstrap, not verified; harmless while
+  `pg_hba_local_peer_only` holds), connection limits and VALID UNTIL;
+- settings that reach the verifier's sessions without being its own: `ALTER DATABASE … SET`, `ALTER ROLE ALL SET`,
+  settings on `cse_reader`;
+- ledger privileges other than INSERT, UPDATE, DELETE and TRUNCATE (TRIGGER, MAINTAIN, REFERENCES), rules on the
+  ledger, and policies while row-level security is off;
+- a SET-only membership in a role other than `cse_owner` that holds a ledger write privilege (for example the
+  predefined `pg_write_all_data`, which the ledger check does not test), and membership in the bootstrap superuser role
+  (`GRANT postgres TO …`, after which `SET ROLE postgres` is possible): both are accepted residuals (1) and (4) below;
+- other roles granted `cse_verifier` (members of the login);
+- owner-level manipulation: the owner or a superuser can disable the append-only triggers, insert as the owner, or
+  change the ledger between runs (REG-A11's accepted class);
+- peer authentication itself: the OS user `cse-verifier` and the installed `pg_ident.conf` are verified only at staging
+  (`docs/R_F4_IMPLEMENTATION.md` §20.6);
+- the restored copy: `worker/ops/restore_check.py` asserts the five original roles only, not `cse_verifier`.
+
+Re-running the bootstrap re-enforces the login's attributes and its own grant's options; it does not remove a membership
+row granted by another grantor or an extra membership. `verify_server` detects those.
+
+**Accepted residuals** (decided [delegated] on 2026-11-04, with the freeze; revisit any of them if the threat model
+changes):
+1. **A SET path into `pg_write_all_data`.** A role that can `SET ROLE pg_write_all_data` can write the ledger while every
+   check passes; the round 2 audit (AR-0001-2) confirmed this is a real route. Only a superuser, or a role holding ADMIN
+   on the target role, can grant membership in a superuser role or in `pg_write_all_data`; by default only the
+   bootstrap superuser holds that ADMIN. `only_bootstrap_superuser` checks that `postgres` is the only superuser.
+2. **The restore check does not assert `cse_verifier`** (AR-0001-1 F-3). `worker/ops/restore_check.py` checks the five
+   original roles only. The globals dump carries the login with `GRANT cse_reader TO cse_verifier WITH INHERIT TRUE,
+   SET FALSE`, as the round 1 audit verified, and the restore tests restored such a dump without errors in CI.
+3. **Login passwords are not checked** (AR-0001-1 F-4). Authentication is peer-only, so `pg_hba` has no password method
+   (`pg_hba_local_peer_only`), and the bootstrap re-applies `PASSWORD NULL` on every run.
+4. **Membership in the bootstrap superuser role** (AR-0001-2 G-1). A login granted `postgres` (`GRANT postgres TO x`)
+   can `SET ROLE postgres` and forge a ledger row while all 36 checks pass, because superuser status is gained by
+   `SET ROLE`, not inherited, and `owner_members_designed_only` follows memberships of `cse_owner` only. It is the same
+   class as residual 1: only a superuser, or a role holding ADMIN on the target role, can grant membership in a
+   superuser role or in `pg_write_all_data`; by default only the bootstrap superuser holds that ADMIN. Superuser
+   compromise is outside the P1 model.
+
+**Acceptance and freeze (2026-11-04; in effect since 2026-11-08).** P1-CC-1 is **ACCEPTED / FROZEN**, and the freeze is **in effect** (below), decided [delegated] by the orchestrator under
+the owner's standing delegation, on the two independent audits: AR-0001-1 (round 1, PASS WITH FINDINGS, no Blocker or
+Major; its Minor finding F-1 corrected in round 2) and AR-0001-2 (round 2, PASS WITH FINDINGS, no Blocker or Major; its
+Minor finding G-1 accepted as residual 4 above).
+- **Frozen code:** `59f9228` (round 1) and `0a653a8` (round 2, the correction of AR-0001-1 F-1), on the branch
+  `claude/m8-t2-p1cc1` (pull request #8 into `main`).
+- **CI at `59f9228`:** `ci-regression` run 41748579189 and `ci-fast` run 41748579202, both successful: all 22 jobs
+  succeeded and the summary is clean, including the nine restore-executing tests and the edited frozen assertions.
+- **Effective** once `ci-fast` and `ci-regression` on pull request #8, at the head that contains this record, finish
+  clean. *(2026-11-09: **in effect.** At `899c08f`, the head of pull request #8 that contains this record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all
+  succeeded on 2026-11-08 (two runs of each, from reopening the pull request): 22 of 22 jobs in each regression run
+  with the summary clean and identical per-group counts, and offline 2,158 passed, 677 skipped in each fast run.)*
+- **Re-staging:** under MA §43.1 the changed build must be re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29).
+  Staging stays NOT ACCEPTED, and REG-G01 stays OPEN.
+- **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done yet**, so nothing here is
+  evidence that the real login works with peer authentication. REG-A05 stays DEFERRED WITH RATIONALE.
+- **Register:** REG-X03 was IN PROGRESS until the clean CI at this record's head was recorded. *(2026-11-09: that CI is
+  recorded above, and REG-X03 is CLOSED WITH EVIDENCE, `docs/R_F4_IMPLEMENTATION.md` §25.4.)* REG-A05, REG-A06 and
+  REG-G01 keep their statuses.

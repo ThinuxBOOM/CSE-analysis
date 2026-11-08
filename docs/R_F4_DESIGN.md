@@ -49,7 +49,10 @@ The `RF4-` prefix keeps these apart from F6.4's M1–M5 (F6.4 design §6) and F8
 
 **Baseline and evidence.** The code baseline is `b4b8a49c1eeaff8bd54bff17811954ce89f611d5`. `main` is now
 `4646626`, which adds only this record (`e6a4881`, then its update), so the code is identical; Stage 1 branched from
-it. The design evidence is of three kinds:
+it. *(2026-11-02, with Phase 2 design revision 9: no longer current. The statement that `main` is now `4646626` was
+accurate when written, on 2026-10-16 (`c5b1c12`). `4646626`, committed on 2026-10-14, is the commit Stage 1 branched
+from that day (`77cfb84`'s parent). R-F4 was merged into `main` through pull request #6 on 2026-10-30, as merge commit
+`912ab0177a1476bd6af79e1884af2c899a9e6e2c`, whose first parent is `4646626`.)* The design evidence is of three kinds:
 - reading the baseline's code;
 - **reported synthetic results** of the OD-13 simulation. These ran on disposable scratch copies on 2026-10-14, were
   run by Claude and have not been independently re-executed. They used a simulated schema that differs from §4;
@@ -590,7 +593,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | 5 | Full regression with controls B, P, S and I; mutation testing | **Run** on `82b7a3e` (Stage 2), as Claude's reports: P and I equal B as §9 requires; every S failure is caused by its stale pins; mutants 17 of 17 killed (`docs/R_F4_IMPLEMENTATION.md` §5) |
 | 6 | Independent audit of the code and evidence | **Complete** (2026-10-26): PASS FOR OWNER ACCEPTANCE/FREEZE REVIEW at `044cbf5`, confirmed by the owner on 2026-10-27 (`docs/R_F4_IMPLEMENTATION.md` §26.3.1). A source review and an inspection of the CI artifacts and JUnit reports; no test independently re-run. Stage 2's findings were remediated on the branch first (`docs/R_F4_IMPLEMENTATION.md` §7 to §24) |
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26): the owner's conditional approval (D5, 2026-10-26), with its four prerequisites satisfied, the last being the drift check against the freeze-candidate commit F (`adce25a`, 2026-10-27). **Complete:** the post-V check gave empty output with exit status 0 on 2026-10-28 (`docs/R_F4_IMPLEMENTATION.md` §26.7, step 7; commit `1171f92`; run by Claude, not independently reproduced). Not a merge, which needs a separate owner decision; it authorizes no operational step |
-| 8 | Docker staging of the integrated build, including R-F4 and 0018 | Not started. **The staging environment doesn't exist yet** |
+| 8 | Docker staging of the integrated build, including R-F4 and 0018 | **In progress** (2026-11-04; previously "Not started. The staging environment doesn't exist yet"). T1, the harness shakedown, is done: `b927284`, ACCEPT WITH LIMITATIONS, development evidence only (`docs/ops/STAGING.md`). T2, P1 change control P1-CC-1 (the reader login `cse_verifier` and REG-X03's `verify_server` checks), is accepted and frozen at `59f9228` and `0a653a8`, effective once CI is clean at the record's head (`docs/ops/P1_PLATFORM.md` §13; *2026-11-09: in effect, CI clean at `899c08f` on 2026-11-08*), and T2 completes with its merge into `main`; the changed build is to be re-staged. **Staging is not accepted, and REG-G01 stays OPEN** |
 | 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
 | 10 | Production deployment: the rehearsal, provisioning and smoke tests | Not started. **No server is provisioned** |
 | 11 | The live prerequisites, then HB-S1 and HB-S2 under your arming | Not started |
@@ -612,7 +615,7 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 
 | Milestone | Prerequisites |
 |---|---|
-| 8 | Build the Docker staging environment (Master Architecture §43.1; it doesn't exist yet). Then: a fresh install of 0001–0018 and an upgrade from 0017; the R-F4 preflight and `verify`; crash and recovery; backup and restore, with F6.4's `verify`, `cse-backfill verify` and R-F4 `verify` on the restored copy; permissions; fault injection that includes forced repeated save failures, to measure the request-budget exposure in §6 |
+| 8 | Build the Docker staging environment (Master Architecture §43.1; *2026-11-04: it exists since T1, `ops/staging/` and `docs/ops/STAGING.md`, not yet accepted; the reader login R-F4's `verify` needs is provisioned by P1-CC-1, still to be verified at staging under `docs/R_F4_IMPLEMENTATION.md` §20.6*). Then: a fresh install of 0001–0018 and an upgrade from 0017; the R-F4 preflight and `verify`; crash and recovery; backup and restore, with F6.4's `verify`, `cse-backfill verify` and R-F4 `verify` on the restored copy; permissions; fault injection that includes forced repeated save failures, to measure the request-budget exposure in §6 |
 | 9 | Accept the integrated frozen build |
 | 10 | The Ubuntu 24.04 server, PostgreSQL 17, P1 provisioning, migrations **0001–0018** through P1's runner, Poppler 24.02.0, the dedicated temporary root, at least 20 GiB free, the deployment rehearsal, and smoke tests that include the R-F4 preflight (runbook §12) |
 | 11 | HB-X2 (a) and (b), with the contact e-mail configured; HB-P1 and IE-2; your arming of HB-S1 and HB-S2 |

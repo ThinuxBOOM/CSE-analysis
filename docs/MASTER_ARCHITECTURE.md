@@ -1468,6 +1468,13 @@ provisioned yet (§52, §54).
 (owner decision). It has not been built or deployed: no Docker file,
 compose file, staging image or CI/CD configuration exists for it.
 
+*(2026-11-02: no longer current in one respect. Under the owner's
+authorization of 2026-11-02 (milestone 8, T1), the staging harness
+exists: a Docker file and its driver in `ops/staging/`, described in
+`docs/ops/STAGING.md`, with staging images built for shakedown runs. No
+Compose file or CI/CD configuration was added. Staging is not accepted,
+and nothing is deployed: REG-G01 stays open.)*
+
 ### Environment progression
 
 ``` text
@@ -1843,7 +1850,11 @@ Established local role model:
 -   `cse_migrator`;
 -   `cse_worker`;
 -   `cse_reader`;
--   `cse_backup`.
+-   `cse_backup`;
+-   `cse_verifier`: the one reader login for R-F4's `verify`, a member
+    of `cse_reader` WITH INHERIT TRUE, SET FALSE, peer-mapped from the
+    OS user `cse-verifier` (P1 change control P1-CC-1, 2026-11-03;
+    `docs/ops/P1_PLATFORM.md` §3, §13).
 
 Production services must not be:
 
@@ -1933,6 +1944,35 @@ F6.2 is an accepted design. Its storage amendments (F6.2 §4--§7,
 
 P3 was implemented, independently reviewed and passed its acceptance
 gate (§53). It is **frozen/accepted** at commit `40e15bcc`.
+
+Change control after the P1 freeze: P1-CC-1 (2026-11-03; M8 OD-7 =
+A and M8 OD-8 = a, decided [delegated] under the owner's standing
+delegation) changes four frozen P1 files (`bootstrap_cluster.sql`,
+`pg_ident.conf`, `provision.sh`'s users step, `verify_server.py`) to
+provision the reader login `cse_verifier` (§50;
+`docs/R_F4_IMPLEMENTATION.md` §20.6) and to add the REG-X03 checks of
+the migration ledger to `verify_server`. It re-pins those four files in
+P3's `FROZEN_P1_P2` and adds `cse_verifier` to the role or mapping
+lists of four frozen tests (P1, F6.4 and HB-1). *(2026-11-04: P1-CC-1
+is **accepted and frozen**, effective once CI is clean at the record's
+head, decided [delegated] under the owner's
+standing delegation on two independent audits (AR-0001-1 and AR-0001-2,
+both PASS WITH FINDINGS, no Blocker or Major). Frozen code: `59f9228`
+(round 1) and `0a653a8` (round 2, which adds the check that no role but
+`cse_migrator` and the bootstrap superuser is a member of `cse_owner`),
+on the branch `claude/m8-t2-p1cc1`, pull request #8. CI at `59f9228`
+was clean (runs 41748579189 and 41748579202). The freeze is effective
+once `ci-fast` and `ci-regression` on pull request #8, at the head that
+contains the freeze record, finish clean. REG-X03 is IN PROGRESS
+until that CI is recorded; REG-A05, REG-A06 and REG-G01 are unchanged, and staging
+verification (R-F4 §20.6 steps 1–6) has not been done.)* *(2026-11-09:
+the freeze is **in effect**: at `899c08f`, the head of pull request #8
+that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08.
+REG-X03 is CLOSED WITH EVIDENCE. Re-staging (milestone 8, T3 Phase B)
+is still required.)* The record is
+`docs/ops/P1_PLATFORM.md` §13. Under §43.1 the changed build must be
+re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29); until then
+staging stays not accepted.
 
 F6.3 --- the pure financial-truth layer (`worker/financial_truth/`:
 validation, admission, source observations, economic-fact identity and
@@ -2879,7 +2919,7 @@ nothing further: Docker staging and every later gate stay as recorded.
 -   reconciliation;
 -   coverage audit.
 
-Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 8).
+Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (revision 9).
 HB-1, the governed backfill ledger (migration 0016,
 `worker/financial_backfill/`), is implemented and frozen (`40748c3c`;
 §52). HB-2, the governed CSE transport (`worker/backfill_transport/`),
