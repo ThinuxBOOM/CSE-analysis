@@ -4,6 +4,10 @@
 Staging is **not accepted**: REG-G01 stays OPEN (`docs/R_F4_IMPLEMENTATION.md` section 25.4), and nothing here is
 production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.**
 
+*2026-11-04: the procedures for ST-27 to ST-29 (section 9) and a development run of them on the T2 build, campaign t2s1
+(section 10, **development evidence only; REG-G01 OPEN**), were added. The runner no longer deselects the nine
+restore-executing tests (owner, 2026-11-04; section 9).*
+
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
 `docs/ops/P3_SCHEDULER.md` and `docs/ops/PHASE2_BACKFILL.md` (what is provisioned and run). Where this document and
@@ -37,7 +41,7 @@ cse-stg-<campaign>-runner-*  --network none --restart no; one CI group each
 | `ops/staging/staging.sh` | Host-side driver (Git Bash): context, build, volumes, trial, up, start, stop, kill, inject, secret, run, isolation, seed, runner, guard, canary, collect |
 | `ops/staging/isolation_check.py` | ST-04 from outside: a host container's `docker inspect` against the approved rung |
 | `ops/staging/inner/stage_provision.sh` | Provisioning inside the host container, with the R1 gate |
-| `ops/staging/inner/stage_checks.sh` | Read-mostly checks (isolation, ledger, roles, preflights, units, filesystem, invariants, fingerprint and fpcompare, metrics, sequence kinds, data digests) |
+| `ops/staging/inner/stage_checks.sh` | Read-mostly checks (isolation, ledger, roles, preflights, units, filesystem, invariants, fingerprint and fpcompare, metrics, sequence kinds, data digests) and the reader-login procedures `rf4verify`, `reader`, `regx03` (ST-27 to ST-29, section 9) |
 | `ops/staging/inner/stage_scenarios.sh` | Behaviour scenarios (wake-ups, concurrency, migration lock, backups, failures, outage, disk gate, crash, restart) |
 | `ops/staging/inner/stage_tree.py` | ST-02: the application is exactly the commit's tree |
 | `ops/staging/inner/harvest_layouts.py`, `ops/staging/seed_synthetic.py` | The synthetic seed: layouts harvested in the runner, written in the host through the frozen stores as `cse_worker` |
@@ -58,8 +62,9 @@ cse-stg-<campaign>-runner-*  --network none --restart no; one CI group each
   arming or owner command is ever run, and no capture or backfill slice is ever opened. Every phase checks that no armed
   decision exists.
 - **No restore (DO NOT EXECUTE RESTORE):** no restore functionality exists in the harness. P1's restore check is gated
-  (R1 gate, below); `provision.sh all` and `selftest` are never run; the runner deselects, by exact node id, the nine tests
-  that execute a restore into a disposable cluster (their CI results stand for them).
+  (R1 gate, below); `provision.sh all` and `selftest` are never run. The runner container no longer deselects the nine tests
+  that execute a restore into a disposable cluster (owner, 2026-11-04): they run in its no-network throwaway
+  container, never in the host container (section 9).
 - **Nothing destructive:** the driver removes no container, volume, image or evidence file; the owner reviews them.
 
 **The R1 gate.** Before `provision.sh units`, a drop-in makes `cse-backup-restore-check.service` refuse to start:
@@ -107,7 +112,7 @@ bash ops/staging/staging.sh run "" stage_checks.sh fpcompare <before directory> 
 Every record the driver writes for a run, an isolation check or a seed opens with `PROVENANCE` lines: the campaign,
 revision, container and image, the driver's SHA-256, and the SHA-256 of each harness file as the container holds it,
 compared with the working tree. Each `inject` logs the injected files' SHA-256 to `logs/driver.log`, and each runner
-writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection list and the tree under test).
+writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection list, empty since 2026-11-04, and the tree under test).
 
 ## 6. The shakedown matrix (T1)
 
@@ -135,13 +140,17 @@ writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection lis
 | ST-22 | `canary` | The test password appears in no evidence, journal, inspect, history or process list |
 | ST-23 | `runner harvest`, `seed "" full`, `stage_checks.sh metrics` | Synthetic only. The seed record holds its command, identity, parameters, input hash, timestamps and exit |
 | ST-24 | runner: `tests/test_rf4_fault_budget_postgres.py` | Also in CI part C |
-| ST-25 | runner: groups offline, L01–L16, X1, X2 | Restore tests deselected |
+| ST-25 | runner: groups offline, L01–L16, X1, X2 | T1 deselected the nine restore tests; since 2026-11-04 nothing is deselected (section 9) |
 | ST-26 | second build (no cache) + fingerprints of two provisioning histories | |
+| ST-27 | `stage_checks.sh rf4verify` | R-F4's full `verify` as the login `cse_verifier` (runbook section 12 steps 2-5); section 9 |
+| ST-28 | `stage_checks.sh reader` | The real reader login with peer authentication: R-F4 section 20.6 steps 1-5, REG-A06; section 9 |
+| ST-29 | `stage_checks.sh regx03` | P1's extended `verify_server` (REG-X03) through the frozen `p1-verify` probe; section 9 |
 | ST-32 | `stage_checks.sh seqkinds` | REG-B32 (UR-8), read-only |
 
-Deferred by dependency: ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
-(`docs/ops/P1_PLATFORM.md` §13); T2 completes with its merge into `main`. ST-27 to ST-29 no longer wait for T2's
-implementation but for their harness procedures and an authorized campaign on the T2 build*), ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
+ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
+(`docs/ops/P1_PLATFORM.md` §13); 2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`; their
+procedures exist (section 9) and ran once, as development evidence, in campaign t2s1 (section 10); the acceptance run
+is T3 Phase B on `main`*). Deferred by dependency: ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
 
 ## 7. Findings recorded by T1
 
@@ -207,3 +216,100 @@ is unchanged.
   - ST-21a and ST-21b;
   - ST-23 (the seed record);
   - the provenance lines of every run.
+
+
+## 9. The reader-login procedures ST-27 to ST-29 (`stage_checks.sh rf4verify`, `reader`, `regx03`)
+
+Added for campaign t2s1 (section 10), on the T2 build (`a7e0501`, P1-CC-1 accepted and frozen, effective once CI is clean at the record's head:
+`docs/ops/P1_PLATFORM.md` section 13; *2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`*). Run in the host container after fresh provisioning and the synthetic seed, each through
+`staging.sh run "" stage_checks.sh <subcommand>`, so each record opens with the PROVENANCE lines of section 5.
+
+**The login.** Every session of the reader login is the OS user `cse-verifier` (`runuser -u cse-verifier`) over the Unix
+socket, with `DATABASE_URL=postgresql://cse_verifier@/cse?host=/var/run/postgresql`. The URL names the role: without it
+libpq asks for the role `cse-verifier` (the OS user), and the peer map, which maps that OS user to `cse_verifier` only,
+refuses it (B-0001 deviation, accepted 2026-11-04). No password exists, none is passed, and no `SET ROLE` or superuser
+session stands in for the login in steps 1, 2, 4 and 5.
+
+| ID | Subcommand | What it does and asserts |
+|---|---|---|
+| ST-27 | `rf4verify` | Runbook (`docs/ops/PHASE2_BACKFILL.md` section 12) steps 2-5. Step 2: the R-F4 preflight through the migration role (`cse-migrator`, `--migration-role`), exit 0 and `"clean": true` (step 3), and the runbook's second route, the preflight as the login (`python3 -m worker.financial_f4_store preflight` as `cse-verifier` with the `DATABASE_URL` above), exit 0 and `"clean": true` (exit 2, a ledger the login cannot read, is "unverifiable" and not a pass). Step 4: `python3 -m worker.financial_f4_store verify`, with no `--limit`, as the login. Step 5: exit 0, `"clean": true`, `"scope": {"complete": true, ...}` with no limit, no problem, and a scan that read data (extractions and runs above 0, every run rebuilt: an empty database is not a pass). Both JSON reports are saved in the container (`/var/lib/cse-staging/rf4/rf4verify-<UTC>-<random>/`, a new directory each run) and echoed into the record |
+| ST-28 | `reader` | REG-A06 and `docs/R_F4_IMPLEMENTATION.md` section 20.6 steps 1-5, each step's output recorded. 1: through the URL, `current_user` = `session_user` = `cse_verifier`, `current_setting('role')` = `none` (no `SET ROLE`), `pg_has_role(current_user, 'cse_reader', 'USAGE')` true, over the Unix socket. Controls (not steps): `cse_verifier` has no password; the worker's OS user cannot connect as `cse_verifier`, nor the login's OS user as `cse_worker`; the URL without the role name is refused. 2: read by the login itself from `pg_roles`: LOGIN, INHERIT, none of the five attributes; `has_database_privilege` CREATE and TEMPORARY false; no `pg_db_role_setting` row. 3: the preflight through the migration role is clean. 4: the full `verify` as the login: exit 0, clean, complete scope, snapshot `repeatable read` and read-only, and its extraction and run counts equal both the superuser's and the login's own `count(*)` of the two tables. 5: an INSERT into `financial_f4_extractions` as the login, inside `begin; ... rollback;`, fails with `insufficient_privilege` (42501), and the table counts are unchanged. **Step 6** (steps 3-4 on a restored copy) needs a restore and is not run (ST-30, ST-31) |
+| ST-29 | `regx03` | P1's `verify_server` (REG-X03, P1-CC-1) through the frozen probe `ops/tests/p3_container_probes.sh p1-verify`, which tolerates a failure of `time_synchronised` only (D-04). The report is saved, and PASS is required for `role_cse_verifier`, `verifier_membership_reader_only`, `verifier_no_database_create_or_temporary`, `verifier_no_role_settings`, `owner_members_designed_only` and the five ledger checks (`ledger_writable_only_by_owner`, `ledger_ordinary_table`, `ledger_permanent`, `ledger_no_row_level_security`, `ledger_no_inheritance`); a WARN or an absent check is a FAIL here. The procedure fails closed: it passes only if the report's evaluator exits 0 **and** all ten PASS lines are present, so a crash after its INFO lines is a FAIL. Every other check's status is listed |
+
+**The runner and the restore-executing tests (owner, 2026-11-04).** The runner no longer deselects the nine tests that
+execute a restore into a disposable cluster (`tests/test_p1_postgres.py` 2, `tests/test_f64_postgres.py` 1,
+`tests/test_rf4_runbook_rehearsal.py` 6). The owner allowed them only inside `--network none` containers that are
+deleted afterwards. Each runner container is `--network none`, `--restart no`, with no mount and no privilege, and
+restores only into disposable clusters the tests create themselves. A runner container that ran restore tests is therefore
+removed by hand once its results, console log and `docker inspect` are in the evidence (the driver still removes nothing:
+section 3). Restore stays out of the host container: its R1 gate (section 3) is unchanged, no restore functionality
+exists in the driver, and the staging volumes are never restored into. The runner's provenance record now says
+`deselected: none (0 node ids ...)` and shows the container's empty `PYTEST_ADDOPTS`. The guards are in
+`tests/test_staging_unit.py` (s2, s8, h7, h8).
+
+## 10. Campaign t2s1: development run on the T2 build (2026-11-04)
+
+**Development evidence only. REG-G01 stays OPEN.** Staging is not accepted. REG-A05 and REG-A06 are unchanged. Their
+closure conditions are those of `docs/R_F4_IMPLEMENTATION.md` §25.4: for REG-A05, §20.6 steps 1–6 recorded at
+authorized staging, which includes step 6 (steps 3–4 on a restored copy); for REG-A06, the runbook's checks run at
+authorized staging with peer authentication and the production reader login, with REG-B01 for a restored copy. t2s1
+ran §20.6 steps 1–5 only and no step 6, so it meets neither condition; the acceptance campaign (T3 Phase B: `main` at
+one SHA after PR #8 is merged, every automated test, and ST-27 to ST-29 re-run) does not either without a restore
+(ST-30, ST-31). Nothing here is a restore of any staging volume, an arming, a capture or a backfill.
+
+**What ran.** Build `cse-staging:a7e050126151` (image `53b4f5f8443e`) and `cse-staging-runner:a7e050126151`
+(`ff5a6d38d7c1`) from commit `a7e0501261511fba0074755f6d55b21719823cc9` (the T2 build, branch `claude/m8-t2-p1cc1`); the
+harness files of section 9 were the working tree's, uncommitted at the time (every record's PROVENANCE line says
+"3 uncommitted path(s) under ops/staging" and `working-tree=same` for each injected file). One host container
+`cse-stg-t2s1-host` at rung L1 (the rung T1 established; no other rung was tried), volumes `cse-stg-t2s1-pgdata`,
+`-backup`, `-offsite`. Evidence: `D:\cse-staging\t2s1`. No off-site secret was generated (nothing here needs one), so
+`%LOCALAPPDATA%\cse-staging\t2s1` does not exist. RAM was above the 5 % floor at every step (17.6 % to 39 % free at the
+driver's guard checks); the runner shards ran one container at a time.
+
+| Step | Result | Record (under `results/` or `runner/`) |
+|---|---|---|
+| `context`, `build`, `volumes`, `up L1`, `inject` | done | `build/`, `logs/driver.log` |
+| ST-02 `stage_tree.py` | PASS (1 PASS) | `main-stage_tree.txt` |
+| ST-05 `stage_provision.sh fresh` | exit 0 | `main-stage_provision-fresh.txt` |
+| Seed: `runner harvest`, `seed "" full 990001 300` | exit 0: 300 F4 extractions, 300 F5 runs, 48 layouts in the pool | `runner/harvest.*`, `main-seed-full.txt` |
+| ST-28 `reader`, run 1 | **FAIL (13 PASS, 3 FAIL): a harness defect, kept.** `PGPASSFILE=/dev/null` made libpq print a warning ("password file ... is not a plain file") into the captured output of steps 1, 2 and the step 4 count. Steps 3, 4 (verify), 5 and the peer controls passed | `main-stage_checks-reader.txt` |
+| ST-28 `reader`, run 2 (after `PGPASSFILE=/nonexistent/pgpass`; `stage_checks.sh` sha256 `3c54e6e4...51bd`) | **PASS, 16 PASS, 0 FAIL.** Step 1: `cse_verifier\|cse_verifier\|none\|t\|t`. Step 2: login, inherit, no attribute, no CREATE or TEMPORARY, 0 role settings; its one membership is `cse_reader` (inherit, not set, not admin). Step 3: preflight exit 0, clean. Step 4: verify exit 0, clean, complete scope, `repeatable read`, read-only, 300 extractions and 300 runs, equal to the superuser's and to the login's own counts. Step 5: INSERT refused (42501, `permission denied for table financial_f4_extractions`), counts unchanged (300, 300). Step 6 not run | `main-stage_checks-reader.run2.txt` |
+| ST-27 `rf4verify` | **PASS, 7 PASS, 0 FAIL** (preflight through the migration role exit 0 and clean; verify as the login exit 0, clean, complete scope, no problem, 300 extractions and 300 runs, all rebuilt) | `main-stage_checks-rf4verify.txt` |
+| ST-29 `regx03` | **PASS, 11 PASS, 0 FAIL.** The probe: "P1 verifier: 47 checks, 46 PASS, 1 WARN, FAIL other than the container clock: 0" (`time_synchronised` reported PASS from `NTPSynchronized=yes`, the kernel's state: D-04; the WARN is the known D-02 `backup_on_separate_device`). `verify_server`'s 37 database checks all PASS, the ten required among them | `main-stage_checks-regx03.txt` |
+| `stage_checks.sh invariants` | 5 PASS: no restore check ever ran, `restore-scratch` empty, no R1 path, never armed, contact e-mail empty | `main-stage_checks-invariants.txt` |
+| Runner L15 (`test_p1_postgres.py`, nothing deselected) | exit 0: 380 passed, 2 xfailed (the known frozen Stage E defect D-2 cases), 0 failed. Both restore tests in it passed: `test_restore_check_restores_into_scratch_cluster` (2.35 s) and `test_restore_check_detects_a_dump_that_does_not_match_its_manifest` (2.31 s) | `runner/L15*` |
+| Runner L09 (`test_f64_postgres.py`) | exit 0: 27 passed. `test_p16_dump_restore_check_then_verify_on_the_restored_copy` passed (4.2 s) | `runner/L09*` |
+| Runner L16 (`test_rf4_runbook_rehearsal.py`) | exit 0: 737 passed, 82 skipped, 0 failed. `test_c1` to `test_c6` passed (12 to 24 s each). The 82 skips are the evidence-dependent and network-gated tests (the RDV evidence is lost; real-document tests need `F4_REAL_DOCUMENTS=1`): a limitation, not a pass | `runner/L16*` |
+
+Every runner record shows `PROVENANCE deselected: none (0 node ids ...)` and an empty `PYTEST_ADDOPTS`. L15, L09 and L16
+are the three groups that hold the nine restore-executing tests (2, 1 and 6); no other group was run. All nine passed.
+
+**Round 2 re-run (2026-11-04, after AR-0003-1).** The stopped host `cse-stg-t2s1-host` was started again, the revised
+harness injected (`stage_checks.sh` sha256 `36ef2d73...3498`; harness checkout `ca31af5`, one uncommitted path under
+`ops/staging`, `working-tree=same`) and the procedures re-run as new records; the round 1 records above are unchanged.
+Then the host was stopped. RAM was 23 % free at each guard.
+
+| Step | Result | Record |
+|---|---|---|
+| ST-27 `rf4verify` | **PASS, 9 PASS, 0 FAIL**: the 7 of round 1, plus the runbook's second preflight route as the login (exit 0, `"clean": true`) | `main-stage_checks-rf4verify.run2.txt` |
+| ST-28 `reader` | **PASS, 16 PASS, 0 FAIL** (unchanged procedure) | `main-stage_checks-reader.run3.txt` |
+| ST-29 `regx03` | **PASS, 12 PASS, 0 FAIL**: the 11 of round 1, plus the evaluator's own exit 0 with all ten required checks PASS | `main-stage_checks-regx03.run2.txt` |
+| `invariants` | 5 PASS | `main-stage_checks-invariants.run2.txt` |
+
+`collect` was not repeated, because it would overwrite round 1's tar: the saved JSON of the round 2 runs is in the
+stopped container under `/var/lib/cse-staging/rf4/` and echoed in full into the records. The runner groups were not
+re-run (the restore tests are unchanged).
+
+**Not run, by design:** the rest of ST-01 (the build ran; the manifest was not compared with `packages.lock`), ST-03, ST-04,
+ST-06 to ST-26 and ST-32, which the acceptance campaign repeats; the runner groups other than L09, L15 and L16;
+ST-30, ST-31 and §20.6 step 6 (restore); arming, capture, backfill; any rung other than L1.
+
+**Docker objects created and left in place** (stopped; as with T1, the driver removes none): `cse-stg-t2s1-host`,
+`cse-stg-t2s1-runner-harvest`; volumes `cse-stg-t2s1-pgdata`, `-backup`, `-offsite`; images `cse-staging:a7e050126151` and
+`cse-staging-runner:a7e050126151`. **Removed by hand:** the three runner containers that ran restore tests
+(`cse-stg-t2s1-runner-L15`, `-L09`, `-L16`), after their results, console log, provenance and `docker inspect` were
+saved in `runner/`: the owner allowed the restore tests only in containers that are deleted afterwards, and the driver
+itself removes nothing (section 3).
+
+**Status.** Development evidence only, on a build that is not `main`: it is not the acceptance run, and it does not
+close or change REG-G01 (OPEN), REG-A05 or REG-A06, or any other register item.
