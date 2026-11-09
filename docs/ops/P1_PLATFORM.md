@@ -1,6 +1,6 @@
 # P1 platform: local server, PostgreSQL 17, security, backups
 
-**Status:** P1 is frozen/accepted (MA §52). Its change control P1-CC-1 (§13) is accepted and frozen (2026-11-04), effective once CI is clean at the head that records it (§13).
+**Status:** P1 is frozen/accepted (MA §52). Its change control P1-CC-1 (§13) is accepted and frozen (2026-11-04); the freeze is in effect since clean CI at the head that records it (2026-11-08, §13).
 **Target:** Ubuntu 24.04 LTS home server that is **not** always on; PostgreSQL 17 (PGDG) is authoritative.
 **GitHub:** source control only.
 
@@ -348,7 +348,9 @@ bash ops/tests/provision_in_docker.sh                                    # clean
 **Decisions.** M8 OD-7 = option A and M8 OD-8 = option (a), both taken on 2026-11-03 by the orchestrator under the
 owner's standing delegation **[delegated]**, together with the T2 implementation and commit authorization (the vault's
 decision log and its decision request DR-0001; brief B-0001). P1 is frozen; this change is made under MA §43.1's change
-control, and the changed build is re-staged before it is accepted.
+control, and the changed build is re-staged before it is accepted. *(2026-11-09: "accepted" here means milestone 9's
+acceptance of the integrated build, MA §43.1. P1-CC-1's own acceptance and freeze are recorded below and are in effect;
+re-staging, milestone 8, T3 Phase B, is still required before the integrated build is accepted.)*
 
 **What changed.**
 - **The reader login `cse_verifier`** (`docs/R_F4_IMPLEMENTATION.md` §20.6): LOGIN, INHERIT, NOSUPERUSER, NOCREATEDB,
@@ -451,7 +453,7 @@ changes):
    superuser role or in `pg_write_all_data`; by default only the bootstrap superuser holds that ADMIN. Superuser
    compromise is outside the P1 model.
 
-**Acceptance and freeze (2026-11-04).** P1-CC-1 is **ACCEPTED / FROZEN**, effective once CI is clean at the record's head (below), decided [delegated] by the orchestrator under
+**Acceptance and freeze (2026-11-04; in effect since 2026-11-08).** P1-CC-1 is **ACCEPTED / FROZEN**, and the freeze is **in effect** (below), decided [delegated] by the orchestrator under
 the owner's standing delegation, on the two independent audits: AR-0001-1 (round 1, PASS WITH FINDINGS, no Blocker or
 Major; its Minor finding F-1 corrected in round 2) and AR-0001-2 (round 2, PASS WITH FINDINGS, no Blocker or Major; its
 Minor finding G-1 accepted as residual 4 above).
@@ -460,11 +462,13 @@ Minor finding G-1 accepted as residual 4 above).
 - **CI at `59f9228`:** `ci-regression` run 41748579189 and `ci-fast` run 41748579202, both successful: all 22 jobs
   succeeded and the summary is clean, including the nine restore-executing tests and the edited frozen assertions.
 - **Effective** once `ci-fast` and `ci-regression` on pull request #8, at the head that contains this record, finish
-  clean. Until then the freeze is recorded but not in effect.
+  clean. *(2026-11-09: **in effect.** At `899c08f`, the head of pull request #8 that contains this record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all
+  succeeded on 2026-11-08 (two runs of each, from reopening the pull request): 22 of 22 jobs in each regression run
+  with the summary clean and identical per-group counts, and offline 2,158 passed, 677 skipped in each fast run.)*
 - **Re-staging:** under MA §43.1 the changed build must be re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29).
   Staging stays NOT ACCEPTED, and REG-G01 stays OPEN.
 - **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done yet**, so nothing here is
   evidence that the real login works with peer authentication. REG-A05 stays DEFERRED WITH RATIONALE.
-- **Register:** REG-X03 is IN PROGRESS (`docs/R_F4_IMPLEMENTATION.md` §25.4). It closes in a later documentation-only
-  commit that records the clean CI at this record's head; if that CI is not clean, the freeze is not in effect and
-  REG-X03 stays IN PROGRESS. REG-A05, REG-A06 and REG-G01 keep their statuses.
+- **Register:** REG-X03 was IN PROGRESS until the clean CI at this record's head was recorded. *(2026-11-09: that CI is
+  recorded above, and REG-X03 is CLOSED WITH EVIDENCE, `docs/R_F4_IMPLEMENTATION.md` §25.4.)* REG-A05, REG-A06 and
+  REG-G01 keep their statuses.
