@@ -23,6 +23,11 @@ tree, `b0661d2b32235420bec96c5e3792f956e1dbd773`, is identical to a clean merge 
 `restore` subcommand and section 11 reach `main` only with the later pull request from `claude/m8-t3-restore`. `main`'s
 history was deliberately not rewritten.*
 
+*2026-11-09 (later), T3 Phase B: the acceptance campaign p3b1 ran on `main` at `af1fdd16cc40` (section 12). Every row of
+section 6 from ST-01 to ST-29, and ST-32, has a result on that one build, and no product defect was found. **REG-G01 OPEN:
+Phase B complete; Phase C (ST-30, ST-31) and ST-33 pending.** Nothing is restored, armed or contacted; staging is not
+accepted.*
+
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
 `docs/ops/P3_SCHEDULER.md` and `docs/ops/PHASE2_BACKFILL.md` (what is provisioned and run). Where this document and
@@ -455,3 +460,148 @@ the copy).
 R2 decisions and the invariant checks against stubs;
 `tests/test_staging_restore_postgres.py` i1–i3, the procedure on disposable clusters in a throwaway runner container
 (owner, 2026-11-04).
+
+## 12. Phase B acceptance campaign p3b1 (2026-11-09)
+
+**Status: REG-G01 OPEN: Phase B complete; Phase C (ST-30, ST-31) and ST-33 pending.** Every row of section 6 from ST-01 to
+ST-29, and ST-32, has a recorded result below on one build, with the observations and limitations listed after them. No
+product defect was found. Nothing here closes or changes REG-G01, REG-A02, REG-A05, REG-A06, REG-B01, REG-B32 or any other
+register item. This is the acceptance run for staging's automated tests and procedures; it is not the owner's acceptance
+(ST-33), and it contains no restore (R1 and R2 are Phase C, section 11).
+
+**The build.** `main` at `af1fdd16cc408c45dce273509c757e1ce027b442` (the merge of pull request #11), in a fresh detached
+worktree (`D:/cse-work/acc`, LF, clean for the whole campaign: every record says "0 uncommitted path(s) under ops/staging"
+and `working-tree=same`). Campaign `p3b1`; evidence `D:\cse-staging\p3b1` (bundle manifest `MANIFEST.md` and `SHA256SUMS`,
+1360 files, written after the last step); the off-site test password in `%LOCALAPPDATA%\cse-staging\p3b1` (never in the
+evidence: ST-22). Every `run`, `isolation` and `seed` record opens with PROVENANCE naming that revision and the host image
+below.
+
+| Image | ID | `org.opencontainers.image.revision` |
+|---|---|---|
+| `cse-staging:af1fdd16cc40` (host; every host container ran from it) | `sha256:2493a2617ebec246b702bdfaddc50bccae5b5837a4b46a17a528d870ee27c5d1` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
+| `cse-staging-runner:af1fdd16cc40` (every runner group ran from it) | `sha256:60fa080f8ff940136c5586d3fa10fca9fa23a9e59d74876e8829b3c3198e8ef9` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
+| `cse-staging:af1fdd16cc40-b3` (ST-26's second build only; no container runs from it) | `sha256:74de8a5b391d415a028f441595b97efb487bb917f4a32099138bb54125eb550e` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
+
+The first build reused Docker's layer cache for the base layers (the apt and P1 `packages` steps, from the t2s1 build's
+identical Dockerfile steps); the base digest is `ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3` and the application layer is the
+commit's own `app.tar`. ST-26's build is `--no-cache` (only the base image itself, `FROM ubuntu:24.04@sha256:...`, is reported CACHED). The restore authorization mechanism was not used: no RA file exists
+for this campaign.
+
+**Environment.** Rung L1 only; every container `--network none`, `--restart no`, not privileged, no host bind mount (asserted
+at the start and the end of every phase: `logs/campaign.log`). The only network use was the two `docker build` runs (apt).
+No CSE contact, no arming, no capture, no backfill, no restore. Host RAM 16 GB (Docker VM 8 GB), D: 30 GB free (20 GB floor
+held throughout: 29.9 GB at the end). Two host containers, one at a time: `cse-stg-p3b1-host` (main: fresh provisioning) and
+`cse-stg-p3b1-up-host` (the upgrade host of ST-08 and ST-09); runner containers one at a time with both hosts stopped.
+
+### The matrix
+
+| ST | Result | Record (`results/`, `runner/`) |
+|---|---|---|
+| 01 | PASS: images above; manifest 220 packages, sha256 `4967e410...903d`, empty diff against `packages.lock`; Poppler 24.02.0 | `ST-01-identity.txt`, `ST-01-manifest.txt` |
+| 02 | PASS (1 PASS) before provisioning | `main-stage_tree.txt` |
+| 03 | PASS at L1 (systemd running; the frozen units' sandbox probe) | `ladder/cse-stg-p3b1-trial-l1.txt` |
+| 04 | PASS: `docker inspect` 17 PASS, inside 7 PASS | `main-isolation-inspect.txt`, `main-stage_checks-isolation.txt` |
+| 05 / 06 | PASS: `fresh` and `again` exit 0; fingerprints before and after identical in 7 of 7 components | `main-stage_provision-*.txt`, `main-stage_checks-fpcompare.txt` |
+| 07 | PASS (2): 0001-0018, 0006 unused | `main-stage_checks-ledger.txt` |
+| 08 | PASS: to-0017; 100 filings seeded; 74 tables / 1546 rows digested; `migrate-lock`; `finish-upgrade`; `dataverify`: every row present and unchanged, the only addition `ops.schema_migrations` +1 | `up-*` |
+| 09 | PASS (12): edited, missing and renamed applied migration: verify and apply refuse, ledger unchanged, each undone. Afterwards `stage_tree.py` finds exactly the six root-owned `.pyc` files of finding F-1 (section 7), not a defect | `up-stage_scenarios-tamper.txt`, `up-stage_tree.txt` |
+| 10 | PASS (13): 210 UPDATE/DELETE/TRUNCATE attempts refused, 0 not refused; run after the seed. 276 role x empty-table cases had no row to change (the check says so) | `main-stage_checks-roles.txt` |
+| 11 | PASS (6) | `main-stage_checks-preflights.txt` |
+| 12 | PASS: units 10 (10 again on the upgrade host), disarmed wake-ups 2 (run before the seed, because of D-11) | `main-stage_checks-units.txt`, `main-stage_scenarios-wakeups.txt` |
+| 13 | PASS (7, with ST-17): the dump timer's aged stamp: catch-up dump ran after the restart; no restore check | `main-stage_scenarios-restart-verify.txt` |
+| 14 | PASS: concurrency 2 (both second runners record `busy`), `migrate-lock` 2 | `main-stage_scenarios-concurrency.txt`, `up-stage_scenarios-migrate-lock.txt` |
+| 15 | PASS (1 + 6): PostgreSQL crash recovery after SIGKILL; orphan closed as abandoned; the dead claim expired | `main-stage_scenarios-crash-*.txt` |
+| 16 | PASS (4): exit 4 with PostgreSQL down; a dump without a database is never a success | `main-stage_scenarios-outage.txt` |
+| 17 | PASS: `stop` in 1 s, exit 0; PostgreSQL started without crash recovery | `logs/driver.log`, restart-verify |
+| 18 | PASS (12) | `main-stage_checks-filesystem.txt` |
+| 19 | PASS (2): the 64 MiB tmpfs refused (5) | `main-stage_scenarios-disk-gate.txt` |
+| 20 / 21 | PASS: backups 5 (no restore); 21a off-site failure 6, with its three leak-scan controls first; 21b mid-run outage 3 | `main-stage_scenarios-backups/offsite-failure/midrun-outage.txt` |
+| 22 | PASS: 0 of 1358 evidence files contain the test secret (journals, inspects, image histories included) | `canary/result.txt` |
+| 23 | PASS: 51 layouts harvested (48 with cells); 300 F4 extractions, 300 F5 runs; database 25 MB (22.6 kB per extraction); synthetic only | `runner/harvest*`, `main-seed-full.txt`, `main-stage_checks-metrics.txt` |
+| 24 | PASS: both `test_rf4_fault_budget_postgres` cases are in L16 (passed) | `runner/L16/L16/junit.xml` |
+| 25 | PASS: all 19 groups, nothing deselected; counts equal CI's (table below) | `runner/groups-summary.txt` |
+| 26 | PASS with one recorded difference: the no-cache build's package manifest differs from `packages.lock` in two package revisions (see the findings); the application tree and Poppler are identical in the two builds; the two provisioning histories' fingerprints (main: fresh; up: 0017 then 0018) are identical in 7 of 7 components | `results/st26/` |
+| 27 | PASS (9): R-F4 `verify` as the real login `cse_verifier`, preflight by both routes, complete scope, 300 / 300 rebuilt | `main-stage_checks-rf4verify.txt` |
+| 28 | PASS (16): §20.6 steps 1-5, peer authentication; **step 6 needs a restored copy and is Phase C** | `main-stage_checks-reader.txt` |
+| 29 | PASS (12): P1's extended `verify_server` (REG-X03): 47 checks, 46 PASS, 1 WARN (D-02), 0 FAIL other than the container clock (D-04); the ten required checks PASS | `main-stage_checks-regx03.txt` |
+| 32 | RE-RUN (INFO, REG-B32, D-1): 27 sequences, 25 identity-always and 2 serial; all logged, none extension-owned, all bigint. REG-B32 stays OPEN | `main-stage_checks-seqkinds.txt` |
+| invariants | PASS (9 each, every run): no `restore_check` row, no R1 path, never armed, contact e-mail empty, the host-side R1 cross-check empty. At the end both hosts: `restore_check` rows 0, R1 path absent, armed decisions 0 | `*-invariants*.txt`, `logs/campaign.log` ("CLOSE") |
+
+### ST-25: the runner groups (nothing deselected; every record says `deselected: none` and an empty `PYTEST_ADDOPTS`)
+
+CI's own counts are those of the `ci-regression` and `ci-fast` runs on `25cac3e` (runs 42657694909 and 42657694949, all
+groups clean). The merge commit `af1fdd1` has no run of its own; its tree is identical to `25cac3e`'s (`git diff
+25cac3e af1fdd1` is empty), so the counts apply to the same tests and files.
+
+| Group | Attempt | Result here | CI at `25cac3e` |
+|---|---|---|---|
+| offline | 1 | 2176 passed, 680 skipped | 2176 passed, 680 skipped |
+| L01 / L02 / L03 | 1 | 47 / 241 / 55 passed | the same |
+| L04 | 3 (r1 and r2 stopped by the RAM watcher) | 57 passed | 57 passed |
+| L05 | 1 | 11 skipped (the RDV evidence is absent) | 11 skipped |
+| L06 | 1 | 48 passed | 48 passed |
+| L07 / L08 | 1 | 25 passed / 270 passed, 4 skipped | the same |
+| L09 | 1 | 27 passed | 27 passed |
+| L10 / L11 / L12 | 1 | 171 passed, 3 skipped / 12 passed / 378 passed, 4 skipped | the same |
+| L13 / L14 | 1 | 10 passed, 17 skipped / 256 passed, 1 skipped | the same |
+| L15 | 1 | 380 passed, 2 xfailed (the frozen Stage E D-2 markers) | 380 passed, 2 xfailed |
+| L16 | 1 | 755 passed, 82 skipped | 755 passed, 82 skipped |
+| X1 / X2 | 1 / 3 (X2 r1 and r2 stopped by the RAM watcher) | 1 passed / 51 passed | the same |
+
+No test failed anywhere. The skips are the evidence-dependent and network-gated tests (the RDV evidence was lost on
+2026-10-10; real-document tests need `F4_REAL_DOCUMENTS=1`): a limitation, not a pass.
+
+**The restore-executing tests ran in the runner containers, all passed:** `test_p1_postgres` 2 (L15: 5.3 s and 6.3 s),
+`test_f64_postgres::test_p16_dump_restore_check_then_verify_on_the_restored_copy` (L09: 3.6 s), `test_rf4_runbook_rehearsal`
+`test_c1` to `test_c6` (L16: 13 to 25 s each). L16 also holds `test_staging_restore_postgres` i1 to i3 (the isolated-restore
+procedure on disposable clusters), which passed. The runner containers of L09, L15 (its one attempt) and L16 were removed
+by hand once their results, console log, provenance and `docker inspect` were saved (the owner's condition, 2026-11-04):
+the driver's `runner` creates ordinary containers, not `--rm` ones, and removes none (section 3). Nothing restored into a
+staging volume; the host containers' R1 gate was never opened.
+
+### RAM events (owner rule: 5 % floor; heavy groups started at 18 % or more)
+
+- 17:03:58Z: free RAM 3.5 % after `stage_provision.sh again` with the main host running; the step had already ended, the
+  gate paused the next step until 8 %.
+- The RAM watcher stopped runner containers four times (exit 143, free RAM below 5 %; partial logs and the containers are kept
+  as `runner/<group>` and `-r2`): X2 attempt 1 (started at 11.2 %), X2 attempt 2 (started at 20 %), L04 attempt 1 (started at
+  26.7 %, stopped within 30 s) and L04 attempt 2 (started at 29.6 %). No test had failed when they were stopped. L04 and X2 each
+  passed on attempt 3 (started at 26.1 % and 24.4 %); no group was stopped three times. To keep that third attempt from
+  being a campaign-ending stop, the third attempts of L04 and X2 were run last, after ST-26, the closing steps and the
+  groups L06 and L15 (which passed at the first attempt, started at 30.9 % and 26.2 %). From L04's first stop on, the heavy
+  groups (L04, L06, L15, X2) were gated at 25 % or more rather than 18 %.
+- Free RAM moved between 2 % and 31 % with no campaign container running (other programs). The six supoclip containers exited
+  at 17:01:09Z to 17:01:14Z, before the first container step of block B1, not by any command of this campaign; they were not
+  restarted. The campaign's RAM figures from then on were taken with supoclip stopped.
+- Driver files: `blockD.sh`, `blockD2.sh`, `blockD3.sh` and `blockD4.sh` were each stopped by me while idle in a RAM gate
+  (no container running) and replaced by a new file name (`blockD2.sh` to `blockD5.sh`); no running script was edited.
+
+### Findings and limitations (none is a product defect)
+
+1. **ST-26: two package revisions differ between the builds.** The no-cache build's manifest has `ca-certificates
+   20260816ubuntu0.24.04.2` and `libsqlite3-0 3.45.1-1ubuntu2.9` where `packages.lock` (and so the acceptance images)
+   have `.1` and `ubuntu2.8`: Ubuntu security updates published between the two builds. Classified: an environment
+   limitation of rebuilding from a moving apt archive (T1's results record it as an assumption: the package set would match only while the archive stands still). The acceptance
+   images are unchanged and match `packages.lock`; the application tree is identical; nothing in the build is pinned
+   below the archive.
+2. **F-1** (section 7): after provisioning the application tree differs from the commit by the six root-owned `.pyc` files
+   (ST-09's `stage_tree.py`): the recorded, accepted P1 behaviour.
+3. **D-01 to D-11** apply as recorded in section 4; D-11 shaped the order (wake-ups before the seed; after it every HB-6
+   wake-up reports the `designation` attention and the scenarios that run a wake-up accept exactly that).
+4. **OD-16:** the Docker Desktop restart test was not run (it would restart other projects' containers); recorded as a
+   limitation, the owner may run it. The restart steps that were run are container stops, kills and starts.
+5. **Evidence-dependent skips** (L05 11, L16 82, and the skips in offline, L08, L10, L12 to L14): the RDV evidence is lost.
+6. **ST-28 step 6, ST-30 and ST-31** need a restore and are Phase C. ST-33 is the owner's.
+7. **ST-10** ran once, after the seed; 276 role x empty-table cases had no row to change, as the check reports.
+8. **ST-22's scan** has its three controls in ST-21a (the pattern finds the stored credential and an LF-free copy and stays
+   silent on a file without it); the canary run itself carries no positive control of its own, and scanned 1358 files.
+9. **Harness notes:** the driver's `runner` containers are not `--rm` (removed by hand as above); the driver's `guard` checks
+   only the 5 % floor at the start of a step, so the watcher of the campaign's own driver (`D:\cse-staging\p3b1\driver\lib.sh`)
+   enforced it during the steps; `staging.sh` and every harness file were unchanged.
+
+### Docker objects kept (all stopped; Phase C needs the same build)
+
+Containers: `cse-stg-p3b1-host`, `cse-stg-p3b1-up-host`, `cse-stg-p3b1-trial-l1`, `cse-stg-p3b1-runner-harvest`, and the
+runner containers of the groups other than L09, L15 and L16 (including the stopped partial attempts of L04 and X2).
+Volumes: `cse-stg-p3b1-{pgdata,backup,offsite}` and `cse-stg-p3b1-up-{pgdata,backup,offsite}`. Images: the three above.
+T2's `t2s1` objects, `cse-p1-test` and supoclip's objects were not touched.
