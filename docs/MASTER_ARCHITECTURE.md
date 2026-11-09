@@ -1802,12 +1802,14 @@ server. Till then, everything stays on this machine."
         deployment arrangement stays as stated under "Production remains
         distinct". By the owner's decision of 2026-11-09 ("Start from
         the local database"), the server deployment starts from the
-        locally proven database, moved through a verified backup and the
-        isolated-restore procedure (`docs/ops/ISOLATED_RESTORE.md`) and
-        its checks, with no second backfill and no duplicate CSE
-        requests. Which §54 gates re-run on the server is decided when
-        milestone 14 is designed; at least the server's smoke tests and
-        the verification of every recorded difference re-run.
+        locally proven database, with no second backfill and no
+        duplicate CSE requests. The backup is verified first on an
+        isolated copy with the isolated-restore procedure
+        (`docs/ops/ISOLATED_RESTORE.md`), which never targets
+        production. How the verified database is moved onto the server
+        is designed at milestone 14, together with which §54 gates
+        re-run there; at least the server's smoke tests and the
+        verification of every recorded difference re-run.
 
 ------------------------------------------------------------------------
 
@@ -2927,10 +2929,9 @@ owner's accepted risk (owner decision, 2026-11-09). The items the
 workstation cannot meet as written, among them the off-site backup, the
 time service behind the clock, separate-disk backups, the firewall, and
 systemd on Ubuntu's kernel, are recorded differences there, met or
-verified at the later server deployment, as §43.1 lists. Apart from the
-off-site backup, which the owner deferred to the server deployment at
-that accepted risk, nothing is waived, and this note authorizes no
-capture.)*
+verified at the later server deployment, as §43.1 lists. None is waived:
+the off-site backup is deferred to the server deployment at the owner's
+accepted risk. This note authorizes no capture.)*
 
 The first capture must produce explicit evidence of:
 
