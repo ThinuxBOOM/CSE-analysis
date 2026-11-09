@@ -6,6 +6,12 @@ status and HB-6 freeze). Nothing here has contacted CSE. The live pilot is an ow
 server provisioning and the HB-P1 chain (Master Architecture §43.1). G-1 is an owner-accepted risk, **not** CSE
 authorization (`docs/governance/G-1_CSE_DATA_USE.md`).
 
+*(2026-11-09, owner decision; Master Architecture §43.1, "Local production first"; `docs/R_F4_DESIGN.md`
+§10: after Docker staging and the build's acceptance, the live prerequisites, the pilot and the bulk backfill run first
+in a local production environment in Docker on the owner's workstation, not on a server. Until the later server
+deployment, "the server" and "server provisioning" in this runbook's deployment steps mean that environment, with the
+recorded differences that §43.1 lists. That environment is not designed or built; the runbook is otherwise unchanged.)*
+
 Design: `docs/PHASE2_HISTORICAL_BACKFILL_DESIGN.md` (sections 14, 16, 17, 20, 21, 23.4, 25 and 27). Where this runbook
 and the design differ, the design wins.
 
@@ -248,6 +254,11 @@ Verification at the freeze audit (2026-10-13, on `9f05041`):
   died of SIGPIPE. The probe was fixed in `0c6d9cc`.
 
 ## 12. Deployment prerequisites (owner-run; none is an implementation prerequisite)
+
+*(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": these prerequisites are
+met first in the local production environment in Docker on the owner's workstation. "The local Ubuntu 24.04 server" and
+"server provisioning" below are that environment's until the later server deployment; the requirements the workstation
+cannot meet as written are recorded differences there, verified at the server deployment.)*
 
 - The local Ubuntu 24.04 server; native PostgreSQL 17; P1 provisioning (roles, peer authentication, backups and the
   off-site destination); migrations 0001–0017 through P1's runner, or 0001–0018 for a build that includes R-F4.

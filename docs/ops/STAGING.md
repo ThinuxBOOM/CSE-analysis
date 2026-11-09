@@ -142,6 +142,13 @@ it, section 11. Without a valid, unused RA the gate is unchanged, and so is ever
 | D-10 | `fsync` reaches a virtual disk on NTFS; host power loss is not tested (only process and container kills) | On the server |
 | D-11 | No F6.4 designation is ever made (an owner path). Once the synthetic seed has registered an F5 configuration, every HB-6 wake-up reports `attention` (`designation`: registered, not designated) and exits 2, and its unit's result is a failure; the wake-up itself does no work and contacts nobody | On the server after the owner's designation |
 
+*(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": milestone 10 is now the
+local production deployment in Docker on the owner's workstation, which shares this workstation's Docker host. Where
+this table says "production smoke tests (milestone 10)" or "on the server" for a property of the server itself (D-01 to
+D-04, D-09, D-10), it is verified at the later server deployment (`docs/R_F4_DESIGN.md` §10, milestone 14). D-11's
+designation is an owner step in the production environment, which is first the local one. Differences that the local
+production environment shares are for its own design to record.)*
+
 ## 5. Procedure (T1 shakedown)
 
 All commands from the repository root in Git Bash; evidence goes to `D:\cse-staging\<campaign>` (`CSE_STAGING_EVIDENCE`),
