@@ -104,7 +104,14 @@ disabled (`systemctl mask` cannot be used: the unit file lives in `/etc/systemd/
 container (`/var/lib/cse-staging/r1-authorized-runs`, "<run id> <RA id> <RA sha256>") and on the host
 (`D:\cse-staging\<campaign>\restore\r1-runs.log`). `stage_checks.sh invariants` and `stage_scenarios.sh
 restart-verify` then PASS only when the `restore_check` rows are exactly the bound runs; any other row, a binding
-without its row, or a malformed or repeated binding FAILs.)* Limit: root inside the container can
+without its row, or a malformed or repeated binding FAILs.)* *(2026-11-09, AR-0006-2 G-1: the container's file alone is
+not trusted. Wherever those two steps run, `staging.sh run` follows them, on the host, with `restore_gate.py
+r1-crosscheck`. That check reads the container's `restore_check` rows and its `r1-authorized-runs`, and checks every
+binding against the host's own records, which the container cannot write: `ra-consumed.log` (a consumed R1 RA of
+this campaign, with that SHA-256) and `r1-runs.log` (the same run id for that RA). Every host binding must be in the
+container, and the rows must be exactly the bound runs. A failure, or rows that cannot be read, FAILs the step's
+record and its exit status. So a binding forged inside the container (for example to an RA consumed nowhere) FAILs.)*
+Limit: root inside the container can
 still run the module by hand; only governance and that detective check cover it. *(2026-11-04: the owner adopted the
 authorization mechanism, OD-12 (DR-0002): R1 (P1 section 8A) and R2 (the isolated restored copy) are implemented behind
 it, section 11. Without a valid, unused RA the gate is unchanged, and so is every refusal.)*
@@ -393,7 +400,8 @@ read-only, once, and checks, failing closed:
 5. Asserted: the gate is closed again, there is **exactly one new `restore_check` row**, it `succeeded` and covers the
    newest dump (every digest equal), and **`restore-scratch` is empty**. The unit's journal is in the record. That one
    row is bound to the RA in the container (`/var/lib/cse-staging/r1-authorized-runs`) and on the host
-   (`restore_gate.py bind-r1`, `r1-runs.log`), so later invariant checks accept it and nothing else (section 3).
+   (`restore_gate.py bind-r1`, `r1-runs.log`), so later invariant checks accept it and nothing else: the container's
+   check and the host-side cross-check that `run` performs after it (section 3).
 6. `stage_restore.sh` is removed from the host container. The record is `results/<suffix|main>-restore-R1.txt`.
 
 **ST-31, R2** (`staging.sh restore R2 <RA> [suffix]`):

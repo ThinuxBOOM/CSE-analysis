@@ -5,6 +5,7 @@ and 11; docs/ops/ISOLATED_RESTORE.md). Fail closed: any check that cannot be mad
     python restore_gate.py ra --ra FILE --operation R1|R2 --campaign C --revision SHA --label-revision SHA
                               --image-id ID --tagged-image-id ID --target NAME --evidence DIR [--consume]
     python restore_gate.py bind-r1 --campaign C --ra-id RA-NNNN --ra-sha SHA256 --run-id N
+    python restore_gate.py r1-crosscheck --campaign C --rows-file ROWS --bindings-file BINDINGS
     docker inspect <r2 container> | python restore_gate.py r2inspect --campaign C --target NAME --image-id ID
     python restore_gate.py source --file SOURCE.json
 
@@ -21,7 +22,10 @@ inside the other's directory. The RA file is opened read-only, once; nothing is 
 --consume, a valid RA is recorded as used (one appended line) before anything runs; without it, nothing is written.
 
 `bind-r1` records the `restore_check` run that a consumed R1 RA produced (`r1-runs.log` beside the consumption record;
-AR-0006-1 F-2). Prints one PASS or FAIL line per check; exit 0 only when every check passed.
+AR-0006-1 F-2). `r1-crosscheck` is the R1 invariant's host-side half (AR-0006-2 G-1): `staging.sh run` calls it after
+`stage_checks.sh invariants` and `stage_scenarios.sh restart-verify`, with the container's restore_check rows and its
+r1-authorized-runs, and checks every binding against these host records. Prints one PASS or FAIL line per check; exit 0
+only when every check passed.
 """
 import argparse
 import datetime
@@ -241,6 +245,69 @@ def cmd_bind_r1(a):
     return 0
 
 
+BINDING = re.compile(r"([1-9][0-9]*) (RA-[0-9]{4}) ([0-9a-f]{64})")
+
+
+def host_runs(campaign, record_root=RECORD_ROOT):
+    """r1-runs.log as (run id, RA id, RA sha256) triples; a malformed line refuses (fail closed)."""
+    path = r1_runs_record(campaign, record_root)
+    out = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) != 5 or not BINDING.fullmatch(" ".join(parts[1:4])) or parts[4] != campaign:
+                    raise Malformed(f"{path} has a malformed line")
+                out.append(tuple(parts[1:4]))
+    return out
+
+
+def crosscheck(campaign, rows_text, bindings_text, record_root=RECORD_ROOT):
+    """The R1 invariant's host-side half (AR-0006-2 G-1). Every binding line in the container's r1-authorized-runs must
+    name a consumed R1 RA of this campaign (ra-consumed.log: id and sha256) and the run that bind-r1 recorded for it
+    (r1-runs.log: run id, id and sha256). Every host binding must be in the container's file, and the container's
+    restore_check rows must be exactly the bound runs. The host records are written only by the harness, outside the
+    container, so a line forged inside the container cannot pass."""
+    rows = rows_text.split()
+    lines = [l for l in bindings_text.replace("\r\n", "\n").split("\n") if l.strip()]
+    bindings = [BINDING.fullmatch(l) for l in lines]
+    yield all(re.fullmatch(r"[1-9][0-9]*", r) for r in rows) and len(set(rows)) == len(rows), \
+        f"the restore_check rows read from the container are run ids ({' '.join(rows) or 'none'})"
+    yield all(bindings), f"every container binding is '<run id> <RA id> <sha256>' ({len(lines)} line(s))"
+    triples = [m.groups() for m in bindings if m]
+    yield len({t[0] for t in triples}) == len(triples) and len({t[1] for t in triples}) == len(triples), \
+        "no run and no RA is bound twice in the container"
+    try:
+        rec = consumption_record(campaign, record_root)
+        consumed = {(e[0], e[1]) for e in consumed_entries(rec) if e[2] == "R1" and e[3] == campaign} \
+            if os.path.exists(rec) else set()
+        hosted = host_runs(campaign, record_root)
+    except (OSError, Malformed, UnicodeDecodeError) as exc:
+        yield False, f"the host records cannot be read: {exc}"
+        return
+    for run, ra, sha in triples:
+        yield (ra, sha) in consumed, f"binding of run {run}: {ra} ({sha[:12]}...) is a consumed R1 RA of {campaign} (host)"
+        yield (run, ra, sha) in hosted, f"binding of run {run}: the host recorded this run for {ra} (r1-runs.log)"
+    for run, ra, sha in hosted:
+        yield (run, ra, sha) in triples, f"host binding of run {run} to {ra} is present in the container"
+    ok_rows = all(re.fullmatch(r"[1-9][0-9]*", r) for r in rows)
+    yield ok_rows and sorted(rows, key=int) == sorted((t[0] for t in triples), key=int), \
+        (f"the container's restore_check rows ({' '.join(rows) or 'none'}) are exactly the bound runs "
+         f"({' '.join(t[0] for t in triples) or 'none'})")
+
+
+def cmd_r1_crosscheck(a):
+    with open(a.rows_file, encoding="utf-8") as f:
+        rows = f.read()
+    with open(a.bindings_file, encoding="utf-8") as f:
+        bindings = f.read()
+    ok = True
+    for passed, text in crosscheck(a.campaign, rows, bindings):
+        print(("PASS " if passed else "FAIL ") + "r1-crosscheck: " + text)
+        ok = ok and passed
+    return 0 if ok else 1
+
+
 def r2_checks(c, campaign, target, image_id):
     hc = c.get("HostConfig") or {}
     labels = (c.get("Config") or {}).get("Labels") or {}
@@ -316,6 +383,9 @@ def main(argv=None):
     b = sub.add_parser("bind-r1")
     for k in ("campaign", "ra_id", "ra_sha", "run_id"):
         b.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
+    x = sub.add_parser("r1-crosscheck")
+    for k in ("campaign", "rows_file", "bindings_file"):
+        x.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
     i = sub.add_parser("r2inspect")
     for k in ("campaign", "target", "image_id"):
         i.add_argument("--" + k.replace("_", "-"), dest=k, required=True)
@@ -323,7 +393,8 @@ def main(argv=None):
     s.add_argument("--file", required=True)
     a = ap.parse_args(argv)
     try:
-        return {"ra": cmd_ra, "bind-r1": cmd_bind_r1, "r2inspect": cmd_r2inspect, "source": cmd_source}[a.command](a)
+        return {"ra": cmd_ra, "bind-r1": cmd_bind_r1, "r1-crosscheck": cmd_r1_crosscheck, "r2inspect": cmd_r2inspect,
+                "source": cmd_source}[a.command](a)
     except (OSError, ValueError) as exc:
         print(f"FAIL {a.command}: {type(exc).__name__}: {exc}")
         print("REFUSED: nothing was consumed or run")

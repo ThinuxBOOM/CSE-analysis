@@ -259,11 +259,26 @@ new_log() {  # new_log NAME -> a results path that does not exist yet (evidence 
 
 RUN_SCRIPTS=" stage_checks.sh stage_provision.sh stage_scenarios.sh stage_tree.py "   # `run` executes these inner scripts only
 
+r1_crosscheck() {  # r1_crosscheck CONTAINER: every restore_check row and binding against the host's fixed RA records (G-1)
+  local name=$1 tmp rc
+  tmp=$(mktemp -d)
+  docker exec "$name" runuser -u postgres -- psql -XAt -d cse --set=ON_ERROR_STOP=1 \
+    -c "select id from ops.backup_runs where run_kind = 'restore_check' order by id" > "$tmp/rows" 2> "$tmp/rows.err" \
+    || { echo "FAIL r1-crosscheck: the restore_check rows could not be read: $(head -c 300 "$tmp/rows.err")"; rm -rf "$tmp"; return 1; }
+  docker exec "$name" sh -c 'cat /var/lib/cse-staging/r1-authorized-runs 2>/dev/null || true' > "$tmp/bindings"
+  python "$HERE/restore_gate.py" r1-crosscheck --campaign "$CAMPAIGN" --rows-file "$(winpath "$tmp/rows")" \
+    --bindings-file "$(winpath "$tmp/bindings")"
+  rc=$?
+  rm -rf "$tmp"
+  return $rc
+}
+
 cmd_run() {
   local suffix=$1 script=$2; shift 2
   local name tag log
-  # an allowlisted name, never a path: no `/`, no `..`, so no other file in the container can be reached (AR-0006-1 N-3)
-  [[ $script != */* && $script != *..* && "$RUN_SCRIPTS" == *" $script "* ]] \
+  # an allowlisted name, never a path: no `/`, no `..`, no space, so no other file in the container can be reached
+  # (AR-0006-1 N-3; AR-0006-2 N-2)
+  [[ $script != */* && $script != *..* && $script != *" "* && "$RUN_SCRIPTS" == *" $script "* ]] \
     || { echo "run: '$script' is not one of the inner scripts:$RUN_SCRIPTS" >&2; exit 2; }
   name=$(host_name "$suffix")
   tag="${script%.*}"; [[ -z "${1:-}" || "$1" == */* ]] || tag+="-$1"
@@ -274,6 +289,11 @@ cmd_run() {
   set +e
   docker exec "$name" "$interp" "/opt/cse-staging/$script" "$@" >> "$log" 2>&1
   local rc=$?
+  # the R1 invariant's host-side half (AR-0006-2 G-1): wherever the container evaluates it, the harness cross-checks
+  # the container's bindings and restore_check rows against the host's own records, which the container cannot write
+  if [[ ($script == stage_checks.sh && ${1:-} == invariants) || ($script == stage_scenarios.sh && ${1:-} == restart-verify) ]]; then
+    r1_crosscheck "$name" >> "$log" 2>&1 || rc=1
+  fi
   set -e
   echo "exit $rc" >> "$log"
   note "$script $*: exit $rc ($(grep -c '^PASS' "$log") PASS, $(grep -c '^FAIL' "$log") FAIL)"

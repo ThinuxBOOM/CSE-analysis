@@ -328,7 +328,8 @@ age_dump_stamp() {
 }
 
 R1_RUNS=/var/lib/cse-staging/r1-authorized-runs   # "<run id> <RA id> <RA sha256>": written only by an authorized R1
-restore_rows_ok() {  # restore_rows_ok LABEL: every restore_check row is an authorized R1 run, and every binding a row (F-2)
+restore_rows_ok() {  # restore_rows_ok LABEL: every restore_check row has a binding, and every binding a row (F-2). The
+  # container half only: `staging.sh run` then cross-checks each binding against the host's RA records (r1-crosscheck, G-1)
   local rows bound malformed
   rows=$(psu "select coalesce(string_agg(id::text, ' ' order by id), '') from ops.backup_runs where run_kind = 'restore_check'")
   malformed=0; bound=""
@@ -339,7 +340,7 @@ restore_rows_ok() {  # restore_rows_ok LABEL: every restore_check row is an auth
   fi
   if [[ $malformed -ne 0 ]]; then bad "$1: $R1_RUNS has a malformed or repeated binding"
   elif [[ "$rows" == "$bound" ]]; then
-    pass "$1: every restore_check row is an authorized R1 run bound to its RA (rows: ${rows:-none})"
+    pass "$1: every restore_check row has exactly one binding (rows: ${rows:-none}); the host cross-check follows"
   else bad "$1: restore_check rows [${rows:-none}] are not exactly the authorized R1 runs [${bound:-none}]"; fi
 }
 

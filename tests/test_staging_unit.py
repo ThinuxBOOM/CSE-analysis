@@ -49,6 +49,8 @@ The guards above are unchanged: without a valid RA the harness behaves exactly a
     r10 F-2: the invariants accept exactly the restore_check rows bound to a consumed R1 RA (bind-r1)
     r11 stage_restore.sh's R1, environment and R2 decisions against stubs; `run` executes only its allowlist
     r12 each wrapper's identity route follows the env files it sources; P1's authentication check
+    r13 round 3 (AR-0006-2 G-1): every container binding is cross-checked against the host's RA records by `run`
+    r14 a junction or symlink is resolved before any path comparison (the evidence, the record, the vault)
 """
 import hashlib
 import json
@@ -1232,7 +1234,7 @@ def test_r4_the_harness_never_writes_into_the_vault_and_its_records_are_fixed():
     writes = [o for o in re.findall(r"open\(([^)]*)\)", gate) if re.search(r'"(a|w|x|r\+|wb|ab)"', o)]
     assert writes == ['rec, "a", encoding="utf-8", newline="\\n"'], writes
     assert gate.count('open(r1_runs_record(a.campaign), "a", encoding="utf-8", newline="\\n")') == 1
-    assert gate.count('open(') == 6                     # the two appends, the RA (rb), and three reads
+    assert gate.count('open(') == 9                     # the two appends, the RA (rb), and six reads
     assert "os.remove" not in gate and "unlink" not in gate and "rename" not in gate
     # F-1: the roots are literals; nothing reads the environment, and no option names a record path
     assert re.search(r'^RECORD_ROOT = "D:/cse-staging" ', gate, re.M) and re.search(r'^VAULT_ROOT = "D:/Main Vault" ', gate, re.M)
@@ -1704,7 +1706,8 @@ python3() { echo "tool $*" >> "$CALLS"; return 0; }
     assert "fail=1" in out and "provision" not in calls and "tool" not in calls
     # `staging.sh run` executes only its allowlist: no path, no `..`, no restore script (AR-0006-1 N-3, experiment e2)
     for script in ("../cse/app/ops/staging/restore/stage_restore.sh", "stage_restore.sh", "/opt/cse-restore/stage_restore.sh",
-                   "seed_synthetic.py", "inner/stage_checks.sh", "stage_checks.sh/..", ""):
+                   "seed_synthetic.py", "inner/stage_checks.sh", "stage_checks.sh/..", "",
+                   "stage_checks.sh stage_provision.sh"):              # AR-0006-2 N-2: two names joined by a space
         d = tmp_path / ("run-" + re.sub(r"[^a-z]", "", script)[:20] + str(len(script)))
         d.mkdir()
         p, _ = driver(d, "run", "", script, "r1")
@@ -1790,3 +1793,169 @@ def test_r12_each_commands_identity_check_follows_that_commands_own_connection_s
     assert any("pg_hba rules" in p for p in IR.p1_auth_problems(FakeCursor(hba + [("host", ["all"], ["all"], "scram-sha-256", [])], ident, ""), REPO))
     assert any("pg_ident" in p for p in IR.p1_auth_problems(FakeCursor(hba, ident[:3], ""), REPO))
     assert any("in error" in p for p in IR.p1_auth_problems(FakeCursor(hba, ident, "", hba_errors=1), REPO))
+
+
+# ---- round 3 (AR-0006-2): r13 the host-side cross-check of R1's bindings, r14 links resolved --------------------------
+
+STUB_CROSS = """#!/usr/bin/env bash
+# a stand-in for the docker CLI for `staging.sh run`: the container's restore_check rows and r1-authorized-runs
+printf '%s\\n' "$*" >> "$STUB_LOG"
+case "$1" in
+  inspect) echo "sha256:0000stubimage" ;;
+  exec)
+    case "$*" in
+      *"sha256sum -- *"*) : ;;
+      *psql*) [[ -z ${STUB_PSQL_FAIL:-} ]] || { echo "psql: error: connection refused" >&2; exit 2; }
+              cat "$STUB_ROWS" ;;
+      *r1-authorized-runs*) cat "$STUB_BINDINGS" ;;
+      *stage_checks.sh*|*stage_scenarios.sh*) echo "PASS stub check" ;;
+    esac ;;
+esac
+exit 0
+"""
+SHA_A = "a" * 64
+
+
+def host_run_line(run, ra="RA-0001", sha=SHA_A, campaign="ut"):
+    return f"2026-11-09T00:00:00+00:00\t{run}\t{ra}\t{sha}\t{campaign}\n"
+
+
+def cross_run(tmp_path, rows="", bindings="", consumed=None, runs=None, script="stage_checks.sh", arg="invariants",
+              extra_env=None):
+    """`staging.sh run "" SCRIPT ARG` from a harness copy (fixed roots in tmp_path), with the container's rows and
+    bindings served by a stub docker and the host's records written into the copy's fixed record directory."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    root, fixed, _ = harness_copy(tmp_path)
+    rec = fixed / "ut" / "restore"
+    rec.mkdir(parents=True, exist_ok=True)
+    if consumed is not None:
+        (rec / "ra-consumed.log").write_text(consumed, encoding="utf-8", newline="\n")
+    if runs is not None:
+        (rec / "r1-runs.log").write_text(runs, encoding="utf-8", newline="\n")
+    stub = tmp_path / "stub"
+    stub.mkdir()
+    (stub / "docker").write_text(STUB_CROSS, encoding="utf-8", newline="\n")
+    (stub / "python").write_text(f'#!/bin/sh\nexec "{bash_path(sys.executable)}" "$@"\n', encoding="utf-8", newline="\n")
+    for f in stub.iterdir():
+        f.chmod(0o755)
+    (tmp_path / "rows").write_text(rows.replace(" ", "\n") + ("\n" if rows else ""), encoding="utf-8", newline="\n")
+    (tmp_path / "bindings").write_text(bindings, encoding="utf-8", newline="\n")
+    env = {"PATH": str(stub) + os.pathsep + os.environ.get("PATH", ""), "CSE_STAGING_REV": REV40,
+           "CSE_STAGING_CAMPAIGN": "ut", "CSE_STAGING_EVIDENCE": bash_path(tmp_path / "evid"),
+           "CSE_STAGING_SECRETS": bash_path(tmp_path / "secrets"), "STUB_LOG": bash_path(tmp_path / "docker-calls.log"),
+           "STUB_ROWS": bash_path(tmp_path / "rows"), "STUB_BINDINGS": bash_path(tmp_path / "bindings")}
+    env.update(extra_env or {})
+    p = run_bash(tmp_path, f'bash "{bash_path(root / "ops" / "staging" / "staging.sh")}" run "" {script} {arg}\n', env)
+    logs = list((tmp_path / "evid" / "results").glob("main-*.txt"))
+    return p, (logs[0].read_text(encoding="utf-8") if logs else ""), \
+        (tmp_path / "docker-calls.log").read_text(encoding="utf-8")
+
+
+def test_r13_every_r1_binding_is_cross_checked_against_the_hosts_ra_records(tmp_path):
+    genuine = dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n", consumed=consumed_line("RA-0001", SHA_A),
+                   runs=host_run_line(41))
+    p, log, calls = cross_run(tmp_path / "genuine", **genuine)
+    assert p.returncode == 0, (p.stdout, p.stderr, log)
+    assert "FAIL" not in log and log.count("PASS r1-crosscheck:") == 7 and log.rstrip().endswith("exit 0"), log
+    assert "psql" in calls and "r1-authorized-runs" in calls
+    # nothing restored, nothing bound, no record: PASS (the campaign before Phase C)
+    p, log, _ = cross_run(tmp_path / "nothing")
+    assert p.returncode == 0 and "FAIL" not in log and "PASS r1-crosscheck:" in log, log
+    sha_f = "f" * 64
+    bad = {
+        # the auditor's x3: a forged container binding to an RA consumed nowhere, with no host record at all
+        "forged RA-9999, no host records": dict(rows="41", bindings=f"41 RA-9999 {sha_f}\n"),
+        # the same forgery beside a genuine consumption of another RA
+        "forged RA-9999 beside a consumed RA": dict(rows="41", bindings=f"41 RA-9999 {sha_f}\n",
+                                                    consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(41)),
+        "a consumed RA under another file's sha256": dict(rows="41", bindings=f"41 RA-0001 {sha_f}\n",
+                                                          consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(41)),
+        "the run id is not in r1-runs.log": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n",
+                                                 consumed=consumed_line("RA-0001", SHA_A)),
+        "r1-runs.log names another run": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n",
+                                              consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(42)),
+        "an R2 RA": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n", consumed=consumed_line("RA-0001", SHA_A, op="R2"),
+                         runs=host_run_line(41)),
+        "consumed for another campaign": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n",
+                                              consumed=consumed_line("RA-0001", SHA_A, campaign="t2s1"),
+                                              runs=host_run_line(41)),
+        "a host binding missing from the container": dict(rows="", consumed=consumed_line("RA-0001", SHA_A),
+                                                          runs=host_run_line(41)),
+        "a row without a binding": dict(rows="41 42", bindings=f"41 RA-0001 {SHA_A}\n",
+                                        consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(41)),
+        "a binding without its row": dict(rows="", bindings=f"41 RA-0001 {SHA_A}\n",
+                                          consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(41)),
+        "a malformed container binding": dict(rows="41", bindings="41 RA-1 x\n"),
+        "a malformed host record": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n",
+                                        consumed=consumed_line("RA-0001", SHA_A), runs="41 RA-0001\n"),
+        "a repeated binding": dict(rows="41", bindings=f"41 RA-0001 {SHA_A}\n41 RA-0001 {SHA_A}\n",
+                                   consumed=consumed_line("RA-0001", SHA_A), runs=host_run_line(41)),
+    }
+    for i, (label, case) in enumerate(bad.items()):
+        p, log, _ = cross_run(tmp_path / f"bad{i}", **case)
+        assert p.returncode == 1 and "FAIL r1-crosscheck:" in log and log.rstrip().endswith("exit 1"), (label, log)
+    # the forged binding FAILs on the RA, and the genuine host binding is reported missing
+    p, log, _ = cross_run(tmp_path / "forged-detail", **bad["forged RA-9999 beside a consumed RA"])
+    assert "FAIL r1-crosscheck: binding of run 41: RA-9999" in log and "FAIL r1-crosscheck: host binding of run 41 to RA-0001" in log
+    # the rows cannot be read: FAIL, not a pass
+    p, log, _ = cross_run(tmp_path / "psql-fails", **genuine, extra_env={"STUB_PSQL_FAIL": "1"})
+    assert p.returncode == 1 and "FAIL r1-crosscheck: the restore_check rows could not be read" in log, log
+    # wherever the invariant is evaluated: restart-verify too; other steps do not read the records
+    p, log, _ = cross_run(tmp_path / "restart", script="stage_scenarios.sh", arg="restart-verify",
+                          **bad["forged RA-9999, no host records"])
+    assert p.returncode == 1 and "FAIL r1-crosscheck:" in log, log
+    p, log, calls = cross_run(tmp_path / "roles", script="stage_checks.sh", arg="roles", **bad["forged RA-9999, no host records"])
+    assert p.returncode == 0 and "r1-crosscheck" not in log and "psql" not in calls
+    # statically: the cross-check reads only the fixed host records, and staging.sh runs it after both invariant steps
+    drv = read("staging.sh")
+    body = shell_function(drv, "cmd_run")
+    assert body.index('docker exec "$name" "$interp"') < body.index("r1_crosscheck") < body.index('echo "exit $rc"')
+    assert '$script == stage_checks.sh && ${1:-} == invariants' in body and \
+        '$script == stage_scenarios.sh && ${1:-} == restart-verify' in body and "|| rc=1" in body
+    gate = read("restore_gate.py")
+    cc = gate[gate.index("def crosscheck("):gate.index("def cmd_r1_crosscheck(")]
+    assert "consumption_record(campaign, record_root)" in cc and "host_runs(campaign, record_root)" in cc
+    assert not re.search(r'add_argument\("--(consumed|record|runs|r1-runs)', gate)
+    # the auditor's "x3" at the function level: rows 41, binding to RA-9999, no host record
+    roots = gate_roots(tmp_path / "fn")
+    rows = list(GATE.crosscheck("ut", "41\n", f"41 RA-9999 {sha_f}\n", record_root=roots["record"]))
+    assert not all(ok for ok, _ in rows)
+
+
+def make_link(link, target):
+    """A directory junction (Windows) or symlink (POSIX) at `link` pointing to `target`."""
+    os.makedirs(target, exist_ok=True)
+    if os.name == "nt":
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        os.symlink(str(target), str(link), target_is_directory=True)
+
+
+def test_r14_links_are_resolved_before_any_path_comparison(tmp_path):
+    """AR-0006-2 N-1 (R01): the paths are compared after resolving junctions and symlinks (realpath, not abspath), so a
+    fixed directory that is really in the vault, or an RA that is really in the evidence root, refuses."""
+    good = ra_text().encode()
+    # the campaign directory is a link into the vault: refused
+    roots = gate_roots(tmp_path / "a")
+    make_link(os.path.join(roots["record"], "ut"), os.path.join(roots["vault"], "x"))
+    ok, why = verdict(good, os.path.join(roots["vault"], "RA-0001.md"), ra_args(roots), roots)
+    assert not ok and any("no write inside the vault" in w for w in why), why
+    # the restore directory (where the records live) is a link into the vault: refused
+    roots = gate_roots(tmp_path / "b")
+    os.makedirs(os.path.join(roots["record"], "ut"))
+    make_link(os.path.join(roots["record"], "ut", "restore"), os.path.join(roots["vault"], "y"))
+    ok, why = verdict(good, os.path.join(roots["vault"], "RA-0001.md"), ra_args(roots), roots)
+    assert not ok and any("no write inside the vault" in w for w in why), why
+    # an RA reached through a link that leads into the evidence root: refused
+    roots = gate_roots(tmp_path / "c")
+    os.makedirs(os.path.join(roots["record"], "ut"))
+    make_link(str(tmp_path / "c" / "ralink"), os.path.join(roots["record"], "ut"))
+    ok, why = verdict(good, str(tmp_path / "c" / "ralink" / "RA-0001.md"), ra_args(roots), roots)
+    assert not ok and any("the RA is not inside the evidence root" in w for w in why), why
+    # control: a link that leads somewhere harmless is not refused for being a link
+    roots = gate_roots(tmp_path / "d")
+    make_link(os.path.join(roots["record"], "ut"), str(tmp_path / "d" / "elsewhere"))
+    ok, why = verdict(good, os.path.join(roots["vault"], "RA-0001.md"), ra_args(roots), roots)
+    assert ok, why
+    assert "os.path.realpath(path)" in read("restore_gate.py")
