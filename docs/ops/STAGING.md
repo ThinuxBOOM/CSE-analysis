@@ -13,6 +13,16 @@ restore-executing tests (owner, 2026-11-04; section 9).*
 procedures for ST-30 (R1) and ST-31 (R2) (section 11). Nothing restores without the owner's restore authorization for
 that campaign; **no R1 or R2 has run**. Section 3's boundary is rewritten accordingly.*
 
+*2026-11-09, integration history (a correction note): merge commit `54a0614` on `main` (pull request #9) has a
+**mislabelled commit message**. Its text is the description drafted for the later restore-procedure pull request
+("the isolated-restore procedure (REG-B01) and authorization-gated restore at staging"). Its **content is exactly pull
+request #9**: the staging procedures ST-27 to ST-29 and the runner restore tests, from `claude/m8-t3-procedures`. Its
+tree, `b0661d2b32235420bec96c5e3792f956e1dbd773`, is identical to a clean merge of its two parents `8febd7c` and
+`1e22b0e` (`git merge-tree --write-tree 8febd7c 1e22b0e`), and it contains no isolated-restore file (nothing under
+`ops/restore/`, no `ops/staging/restore*`, no `docs/ops/ISOLATED_RESTORE.md`). The isolated-restore procedure, the
+`restore` subcommand and section 11 reach `main` only with the later pull request from `claude/m8-t3-restore`. `main`'s
+history was deliberately not rewritten.*
+
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
 `docs/ops/P3_SCHEDULER.md` and `docs/ops/PHASE2_BACKFILL.md` (what is provisioned and run). Where this document and
