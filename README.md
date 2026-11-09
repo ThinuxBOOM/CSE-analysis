@@ -50,6 +50,11 @@ in [docs/ops/P1_PLATFORM.md](docs/ops/P1_PLATFORM.md). Migrations are applied ON
 and the local security boundary is 0009–0011 (Master Architecture §51). Older sections below that mention Supabase,
 or tell you to apply a single migration by hand, are historical.
 
+*(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": the first production environment is a
+local production environment in Docker on the owner's workstation, separate from staging. The live prerequisites, the
+pilot and the bulk backfill run there; the server deployment comes after the product is proven locally and starts from
+that database. That local environment is not designed or built yet.)*
+
 **CSE data use (G-1) is an owner-accepted risk, NOT CSE authorization.** No CSE permission or licence exists. Any
 CSE access must follow the scope and mandatory controls in
 [docs/governance/G-1_CSE_DATA_USE.md](docs/governance/G-1_CSE_DATA_USE.md).
@@ -133,6 +138,9 @@ FROZEN / ACCEPTED, 2026-10-13):
   (`allSecurityCode`), produced after the software freeze by the first governed P2 capture (software freeze → server
   setup → HB-X2(b) → `CSE_CAPTURE_CONTACT_EMAIL` → P2 capture → `allSecurityCode` verification → derived security
   master → HB-P1 satisfied → live HB-3).
+  *(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": "server setup" and "the deployment
+  server" here are now the local production environment in Docker on the owner's workstation, where HB-P1 is to be
+  satisfied first.)*
 - **HB-4 — Document Worker: implemented and frozen** (final freeze audit 2026-10-07). It is the library package
   `worker/backfill_documents/`. One filing at a time goes through F5's own composition (`load_filings_from_db`,
   `process_batch` with HB-2's governed fetcher, `make_consumer`, `attach_timestamps`, `_persist`), with the ledger

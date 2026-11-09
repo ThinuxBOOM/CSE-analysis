@@ -1739,41 +1739,52 @@ server. Till then, everything stays on this machine."
     pilot, HB-S4) stays the owner's explicit decision. CSE is contacted
     only through the project's governed transport inside that
     environment, never ad hoc from the host. The contact e-mail is the
-    owner's to provide (G-1 control 4). The owner chooses the off-site
-    backup destination. G-1's controls (§46) apply to the workstation,
-    which will then hold production CSE data. The release sequence, the
-    HB-P1 chain and the gates of §54 apply as written, with "production"
-    meaning the local production environment: "production server
-    provisioning" and "server setup" above are that environment's
-    provisioning and setup, its production smoke tests make no CSE
-    request, and HB-P1 is satisfied only in its production database.
-    Staging still cannot satisfy HB-P1, and staging evidence is never
-    copied into that environment.
+    owner's to provide (G-1 control 4). G-1's controls (§46) apply to
+    the workstation, which will then hold production CSE data. The
+    release sequence, the HB-P1 chain and the gates of §54 apply as
+    written, with "production" meaning the local production environment:
+    "production server provisioning" and "server setup" above are that
+    environment's provisioning and setup, its production smoke tests
+    make no CSE request, and HB-P1 is satisfied only in its production
+    database. Staging still cannot satisfy HB-P1, and staging evidence
+    is never copied into that environment.
+-   **No off-site backup in the local phase (owner decision, 2026-11-09,
+    "Local only, accept the risk").** The local production phase has no
+    off-site backup, at the owner's accepted risk: a lost or failed
+    workstation would mean redoing the backfill and contacting CSE
+    again. Local dumps and the backup ledger continue. The encrypted
+    off-site requirement of §43, §49 and §54 moves to the server
+    deployment (milestone 14), where the owner chooses its destination.
 -   **The production requirements of §43, §43.1 and §54, at the local
-    environment.** None is waived. Each is either kept there, or, where
-    the workstation cannot meet it as written, recorded as a difference
-    of the local environment (as staging records its differences,
+    environment.** None is waived. One, the off-site backup, is deferred
+    to the server deployment by the owner at an accepted risk (above).
+    Each other requirement is either kept there, or, where the
+    workstation cannot meet it as written, recorded as a difference of
+    the local environment (as staging records its differences,
     `docs/ops/STAGING.md` §4) and verified at the server deployment:
 
     -   **Kept:** PostgreSQL 17; the dedicated roles and grants of §50;
         migrations only through P1's runner and its hash ledger (§51);
         pinned dependencies and the exact build accepted at milestone 9;
         the spool and backup semantics (§48, §49), with local dumps and
-        the backup ledger; encrypted off-site backup, to the destination
-        the owner chooses; a deployment rehearsal, provisioning and
+        the backup ledger; a deployment rehearsal, provisioning and
         production smoke tests without CSE contact, for that environment
         (milestone 10); and every gate of §54 (clock synchronized,
-        backups configured, scheduler verified, governance recorded, CSE
-        request budget confirmed, tests proven offline, no test
-        contacting CSE) and the evidence the first capture must produce.
-    -   **Recorded differences of the workstation, verified at the
-        server deployment:** native Ubuntu 24.04 LTS (containers run
-        Ubuntu 24.04's user space on the WSL2 kernel); systemd as the
-        wake-only timer (§44), which runs in a container, not on
-        Ubuntu's kernel (staging D-01); backups on a disk separate from
-        the database (P1's separate-disk check), unless the local design
-        places the backup root on another physical disk (staging D-02);
-        the firewall (`provision.sh firewall verify`), which a container
+        backups configured, meaning the local dumps, scheduler verified,
+        governance recorded, CSE request budget confirmed, tests proven
+        offline, no test contacting CSE) and the evidence the first
+        capture must produce.
+    -   **Recorded differences of the local phase, met or verified at
+        the server deployment:** encrypted off-site backup, which the
+        local phase does not have, at the owner's accepted risk (above);
+        native Ubuntu 24.04 LTS with native PostgreSQL 17 on it
+        (containers run Ubuntu 24.04's user space, and PostgreSQL 17
+        inside them, on the WSL2 kernel); systemd as the wake-only timer
+        (§44), which runs in a container, not on Ubuntu's kernel
+        (staging D-01); backups on a disk separate from the database
+        (P1's separate-disk check), unless the local design places the
+        backup root on another physical disk (staging D-02); the
+        firewall (`provision.sh firewall verify`), which a container
         cannot own (staging D-03); the time service behind a
         synchronized clock, since the container's clock is the Docker
         VM's (staging D-04): §54's "clock synchronized" stays a gate of
@@ -1786,12 +1797,17 @@ server. Till then, everything stays on this machine."
         boundary.
     -   **Moved to the server deployment:** the Ubuntu 24.04 server
         itself, its provisioning, its own deployment rehearsal and
-        production smoke tests, and the verification of each recorded
-        difference above. The final deployment arrangement stays as
-        stated under "Production remains distinct". Whether the server
-        starts from the locally proven database or from a new first
-        capture, and so how §54 and HB-P1 apply there, is not decided
-        here.
+        production smoke tests, the encrypted off-site backup, and the
+        verification of each recorded difference above. The final
+        deployment arrangement stays as stated under "Production remains
+        distinct". By the owner's decision of 2026-11-09 ("Start from
+        the local database"), the server deployment starts from the
+        locally proven database, moved through a verified backup and the
+        isolated-restore procedure (`docs/ops/ISOLATED_RESTORE.md`) and
+        its checks, with no second backfill and no duplicate CSE
+        requests. Which §54 gates re-run on the server is decided when
+        milestone 14 is designed; at least the server's smoke tests and
+        the verification of every recorded difference re-run.
 
 ------------------------------------------------------------------------
 
@@ -2905,11 +2921,16 @@ production capture is to happen in the local production environment in
 Docker on the owner's workstation, not on a server. For it, "server
 provisioned" and "production smoke tests passed on the provisioned
 server" mean that environment's provisioning and smoke tests (milestone
-10). Every item above still applies. Those the workstation cannot meet
-as written (the time service behind the clock, separate-disk backups,
-the firewall, systemd on Ubuntu's kernel) are recorded differences
-there, verified at the later server deployment, as §43.1 lists. Nothing
-is waived, and this note authorizes no capture.)*
+10). Every item above still applies; "backups configured" means the
+local dumps, because the local phase has no off-site backup, at the
+owner's accepted risk (owner decision, 2026-11-09). The items the
+workstation cannot meet as written, among them the off-site backup, the
+time service behind the clock, separate-disk backups, the firewall, and
+systemd on Ubuntu's kernel, are recorded differences there, met or
+verified at the later server deployment, as §43.1 lists. Apart from the
+off-site backup, which the owner deferred to the server deployment at
+that accepted risk, nothing is waived, and this note authorizes no
+capture.)*
 
 The first capture must produce explicit evidence of:
 
