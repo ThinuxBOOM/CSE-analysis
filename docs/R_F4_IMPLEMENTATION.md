@@ -3497,8 +3497,8 @@ that decision without a status change, and REG-G01's Depends note records REG-B4
 REQUIRED CORRECTION: OPEN 2 − 1 = 1 (REG-B34), DEFERRED 0 + 1 = 1 (REG-C03), CLOSED 4. Every other category is
 unchanged; the table above is checked against the rows.
 
-Updated again on 2026-11-09, after that CI succeeded at `899c08f` (runs 42510022812, 42510022659, 42510022783 and
-42510022771; §25.4): REG-X03 CLOSED WITH EVIDENCE, so IN PROGRESS becomes 0 and CLOSED WITH EVIDENCE 17.
+Updated again on 2026-11-09, after P1-CC-1's CI succeeded at `899c08f` (runs 42510022812, 42510022659, 42510022783
+and 42510022771; §25.4): REG-X03 CLOSED WITH EVIDENCE, so IN PROGRESS becomes 0 and CLOSED WITH EVIDENCE 17.
 
 Updated again on 2026-11-09 for the merge of `main` at `54a0614` (pull requests #8 and #9) into
 `claude/m8-t3-restore` (B-0009): `main`'s REG-X03 CLOSED WITH EVIDENCE (`d922bd1`) and this branch's Part B and

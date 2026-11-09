@@ -584,6 +584,14 @@ separately, because they fail and retry differently (§6).
 
 Each milestone is separate. Finishing one does not authorize the next, and every one needs its own owner decision.
 
+*(2026-11-09: the owner's decision of 2026-11-09 changes the route through milestones 10 to 13 and adds milestone 14.
+Verbatim: "so then I authorize this: before deploying this to the server, we will first run this on docker on my
+computer, data backfill and all so that you can also supervise it. After we know that the finished product works, then
+we deploy to the server. Till then, everything stays on this machine." The rows below record it in dated notes; the
+earlier text is kept. Milestone 10 is now the local production deployment on the owner's workstation, milestones 11 to
+13 run there, and the server deployment is milestone 14. No local production environment exists, and this record
+authorizes none.)*
+
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Design decisions (RF4-M1 to RF4-M5, Q1) | **Accepted**, 2026-10-14 |
@@ -595,10 +603,11 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 | 7 | R-F4 component acceptance and freeze (meets HB-Q7's condition), with F5 frozen again and the HB-1 to HB-6 pin-only amendments | **Accepted and frozen at V, effective once the post-V check gives empty output** (`docs/R_F4_IMPLEMENTATION.md` §26): the owner's conditional approval (D5, 2026-10-26), with its four prerequisites satisfied, the last being the drift check against the freeze-candidate commit F (`adce25a`, 2026-10-27). **Complete:** the post-V check gave empty output with exit status 0 on 2026-10-28 (`docs/R_F4_IMPLEMENTATION.md` §26.7, step 7; commit `1171f92`; run by Claude, not independently reproduced). Not a merge, which needs a separate owner decision; it authorizes no operational step |
 | 8 | Docker staging of the integrated build, including R-F4 and 0018 | **In progress** (2026-11-04; previously "Not started. The staging environment doesn't exist yet"). T1, the harness shakedown, is done: `b927284`, ACCEPT WITH LIMITATIONS, development evidence only (`docs/ops/STAGING.md`). T2, P1 change control P1-CC-1 (the reader login `cse_verifier` and REG-X03's `verify_server` checks), is accepted and frozen at `59f9228` and `0a653a8`, effective once CI is clean at the record's head (`docs/ops/P1_PLATFORM.md` §13; *2026-11-09: in effect, CI clean at `899c08f` on 2026-11-08*), and T2 completes with its merge into `main`; the changed build is to be re-staged. **Staging is not accepted, and REG-G01 stays OPEN** |
 | 9 | Acceptance of the integrated frozen build (Master Architecture §43.1); that exact build is the one deployed | Not started |
-| 10 | Production deployment: the rehearsal, provisioning and smoke tests | Not started. **No server is provisioned** |
-| 11 | The live prerequisites, then HB-S1 and HB-S2 under your arming | Not started |
-| 12 | The HB-S3 pilot **on the R-F4 build**, then your acceptance of it, including R-F4's real-document verification | Not started |
-| 13 | HB-S4 / HB-7 | Gated: HB-Q9, a recorded checkpoint, your confirmation that R-F4 is frozen (`arm` does not check it), then a separate HB-S4 arming |
+| 10 | Production deployment: the rehearsal, provisioning and smoke tests | Not started. **No server is provisioned** *(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": milestone 10 is now the **local production deployment**: the rehearsal, provisioning and smoke tests of a local production environment in Docker on the owner's workstation, separate from staging. Not started; that environment is not designed or built. The server deployment is milestone 14)* |
+| 11 | The live prerequisites, then HB-S1 and HB-S2 under your arming | Not started *(2026-11-09: in the local production environment of milestone 10, on the owner's workstation, supervised by the orchestrator; owner decision; Master Architecture §43.1, "Local production first")* |
+| 12 | The HB-S3 pilot **on the R-F4 build**, then your acceptance of it, including R-F4's real-document verification | Not started *(2026-11-09: in the local production environment of milestone 10, on the owner's workstation, supervised by the orchestrator; owner decision; Master Architecture §43.1, "Local production first")* |
+| 13 | HB-S4 / HB-7 | Gated: HB-Q9, a recorded checkpoint, your confirmation that R-F4 is frozen (`arm` does not check it), then a separate HB-S4 arming *(2026-11-09: in the local production environment of milestone 10, on the owner's workstation, supervised by the orchestrator; owner decision; Master Architecture §43.1, "Local production first")* |
+| 14 *(added 2026-11-09)* | Server deployment: the rehearsal, provisioning and smoke tests on the Ubuntu 24.04 server, after milestones 11 to 13 have proven the product locally (owner decision of 2026-11-09; Master Architecture §43.1, "Local production first"). *(2026-11-09, owner decision, "Start from the local database": it starts from the locally proven database, with no second backfill. The backup is verified first on an isolated copy with the isolated-restore procedure (`docs/ops/ISOLATED_RESTORE.md`), which never targets production. How the verified database is moved onto the server is designed at milestone 14, together with which Master Architecture §54 gates re-run there, at least the smoke tests and the verification of every recorded difference)* | Not started. **No server is provisioned** |
 
 **Q1, as accepted:**
 - R-F4 is frozen (milestone 7) before Docker staging (milestone 8), so staging validates one integrated build that
@@ -617,10 +626,11 @@ Each milestone is separate. Finishing one does not authorize the next, and every
 |---|---|
 | 8 | Build the Docker staging environment (Master Architecture §43.1; *2026-11-04: it exists since T1, `ops/staging/` and `docs/ops/STAGING.md`, not yet accepted; the reader login R-F4's `verify` needs is provisioned by P1-CC-1, still to be verified at staging under `docs/R_F4_IMPLEMENTATION.md` §20.6*). Then: a fresh install of 0001–0018 and an upgrade from 0017; the R-F4 preflight and `verify`; crash and recovery; backup and restore, with F6.4's `verify`, `cse-backfill verify` and R-F4 `verify` on the restored copy; permissions; fault injection that includes forced repeated save failures, to measure the request-budget exposure in §6 |
 | 9 | Accept the integrated frozen build |
-| 10 | The Ubuntu 24.04 server, PostgreSQL 17, P1 provisioning, migrations **0001–0018** through P1's runner, Poppler 24.02.0, the dedicated temporary root, at least 20 GiB free, the deployment rehearsal, and smoke tests that include the R-F4 preflight (runbook §12) |
+| 10 | The Ubuntu 24.04 server, PostgreSQL 17, P1 provisioning, migrations **0001–0018** through P1's runner, Poppler 24.02.0, the dedicated temporary root, at least 20 GiB free, the deployment rehearsal, and smoke tests that include the R-F4 preflight (runbook §12) *(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": for the local production environment on the owner's workstation. Each item still applies there, except the Ubuntu 24.04 server itself and the requirements that §43.1 lists as recorded differences of the workstation, which are verified at milestone 14)* |
 | 11 | HB-X2 (a) and (b), with the contact e-mail configured; HB-P1 and IE-2; your arming of HB-S1 and HB-S2 |
 | 12 | Your HB-S3 arming with the pilot sample, which you may edit to add edge cases (runbook §5 step 3). The F6.4 designation after the first runs. A checkpoint with all three `verify` runs. Your pilot acceptance |
 | 13 | HB-Q9 capacity, including the `financial_f4_*` tables (about 200–260 KB per filing, an estimate the pilot measures through HB-6's report). A recorded checkpoint. Your confirmation that R-F4 is frozen. A separate HB-S4 arming |
+| 14 *(added 2026-11-09)* | The Ubuntu 24.04 server, provisioned as row 10 lists; the requirements that Master Architecture §43.1 ("Local production first") lists as recorded differences of the workstation, verified there (among them separate-disk backups, the firewall, the server's time service and systemd on Ubuntu's kernel); the encrypted off-site backup, which the local phase does not have (owner decision 2026-11-09, "Local only, accept the risk"); the deployment rehearsal and smoke tests on the server; the owner's decision to deploy. *(2026-11-09: the server starts from the locally proven database, as the milestone row says)* |
 
 The governed re-collection of the RDV and F0 evidence (owner decision 2026-10-12) remains separate. It is what enables
 RDV option R-b later.
@@ -693,7 +703,7 @@ RDV option R-b later.
   on 2026-10-28 (run by Claude, not independently reproduced; recorded in `1171f92`). It was then merged into `main`
   on 2026-10-30 through pull request #6: GitHub's merge commit `912ab0177a1476bd6af79e1884af2c899a9e6e2c` has D6's
   merge target `45b941c` as its second parent and the same tree, and the tested candidate was `7efafc8` (§10,
-  milestone 3; `docs/R_F4_IMPLEMENTATION.md` §26.5). The next milestones are 8 to 13 (§10), each with its own owner
+  milestone 3; `docs/R_F4_IMPLEMENTATION.md` §26.5). The next milestones are 8 to 13 (§10; *2026-11-09: and 14, the server deployment*), each with its own owner
   decision; neither the freeze nor the merge authorizes any of them. §8.1 item 13 needs no further decision for this
   package: it is waived (above).
 - **Technical blockers:** none. The finding that no frozen preflight checks 0018 is resolved operationally, with an

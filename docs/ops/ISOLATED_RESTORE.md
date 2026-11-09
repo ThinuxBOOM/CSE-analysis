@@ -47,6 +47,9 @@ the only one there, so every command in that environment reaches it. That includ
   added capability. The dump goes in by `docker cp` from the host's backup volume (`STAGING.md` §3, ST-31).
 - **At milestone 12:** a separate machine or container that the owner provides, holding a copy of the dump, never the
   production server. This needs the runbook §6 change (REG-B27) after this procedure is audited and approved.
+  *(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": milestone 12 runs in
+  the local production environment in Docker on the owner's workstation. "The production server" here means that
+  production environment: the copy is never restored into it or its cluster.)*
 
 **The alternatives considered:**
 

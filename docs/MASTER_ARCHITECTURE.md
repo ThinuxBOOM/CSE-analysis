@@ -1475,6 +1475,11 @@ exists: a Docker file and its driver in `ops/staging/`, described in
 Compose file or CI/CD configuration was added. Staging is not accepted,
 and nothing is deployed: REG-G01 stays open.)*
 
+*(2026-11-09: the first production environment is a local Docker
+environment on the owner's workstation, distinct from staging, by the
+owner's decision of 2026-11-09. See "Local production first (owner
+decision, 2026-11-09)" at the end of this section.)*
+
 ### Environment progression
 
 ``` text
@@ -1593,6 +1598,12 @@ deployed. **Production is not declared to run in Docker.** The final
 production deployment may use native services, or another deployment
 arrangement that the owner approves later.
 
+*(2026-11-09: the owner has since decided that the first production
+environment runs in Docker on the owner's workstation, before any server
+deployment. See "Local production first (owner decision, 2026-11-09)" at
+the end of this section. The server deployment that follows is unchanged
+by that decision.)*
+
 ### Reproducibility
 
 Staging is version-pinned so that a frozen build is tested against a
@@ -1700,6 +1711,105 @@ It changes no frozen decision; HB-1, HB-2 and every earlier frozen
 stage are unchanged. The concrete staging design (images, services,
 orchestration, topology) is decided during deployment engineering,
 under the owner's control.
+
+### Local production first (owner decision, 2026-11-09)
+
+*Added 2026-11-09.* The owner's decision of 2026-11-09, verbatim
+(recorded in the project's decision log): "so then I authorize this:
+before deploying this to the server, we will first run this on docker on
+my computer, data backfill and all so that you can also supervise it.
+After we know that the finished product works, then we deploy to the
+server. Till then, everything stays on this machine."
+
+-   **The route.** Once milestone 8 (staging accepted) and milestone 9
+    (the integrated frozen build accepted; `docs/R_F4_DESIGN.md` §10)
+    are complete, that build is deployed first to a **local production environment in
+    Docker on the owner's workstation**, separate from staging, with its
+    own persistent volumes. The live prerequisites, the pilot and the
+    bulk backfill (milestones 11 to 13) run there, supervised by the
+    orchestrator. The server deployment comes only after the product is
+    proven there (milestone 14); until then everything stays on the
+    workstation.
+-   **Status.** The local production environment is not designed, built
+    or accepted; its design is a later, separate step. This note
+    authorizes no build, deployment, arming, capture or CSE contact.
+    Milestone 8 is unchanged: staging is not accepted, and REG-G01 stays
+    open.
+-   **Unchanged.** Arming each live stage (HB-S1, HB-S2, the HB-S3
+    pilot, HB-S4) stays the owner's explicit decision. CSE is contacted
+    only through the project's governed transport inside that
+    environment, never ad hoc from the host. The contact e-mail is the
+    owner's to provide (G-1 control 4). G-1's controls (§46) apply to
+    the workstation, which will then hold production CSE data. The
+    release sequence, the HB-P1 chain and the gates of §54 apply as
+    written, with "production" meaning the local production environment:
+    "production server provisioning" and "server setup" above are that
+    environment's provisioning and setup, its production smoke tests
+    make no CSE request, and HB-P1 is satisfied only in its production
+    database. Staging still cannot satisfy HB-P1, and staging evidence
+    is never copied into that environment.
+-   **No off-site backup in the local phase (owner decision, 2026-11-09,
+    "Local only, accept the risk").** The local production phase has no
+    off-site backup, at the owner's accepted risk: a lost or failed
+    workstation would mean redoing the backfill and contacting CSE
+    again. Local dumps and the backup ledger continue. The encrypted
+    off-site requirement of §43, §49 and §54 moves to the server
+    deployment (milestone 14), where the owner chooses its destination.
+-   **The production requirements of §43, §43.1 and §54, at the local
+    environment.** None is waived. One, the off-site backup, is deferred
+    to the server deployment by the owner at an accepted risk (above).
+    Each other requirement is either kept there, or, where the
+    workstation cannot meet it as written, recorded as a difference of
+    the local environment (as staging records its differences,
+    `docs/ops/STAGING.md` §4) and verified at the server deployment:
+
+    -   **Kept:** PostgreSQL 17; the dedicated roles and grants of §50;
+        migrations only through P1's runner and its hash ledger (§51);
+        pinned dependencies and the exact build accepted at milestone 9;
+        the spool and backup semantics (§48, §49), with local dumps and
+        the backup ledger; a deployment rehearsal, provisioning and
+        production smoke tests without CSE contact, for that environment
+        (milestone 10); and every gate of §54 (clock synchronized,
+        backups configured, meaning the local dumps, scheduler verified,
+        governance recorded, CSE request budget confirmed, tests proven
+        offline, no test contacting CSE) and the evidence the first
+        capture must produce.
+    -   **Recorded differences of the local phase, met or verified at
+        the server deployment:** encrypted off-site backup, which the
+        local phase does not have, at the owner's accepted risk (above);
+        native Ubuntu 24.04 LTS with native PostgreSQL 17 on it
+        (containers run Ubuntu 24.04's user space, and PostgreSQL 17
+        inside them, on the WSL2 kernel); systemd as the wake-only timer
+        (§44), which runs in a container, not on Ubuntu's kernel
+        (staging D-01); backups on a disk separate from the database
+        (P1's separate-disk check), unless the local design places the
+        backup root on another physical disk (staging D-02); the
+        firewall (`provision.sh firewall verify`), which a container
+        cannot own (staging D-03); the time service behind a
+        synchronized clock, since the container's clock is the Docker
+        VM's (staging D-04): §54's "clock synchronized" stays a gate of
+        the first local capture, and how the local environment
+        establishes it is for its design; local server storage and
+        durability, since `fsync` reaches a virtual disk on NTFS and the
+        20 GiB free-space gate reads Docker's virtual disk, not the host
+        drive (staging D-06, D-10); and peer authentication over a local
+        Unix socket wherever a connection would cross a container
+        boundary.
+    -   **Moved to the server deployment:** the Ubuntu 24.04 server
+        itself, its provisioning, its own deployment rehearsal and
+        production smoke tests, the encrypted off-site backup, and the
+        verification of each recorded difference above. The final
+        deployment arrangement stays as stated under "Production remains
+        distinct". By the owner's decision of 2026-11-09 ("Start from
+        the local database"), the server deployment starts from the
+        locally proven database, with no second backfill and no
+        duplicate CSE requests. The backup is verified first on an
+        isolated copy with the isolated-restore procedure
+        (`docs/ops/ISOLATED_RESTORE.md`), which never targets
+        production. How the verified database is moved onto the server
+        is designed at milestone 14, together with which §54 gates
+        re-run there; at least the server's smoke tests and the
+        verification of every recorded difference re-run.
 
 ------------------------------------------------------------------------
 
@@ -2364,6 +2474,13 @@ rehearsal (§43.1) → server setup → HB-X2(b) →
 satisfied → live HB-3. Docker staging validates the software and the
 deployment behaviour; it cannot satisfy HB-P1 (§43.1).
 
+*(2026-11-09, owner decision; §43.1, "Local production first": "server
+setup" in this sequence is now the setup of the local production
+environment in Docker on the owner's workstation, where HB-P1, the pilot
+and the bulk backfill are to run (milestones 10 to 13); the server
+deployment follows once the product is proven there. No such environment
+exists yet.)*
+
 F8 --- availability, supersession and point-in-time financial views
 --- is **implemented and frozen/accepted: F8 IMPLEMENTATION FROZEN /
 ACCEPTED** (owner, 2026-10-06, after independent owner and repository
@@ -2800,6 +2917,21 @@ Before it:
 -   CSE request budget confirmed;
 -   tests proven offline;
 -   no test accidentally contacts CSE.
+
+*(2026-11-09, owner decision; §43.1, "Local production first": the first
+production capture is to happen in the local production environment in
+Docker on the owner's workstation, not on a server. For it, "server
+provisioned" and "production smoke tests passed on the provisioned
+server" mean that environment's provisioning and smoke tests (milestone
+10). Every item above still applies; "backups configured" means the
+local dumps, because the local phase has no off-site backup, at the
+owner's accepted risk (owner decision, 2026-11-09). The items the
+workstation cannot meet as written, among them the off-site backup, the
+time service behind the clock, separate-disk backups, the firewall, and
+systemd on Ubuntu's kernel, are recorded differences there, met or
+verified at the later server deployment, as §43.1 lists. None is waived:
+the off-site backup is deferred to the server deployment at the owner's
+accepted risk. This note authorizes no capture.)*
 
 The first capture must produce explicit evidence of:
 

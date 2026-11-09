@@ -300,6 +300,10 @@ transport; that never satisfies production HB-P1. The deployment sequence is:
 `software freeze → server setup → HB-X2(b) → CSE_CAPTURE_CONTACT_EMAIL → P2 capture → allSecurityCode verification →
 derived security master → HB-P1 satisfied → live HB-3`
 
+*(2026-11-09, owner decision; Master Architecture §43.1, "Local production first": "server setup" in this
+sequence is now the setup of the local production environment in Docker on the owner's workstation, where HB-P1, the
+pilot and the bulk backfill are to run; the server deployment follows once the product is proven there.)*
+
 **HB-4 implementation status** (implemented 2026-10-06 on the branch `claude/hb4-document-worker`, cut from the
 F8-frozen `ef11a76`; **frozen / accepted 2026-10-07** after its final freeze audit, below; the design text is
 unchanged). HB-4 is the library
