@@ -8,6 +8,21 @@ production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.**
 (section 10, **development evidence only; REG-G01 OPEN**), were added. The runner no longer deselects the nine
 restore-executing tests (owner, 2026-11-04; section 9).*
 
+*2026-11-04 (later): restore under a restore authorization was added (owner decision DR-0002, OD-10 to OD-15): the
+`restore` subcommand, the procedure `docs/ops/ISOLATED_RESTORE.md` (REG-B01; **pending audit and approval**) and the
+procedures for ST-30 (R1) and ST-31 (R2) (section 11). Nothing restores without the owner's restore authorization for
+that campaign; **no R1 or R2 has run**. Section 3's boundary is rewritten accordingly.*
+
+*2026-11-09, integration history (a correction note): merge commit `54a0614` on `main` (pull request #9) has a
+**mislabelled commit message**. Its text is the description drafted for the later restore-procedure pull request
+("the isolated-restore procedure (REG-B01) and authorization-gated restore at staging"). Its **content is exactly pull
+request #9**: the staging procedures ST-27 to ST-29 and the runner restore tests, from `claude/m8-t3-procedures`. Its
+tree, `b0661d2b32235420bec96c5e3792f956e1dbd773`, is identical to a clean merge of its two parents `8febd7c` and
+`1e22b0e` (`git merge-tree --write-tree 8febd7c 1e22b0e`), and it contains no isolated-restore file (nothing under
+`ops/restore/`, no `ops/staging/restore*`, no `docs/ops/ISOLATED_RESTORE.md`). The isolated-restore procedure, the
+`restore` subcommand and section 11 reach `main` only with the later pull request from `claude/m8-t3-restore`. `main`'s
+history was deliberately not rewritten.*
+
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
 `docs/ops/P3_SCHEDULER.md` and `docs/ops/PHASE2_BACKFILL.md` (what is provisioned and run). Where this document and
@@ -38,7 +53,12 @@ cse-stg-<campaign>-runner-*  --network none --restart no; one CI group each
 | `ops/staging/Dockerfile` | The base, host and runner images |
 | `ops/staging/init.sh` | PID 1: systemd (remounts the private cgroup namespace read-write at rungs L1/L2) |
 | `ops/staging/run_group.sh` | Runner entry: CI's `.github/ci/linux_tests.sh`, unmodified, as `tester` |
-| `ops/staging/staging.sh` | Host-side driver (Git Bash): context, build, volumes, trial, up, start, stop, kill, inject, secret, run, isolation, seed, runner, guard, canary, collect |
+| `ops/staging/staging.sh` | Host-side driver (Git Bash): context, build, volumes, trial, up, start, stop, kill, inject, secret, run, isolation, seed, runner, guard, canary, collect, restore |
+| `ops/staging/restore_driver.sh` | `staging.sh restore R1\|R2 RA [suffix]` (section 11): sourced by the driver for that subcommand only |
+| `ops/staging/restore_gate.py` | The restore authorization's validation (read-only; single use), the R2 container's `docker inspect` check, the source record's check |
+| `ops/staging/restore/stage_restore.sh` | Inside the containers: R1's checks and its one run (host), the source record (host, read-only), R2's environment, provisioning and procedure (R2 container), the teardown. Not injected by `inject`; copied in by `restore` only |
+| `ops/restore/isolated_restore.py` | The isolated-restore procedure (`docs/ops/ISOLATED_RESTORE.md`): identity check before every command, globals, database, verification, teardown |
+| `tests/test_staging_restore_postgres.py` | The procedure on disposable clusters (i1-i3; CI group L16 and the runner container) |
 | `ops/staging/isolation_check.py` | ST-04 from outside: a host container's `docker inspect` against the approved rung |
 | `ops/staging/inner/stage_provision.sh` | Provisioning inside the host container, with the R1 gate |
 | `ops/staging/inner/stage_checks.sh` | Read-mostly checks (isolation, ledger, roles, preflights, units, filesystem, invariants, fingerprint and fpcompare, metrics, sequence kinds, data digests) and the reader-login procedures `rf4verify`, `reader`, `regx03` (ST-27 to ST-29, section 9) |
@@ -61,18 +81,50 @@ cse-stg-<campaign>-runner-*  --network none --restart no; one CI group each
 - **Never armed, never CSE:** the contact e-mail stays empty (every CSE-contacting command refuses: G-1 control 4), no
   arming or owner command is ever run, and no capture or backfill slice is ever opened. Every phase checks that no armed
   decision exists.
-- **No restore (DO NOT EXECUTE RESTORE):** no restore functionality exists in the harness. P1's restore check is gated
-  (R1 gate, below); `provision.sh all` and `selftest` are never run. The runner container no longer deselects the nine tests
-  that execute a restore into a disposable cluster (owner, 2026-11-04): they run in its no-network throwaway
-  container, never in the host container (section 9).
+- **Restore only under a restore authorization (DO NOT EXECUTE RESTORE otherwise; 2026-11-04, DR-0002):**
+  - **The only restore** is `staging.sh restore R1|R2 <RA file> [suffix]` (section 11). It runs nothing unless the RA
+    file, written by the orchestrator after the owner's explicit yes in chat for that campaign (OD-12), is valid and
+    unused. The harness validates it read-only against values it reads itself (operation, campaign, build SHA, image
+    ID, target, expiry, at most 24 hours after the decision), and records it as used in
+    `D:\cse-staging\<campaign>\restore\ra-consumed.log` before anything restores. That record is fixed: no setting
+    moves it, `restore` refuses any evidence directory other than `D:\cse-staging\<campaign>`, and single use is checked
+    against every campaign's record (AR-0006-1 F-1). An invalid, expired, mismatched or used RA refuses, and nothing
+    restores.
+  - **The R1 gate is retained** (below). Without a valid RA it behaves exactly as before: no staging code creates its
+    path. `restore R1` creates the path for one run of P1's restore check only, then removes it and disables the timer
+    again.
+  - **R2 restores only into a new container** with no network, no volume and no mount (ST-31), never into a staging
+    volume.
+  - **Production is never a target.** The harness never writes into the vault and never creates an RA.
+  - `provision.sh all` and `selftest` are never run. The runner container no longer deselects the nine tests that
+    execute a restore into a disposable cluster (owner, 2026-11-04): they run in its no-network throwaway container,
+    never in the host container (section 9).
 - **Nothing destructive:** the driver removes no container, volume, image or evidence file; the owner reviews them.
+  *The one exception (2026-11-04, AR-0006-1 disposition):* `restore R2` deletes its own R2 container, by its exact
+  name, once that container's evidence is saved, because it holds a restored copy of the staging data and the owner's
+  condition for throwaway restore containers is "deleted afterwards".
+- **`run` executes only its inner scripts:** `stage_checks.sh`, `stage_provision.sh`, `stage_scenarios.sh` and
+  `stage_tree.py`, by name, with no `/` or `..` (AR-0006-1 N-3).
 
 **The R1 gate.** Before `provision.sh units`, a drop-in makes `cse-backup-restore-check.service` refuse to start:
 `ConditionPathExists=/etc/cse/staging/R1-AUTHORIZED`, a path no staging code creates. After every `units`, the timer is
 disabled (`systemctl mask` cannot be used: the unit file lives in `/etc/systemd/system`). Each evidence step checks that
-`ops.backup_runs` holds no `restore_check` row and that `restore-scratch` is empty. Limit: root inside the container can
-still run the module by hand; only governance and that detective check cover it. Restore (R1, P1 section 8A; R2, the
-isolated restored copy) stays unimplemented until the owner adopts an authorization mechanism (owner decision OD-12).
+`ops.backup_runs` holds no `restore_check` row except an authorized R1's, and that `restore-scratch` is empty.
+*(2026-11-04, AR-0006-1 F-2: an authorized R1 binds the one `restore_check` run it produced to its RA, in the host
+container (`/var/lib/cse-staging/r1-authorized-runs`, "<run id> <RA id> <RA sha256>") and on the host
+(`D:\cse-staging\<campaign>\restore\r1-runs.log`). `stage_checks.sh invariants` and `stage_scenarios.sh
+restart-verify` then PASS only when the `restore_check` rows are exactly the bound runs; any other row, a binding
+without its row, or a malformed or repeated binding FAILs.)* *(2026-11-09, AR-0006-2 G-1: the container's file alone is
+not trusted. Wherever those two steps run, `staging.sh run` follows them, on the host, with `restore_gate.py
+r1-crosscheck`. That check reads the container's `restore_check` rows and its `r1-authorized-runs`, and checks every
+binding against the host's own records, which the container cannot write: `ra-consumed.log` (a consumed R1 RA of
+this campaign, with that SHA-256) and `r1-runs.log` (the same run id for that RA). Every host binding must be in the
+container, and the rows must be exactly the bound runs. A failure, or rows that cannot be read, FAILs the step's
+record and its exit status. So a binding forged inside the container (for example to an RA consumed nowhere) FAILs.)*
+Limit: root inside the container can
+still run the module by hand; only governance and that detective check cover it. *(2026-11-04: the owner adopted the
+authorization mechanism, OD-12 (DR-0002): R1 (P1 section 8A) and R2 (the isolated restored copy) are implemented behind
+it, section 11. Without a valid, unused RA the gate is unchanged, and so is every refusal.)*
 
 ## 4. Recorded differences from production
 
@@ -151,6 +203,13 @@ ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effect
 (`docs/ops/P1_PLATFORM.md` §13); 2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`; their
 procedures exist (section 9) and ran once, as development evidence, in campaign t2s1 (section 10); the acceptance run
 is T3 Phase B on `main`*). Deferred by dependency: ST-30 and ST-31 (restore: OD-10 to OD-14), ST-33 (the owner's acceptance). An incomplete campaign is reported as "REG-G01 OPEN: partial", never as closure.
+*(2026-11-04: OD-10 to OD-15 are decided (DR-0002). ST-30 and ST-31 now have procedures (section 11); they run in T3
+Phase C, each under its own restore authorization.)*
+
+| ID | How | Notes |
+|---|---|---|
+| ST-30 | `staging.sh restore R1 <RA>` | R1: one run of P1 section 8A's restore check in the host container; section 11 |
+| ST-31 | `staging.sh restore R2 <RA>` | R2: the isolated restored copy and its verification (`docs/ops/ISOLATED_RESTORE.md`); section 11 |
 
 ## 7. Findings recorded by T1
 
@@ -313,3 +372,79 @@ itself removes nothing (section 3).
 
 **Status.** Development evidence only, on a build that is not `main`: it is not the acceptance run, and it does not
 close or change REG-G01 (OPEN), REG-A05 or REG-A06, or any other register item.
+
+## 11. Restore under a restore authorization: ST-30 (R1) and ST-31 (R2)
+
+Added on 2026-11-04 under the owner's decisions OD-10 to OD-15 (DR-0002, "Approve as recommended"). **Nothing here has
+run. R1 and R2 are T3 Phase C**, on the accepted build, each under a restore authorization (RA) that the orchestrator
+writes after the owner's explicit yes in chat for that campaign. OD-13 and OD-14 allow one R1 and one R2, in throwaway
+staging containers only. OD-15 counts R1 towards REG-G01. The procedure itself (`docs/ops/ISOLATED_RESTORE.md`) is
+**pending its audit and approval**: REG-B01, REG-B27 and REG-G01 stay OPEN.
+
+**The restore authorization.** An RA is a file with front matter: `type`, `id`, `operation`, `campaign`, `build_sha`,
+`image_id`, `target`, `expires`, `single_use`, `decided`, `owner_words`, `tags`. `restore_gate.py ra` opens it
+read-only, once, and checks, failing closed:
+
+| Check | Against (read by the harness, never from the RA or the caller) |
+|---|---|
+| Well-formed | Front matter only; every key present once; no unknown key; `type: restore-authorization`; `id` `RA-` and four digits; `single_use: true`; `owner_words` not empty |
+| `operation` | The requested `R1` or `R2` |
+| `campaign` | The harness's `CSE_STAGING_CAMPAIGN` |
+| `build_sha` | The harness's revision **and** the host image's `org.opencontainers.image.revision` label (40 hex digits) |
+| `image_id` | The host container's image (`docker inspect`) **and** the tagged host image `cse-staging:<rev12>` (`sha256:` and 64 hex digits) |
+| `target` | R1: the host container `cse-stg-<campaign>[-suffix]-host`. R2: `cse-stg-<campaign>[-suffix]-r2` |
+| `expires` | Now, with an explicit offset (`YYYY-MM-DDTHH:MM:SS+05:30`) |
+| `decided` and the window | `decided` is not in the future, and `expires` is after it and **at most 24 hours after it** (2026-11-04, AR-0006-1 disposition). `decided` is a time with an offset, or a date, read as the start of that day in the expiry's offset |
+| Single use | Neither the RA's id nor the file's SHA-256 is in any campaign's `D:\cse-staging\*\restore\ra-consumed.log` (append-only; an unreadable or malformed record refuses). The record's location is fixed in `restore_gate.py`, not taken from any setting |
+| Evidence and separation | The evidence directory is exactly `D:\cse-staging\<campaign>`; neither it nor the record is inside the vault (`D:\Main Vault`) or the RA's directory; the RA is not inside `D:\cse-staging` |
+
+**ST-30, R1** (`staging.sh restore R1 <RA> [suffix]`):
+1. The RA is validated. Any failure refuses, with nothing copied or run.
+2. `stage_restore.sh` is copied into the host container (`/opt/cse-restore`; `run` executes only its allowlist). Then the
+   read-only technical checks (`r1-check`): the R1 gate is closed (drop-in, no path, timer disabled), the service is
+   not running, `restore-scratch` is empty, and the newest dump (the one P1's restore check takes) verifies. A failure
+   refuses; the RA is not consumed.
+3. The RA is recorded as used.
+4. `r1`: the R1 gate's condition path is created; `systemctl start cse-backup-restore-check.service` runs P1's restore
+   check once (oneshot); then, whatever happened (a trap), the path is removed and the timer disabled again.
+5. Asserted: the gate is closed again, there is **exactly one new `restore_check` row**, it `succeeded` and covers the
+   newest dump (every digest equal), and **`restore-scratch` is empty**. The unit's journal is in the record. That one
+   row is bound to the RA in the container (`/var/lib/cse-staging/r1-authorized-runs`) and on the host
+   (`restore_gate.py bind-r1`, `r1-runs.log`), so later invariant checks accept it and nothing else: the container's
+   check and the host-side cross-check that `run` performs after it (section 3).
+6. `stage_restore.sh` is removed from the host container. The record is `results/<suffix|main>-restore-R1.txt`.
+
+**ST-31, R2** (`staging.sh restore R2 <RA> [suffix]`):
+1. The RA is validated, as above.
+2. The target container must not exist yet (a fresh one).
+3. The source record (`stage_restore.sh source`, read-only, in the host container) holds the host cluster's
+   `system_identifier`, the newest `succeeded` `local_dump` row of its `ops.backup_runs`, and P1's verify of that dump.
+   It is saved and checked (`restore_gate.py source`). An incomplete record refuses; the RA is not consumed.
+4. The RA is recorded as used.
+5. A new container from the RA's image: `docker run -d --name cse-stg-<campaign>-r2 --network none --restart no
+   --memory 1536m --pids-limit 4096 --entrypoint /bin/sleep <image> infinity`. There is no `--mount`, `-v`, `--tmpfs`,
+   `--cap-add` or `--privileged`. Its `docker inspect` must show no network, no mount of any kind, no added capability,
+   restart `no`, the RA's image and the campaign's labels (`restore_gate.py r2inspect`). Otherwise nothing is copied
+   in, and it is stopped and deleted (step 8).
+6. The dump is copied in from the host's backup volume by `docker cp` (container to standard output, standard input to
+   container), with the source record, `stage_restore.sh` and `isolated_restore.py`.
+7. `stage_restore.sh r2`: the environment's isolation (only `lo`, no route, only Docker's `/etc` files mounted, no
+   cluster), P1's `provision.sh preflight users dirs postgres`, exactly one cluster and one socket, then the procedure
+   (`docs/ops/ISOLATED_RESTORE.md` §4): provenance, the fresh copy's identity, globals, database, P1's checks,
+   `cse-ops migrate verify`, `cse-financial verify`, `cse-backfill verify`, the R-F4 preflight by both routes and the full
+   `verify` as `cse_verifier`, each after the identity check. This is also R-F4 §20.6 step 6 (steps 3–4 on a restored
+   copy).
+8. The evidence is copied out to `restore/r2-<UTC>/evidence` (`procedure.json`, each command's output); `docker inspect`
+   before and after; `stage_restore.sh r2-teardown` stops only the copy; the container is stopped and then **deleted**
+   (`docker rm` of exactly that name) once its evidence is saved (the owner's "deleted afterwards", 2026-11-04). If the
+   evidence could not be saved, it is stopped and kept, and the record says so.
+
+**Recorded differences for R2:** systemd does not run in the R2 container (P1's `CSE_NO_SYSTEMD=1` path,
+`pg_ctlcluster`); the backup root is a directory (D-02); P1's units are not installed there (nothing is scheduled on
+the copy).
+
+**Tests (no restore at staging):** `tests/test_staging_unit.py` r1–r12, which run the driver against a stub `docker`
+(on a copy of the harness whose fixed record root points into a temporary directory), and `stage_restore.sh`'s R1 and
+R2 decisions and the invariant checks against stubs;
+`tests/test_staging_restore_postgres.py` i1–i3, the procedure on disposable clusters in a throwaway runner container
+(owner, 2026-11-04).

@@ -232,10 +232,26 @@ filesystem() {
   [[ -z "$(ls -A /srv/cse-backup/restore-scratch 2>/dev/null)" ]] && pass "restore-scratch empty" || bad "restore-scratch not empty"
 }
 
+R1_RUNS=/var/lib/cse-staging/r1-authorized-runs   # "<run id> <RA id> <RA sha256>": written only by an authorized R1
+restore_rows_ok() {  # restore_rows_ok LABEL: every restore_check row has a binding, and every binding a row (F-2). The
+  # container half only: `staging.sh run` then cross-checks each binding against the host's RA records (r1-crosscheck, G-1)
+  local rows bound malformed
+  rows=$(psu "select coalesce(string_agg(id::text, ' ' order by id), '') from ops.backup_runs where run_kind = 'restore_check'")
+  malformed=0; bound=""
+  if [[ -e $R1_RUNS ]]; then
+    malformed=$(grep -cvE '^[1-9][0-9]* RA-[0-9]{4} [0-9a-f]{64}$' "$R1_RUNS")
+    bound=$(awk '{print $1}' "$R1_RUNS" | sort -n | paste -sd' ')
+    [[ -z "$(awk '{print $1}' "$R1_RUNS" | sort | uniq -d)$(awk '{print $2}' "$R1_RUNS" | sort | uniq -d)" ]] || malformed=1
+  fi
+  if [[ $malformed -ne 0 ]]; then bad "$1: $R1_RUNS has a malformed or repeated binding"
+  elif [[ "$rows" == "$bound" ]]; then
+    pass "$1: every restore_check row has exactly one binding (rows: ${rows:-none}); the host cross-check follows"
+  else bad "$1: restore_check rows [${rows:-none}] are not exactly the authorized R1 runs [${bound:-none}]"; fi
+}
+
 invariants() {
   local n
-  n=$(psu "select count(*) from ops.backup_runs where run_kind = 'restore_check'")
-  [[ "$n" == 0 ]] && pass "no restore check ever ran (ops.backup_runs)" || bad "restore_check rows: $n"
+  restore_rows_ok "no restore check ran except an authorized R1 (ops.backup_runs)"
   [[ -z "$(ls -A /srv/cse-backup/restore-scratch 2>/dev/null)" ]] && pass "restore-scratch empty" || bad "restore-scratch not empty"
   [[ ! -e /etc/cse/staging/R1-AUTHORIZED ]] && pass "no R1 authorization path exists" || bad "R1 authorization path exists"
   n=$(psu "select (select count(*) from backfill_arming_decisions where armed) + (select count(*) from market_schedule_settings where armed)")

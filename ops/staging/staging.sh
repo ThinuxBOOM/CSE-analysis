@@ -6,7 +6,8 @@
 #   - every staging container runs with --network none, --restart no, no host bind mount and no Docker socket; files
 #     go in and out with `docker cp` only, and images are built from a context outside the repository;
 #   - privilege rungs L1 and L2 only (CAP_SYS_ADMIN, private cgroup namespace). --privileged is not implemented;
-#   - no restore subcommand exists, and nothing here calls `provision.sh all` or `selftest` (DO NOT EXECUTE RESTORE);
+#   - nothing here calls `provision.sh all` or `selftest`; the only restore is `restore` (restore_driver.sh), which runs
+#     nothing without a valid, unused restore authorization of the owner (OD-12) and never targets production;
 #   - nothing here arms, captures, backfills or contacts CSE; the only network use is `docker build`'s apt access;
 #   - nothing here removes a container, volume, image or evidence file (the owner reviews them first).
 #
@@ -30,6 +31,8 @@
 #   staging.sh guard                one RAM and disk check (exit 1 below the floors)
 #   staging.sh canary               scan the evidence, journals, inspects and image histories for the test secret
 #   staging.sh collect [suffix]     journal export, docker inspect, image metadata into the evidence
+#   staging.sh restore R1|R2 RA [suffix]   ST-30 / ST-31 under the owner's restore authorization RA (a file, read only):
+#                                   restore_driver.sh, docs/ops/STAGING.md section 3, docs/ops/ISOLATED_RESTORE.md
 #
 # Provenance (H-4): every run, isolation and seed record opens with PROVENANCE lines (campaign, revision, container and
 # image, the driver's SHA-256, and the SHA-256 of each harness file as the container holds it, compared with the working
@@ -53,8 +56,8 @@ RAM_FLOOR_PCT=5
 DISK_FLOOR_GB=20
 # No test is deselected (owner, 2026-11-04): the nine regression tests that execute a restore into a disposable cluster
 # (tests/test_p1_postgres.py 2, tests/test_f64_postgres.py 1, tests/test_rf4_runbook_rehearsal.py 6) run inside the
-# runner container, which has no network, in the container's own throwaway clusters. Restore stays out of the host
-# container: the R1 gate is unchanged, and no restore functionality exists in this driver.
+# runner container, which has no network, in the container's own throwaway clusters. In the host container the R1 gate
+# is unchanged: only `restore R1` under a valid, unused restore authorization opens it, for one run (restore_driver.sh).
 
 winpath() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else echo "$1"; fi; }
 note() { mkdir -p "$EVID/logs"; echo "[staging $(date -u +%FT%TZ)] $*" | tee -a "$EVID/logs/driver.log"; }
@@ -254,9 +257,29 @@ new_log() {  # new_log NAME -> a results path that does not exist yet (evidence 
   echo "$log"
 }
 
+RUN_SCRIPTS=" stage_checks.sh stage_provision.sh stage_scenarios.sh stage_tree.py "   # `run` executes these inner scripts only
+
+r1_crosscheck() {  # r1_crosscheck CONTAINER: every restore_check row and binding against the host's fixed RA records (G-1)
+  local name=$1 tmp rc
+  tmp=$(mktemp -d)
+  docker exec "$name" runuser -u postgres -- psql -XAt -d cse --set=ON_ERROR_STOP=1 \
+    -c "select id from ops.backup_runs where run_kind = 'restore_check' order by id" > "$tmp/rows" 2> "$tmp/rows.err" \
+    || { echo "FAIL r1-crosscheck: the restore_check rows could not be read: $(head -c 300 "$tmp/rows.err")"; rm -rf "$tmp"; return 1; }
+  docker exec "$name" sh -c 'cat /var/lib/cse-staging/r1-authorized-runs 2>/dev/null || true' > "$tmp/bindings"
+  python "$HERE/restore_gate.py" r1-crosscheck --campaign "$CAMPAIGN" --rows-file "$(winpath "$tmp/rows")" \
+    --bindings-file "$(winpath "$tmp/bindings")"
+  rc=$?
+  rm -rf "$tmp"
+  return $rc
+}
+
 cmd_run() {
   local suffix=$1 script=$2; shift 2
   local name tag log
+  # an allowlisted name, never a path: no `/`, no `..`, no space, so no other file in the container can be reached
+  # (AR-0006-1 N-3; AR-0006-2 N-2)
+  [[ $script != */* && $script != *..* && $script != *" "* && "$RUN_SCRIPTS" == *" $script "* ]] \
+    || { echo "run: '$script' is not one of the inner scripts:$RUN_SCRIPTS" >&2; exit 2; }
   name=$(host_name "$suffix")
   tag="${script%.*}"; [[ -z "${1:-}" || "$1" == */* ]] || tag+="-$1"
   log=$(new_log "${suffix:-main}-$tag")
@@ -266,6 +289,11 @@ cmd_run() {
   set +e
   docker exec "$name" "$interp" "/opt/cse-staging/$script" "$@" >> "$log" 2>&1
   local rc=$?
+  # the R1 invariant's host-side half (AR-0006-2 G-1): wherever the container evaluates it, the harness cross-checks
+  # the container's bindings and restore_check rows against the host's own records, which the container cannot write
+  if [[ ($script == stage_checks.sh && ${1:-} == invariants) || ($script == stage_scenarios.sh && ${1:-} == restart-verify) ]]; then
+    r1_crosscheck "$name" >> "$log" 2>&1 || rc=1
+  fi
   set -e
   echo "exit $rc" >> "$log"
   note "$script $*: exit $rc ($(grep -c '^PASS' "$log") PASS, $(grep -c '^FAIL' "$log") FAIL)"
@@ -407,5 +435,6 @@ case "${1:-}" in
   guard) guard ;;
   canary) cmd_canary ;;
   collect) shift; cmd_collect "$@" ;;
-  *) sed -n '2,36p' "$0"; exit 2 ;;
+  restore) shift; . "$HERE/restore_driver.sh"; cmd_restore "$@" ;;
+  *) sed -n '2,39p' "$0"; exit 2 ;;
 esac
