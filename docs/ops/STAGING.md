@@ -472,7 +472,7 @@ register item. This is the acceptance run for staging's automated tests and proc
 **The build.** `main` at `af1fdd16cc408c45dce273509c757e1ce027b442` (the merge of pull request #11), in a fresh detached
 worktree (`D:/cse-work/acc`, LF, clean for the whole campaign: every record says "0 uncommitted path(s) under ops/staging"
 and `working-tree=same`). Campaign `p3b1`; evidence `D:\cse-staging\p3b1` (bundle manifest `MANIFEST.md` and `SHA256SUMS`,
-1360 files, written after the last step); the off-site test password in `%LOCALAPPDATA%\cse-staging\p3b1` (never in the
+1360 of 1363 files, written after the last step; `SHA256SUMS` itself and the two nested `results/st26/fp-{main,up}/SHA256SUMS` are not listed); the off-site test password in `%LOCALAPPDATA%\cse-staging\p3b1` (never in the
 evidence: ST-22). Every `run`, `isolation` and `seed` record opens with PROVENANCE naming that revision and the host image
 below.
 
@@ -480,7 +480,7 @@ below.
 |---|---|---|
 | `cse-staging:af1fdd16cc40` (host; every host container ran from it) | `sha256:2493a2617ebec246b702bdfaddc50bccae5b5837a4b46a17a528d870ee27c5d1` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
 | `cse-staging-runner:af1fdd16cc40` (every runner group ran from it) | `sha256:60fa080f8ff940136c5586d3fa10fca9fa23a9e59d74876e8829b3c3198e8ef9` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
-| `cse-staging:af1fdd16cc40-b3` (ST-26's second build only; no container runs from it) | `sha256:74de8a5b391d415a028f441595b97efb487bb917f4a32099138bb54125eb550e` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
+| `cse-staging:af1fdd16cc40-b3` (ST-26's second build only; the only containers that used it were two throwaway `--rm --network none` reads of its package manifest and application tree, `blockE.sh`, 18:37Z) | `sha256:74de8a5b391d415a028f441595b97efb487bb917f4a32099138bb54125eb550e` | `af1fdd16cc408c45dce273509c757e1ce027b442` |
 
 The first build reused Docker's layer cache for the base layers (the apt and P1 `packages` steps, from the t2s1 build's
 identical Dockerfile steps); the base digest is `ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3` and the application layer is the
@@ -520,7 +520,7 @@ held throughout: 29.9 GB at the end). Two host containers, one at a time: `cse-s
 | 23 | PASS: 51 layouts harvested (48 with cells); 300 F4 extractions, 300 F5 runs; database 25 MB (22.6 kB per extraction); synthetic only | `runner/harvest*`, `main-seed-full.txt`, `main-stage_checks-metrics.txt` |
 | 24 | PASS: both `test_rf4_fault_budget_postgres` cases are in L16 (passed) | `runner/L16/L16/junit.xml` |
 | 25 | PASS: all 19 groups, nothing deselected; counts equal CI's (table below) | `runner/groups-summary.txt` |
-| 26 | PASS with one recorded difference: the no-cache build's package manifest differs from `packages.lock` in two package revisions (see the findings); the application tree and Poppler are identical in the two builds; the two provisioning histories' fingerprints (main: fresh; up: 0017 then 0018) are identical in 7 of 7 components | `results/st26/` |
+| 26 | Accepted recorded difference under D-05 (orchestrator, [delegated], 2026-11-10); not an unqualified PASS: the no-cache build's package manifest differs from `packages.lock` in two package revisions (see the findings); the acceptance images match `packages.lock` (host image 220 of 220 packages; runner image the same 220 plus 4 test-only pytest packages); the application tree and Poppler are identical in the two builds; the two provisioning histories' fingerprints (main: fresh; up: 0017 then 0018) are identical in 7 of 7 components | `results/st26/` |
 | 27 | PASS (9): R-F4 `verify` as the real login `cse_verifier`, preflight by both routes, complete scope, 300 / 300 rebuilt | `main-stage_checks-rf4verify.txt` |
 | 28 | PASS (16): §20.6 steps 1-5, peer authentication; **step 6 needs a restored copy and is Phase C** | `main-stage_checks-reader.txt` |
 | 29 | PASS (12): P1's extended `verify_server` (REG-X03): 47 checks, 46 PASS, 1 WARN (D-02), 0 FAIL other than the container clock (D-04); the ten required checks PASS | `main-stage_checks-regx03.txt` |
@@ -567,10 +567,13 @@ staging volume; the host containers' R1 gate was never opened.
   as `runner/<group>` and `-r2`): X2 attempt 1 (started at 11.2 %), X2 attempt 2 (started at 20 %), L04 attempt 1 (started at
   26.7 %, stopped within 30 s) and L04 attempt 2 (started at 29.6 %). No test had failed when they were stopped. L04 and X2 each
   passed on attempt 3 (started at 26.1 % and 24.4 %); no group was stopped three times. To keep that third attempt from
-  being a campaign-ending stop, the third attempts of L04 and X2 were run last, after ST-26, the closing steps and the
-  groups L06 and L15 (which passed at the first attempt, started at 30.9 % and 26.2 %). From L04's first stop on, the heavy
+  being a campaign-ending stop, the third attempts of L04 and X2 were run late, after ST-26 and the groups L06 and L15
+  (which passed at the first attempt, started at 30.9 % and 26.2 %), and before the closing steps (block F, 19:04Z to
+  19:07Z; the third attempts ran 18:48Z to 19:04Z). From L04's first stop on, the heavy
   groups (L04, L06, L15, X2) were gated at 25 % or more rather than 18 %.
-- Free RAM moved between 2 % and 31 % with no campaign container running (other programs). The six supoclip containers exited
+- Free RAM moved between 2 % and 31 % with no campaign container running. The dip below the 5 % floor from 18:30Z to
+  18:33Z (minimum 2.3 %) followed the campaign's own no-cache build of ST-26 (20.6 % at 18:28Z, then the build, then 2.3 %);
+  it was not caused by other programs. The six supoclip containers exited
   at 17:01:09Z to 17:01:14Z, before the first container step of block B1, not by any command of this campaign; they were not
   restarted. The campaign's RAM figures from then on were taken with supoclip stopped.
 - Driver files: `blockD.sh`, `blockD2.sh`, `blockD3.sh` and `blockD4.sh` were each stopped by me while idle in a RAM gate
@@ -578,11 +581,13 @@ staging volume; the host containers' R1 gate was never opened.
 
 ### Findings and limitations (none is a product defect)
 
-1. **ST-26: two package revisions differ between the builds.** The no-cache build's manifest has `ca-certificates
+1. **ST-26: two package revisions differ between the builds; accepted recorded difference under D-05 (orchestrator,
+   [delegated], 2026-11-10), not an unqualified PASS.** The no-cache build's manifest has `ca-certificates
    20260816ubuntu0.24.04.2` and `libsqlite3-0 3.45.1-1ubuntu2.9` where `packages.lock` (and so the acceptance images)
-   have `.1` and `ubuntu2.8`: Ubuntu security updates published between the two builds. Classified: an environment
-   limitation of rebuilding from a moving apt archive (T1's results record it as an assumption: the package set would match only while the archive stands still). The acceptance
-   images are unchanged and match `packages.lock`; the application tree is identical; nothing in the build is pinned
+   have `.1` and `ubuntu2.8`: newer revisions from the `noble-updates` archive, published between the two builds. Classified
+   as accepted under D-05 (production installs its packages at provisioning; an environment limitation of rebuilding from a moving apt archive) (T1's results record it as an assumption: the package set would match only while the archive stands still). The acceptance
+   images are unchanged and match `packages.lock` (host image: all 220 packages; runner image: the same 220 plus 4 test-only pytest
+   packages, AR-0010-1); the application tree and the fingerprints are identical; nothing in the build is pinned
    below the archive.
 2. **F-1** (section 7): after provisioning the application tree differs from the commit by the six root-owned `.pyc` files
    (ST-09's `stage_tree.py`): the recorded, accepted P1 behaviour.
