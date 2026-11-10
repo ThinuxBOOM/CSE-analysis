@@ -33,6 +33,10 @@ restore authorizations RA-0001 and RA-0002 (section 13). Both PASSED. R2 include
 **REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** Nothing was armed or contacted, and
 production was never a target; staging is not accepted.*
 
+*2026-11-10 (later): the isolated-restore procedure is audited and owner-approved; with R2's evidence, REG-B01, REG-B04,
+REG-B06 and REG-B27 are CLOSED WITH EVIDENCE and runbook §6's checkpoint block is lifted (`docs/R_F4_IMPLEMENTATION.md`
+§25.6). Harness finding H-7 is recorded in section 13.*
+
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
 `docs/ops/P3_SCHEDULER.md` and `docs/ops/PHASE2_BACKFILL.md` (what is provisioned and run). Where this document and
@@ -734,12 +738,20 @@ below 5 %: no event occurred.
   No running script was edited.
 
 **Observations and limitations.**
-1. **The canary run overwrote Phase B's canary outputs.** Re-running `staging.sh canary` rewrote eight files in
-   `canary\`: `result.txt`, the two image histories, four containers' inspects, and the host's journal export.
-   `cmd_canary` writes its outputs in place, and this was not foreseen when the step was planned. Phase B's bundle
-   (`SHA256SUMS`) therefore no longer matches those eight files; `logs\driver.log`, which is appended, does not match
-   either. Phase B's canary result (0 of 1358 files) stays recorded in section 12. The other 1351 files listed in Phase
-   B's `SHA256SUMS` are unchanged.
+1. **The canary run overwrote Phase B's canary outputs** (evidence-integrity note, 2026-11-10). Re-running
+   `staging.sh canary` rewrote, in place, these 8 files that Phase B's seal (`SHA256SUMS`) lists:
+   - `canary\result.txt`;
+   - `canary\history-host.txt` and `canary\history-runner.txt`;
+   - `canary\inspect-cse-stg-p3b1-host.json`, `canary\inspect-cse-stg-p3b1-runner-L04-r3.json`,
+     `canary\inspect-cse-stg-p3b1-runner-L06.json` and `canary\inspect-cse-stg-p3b1-runner-X2-r3.json`;
+   - `canary\journal-cse-stg-p3b1-host.export`.
+
+   `logs\driver.log` was appended to (by every Phase C command), so it no longer matches the seal either. The other
+   1351 of the 1360 files that `SHA256SUMS` lists are unchanged. **Phase B's result stands:** its canary found the
+   secret in 0 of 1358 files (section 12), and AR-0010-1 verified `SHA256SUMS` at 1360 of 1360 before the overwrite.
+   **The original `SHA256SUMS` is not rewritten.** A supplementary seal, `SHA256SUMS-after-phaseC`, in the same
+   directory, lists every file of the bundle as it is after Phase C (every file except itself, the original
+   `SHA256SUMS` included).
 2. **The R1 dump** was the one P1's dump timer took when the host started (run 44). The restore check takes the newest
    dump by design, and R2's source record selected the same run.
 3. **R2 recorded differences** (section 11): no systemd in the R2 container, the backup root is a directory (D-02), and
@@ -747,3 +759,8 @@ below 5 %: no event occurred.
 4. **Not run:** ST-33, the owner's review and acceptance. Milestone 12's checkpoint and any production restore are out of
    scope.
 5. **Docker objects kept:** every object section 12 lists. `cse-stg-p3b1-r2` existed only during ST-31 and was deleted.
+6. **Harness finding H-7 (open; to be fixed in a later brief).** `staging.sh canary` writes fixed file names
+   (`canary\result.txt`, `inspect-<container>.json`, `journal-<container>.export`, `ps-<container>.txt`,
+   `history-host.txt`, `history-runner.txt`), so a second canary run in the same campaign overwrites the earlier run's
+   outputs. It must not overwrite an earlier run's outputs (for example, a new directory or file name per run, as
+   `new_log` does for `results\`). The harness is unchanged at `af1fdd16cc40`; this record does not change it.

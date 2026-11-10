@@ -130,7 +130,7 @@ the end, the owner runs a manual dump and a restore check, runs `cse-financial v
 restored copy, and records the checkpoint **in the next HB-S4 arming decision** (the P1 backup-ledger run ids). The
 worker cannot read `ops.backup_runs`, so backup state controls Phase 2 only through the owner's arming (MA §49).
 
-**The checkpoint's restored copy: BLOCKED (2026-10-23).** Do **not** use `P1_PLATFORM.md` §8 B, step 5 for it. That
+**The checkpoint's restored copy: BLOCKED (2026-10-23); the block is lifted on 2026-11-10 (the note below).** Do **not** use `P1_PLATFORM.md` §8 B, step 5 for it. That
 step is disaster recovery: it restores the dump **into the production cluster**, and it must never be used to create the
 throwaway checkpoint copy. P1's `restore_check` (§8 A) does not provide the copy either: it stops its throwaway cluster
 when it finishes (`--keep` keeps only the stopped data directory), and its private socket uses `trust` authentication;
@@ -150,6 +150,14 @@ isolated-restore procedure has been separately reviewed and approved.
 (REG-B01, `docs/R_F4_IMPLEMENTATION.md` §25.4), written under the owner's decisions OD-10 and OD-11 (decision request
 DR-0002). It is **pending its independent audit and the owner's approval**. Until it is approved and this section is
 changed under REG-B27, this section stays **BLOCKED**, and nothing here may use that procedure.)*
+
+*(2026-11-10: **the block is lifted** (REG-B27). The isolated-restore procedure `docs/ops/ISOLATED_RESTORE.md` was
+independently audited (AR-0006-1 to AR-0006-3, AR-0009-1) and approved by the owner on 2026-11-10, and ran at
+authorized staging (campaign p3b1, R2, ST-31: `docs/ops/STAGING.md` §13). It meets the four conditions above (its §3).
+**The checkpoint's restored copy is made only by that procedure**, never by `P1_PLATFORM.md` §8 B, step 5, and never
+with `restore_check --keep`: every warning above stands. Running it at a production checkpoint still needs the owner's
+restore authorization for that checkpoint (DR-0002 OD-12: the production mechanism is decided separately), and the
+restore and the checks below are owner-run.)*
 
 On a build that includes R-F4, the checkpoint also runs R-F4's two checks **on the restored copy**, in the order of
 section 12, steps 2–5. Each command is pointed at the restored copy, not at production: `DATABASE_URL` for a reader

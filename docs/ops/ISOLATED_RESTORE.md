@@ -1,11 +1,12 @@
 # The isolated-restore procedure (REG-B01)
 
-**Status (2026-11-04): written, NOT YET AUDITED OR APPROVED.** This is the procedure that the R-F4 register's REG-B01
-asks for (`docs/R_F4_IMPLEMENTATION.md` §25.4). It is pending its independent audit and the owner's approval. Until
-then:
-- **REG-B01 stays OPEN**;
-- runbook §6 (`docs/ops/PHASE2_BACKFILL.md`) stays **BLOCKED** (REG-B27);
-- no production checkpoint may use it.
+**Status (2026-11-10): AUDITED AND OWNER-APPROVED.** This is the procedure that the R-F4 register's REG-B01 asks
+for (`docs/R_F4_IMPLEMENTATION.md` §25.4). Written 2026-11-04; independently audited (AR-0006-1 to AR-0006-3,
+AR-0009-1); approved by the owner on 2026-11-10 ("Approve the procedure"); staging evidence: campaign p3b1, R2
+(ST-31, under RA-0002; `docs/ops/STAGING.md` §13, evidence `D:\cse-staging\p3b1`). REG-B01, REG-B04, REG-B06 and REG-B27 are
+CLOSED WITH EVIDENCE, and runbook §6 (`docs/ops/PHASE2_BACKFILL.md`) no longer blocks the checkpoint's restored copy:
+that copy is made only by this procedure. Running it at a production checkpoint still needs the owner's restore
+authorization for that checkpoint (DR-0002 OD-12: the production mechanism is decided separately).
 
 At staging it runs only through `staging.sh restore` under a valid, unused restore authorization (`docs/ops/STAGING.md`
 §3). **DO NOT EXECUTE RESTORE** outside that, or outside the throwaway test containers the owner allowed for tests
@@ -207,8 +208,9 @@ stderr.
   That is weaker than an identifier taken inside the dump's snapshot, which needs P1 change control (16-I's
   P1-CC-PROV). *2026-11-04, decided [delegated] within OD-10 (CSE Decision Log, "B-0006 scope questions"): this
   ledger binding satisfies REG-B06 for this project, and P1-CC-PROV is not authorized. REG-B06 stays OPEN until Phase
-  C's R2 evidence shows the check working.*
+  C's R2 evidence shows the check working.* *(2026-11-10: ST-31 showed it working; REG-B06 CLOSED WITH EVIDENCE.)*
 - **Root inside the isolated environment** could start another cluster between two identity checks. The environment
   holds nothing else and is short-lived; production is not reachable from it.
 - **At milestone 12** the isolated environment and the dump's transfer are the owner's to provide. Runbook §6 stays
-  blocked until this procedure is audited and approved, and changed under REG-B27.
+  blocked until this procedure is audited and approved, and changed under REG-B27. *(2026-11-10: audited, approved and changed: runbook §6's
+  block is lifted, REG-B27 closed.)*
