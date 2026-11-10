@@ -34,7 +34,8 @@ restore authorizations RA-0001 and RA-0002 (section 13). Both PASSED. R2 include
 production was never a target; staging is not accepted.*
 
 *2026-11-10 (later): the isolated-restore procedure is audited and owner-approved; with R2's evidence, REG-B01, REG-B04,
-REG-B06 and REG-B27 are CLOSED WITH EVIDENCE and runbook §6's checkpoint block is lifted (`docs/R_F4_IMPLEMENTATION.md`
+REG-B06 and REG-B34 are CLOSED WITH EVIDENCE, REG-B27 is IN PROGRESS (it closes in the record of the owner's ST-33,
+after this change's audit), and runbook §6's checkpoint block is lifted (`docs/R_F4_IMPLEMENTATION.md`
 §25.6). Harness finding H-7 is recorded in section 13.*
 
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
