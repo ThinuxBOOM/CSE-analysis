@@ -378,6 +378,8 @@ a complete historical universe could not be represented.
 - **Imported date:** the securities with a row in the admitted import for that date. Whether an import includes
   securities that later delisted is a property of the source, recorded per batch as
   `survivorship: complete | survivors_only | unknown`, and carried into every dataset built on that era (MA §34).
+- A captured era is `survivorship: complete` from the first capture on, because each session's universe is read from
+  that day's own archive. A dataset spanning several eras carries the worst of their labels.
 - A security stays in every historical universe it was in.
 
 ### 8.3 Sector
@@ -613,7 +615,7 @@ before T does change the result.
 | `mf_corporate_action_observations` | §7.1 |
 | `mf_snapshots` | One row per snapshot: T, H where the mode has one, mode, label, D\*, pending non-final sessions, configuration id, code version tuple, the input digest, the factor list and `adjustment_set_hash`, the row count |
 | `mf_snapshot_rows` | One row per (snapshot, security): eligibility result; the feature vector as canonical JSON with each value's state and reasons; `px_ref` and `ref_session` at D\*; the ids of the D\* bar's contributing raw observations; a digest of the ids behind every window; `row_hash` |
-| `mf_target_builds`, `mf_target_rows` | §11 |
+| `mf_target_builds`, `mf_target_rows` | §11. Each label row stores its state, values, `resolved_at`, the adjustment set used and a `row_hash` |
 
 - Every table refuses UPDATE, DELETE and TRUNCATE for every role, with the trigger pattern of 0010 and 0015.
 - **The migration's text must satisfy the existing guards over all migrations:** no binary column type, no column

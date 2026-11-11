@@ -144,3 +144,20 @@ The audit of revision 1 (cloud, fresh-context agent; C-0005) returned FAIL: thre
 and three Notes. Revision 2 dispositions every finding in its §17. P4-D3 is replaced (sign rule `f7.sign.2`, limited to
 five gross concepts), P4-D9 to P4-D14 are added, and P4-R4 (exposing F6.1's sign-convention result through F8, a
 change to frozen F8) is added to the reserved list. Revision 2 is not accepted until it is audited again.
+
+## C-0012: Phase 5 design, revision 2 ([delegated], 2026-11-11)
+
+The audit of revision 1 (cloud, fresh-context agent; C-0005) returned FAIL: three Blockers, fifteen Major, sixteen
+Minor and six Notes. Revision 2 dispositions every finding in its §19. P5-D5 and P5-D6 are replaced (one test access
+per protocol against a pre-declared criterion; sufficiency minimums in sessions), P5-D9 to P5-D14 are added, and P5-R4
+(the deviation from Master Architecture §25: no sector strata until a sector source exists) is added to the reserved
+list. Phase 3 revision 2 gains two clarifications that Phase 5 relies on (a row hash on label rows; the survivorship
+label of a captured era). Revision 2 is not accepted until it is audited again.
+
+## C-0013: status of the three designs (2026-11-11)
+
+Phase 3, 4 and 5 are each at revision 2 after a failed first audit. The second audits of Phases 3 and 4 were started
+and interrupted by the session's usage limit before reporting; Phase 5's second audit has not started. **None of the
+three designs is accepted, and no implementation has begun.** The next actions are: finish the three second audits,
+disposition their findings, and only then start implementation at the steps that depend on nothing unaccepted
+(Phase 5's metrics library, M5-1, has no dependency).
