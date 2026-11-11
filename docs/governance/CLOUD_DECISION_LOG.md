@@ -176,3 +176,10 @@ The decisions P6-D1 to P6-D8 of `docs/PHASE6_NEWS_SENTIMENT_DESIGN.md` §12 are 
 are reserved for the owner: which news sources and their governance records, what of each article is stored, the purge
 procedure, Sinhala and Tamil coverage, and the merge into `main`. The design is revision 1 and has not been audited;
 it adds no code and contacts no source.
+
+## C-0016: Phase 7 design decisions ([delegated], 2026-11-11)
+
+The decisions P7-D1 to P7-D9 of `docs/PHASE7_AI_ANALYST_DESIGN.md` §12 are taken as stated there. P7-R1 to P7-R5 are
+reserved for the owner: what CSE-derived data may be sent to a hosted provider under G-1 and acceptance of that
+provider's terms, which provider configurations are approved, supplying a provider key, any fallback policy, and the
+merge into `main`. The design is revision 1 and has not been audited; it adds no code and calls no provider.
