@@ -161,3 +161,11 @@ and interrupted by the session's usage limit before reporting; Phase 5's second 
 three designs is accepted, and no implementation has begun.** The next actions are: finish the three second audits,
 disposition their findings, and only then start implementation at the steps that depend on nothing unaccepted
 (Phase 5's metrics library, M5-1, has no dependency).
+
+## C-0014: milestone 10 design decisions ([delegated], 2026-11-11)
+
+The decisions LP-D1 to LP-D7 of `docs/ops/LOCAL_PRODUCTION_DESIGN.md` §10 are taken as stated there. LP-R1 to LP-R6
+are reserved for the owner: disk and dump retention, the drive for dump copies, keeping the workstation awake through
+capture windows, the fallback if the outbound filter is unreliable, the authorization of each workstation step, and
+everything that permits CSE contact. The design is revision 1 and has not been audited; it builds nothing and
+authorizes nothing.
