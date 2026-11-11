@@ -137,3 +137,10 @@ reserved owner decision (P3-R5), not as a design choice. P3-R4 (daily foreign-ho
 the reserved list. Revision 2 also registers the fields Phase 4's audit showed that layer needs from Phase 3
 (`market_cap_reported`, `shares_implied`, the return-history family, `mkt_ret_ew_63`). Revision 2 is not accepted until
 it is audited again.
+
+## C-0011: Phase 4 design, revision 2 ([delegated], 2026-11-11)
+
+The audit of revision 1 (cloud, fresh-context agent; C-0005) returned FAIL: three Blockers, fifteen Major, seven Minor
+and three Notes. Revision 2 dispositions every finding in its §17. P4-D3 is replaced (sign rule `f7.sign.2`, limited to
+five gross concepts), P4-D9 to P4-D14 are added, and P4-R4 (exposing F6.1's sign-convention result through F8, a
+change to frozen F8) is added to the reserved list. Revision 2 is not accepted until it is audited again.
