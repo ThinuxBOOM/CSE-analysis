@@ -169,3 +169,10 @@ are reserved for the owner: disk and dump retention, the drive for dump copies, 
 capture windows, the fallback if the outbound filter is unreliable, the authorization of each workstation step, and
 everything that permits CSE contact. The design is revision 1 and has not been audited; it builds nothing and
 authorizes nothing.
+
+## C-0015: Phase 6 design decisions ([delegated], 2026-11-11)
+
+The decisions P6-D1 to P6-D8 of `docs/PHASE6_NEWS_SENTIMENT_DESIGN.md` §12 are taken as stated there. P6-R1 to P6-R5
+are reserved for the owner: which news sources and their governance records, what of each article is stored, the purge
+procedure, Sinhala and Tamil coverage, and the merge into `main`. The design is revision 1 and has not been audited;
+it adds no code and contacts no source.
