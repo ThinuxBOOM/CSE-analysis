@@ -183,3 +183,13 @@ The decisions P7-D1 to P7-D9 of `docs/PHASE7_AI_ANALYST_DESIGN.md` §12 are take
 reserved for the owner: what CSE-derived data may be sent to a hosted provider under G-1 and acceptance of that
 provider's terms, which provider configurations are approved, supplying a provider key, any fallback policy, and the
 merge into `main`. The design is revision 1 and has not been audited; it adds no code and calls no provider.
+
+## C-0017: Phase 3 design, revision 3 ([delegated], 2026-11-12)
+
+The second audit (cloud, fresh-context agent) of Phase 3 revision 2 returned FAIL: no Blocker, eight Major, ten Minor,
+five Notes. It confirmed by worked cases that the revision 1 Blocker is fixed for captured data, and found the same
+class of error in two residual cases (a rights issue after a split with no trade between; imported history that
+repeats the last close on days without a trade). Revision 3 dispositions every finding in its §19. Decisions P3-D16
+to P3-D18 are added (degraded sessions; a computed security key in place of a registry table; label protection
+against late corporate actions), P3-D15 is widened, and P3-R7 (a same-day re-capture rule, a change to frozen P3) is
+reserved for the owner. Revision 3 is not accepted until it is audited again.

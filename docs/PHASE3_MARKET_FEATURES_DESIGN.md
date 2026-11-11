@@ -1,6 +1,6 @@
 # Phase 3: market feature foundation (design)
 
-**Status: DESIGN, revision 2 (2026-11-11). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 3 (2026-11-12). Not implemented. Not accepted.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact, no capture, no purchase and no change to `main`.
 
@@ -10,6 +10,14 @@ adjusted by that session, not by the bar's date (§5, §7); the market cutoff D\
 capture (§4.3); closures and all run evidence have their own clocks (§4, §6); imported history must state its price
 basis (§14); MF has its own security identity (§8); targets have terminal states, a resolution instant and a written
 formula (§11).*
+
+*Revision 3 (2026-11-12) answers the second audit, which found the revision 1 Blocker fixed for captured data but
+failed revision 2 on eight Major findings (§19). The main changes: the rights factor uses an adjusted cum price
+(§7.2); imported bars must declare their no-trade convention (§5.4, §14); a non-final run's observations are
+superseded at run level, and a capture that never becomes final has a defined degraded outcome (§4.3, §5.1); the
+exact terminal event and derivation pass MF reads are named (§4.3); the payload cross-check is recomputed under MF's
+own tolerances (§5.2); security identity is a deterministic key, not a table (§8.1); labels are protected against
+late corporate actions (§11).*
 
 **Governing records:** Master Architecture (MA) §4 to §6, §10, §11, §22, §33 to §36, §39 to §42, §45, §55 (Phase 3),
 §56 to §59 and §68; `docs/ops/P2_MARKET_CAPTURE.md` and `docs/ops/P3_SCHEDULER.md` (what market capture records);
@@ -66,10 +74,10 @@ P2 archive + raw_market_observations (append-only, frozen)      imported history
 | Target definitions are versioned; `return = (future_close - reference_close) / reference_close`; volatility for every horizon | §4 | Met: §11 |
 | Eligibility by measurable data and activity criteria, versioned and empirically tested | §6, §22 | Mechanism met; values `provisional`: §9 |
 | Inactive and delisted securities stay in history; today's list never defines yesterday's universe | §6, §34, §35 | Met for captured sessions; for imports it depends on the source and is labelled: §8 |
-| Raw and analysis-adjusted series distinguishable; adjustments explicit and versioned | §40 | Met: §7 |
+| Raw and analysis-adjusted series distinguishable; adjustments explicit and versioned; splits, consolidations, rights, dividends, bonus shares, ticker changes, mergers, delistings accounted for | §40 | Met for price-changing actions: §7. Ticker changes, mergers and delistings are identity events only: a link or an ending, never a carried-over series (§7.2, §8.1) |
 | Every feature has source, formula, units, availability rule, version, quality state | §39 | Met: §10.1 |
 | **Sector-relative features** | §5, §12.1, §39 | **Not met in v1.** No point-in-time sector classification exists (§8). Reserved: P3-R5. Phase 4 consequently has no sector-relative engine |
-| Quality states `fresh`, `stale`, `partial`, `conflicting`, `missing`, `unlabelled`, `untrusted` | §41 | Met: §10.3 |
+| Quality states `fresh`, `stale`, `partial`, `conflicting`, `missing`, `unlabelled`, `untrusted` | §41 | Met: §10.4 |
 | Provenance forecast → market feature → daily observation → capture run → raw CSE response | §42 | Met by stored digests plus deterministic re-derivation (`explain`), not by a stored id list per window: §13 |
 | No mutable latest-value tables; no future data in historical forecasts | §59 | Met: §3, §5, §6 |
 | The fifteen questions of §68 | §68 | §18 |
@@ -85,12 +93,11 @@ P2 archive + raw_market_observations (append-only, frozen)      imported history
 | `raw_market_observations` (0001, 0002; append-only since 0010) | Every price, volume, turnover and trade-count value, and the verbatim `raw_payload` |
 | `market_capture_runs`, `market_capture_run_events`, `market_capture_security_results`, `market_source_responses`, `market_response_bodies` (0012; append-only) | Which run produced an observation; the run's kind, mode, trading date, terminal state and session evidence (E1, E2); universe and `tradeSummary` membership; the archived `allSecurityCode` bodies |
 | `market_schedule_items`, `market_schedule_item_events` (0014; append-only) | P3's no-session evidence for a date (`not_applicable`) |
-| `companies` (`id`, `ticker` only) | To link an observation's `company_id` to MF's own security identity (§8) |
 | `issuer_securities` (0007) | The link from a security to its F5 issuer, for Phase 4 |
 | MF's own tables (§13) | Imports, calendar and corporate-action evidence, identity, configurations, snapshots |
 
 **MF never reads** `daily_market_data`, `daily_index_data`, `trading_calendar`, `corporate_actions`,
-`symbol_history`, `system_config`, or any mutable descriptive column of `companies`. A static test enforces the read
+`symbol_history`, `system_config` or `companies`. A static test enforces the read
 list. Closures that P3's operator declares in `trading_calendar` reach MF only as copies in MF's own append-only
 evidence table (§6).
 
@@ -118,8 +125,8 @@ source made it public.
 | Evidence | `recorded_at` (system knowledge) | `available_at` (source availability) |
 |---|---|---|
 | A captured observation | `raw_market_observations.created_at` | `observed_at` (the response's receipt; see the notes on clocks below) |
-| A run's results (terminal state, E1, E2, membership, universe body) | The `occurred_at` of the run's terminal event | The latest `observed_at` of the run's `ok` responses |
-| P3 no-session evidence | The `not_applicable` item event's time | The same |
+| A run's results (terminal state, E1, E2, membership, universe body) | The `occurred_at` of the **governing terminal event** (§4.3) | The latest `observed_at` of the run's `ok` responses |
+| P3 no-session evidence | The time of a `not_applicable` item event **that names a run** (the event P3 writes after no-session snapshots; §6) | The same |
 | An imported bar | The import row's own database-default timestamp | A rule of the configuration (P3-D4): the configured local time on D, default 18:00 Colombo. An assumption, so the result is labelled `reconstructed` |
 | A closure, corporate action or identity link entered as evidence | The evidence row's database-default timestamp | The source's own notice or announcement date, which the row must carry (a date counts from the end of that Colombo day, F8's rule) |
 
@@ -140,7 +147,7 @@ source made it public.
 | Mode | Admits evidence with | Label | For |
 |---|---|---|---|
 | `KNOWN` | `recorded_at` ≤ T | `point_in_time` | Live forecasts; backtests of the live era |
-| `KNOWN_RECORDED` | Nothing is recomputed: the stored snapshot whose own T is the latest at or before the requested instant is returned | `point_in_time` | Reproducing exactly what a forecast used (F8 has the same mode) |
+| `KNOWN_RECORDED` | Nothing is recomputed. Among stored snapshots of mode `KNOWN`, under the configuration designated for the purpose, **written at or before the requested instant** (`mf_snapshots.recorded_at`), the one with the latest T is returned | `point_in_time` | Reproducing exactly what a forecast used. A forecast pins its snapshot by id and hash |
 | `AVAILABLE` | `available_at` ≤ T **and** `recorded_at` ≤ H | `reconstructed` | Backtests and training over an era whose data arrived later |
 | `CURRENT` | `recorded_at` ≤ H | `retrospective_current` | Research reports only; never point-in-time |
 
@@ -150,6 +157,12 @@ source made it public.
 - A result's hash covers its mode, T, the configuration id, the inputs and the values. H is covered only in
   `AVAILABLE` and `CURRENT`, where it is an input. So the same `KNOWN` query on settled evidence gives the same bytes
   whenever it is run.
+- `AVAILABLE` and `CURRENT` require H ≥ T.
+- **How this differs from F8.** The mode names are F8's; the labels are MF's own (`point_in_time` where F8 says
+  `known` and `known_recorded`). MF's `KNOWN` has no availability clause: what the system held at T is admitted
+  whatever its source's publication time. A `KNOWN` result that used an imported bar is point-in-time about the
+  system's knowledge and carries the flag `imported_inputs`, because the values are as the source held them on the
+  batch's `values_as_of` (§14).
 - `AVAILABLE` is monotone in H for fixed T only in what it can see, not in its values: later evidence about a time
   before T may change the answer. That is its meaning, and why it is labelled.
 
@@ -162,16 +175,30 @@ A captured date D is one of:
 
 | Kind | Condition (all evidence admitted at T under the mode) |
 |---|---|
-| **Final session** | A `post_close` capture run for D has a terminal event (`succeeded` or `partial`) whose evidence shows E1 true (the snapshot shows D's own session), the universe known (P2's dimension B), E2 true (no traded row with an unpublished close), and coverage of its request plan at or above the configuration's `min_coverage` (provisional default 0.95). Its **governing run** is the latest such run |
+| **Final session** | A `post_close` capture run for D (kind capture, never a sweep) has an admitted terminal event (`succeeded` or `partial`) whose recorded summary shows E1 true (the snapshot shows D's own session), the universe known (P2's dimension B), E2 true (no `tradeSummary` row with an unpublished close), and coverage at or above `min_coverage` (provisional default 0.95). **Coverage** is the summary's raw observations produced divided by expected (P2's dimension C). The **governing terminal event** is the latest such event by `occurred_at`; its run is the **governing run** |
+| **Degraded session** | D's capture window has closed (the date is past), no run is final for D, and the latest admitted terminal event for D shows E1 true, the universe known and coverage at or above `min_coverage`, but E2 false. See below |
 | **Non-final session** | A session is proven for D (E1 true on any run, or any derived observation for D, which migration 0014's own guard also treats as proof), but no run meets the conditions above |
 | **Closure** | §6 |
 | **Unknown** | §6 |
 
 - D\* never advances onto a non-final session. A capture taken before CSE published the closes (E2 false) therefore
   does not turn "not published yet" into a market-wide zero return: the snapshot stays on the previous D\* and
-  records D as pending. A later run for D that meets the conditions makes D final from that run's `recorded_at`.
-- All of a run's evidence becomes admissible together, at the run's own instants (§4.1). MF never sees half a
-  derivation pass.
+  records D as pending.
+- **Which rows MF reads from a run.** P2 writes its session evidence, universe result, plan, completeness and symbol
+  lists into the `details.summary` of each terminal event, and names the derivation pass in `details.derivation`.
+  MF reads the governing terminal event's summary and **only the per-security rows of the pass that event names**.
+  A pass that no admitted terminal event names (a `reprocess` of a finished run writes one, and a pass in progress
+  has rows before its event) is ignored. This is what makes a run's evidence admissible as one unit.
+- **An early capture is not repaired automatically.** P3 resumes the same run and never requests an archived
+  `tradeSummary` again, so a capture taken before the closes were published stays E2-false unless an operator starts
+  a new run on the same day. `tradeSummary` serves only the latest session, so after that day it cannot be repaired
+  at all.
+- **A degraded session is a session with holes, not a missing day.** It enters the session sequence, so one early
+  capture does not make every window and label around it unusable. In it, a `tradeSummary` row with an unpublished
+  close gets row 2 of §5.2 (no close, and its volumes are treated as unpublished too, because a capture that early
+  shows session-to-date figures); every other security is treated as on a final session. The snapshot and every
+  window containing the date carry `degraded_session`. Whether P3 should re-capture later the same day is a change to
+  frozen P3 and is reserved (P3-R7).
 - An imported date is final if its batch admits it (§14).
 
 ---
@@ -182,12 +209,15 @@ A captured date D is one of:
 
 For a security s and a final session D with governing run G:
 
-1. Take the admitted rows of `raw_market_observations` for (s, D).
-2. Apply **MFB-7 `unpublished_superseded`**: among end-of-day observations of the same source and capture window, an
-   observation whose `closing_price` is 0 is left out when a later one for (s, D) has a non-zero `closing_price`. It
-   stays in the raw layer and is listed in the bar's notes. Without this rule a second capture after an early one
-   would make the frozen `reconcile` flag every such security as a discrepancy (it compares same-source, same-window
-   values and 0 never agrees with a price).
+1. Take the admitted rows of `raw_market_observations` for (s, D) whose `request_attempt_id` is a P2 capture run
+   (not a sweep). A row that belongs to no run is not used. A production database holds no synthetic or staging row
+   (MA §43.1), and MF's preflight refuses a database that has any.
+2. Apply **MFB-7 `superseded_run`**: of the end-of-day observations from `post_close` capture runs, only the
+   **governing run's** are passed on. Observations of any other `post_close` run for D stay in the raw layer and are
+   listed in the bar's notes. Without this rule the frozen `reconcile` would flag a discrepancy whenever two captures
+   of one day differ, which they do whenever the first was early: it compares same-source, same-window values, a
+   close of 0 never agrees with a price, and its volume tolerance is 0. Observations from other windows and other
+   sources are passed unchanged.
 3. Call the frozen `worker.reconciliation.reconcile(rows, tolerances)`. The tolerances are **MF's own**, pinned in the
    MF configuration; P2 reads them at run time from the mutable `system_config`, which MF does not follow. A static
    test pins the SHA-256 of `worker/reconciliation.py`, as P2 does.
@@ -204,8 +234,10 @@ there as bar fields:
   security (non-traded securities and P2's small rotating sample).
 
 Their semantics are **`provisional`**: in the five real fixture pairs in `tests/fixtures/multi_company/`,
-`marketCap` equals `price` × `quantityIssued` of that one security exactly, so on that evidence it is per security
-and based on the last traded price at capture, not on the close. Five rows on one day do not establish it (§17).
+`marketCap` equals `price` × `quantityIssued` of that one security exactly, so on that evidence it is per security.
+`price` equals `closingPrice` in all five, so they do not show which of the two it is based on. Five rows on one day
+establish neither (§17). On a session without a trade the value is CSE's last price times a share count that may
+have changed since, so it can be stale in both factors.
 
 `reconcile` uses float tolerances internally and returns `Decimal` values inside its provenance. It is deterministic;
 MF's canonical JSON serialises `Decimal` exactly. The "no float" rule of §10.1 is about MF's own arithmetic.
@@ -217,10 +249,10 @@ applies. Nothing here alters the raw bar.
 
 | # | Evidence for (s, D) | `traded` | `px_close` | Volumes in the feature bar | Bar quality |
 |---|---|---|---|---|---|
-| 1 | In `tradeSummary`; end-of-day observation with `closing_price` > 0 | true | That close | As observed | `fresh`, or per rows 6 and 7 |
-| 2 | In `tradeSummary`; end-of-day observation with `closing_price` = 0 | true | null (`close_unpublished`) | As observed | `partial`. **No carry-forward:** price features of s at D are `missing`. (Cannot happen on a final session unless E2's definition and this row differ; kept as a guard) |
-| 3 | In the universe, absent from `tradeSummary`; a fallback observation exists | false (rule MFB-3) | null. A non-zero `closingPrice` CSE printed for it is kept as `printed_close_no_trade` and is not a price | 0, with the rule id | `stale` once a carried price exists |
-| 4 | In the universe, absent from `tradeSummary`; no observation (`source_missing` and similar) | false (rule MFB-3) | null | 0, with the rule id | `stale`, flagged `no_observation` |
+| 1 | In `tradeSummary`; end-of-day observation with `closing_price` > 0 | true | That close | As observed | `fresh`, or as rules MFB-6 and MFB-8 below set it |
+| 2 | In `tradeSummary`; end-of-day observation with `closing_price` = 0 | true | null (`close_unpublished`) | As observed | `partial`. **No carry-forward:** price features of s at D are `missing`. This is the normal row of a degraded session (§4.3). On a final session it is rare but reachable: E2 reads `tradeSummary`, while for a cross-checked security the frozen mapper takes the close from `companyInfoSummery` first |
+| 3 | In the universe, absent from `tradeSummary`; a fallback observation exists | false (rule MFB-3) | null. A non-zero `closingPrice` CSE printed for it is kept as `printed_close_no_trade` and is not a price | 0, with the rule id | `stale` once a carried price exists; `missing` before the security's first traded bar |
+| 4 | In the universe, absent from `tradeSummary`; no observation (P2's `source_missing`, `company_missing`, `not_derived`) | false (rule MFB-3) | null | 0, with the rule id | As row 3, flagged `no_observation` |
 | 5 | Not covered by the governing run's plan at all, or the observation failed to derive | — | — | — | `missing` |
 
 Further flags, applied after the row:
@@ -228,8 +260,8 @@ Further flags, applied after the row:
 | Rule | Condition | Effect |
 |---|---|---|
 | MFB-5 `close_outside_range` | `closing_price` outside [`low`, `high`] | Kept: a genuine CSE value (README: 16 of 284 rows). Flag only |
-| MFB-6 `discrepancy` | `reconcile` flagged a disagreement | Row 6: bar quality `conflicting`. MF does not pick differently from `reconcile` and does not hide the flag |
-| MFB-8 `cross_check_disagreement` | The observation's `raw_payload` records a `tradeSummary` versus `companyInfoSummery` cross-check that did not agree | Row 7: bar quality `conflicting` for the affected field. Both values are `CSE_API`, so `reconcile` cannot see this. Whether P2's payload carries the comparison in a usable form is confirmed at MF-1; if not, the rule is dropped and the limit recorded |
+| MFB-6 `discrepancy` | `reconcile` flagged a disagreement | Bar quality `conflicting`. MF does not pick differently from `reconcile` and does not hide the flag |
+| MFB-8 `cross_check_disagreement` | The observation's `raw_payload.cross_source_comparison` holds both values of a field (`tradeSummary`'s and `companyInfoSummery`'s). **MF recomputes agreement itself under its own pinned tolerances** and never reads the payload's `agree_exactly`, which is exact equality: in all five real fixtures the two turnover figures differ by a rupee or two, so exact equality would flag every sampled security every day | A disagreement beyond tolerance on a **price** field (`closing_price`, `last_traded_price`) makes the bar `conflicting`. One on turnover or market capitalisation is recorded on that field only and does not change the bar's quality. Both values are `CSE_API`, so `reconcile` cannot see either case |
 
 - **MFB-3 `absent_from_trade_summary_means_no_trade` is `provisional`.** The project has only observed that
   `tradeSummary` "has so far only listed securities with ≥1 trade" (README, open investigations). MF adopts it as a
@@ -248,7 +280,24 @@ Further flags, applied after the row:
 
 ### 5.4 Imported history
 
-Imported bars (§14) supply dates with no captured observation. They never enter `raw_market_observations`. Where both
+Imported bars (§14) supply dates with no captured observation. They never enter `raw_market_observations`.
+
+**An imported row becomes a feature bar by the batch's declared no-trade convention**, never by reading its close as
+a traded close. Many series, including "raw" ones, repeat the last close on days without a trade. Taken as a printed
+close, such a row would carry its own date as source session, and a repeated cum price on an ex-date would then get
+no factor: the revision 1 error again, for imported history.
+
+| Batch's `no_trade_convention` | Rule |
+|---|---|
+| `volume_zero` | `traded` = volume > 0 (or trade count > 0 where the batch has one). On a row with `traded = false` the close is not a price: `px_close` is null and the printed value is kept as `printed_close_no_trade` |
+| `row_absent` | A row exists only for traded days: every row is `traded = true`. A security with rows before and after a session but none on it has a no-trade bar there, provided the batch is `calendar_complete` for that date |
+| `unknown` | The batch is admitted to `CURRENT` only |
+
+`mf_history_bars` requires, per row: the security's symbol, the date, the close, and the volume (unless the
+convention is `row_absent`); high, low, turnover and trade count are optional. `px_ref` and `ref_session` then follow
+§5.3 for imported bars exactly as for captured ones.
+
+Where both
 exist for (s, D): `KNOWN` uses the captured evidence alone until the import's `recorded_at`, and from then on, as in
 `AVAILABLE` and `CURRENT`, the two are compared field by field under the configuration's tolerances. Agreement is
 recorded; disagreement makes the bar `conflicting` with both values kept. No source is silently preferred (MA §9,
@@ -258,15 +307,19 @@ recorded; disagreement makes the bar `conflicting` with both values kept. No sou
 
 ## 6. MF-2: the session calendar as of T
 
-CSE's closures follow no computable rule. MF derives the calendar from evidence, never from weekday arithmetic, and
-keeps its own append-only copy of any evidence that lives in a mutable table.
+CSE's closures follow no computable rule. MF derives sessions and closures from evidence and keeps its own
+append-only copy of any evidence that lives in a mutable table. The one use of the weekday is P3's own: Monday to
+Friday are candidate days. A Saturday or Sunday is not a candidate and needs no closure evidence; if session evidence
+exists for one (a special session), it is a session like any other.
 
 **`mf_calendar_observations`** (append-only) holds closure evidence, each row with its date, kind, source reference,
 `available_at` (the notice date) and `recorded_at`:
 
 - `declared_closed`: copied from a `trading_calendar` row `closed` by the MF command `calendar-sync`, or entered
   directly through the owner path. The copy is what MF reads; `verify` reports any later difference between the copy
-  and `trading_calendar`, which is mutable and whose `established_at` is only a default.
+  and `trading_calendar`, which is mutable and whose `established_at` is only a default. `calendar-sync` and that
+  `verify` comparison are the only code allowed to read `trading_calendar`; the static read-list test names them as
+  the exception, and neither the pure package nor the loader may.
 - `import_calendar_complete`: an import batch's declaration that it contains every session of a date range. Every
   Monday to Friday date in the range for which the batch has no row is then a closure, available on the date itself.
 
@@ -275,7 +328,7 @@ A date at or before D\* is, at T under the mode:
 | Kind | Condition |
 |---|---|
 | Final or non-final session | §4.3; or an admitted import batch holds at least one traded bar for the date |
-| **Closure** | A `declared_closed` or `import_calendar_complete` observation is admitted; or P3 recorded `not_applicable` for the date (its no-session evidence: snapshots taken on the date whose latest trade is on an earlier date) |
+| **Closure** | A `declared_closed` or `import_calendar_complete` observation is admitted; or P3 recorded a `not_applicable` event **naming a run** for the date (its no-session evidence: snapshots taken on the date whose latest trade is on an earlier date). P3 also writes `not_applicable` without a run when the operator declared the date closed; that case reaches MF only through the `declared_closed` copy, so MF ignores the run-less event |
 | **Unknown** | A Monday to Friday date that is none of the above. A missed capture leaves one. It is never counted as a session and never assumed closed (MA §45) |
 
 - **Session evidence beats a closure.** If a date has both, it is a session, and the contradiction is flagged (P3
@@ -283,8 +336,9 @@ A date at or before D\* is, at T under the mode:
 - The **session sequence** as of T is the ordered list of final sessions up to D\*. All windows and horizons count
   positions in it. It is per market: a security that did not trade on a final session has a no-trade bar, not a gap.
 - A window that spans an unknown date or a non-final session is `partial`. The configuration sets the tolerance:
-  0 such dates for windows of 5 sessions or fewer, otherwise at most 2% of the window (P3-D5). Beyond it the feature
-  is `missing`.
+  0 such dates for windows of 5 sessions or fewer, otherwise at most 2% of the window rounded down (so 0 up to 49
+  sessions, 1 for 63, 2 for 126, 5 for 252) (P3-D5). Beyond it the feature is `missing`. A degraded session (§4.3)
+  does not count against the tolerance; it sets the `degraded_session` flag.
 
 ---
 
@@ -299,7 +353,9 @@ A date at or before D\* is, at T under the mode:
   decided, actions are entered through the **owner path** (`cse_migrator` acting as `cse_owner`), from CSE's published
   notices, with the reference kept. This is deliberately stricter than P3's `declare-closed`, which is an operator
   command run as the capture worker: an action changes every adjusted price, a closure only the calendar.
-- A later statement about the same action names the row it supersedes. Arrival order alone supersedes nothing.
+- A later statement about the same action names the row it supersedes. Arrival order alone supersedes nothing. A
+  cancelled action is a statement of kind `withdrawn` naming the row it withdraws; from its own instants the action
+  no longer applies.
 
 ### 7.2 Factors
 
@@ -309,9 +365,14 @@ Each action has an ex-date e and a price factor f (exact rational, numerator and
 |---|---|
 | Sub-division, consolidation | old shares / new shares |
 | Capitalisation of reserves (bonus), scrip dividend | old / (old + new) |
-| Rights issue, m new per n held at P_sub | TERP / P_cum, with TERP = (n·P_cum + m·P_sub) / (n + m) and P_cum = `px_ref` on the last final session before e |
+| Rights issue, m new per n held at P_sub | TERP / P_cum, with TERP = (n·P_cum + m·P_sub) / (n + m). **P_cum is the reference price on the last session before e, brought onto that session's own basis:** adj(`px_ref`, `ref_session` → the last session before e), by §7.3 |
+| Merger, delisting, suspension | No price factor. Identity events (§8.1): the security's series ends, and its open labels become `terminated` (§11). A share-exchange merger is not carried into the acquirer's series in v1 |
 | Cash dividend | 1 in `adjustment_policy` v1 (P3-D2). Recorded as evidence; Phase 4 may use it |
 
+- **Factors are built in ex-date order**, because a rights factor depends on the earlier ones. Example: a 2-for-1
+  split at e1, then rights 1-for-4 at 40 at e2, last trade 100 before e1 and none since. The raw carried price is
+  100, but on the basis of the last cum session it is 50: TERP = (4·50 + 40) / 5 = 48 and f = 0.96. Using the raw
+  100 would give 0.88 and misprice everything before e2 by about 8%.
 - **Rights edge cases.** If P_sub ≥ P_cum, f = 1 (`out_of_the_money`: no adjustment, the convention). If P_cum is a
   carried price (the security did not trade on the last cum session), it is used and the factor is flagged
   `cum_price_stale`. If no `px_ref` exists, or the bar that supplies it is `conflicting`, the factor is `unresolved`
@@ -320,7 +381,7 @@ Each action has an ex-date e and a price factor f (exact rational, numerator and
   as-of value. They are not a global table. The snapshot stores its factor list and its hash (§13).
 - Volume is adjusted by 1/f for the share-count actions (sub-division, consolidation, bonus, scrip) only. Rights
   change the share count by (n + m)/n, not by 1/f, so volume is not adjusted across a rights ex-date; volume windows
-  that cross one are flagged `share_count_changed`. Turnover, a money amount, is never adjusted.
+  that cross one are `partial`, reason `share_count_changed`. Turnover, a money amount, is never adjusted.
 
 ### 7.3 Adjusting a price: by source session
 
@@ -344,8 +405,12 @@ adj(p, u → b) = p × Π f_k   over the admitted actions k of the security with
 
 **The unexplained-move detector.** A change between consecutive `px_close` values of a security beyond the
 configuration's threshold, with no admitted action whose ex-date lies between their sessions, flags `unlabelled` on
-every window containing it. MF never infers an action from a price move. The detector also fires when a carried price
-sits behind an ex-date (`ex_date_since_last_trade`), because the next trade will then print on a new basis.
+every window containing it, and on every label whose horizon contains it (§11). MF never infers an action from a
+price move.
+
+A carried price that sits behind an admitted ex-date is a different case: it is explained and correctly adjusted. It
+is `stale` like any carried price, with the reason `ex_date_since_last_trade`, so that a consumer knows the next
+trade will print on a new share basis.
 
 Raw and adjusted values are separate fields (`px_ref`, `adj_ref`), and every adjusted value carries the snapshot's
 `adjustment_set_hash` (MA §40).
@@ -356,13 +421,19 @@ Raw and adjusted values are separate fields (`px_ref`, `adj_ref`), and every adj
 
 ### 8.1 Security identity
 
-`mf_securities` (append-only) is MF's own key: one row per security MF has ever seen, with its ticker and the evidence
-that introduced it (a `companies.id` for a captured security, an import batch for an imported one). MF cannot rely on
-`companies` alone: its rows are created only by capture, so a security delisted before the first capture has none, and
-a complete historical universe could not be represented.
+**MF's security key is computed, not stored:** `mf_security_id` = SHA-256 of the canonical pair
+(`"cse_symbol"`, the symbol exactly as CSE prints it). A security therefore has the same key in every snapshot and
+every replay, whenever it was first seen, and a security that exists only in imported history or that P2 could not
+match to a `companies` row has a key like any other. There is no registry table to write, so nothing about identity
+depends on when MF first ran.
 
-- **Ticker changes.** A renamed security appears as a new ticker and a new row; its series breaks. MF links nothing
-  automatically. A link is an identity observation (`mf_identity_observations`, owner path, with a source reference).
+- The symbol of a captured security comes from the governing run's per-security rows
+  (`market_capture_security_results`, append-only), which also carry the `company_id` where P2 had one. MF does not
+  read `companies` at all: its `ticker` column is mutable.
+- The `company_id` is kept beside the key only so that Phase 4 can follow F5's `issuer_securities` to the issuer.
+
+- **Ticker changes.** A renamed security appears as a new symbol and so a new key; its series breaks. MF links
+  nothing automatically. A link is an identity observation (`mf_identity_observations`, owner path, with a source reference).
   It takes effect from its `recorded_at` in `KNOWN` and from its announcement date in `AVAILABLE`.
 - **Security class.** `universe_rule` v1 (versioned, `provisional`) classifies a line by its ticker's class suffix.
   Ordinary voting and non-voting shares are **equity lines**. Rights, warrants, preference shares, debentures and any
@@ -378,8 +449,8 @@ a complete historical universe could not be represented.
 - **Imported date:** the securities with a row in the admitted import for that date. Whether an import includes
   securities that later delisted is a property of the source, recorded per batch as
   `survivorship: complete | survivors_only | unknown`, and carried into every dataset built on that era (MA §34).
-- A captured era is `survivorship: complete` from the first capture on, because each session's universe is read from
-  that day's own archive. A dataset spanning several eras carries the worst of their labels.
+- A captured era is `survivorship: complete` for its final sessions, because each session's universe is read from
+  that day's own archive. Unknown dates and non-final sessions are gaps in it, recorded as such. A dataset spanning several eras carries the worst of their labels.
 - A security stays in every historical universe it was in.
 
 ### 8.3 Sector
@@ -405,15 +476,18 @@ feature bars and a versioned `eligibility_policy`:
   `not_applicable` (security class), each with the measured value of every criterion. They map onto MA §22's
   blockers.
 - An older flagged bar does not block the security; it makes the individual features whose windows contain it
-  `conflicting` (§10.3).
+  `conflicting` (§10.4).
 - **The values are placeholders, labelled `provisional` in the configuration** (P3-D3). The store refuses to mark a
   configuration `validated` without a recorded validation report id, and Phase 5 refuses to pass a model trained
   under a `provisional` policy. Real values are chosen later **on data before any declared final test period** (MA
   §36): tuning eligibility on the test period would be the same leak as tuning a model on it, so the choice is made
   under a Phase 5 experiment protocol.
 - Market capitalisation is not a criterion (MA §6).
-- Under forward capture alone, no security is eligible for the first 252 sessions, and every market-context feature
-  is `missing` for that period (§14).
+- Under forward capture alone, no security is eligible for the first 252 sessions, and market-context features need
+  eligible members on every session of their window on top of that: `mkt_ret_ew_63` first exists after about 316
+  sessions and `beta_126` after about 333 at the earliest (§14).
+- A security that has not traded since capture began has no reference price at all, whatever CSE prints as its last
+  price, so thinly traded lines take longer still.
 
 ---
 
@@ -432,7 +506,7 @@ window            sessions looked back (and skipped), counted in the session seq
 min_observations  the fewest valid inputs for a value
 units             ratio per session | log_ratio per session | lkr | shares | count | sessions | rank
 availability_rule which bars must be final and admitted at T (always: sessions up to D* only)
-quality           how input states combine (§10.3)
+quality           how input states combine (§10.4)
 ```
 
 MF's own arithmetic is Python `Decimal` in one fixed context (precision 28, half-even), with `ln` and `sqrt` from
@@ -452,11 +526,18 @@ For a snapshot with cutoff session t = D\*, and final sessions u in the sequence
   from an untraded one.
 - A window "of n sessions ending at t" is the n consecutive final sessions ending at t.
 - **Market return m_u** = the equal-weighted mean of r_u over the equity lines that were market-data eligible **as of
-  session u−1** (membership fixed before the session, as an index fixes its constituents), each evaluated under the
-  snapshot's own (T, mode). It needs at least `min_constituents` members with a return (provisional default 30);
+  session u−1**, with that eligibility recomputed from the snapshot's own evidence at (T, mode) and with adjusted
+  values on the snapshot's D\* basis. Membership uses no information from session u or later, as an index fixes its
+  constituents beforehand; but because it is recomputed from T's evidence, a late correction can give the same u
+  different members in two snapshots, which is the point-in-time behaviour intended. It needs at least `min_constituents` members with a return (provisional default 30);
   otherwise it is `missing`. The security itself is a member if eligible; with 30 or more members the effect is small
   and is stated here rather than removed.
 - Eligibility does not depend on any market-context feature, so this definition is not circular.
+- m_u is a mean of log returns. `mkt_ret_ew_n` compounds it; it is the return of the cross-sectional geometric mean,
+  not of an equal-weighted portfolio, and the name `ew` means equal weights across members only.
+- One snapshot needs the reconciled bars of every equity line over the longest window (about 300 securities by 380
+  sessions). The store caches bars by (security, session, the admitted observation ids), which is safe because the
+  cache key is the evidence itself.
 
 ### 10.3 Feature set v1
 
@@ -481,7 +562,7 @@ For a snapshot with cutoff session t = D\*, and final sessions u in the sequence
 | | `gap_1` | `open_price`_t / c_{t−1} − 1, with c_{t−1} on t's basis (`open_price` is CSE's session reference price, migration 0002; not asserted to be the first trade) | — |
 | Market context | `mkt_ret_ew_1`, `_5`, `_21`, `_63` | exp(Σ m_u over the window) − 1 | Every m_u |
 | | `mkt_breadth_1` | Share of the members of m_t with r_t > 0 | `min_constituents` |
-| | `rel_ret_21`, `rel_ret_63` | `ret_n` − `mkt_ret_ew_n` | Both |
+| | `rel_ret_21`, `rel_ret_63` | ln(c_t / c_{t−n}) − Σ m_u over the window: the log excess return | Both |
 | | `beta_126` | Least-squares slope of r_u on m_u over the window | 80 |
 | | `xs_rank_ret_21` | Percentile rank of `ret_21` among the members of m_t with a value; ties take the average rank | `min_constituents` |
 
@@ -547,7 +628,7 @@ For horizon h ∈ {1, 5, 10, 21} sessions (MA §4):
 - **Direction:** `rise` if return > 0, `fall` if < 0, `flat` if = 0. How `flat` is scored is Phase 9's versioned
   choice.
 - **Realised volatility:** for h ≥ 5, the sample standard deviation of r_u (§10.2) over the h sessions in (D, F],
-  with all h required. For h = 1, where a standard deviation does not exist, the target is the **absolute return**
+  as the target build sees them, with all h required. For h = 1, where a standard deviation does not exist, the target is the **absolute return**
   |ln(1 + return)|, the usual one-session proxy, stored under its own name `abs_ret_1` so that it is never mistaken
   for a standard deviation (P3-D10). MA §4 asks for expected volatility at every horizon; this is how the one-session
   case is met.
@@ -559,13 +640,24 @@ For horizon h ∈ {1, 5, 10, 21} sessions (MA §4):
 | `pending` | F has not happened or is not final and admitted yet |
 | `resolved` | s traded on F |
 | `resolved_carried` | s did not trade on F; the return uses a carried price (`stale_sessions` recorded). It is a real outcome for a holder and is not called unresolvable |
-| `terminated` | s left the universe inside the horizon and did not return within the policy's grace period (provisional: 21 final sessions), or an identity observation records a delisting or suspension. The label keeps the last `px_ref`, the session it left, and the evidence. It is terminal, so the worst outcomes do not drop out of evaluation as eternal `pending` (MA §34) |
+| `terminated` | s left the universe inside the horizon and did not return within the policy's grace period (provisional: 21 final sessions), or an identity observation records a delisting, suspension or merger. **No return is stored**: the label keeps the last `px_ref`, the session it left, and the evidence. It is terminal, so the worst outcomes do not drop out of evaluation as eternal `pending` (MA §34). A one-session label of such a security therefore stays `pending` for up to the grace period before it terminates |
+| `unexplained_move_in_horizon` | The detector of §7.3 fires between s_D and s_F: a move beyond the threshold with no admitted action. Corporate actions are entered by hand and can arrive after the target session; without this state a split not yet entered would be stored as a real fall of about half |
 | `unresolvable_quality` | A `conflicting` or `untrusted` input, or an unresolved factor, in the horizon |
 | `unknown_session_in_horizon` | An unknown date or non-final session lies in (D, F], so "the h-th session" is not certain |
 
-Each label stores **`resolved_at`**: the instant at which its last input became admissible (the target session's
-finality, or the terminating evidence). Phase 5 needs it to keep unresolved labels out of training (MA §11, "future
-training observations"). It also stores the adjustment set it used. MF never drops a label silently; Phase 9 decides
+**Precedence**, when several apply: `pending` (F not yet final) first; then `terminated`;
+`unknown_session_in_horizon`; `unresolvable_quality`; `unexplained_move_in_horizon`; `resolved_carried`; `resolved`.
+
+Each label stores **`resolved_at`**: the latest admission instant over **every** input it used, namely the target
+session's finality (or the terminating evidence), each bar in the horizon, and each corporate-action statement
+applied. A label recomputed after a late action therefore carries the later instant, and Phase 5's rule "the label
+was known by the training cutoff" (MA §11, "future training observations") stays true. It also stores the adjustment
+set it used, and the flag `reference_revised` when the build's own view of `px_ref(s, D)` differs from the reference
+snapshot row's.
+
+**Several builds.** A later build never replaces an earlier one; both stay. A consumer always names the build it
+uses: a Phase 5 dataset pins the target-build id in its manifest, and Phase 9 records the build made at evaluation
+time. Two builds that disagree on a label are reported by `verify`. MF never drops a label silently; Phase 9 decides
 which states are scored.
 
 ---
@@ -596,8 +688,11 @@ before T does change the result.
 | ML-16 | In `AVAILABLE`: an observation with `available_at` > T and `recorded_at` ≤ H | The result at (T, H) |
 | ML-17 | In `AVAILABLE`: evidence with `available_at` ≤ T recorded after H | The result at (T, H) |
 | ML-18 | Data after a label's target session; an action with an ex-date after it | A `resolved` label |
-| ML-19 | A split with **no trade on the ex-date**; a split inside a horizon with no trade through the target session | No spurious return in any feature or label (the revision 1 Blocker) |
-| ML-20 | A capture before closes were published (E2 false), then a second capture | D\* does not advance on the first; no `conflicting` bar after the second (MFB-7) |
+| ML-19 | A split with **no trade on the ex-date**; a split inside a horizon with no trade through the target session; a split followed by a rights issue with no trade between (§7.2's example); the same split in **imported** history under each no-trade convention | No spurious return in any feature or label, and the hand-computed factors (the revision 1 Blocker and its two residual cases) |
+| ML-20 | A capture before closes were published (E2 false), then a second run the same day; and the same with no second run | D\* does not advance on the first; after the second, no `conflicting` bar, including for a security that had a fallback observation in the first run and traded later (MFB-7). With no second run, the date becomes a degraded session once its window has closed |
+| ML-21 | A corporate action entered after a label's target session | A build before the entry gives `unexplained_move_in_horizon`, not a return; a build after it gives the adjusted return with a later `resolved_at` |
+| ML-22 | A `reprocess` pass, or the rows of a pass in progress, with no terminal event naming it | Not read |
+| ML-23 | A stored `AVAILABLE` snapshot, or a `KNOWN` snapshot written after the requested instant | Never returned by `KNOWN_RECORDED` |
 
 ---
 
@@ -609,19 +704,20 @@ before T does change the result.
 |---|---|
 | `mf_configurations` | Canonical JSON and SHA-256: feature registry version, `adjustment_policy`, `availability_policy`, `universe_rule`, `eligibility_policy` and its status, `target_definition_version`, tolerances, thresholds |
 | `mf_designations` | Owner-only (the F8 pattern): which configuration is in force for which purpose from when |
-| `mf_securities`, `mf_identity_observations` | §8.1 |
+| `mf_identity_observations` | §8.1 (security keys are computed and need no table) |
 | `mf_history_imports`, `mf_history_bars` | An import batch and its verbatim rows (§14) |
 | `mf_calendar_observations` | §6 |
 | `mf_corporate_action_observations` | §7.1 |
-| `mf_snapshots` | One row per snapshot: T, H where the mode has one, mode, label, D\*, pending non-final sessions, configuration id, code version tuple, the input digest, the factor list and `adjustment_set_hash`, the row count |
-| `mf_snapshot_rows` | One row per (snapshot, security): eligibility result; the feature vector as canonical JSON with each value's state and reasons; `px_ref` and `ref_session` at D\*; the ids of the D\* bar's contributing raw observations; a digest of the ids behind every window; `row_hash` |
+| `mf_snapshots` | One row per snapshot: its own `recorded_at`, T, H where the mode has one, mode, label, D\*, pending non-final and degraded sessions, configuration id, code version tuple, the input digest, the factor list and `adjustment_set_hash`, the row count |
+| `mf_snapshot_rows` | One row per (snapshot, security): eligibility result; the feature vector as canonical JSON with each value's state and reasons; `px_ref`, `ref_session`, `stale_sessions` and **`adj_ref`** at D\* (the price on the snapshot's own share basis, which differs from `px_ref` when an ex-date lies between the last trade and D\*; it is the one Phase 4 must use against per-share values); the ids of the D\* bar's contributing raw observations; a digest of the ids behind every window; `row_hash` |
 | `mf_target_builds`, `mf_target_rows` | §11. Each label row stores its state, values, `resolved_at`, the adjustment set used and a `row_hash` |
 
 - Every table refuses UPDATE, DELETE and TRUNCATE for every role, with the trigger pattern of 0010 and 0015.
 - **The migration's text must satisfy the existing guards over all migrations:** no binary column type, no column
   named in the manner of a file, document, storage or local path or a blob (`tests/test_document_retrieval.py`
   scans every migration for these), and no credential-like name. An import batch's source file is therefore recorded
-  as `source_sha256` and `source_label`, never as a path.
+  as `source_sha256` and `source_label`, never as a path. The guard scans comments too, so the migration's comments
+  avoid those words as well.
 - No raw CSE response is copied: rows refer to the raw layer by id and digest (G-1 controls 7 and 8 are unaffected).
 - Roles: `cse_worker` inserts snapshots and targets; `cse_reader` reads; designations and owner-entered evidence go
   through P1's owner path. No new role, no `SECURITY DEFINER`.
@@ -689,7 +785,7 @@ history exists a year later, and walk-forward ML needs several years. The option
 
 ## 15. Decisions
 
-### Taken [delegated] (`docs/governance/CLOUD_DECISION_LOG.md`, C-0007 and C-0010)
+### Taken [delegated] (`docs/governance/CLOUD_DECISION_LOG.md`, C-0007, C-0010 and C-0017)
 
 | ID | Decision | Reason |
 |---|---|---|
@@ -707,7 +803,10 @@ history exists a year later, and walk-forward ML needs several years. The option
 | P3-D12 | D\* requires a final session: E1, E2, a known universe and coverage ≥ `min_coverage` | An early or broken capture must not become a market-wide zero return |
 | P3-D13 | MFB-3 (absent from `tradeSummary` means no trade) is adopted as a `provisional` assumption | Observed so far, not confirmed; needed for any thin security to have a bar |
 | P3-D14 | Corporate actions and identity links are entered through the owner path | They change every adjusted value |
-| P3-D15 | Only `raw`-basis imports are admitted to point-in-time modes | MA §11 |
+| P3-D15 | Only `raw`-basis imports with a declared no-trade convention are admitted to point-in-time modes | MA §11; §5.4 |
+| P3-D16 | A capture that never becomes final is a degraded session once its window has closed | One early capture should cost one day's closes, not three weeks of windows and labels |
+| P3-D17 | The security key is a hash of the symbol, not a registry row | Identity must not depend on when MF first ran |
+| P3-D18 | Labels have the state `unexplained_move_in_horizon`, and `resolved_at` covers every input including actions | Actions are entered by hand and arrive late |
 
 ### Reserved for the owner
 
@@ -719,6 +818,7 @@ history exists a year later, and walk-forward ML needs several years. The option
 | P3-R4 | Whether P2 should capture foreign holding for every security daily: a P2 change and about 270 more requests a day | A foreign-holding feature |
 | P3-R5 | The source of a point-in-time sector classification | Sector-relative features and engines (MA §5, §12.1, §39) |
 | P3-R6 | The merge of MF into `main`, and with it the re-staging | Production use |
+| P3-R7 | Whether P3 should capture a session again later the same day when the first capture was early (E2 false): a change to frozen P3, with extra requests under G-1 | Avoiding degraded sessions (§4.3) |
 
 ---
 
@@ -730,13 +830,13 @@ not, MF's tests build the rows directly through the frozen insert functions.
 
 | Step | Content | Exit |
 |---|---|---|
-| MF-1 | Pure package skeleton; modes and admission; finality and D\*; bars through the frozen `reconcile`; the feature-bar decision table; `px_ref` with its source session | Unit tests of every row of §5.2; ML-1 to ML-3, ML-12, ML-14, ML-16, ML-17, ML-20 |
-| MF-2 | Calendar evidence, session sequence | Unit tests; ML-8 |
+| MF-1 | Pure package skeleton; modes and admission; finality and D\*; bars through the frozen `reconcile`; the feature-bar decision table; `px_ref` with its source session | Unit tests of every row of §5.2; the bar-level parts of ML-1 to ML-3; ML-12, ML-14, ML-16, ML-17, ML-20, ML-22 |
+| MF-2 | Calendar evidence, session sequence | Unit tests; ML-8's sequence part (its `verify` part runs at MF-7) |
 | MF-3 | Corporate-action evidence, factors, adjustment by source session, the detector | Worked split, bonus and rights examples, including every rights edge case; ML-4, ML-5, ML-19 |
 | MF-4 | Identity, universe rule, eligibility | Unit tests; ML-6, ML-7, ML-10 |
-| MF-5 | Feature registry and set v1 | Every formula against a hand-computed vector; determinism across runs and platforms |
-| MF-6 | Targets | Unit tests of each state; ML-11, ML-18, ML-19 |
-| MF-7 | Migration 0019, store, `calendar-sync`, preflight, `explain`, `verify`, wrapper, runbook | PostgreSQL 17 tests in CI; append-only for every role; mutation tests of the migration's guards; ML-9, ML-13, ML-15; change control of the three guards |
+| MF-5 | Feature registry and set v1 | Every formula against a hand-computed vector; determinism across runs and platforms; the aggregate and rank parts of ML-2, ML-6 and ML-7 |
+| MF-6 | Targets | Unit tests of each state and of the precedence; ML-11, ML-18, ML-19, ML-21 |
+| MF-7 | Migration 0019, store, `calendar-sync`, preflight, `explain`, `verify`, wrapper, runbook | PostgreSQL 17 tests in CI; append-only for every role; mutation tests of the migration's guards; ML-9, ML-13, ML-15, ML-23; change control of the three guards |
 
 ---
 
@@ -750,6 +850,8 @@ not, MF's tests build the rows directly through the frozen insert functions.
 - What `marketCap` means across many days, security classes and share-count actions (§5.1).
 - The availability time of imported history against whatever the chosen source documents.
 - Whether cash dividends matter enough at the one-month horizon to justify a total-return policy version.
+- How often a capture is early and a session ends up degraded (§4.3), which decides whether P3-R7 matters.
+- Which no-trade convention real history sources use (§5.4).
 - Storage growth, measured once it runs.
 
 None of these blocks the build. Each blocks calling MF's configuration `validated`.
@@ -764,7 +866,7 @@ None of these blocks the build. Each blocks calling MF's configuration `validate
 | 4 | Provenance retained | Snapshot → row hash → the D\* bar's observation ids and a verified digest of the windows' ids → run → archived response (§13.1) |
 | 5 | Frozen components | None modified. Three range-stating guards need change control at MF-7 (§13.3) |
 | 6 | Migration | Yes: 0019, additive, at MF-7 |
-| 7 | Leakage prevention | Modes and guards (§4), finality (§4.3), adjustment by source session (§7.3), the import-graph separation of targets (§11), tests ML-1 to ML-20 (§12) |
+| 7 | Leakage prevention | Modes and guards (§4), finality (§4.3), adjustment by source session (§7.3), the import-graph separation of targets (§11), tests ML-1 to ML-23 (§12) |
 | 8 | Testing | §12, §16; synthetic archives; PostgreSQL 17 in CI |
 | 9 | Reproduction | Deterministic Decimal arithmetic; configuration and input hashes; exact replay for settled T, stored rows otherwise; `verify` |
 | 10 | Route 1 and Route 2 | Route 1's market engines and ML read snapshots; Route 2 receives the same snapshot as structured input. Neither reads the raw layer |
@@ -808,4 +910,37 @@ adjustment formulas, and ran no tests. Dispositions in revision 2:
 | 23 | Note | Three clocks | Recorded as a limit (§4.1) |
 | 24 | Note | Under forward capture nothing is eligible for a year | Stated (§9) |
 
-Revision 2 is to be audited again before any implementation.
+**Revision 2 (commit `eeeb10d` and two later clarifications): audited 2026-11-11/12 (cloud, fresh-context agent).
+Verdict: FAIL**, no Blocker, eight Major, ten Minor, five Notes. The auditor worked the split, bonus, rights and
+label cases by hand and confirmed the source-session mechanism is correct for captured data, including the boundary
+(a price printed on the ex-date gets no factor); it noted that N1 and N2 below are the revision 1 Blocker's class in
+two residual cases. Of the 24 earlier findings it judged 14 resolved and 10 partly resolved, the remainder being the
+findings below. Dispositions in revision 3:
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| N1 | Major | The rights factor used a raw carried cum price across an earlier ex-date | **Fixed.** P_cum is adjusted onto the last cum session's basis; factors built in ex-date order, with the worked example (§7.2); ML-19 |
+| N2 | Major | Imported bars had no traded / no-trade rule, so the Blocker returned for imported history | **Fixed.** Mandatory `no_trade_convention`, the mapping and the required columns (§5.4, §14); ML-19 |
+| N3 | Major | Labels had no protection against late corporate actions; `resolved_at` ignored them; no rule for several builds | **Fixed.** State `unexplained_move_in_horizon`; `resolved_at` over every input; builds never replace each other and are pinned (§11); ML-21 |
+| N4 | Major | MFB-7 was incomplete; the described recovery does not happen under P3; one early capture cost weeks of windows and labels | **Fixed.** Supersession at run level (§5.1); the permanence stated; degraded sessions (§4.3, P3-D16); P3-R7 reserved; ML-20 |
+| N5 | Major | Which terminal event and derivation pass MF reads was undefined | **Fixed.** The governing terminal event and the pass it names (§4.3); ML-22 |
+| N6 | Major | The cross-check rule would have flagged every sampled security daily | **Fixed.** MF recomputes agreement under its own tolerances; price fields only affect bar quality (§5.2, MFB-8) |
+| N7 | Major | `KNOWN_RECORDED` selection was unsafe | **Fixed.** Mode, designated configuration and `recorded_at` (§4.2, §13.1); ML-23 |
+| N8 | Major | The lifecycle of `mf_securities` was undefined | **Fixed.** The key is computed; no table; `companies` is no longer read (§8.1, §3, P3-D17) |
+| N9 | Minor | Coverage had no formula; "latest" had no key | **Fixed.** §4.3 |
+| N10 | Minor | Which rows count was only in the audit record | **Fixed.** §5.1 step 1 |
+| N11 | Minor | The fixture claim about price basis; row 2 reachable on a final session | **Fixed.** §5.1, §5.2 |
+| N12 | Minor | Two causes of `not_applicable`; `calendar-sync` reads a table MF "never reads"; weekends; rounding | **Fixed.** §6, §4.1 |
+| N13 | Minor | Differences from F8's modes not stated; H ≥ T; import label wording | **Fixed.** §4.2 |
+| N14 | Minor | Two flags mapped to no state; no withdrawal statement | **Fixed.** §7.2, §7.3, §7.1 |
+| N15 | Minor | The snapshot row stored only the raw reference price | **Fixed.** `adj_ref` stored and named as the one Phase 4 uses (§13.1) |
+| N16 | Minor | `terminated` and state precedence under-specified; return and volatility could disagree | **Fixed.** §11: no return stored, the precedence, `reference_revised` |
+| N17 | Minor | Wrong cross-references; test sequencing; cold start understated; what `mkt_ret_ew` is | **Fixed.** §2, §9, §10.1, §10.2, §10.3, §16 |
+| N18 | Minor | Mergers not addressed though §40 was marked met | **Fixed.** §2's row and §7.2 say what is and is not met |
+| N19 | Note | The text guard scans comments | Stated (§13.1) |
+| N20 | Note | The three guards verified; no other found | — |
+| N21 | Note | "Complete from the first capture" too strong | **Fixed.** §8.2 |
+| N22 | Note | Membership recomputed from T's evidence; cost | Stated, with the cache (§10.2) |
+| N23 | Note | A never-traded security has no reference price | Stated (§9) |
+
+Revision 3 is to be audited again before any implementation.
