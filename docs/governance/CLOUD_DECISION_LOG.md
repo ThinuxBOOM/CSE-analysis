@@ -127,3 +127,13 @@ The decisions P5-D1 to P5-D8 of `docs/PHASE5_ML_DESIGN.md` §14 are taken as sta
 P5-R1 (promotion to production), P5-R2 (the final test period of each real protocol), P5-R3 (accepting the ML
 dependency set into a deployable build) and P5-R4 (a survivorship waiver) are reserved for the owner. The design adds
 no code, no migration and no test, and changes no frozen file.
+
+## C-0010: Phase 3 design, revision 2 ([delegated], 2026-11-11)
+
+The audit of revision 1 (cloud, fresh-context agent; C-0005) returned FAIL: one Blocker, eleven Major, nine Minor and
+three Notes. Revision 2 dispositions every finding in its §19. Decisions P3-D10 to P3-D15 are added and P3-D6 is
+withdrawn: the absence of sector-relative features is recorded as an unmet Master Architecture requirement with a
+reserved owner decision (P3-R5), not as a design choice. P3-R4 (daily foreign-holding capture, a P2 change) is added to
+the reserved list. Revision 2 also registers the fields Phase 4's audit showed that layer needs from Phase 3
+(`market_cap_reported`, `shares_implied`, the return-history family, `mkt_ret_ew_63`). Revision 2 is not accepted until
+it is audited again.
