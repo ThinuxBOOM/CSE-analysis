@@ -120,3 +120,10 @@ pilot) and P4-R3 (the merge into `main`) are reserved for the owner. P4-R1 and P
 principle, but each changes frozen F3/F5 code that the staged build contains, so each would force the build to be
 staged again on the workstation; they are left for the owner for that reason (C-0004, "Frozen code"). The design adds
 no code, no migration and no test, and changes no frozen file.
+
+## C-0009: Phase 5 design decisions ([delegated], 2026-11-11)
+
+The decisions P5-D1 to P5-D8 of `docs/PHASE5_ML_DESIGN.md` §14 are taken as stated there, each with its reason.
+P5-R1 (promotion to production), P5-R2 (the final test period of each real protocol), P5-R3 (accepting the ML
+dependency set into a deployable build) and P5-R4 (a survivorship waiver) are reserved for the owner. The design adds
+no code, no migration and no test, and changes no frozen file.
