@@ -1,0 +1,113 @@
+# Cloud session decision log (integration/cloud)
+
+**What this is.** The record of the owner's instructions to the cloud session that works on the branch
+`integration/cloud` while the owner's workstation is unavailable, and of every decision that session takes on the
+owner's behalf. The project's decision log lives in the owner's vault on the workstation, which the cloud session
+cannot read. This file stands in for it for work done here, and is to be reconciled with the vault's log when the
+workstation is back. Until then it is the authority for the branch `integration/cloud` only: it changes nothing on
+`main`.
+
+**Conventions.**
+- An **owner decision** is quoted or summarised from the owner's own message, with its date.
+- A **[delegated]** decision is taken by the cloud session under the owner's delegation (C-0003 below). It gives its
+  reasoning, and the owner may reverse it. A reversal is a new entry; earlier entries are not edited.
+- **Reserved** means the cloud session does not decide it, whatever the delegation says (C-0004).
+- Entry numbers `C-nnnn` are this file's own and never reused.
+
+Where this file and the Master Architecture (`docs/MASTER_ARCHITECTURE.md`) differ, the Master Architecture wins,
+except where an entry here records an owner decision that changes it.
+
+---
+
+## C-0001: the integration branch (owner decision, 2026-11-11)
+
+The owner asked for the work to continue on a fork. The session is authenticated as the account that owns the
+repository, and GitHub cannot fork a repository into its own account. The owner then decided: "I approve the
+integration branch."
+
+- The branch is `integration/cloud`, created at `main`'s commit `33377421381f2f95a2ed1933ac78a7fa24ec1ad0`.
+- The cloud session commits, pushes and merges there. `main` is not written by the cloud session; bringing
+  `integration/cloud` into `main` is the owner's later decision.
+
+## C-0002: the roadmap order (owner decision, 2026-11-11)
+
+"yes, start with Phase 3 design, then 4 and 5", and "Start with designing each component that is not yet built."
+
+- Order: Phase 3 (market feature foundation), Phase 4 (deterministic engines), Phase 5 (ML), then the remaining
+  unbuilt components of Master Architecture §55 and the milestone designs that need no workstation.
+
+## C-0003: roles, authority and delegation (owner decision, 2026-11-11)
+
+The owner's words: "The dev workflow changed on my laptop, the orchestrator agent know it, so I run 3 agents,
+orchestrator, implementor and auditor. All Claude agents, because the independent auditor was getting unreliable. So
+you need to audit as well. [...] You are also authorized to write them into integration/cloud without waiting. You are
+allowed to make owner decisions for me as well, anything goes as long as it doesn't contact CSE. I need to get as much
+work done as possible while the laptop is away so that I don't waste time. So do everything that doesn't require the
+laptop."
+
+The owner then confirmed the cloud session's statement of what this means ("Go", 2026-11-11):
+
+- **Roles.** The cloud session acts as orchestrator and implementer, and has each piece of work audited by a separate
+  agent with a fresh context that did not write it. Findings are recorded and dispositioned before the work is called
+  accepted.
+- **Writing.** Designs and implementations are committed to `integration/cloud` without waiting for the owner.
+- **Delegation.** The cloud session takes owner decisions, each recorded here as [delegated] with its reasoning.
+- **The fixed limit.** Nothing contacts CSE, and nothing is run that would.
+
+## C-0004: what stays reserved ([delegated], 2026-11-11; confirmed by the owner's "Go")
+
+The delegation is broad, and the cloud session keeps these outside it. Each is either a decision whose effect is CSE
+contact, an acceptance of legal risk, or something that cannot honestly be decided without the workstation's evidence.
+
+| Reserved item | Why |
+|---|---|
+| HB-X2(a): extending G-1's accepted risk to bulk discovery and document retrieval | An acceptance of legal risk whose only effect is to permit CSE contact |
+| Any arming decision (P3, HB-S1 to HB-S4), the contact e-mail, the pilot sample, the F6.4 designation in production | Each authorizes or shapes live CSE requests |
+| ST-33, the acceptance of staging (REG-G01), and milestone 9 | They rest on Phase C's restore runs (ST-30, ST-31), which need the workstation |
+| How past daily market prices are obtained, where the route involves CSE, a purchase or a third party's terms | CSE contact, money or legal terms. The cloud session designs the options and recommends |
+| Merging `integration/cloud` into `main` | C-0001 |
+
+Other limits the cloud session holds:
+
+- **No live external service.** News sources and AI providers are built behind adapters and tested with fakes; no key
+  is requested or used.
+- **Frozen code.** New work is additive. A frozen file is changed only when the work cannot be done otherwise, under a
+  change-control entry here that names the file, the reason and the re-staging consequence (Master Architecture §43.1:
+  a changed build is staged again).
+- **No real-data claim.** No production data exists. Nothing here trains, compares or promotes a model on real data,
+  chooses an empirical threshold as final, or reports an accuracy figure.
+
+## C-0005: the audit route ([delegated], 2026-11-11)
+
+Under C-0003 the auditor is a Claude agent. In the cloud session:
+
+- each design or implementation is audited by a separate agent started with no part of the author's context beyond
+  the repository itself and a statement of the audit's scope;
+- the audit reports findings by severity (Blocker, Major, Minor, Note) against the Master Architecture, the frozen
+  components' contracts and the document's own claims;
+- the author dispositions every finding (fixed, or rejected with a stated reason) in the document's audit record;
+- a Blocker or Major finding that is not fixed keeps the item unaccepted.
+
+**Limit, stated plainly.** The auditor and the author are the same model, so this is a second reading with a fresh
+context, not independence in the sense the earlier records use the word. Records written here say "audited
+(cloud, fresh-context agent)" and never "independently audited". The owner or the workstation's auditor may audit
+again.
+
+## C-0006: verification environment ([delegated], 2026-11-11)
+
+- Offline tests run in the cloud session with `PYTHONDONTWRITEBYTECODE=1`, as CI sets it
+  (`.github/ci/linux_tests.sh`). Baseline on `integration/cloud` at `3337742`, Python 3.13.18: 2176 passed, 680
+  skipped, the same counts as CI's offline group at the same tree (`docs/ops/STAGING.md` §12). Without that variable
+  six `tests/test_staging_unit.py` tests fail on a bytecode file the run itself writes under `ops/staging/`; that is
+  an artefact of the environment, not a defect.
+- The cloud session has PostgreSQL 16 client tools and no running Docker daemon. PostgreSQL 17 suites run through the
+  repository's GitHub Actions workflows, started by `workflow_dispatch` on the branch. Results obtained on any other
+  PostgreSQL version are labelled as such and are not acceptance evidence.
+- Nothing that needs the staging containers, volumes or evidence of the workstation is attempted here.
+
+## C-0007: Phase 3 design decisions ([delegated], 2026-11-11)
+
+The decisions P3-D1 to P3-D9 of `docs/PHASE3_MARKET_FEATURES_DESIGN.md` §15 are taken as stated there, each with its
+reason. P3-R1 (the source of market history), P3-R2 (the source of corporate-action evidence), P3-R3 (index capture)
+and P3-R4 (the merge into `main`) are reserved for the owner (C-0004). The design is a design only: it adds no code,
+no migration and no test, and changes no frozen file.
