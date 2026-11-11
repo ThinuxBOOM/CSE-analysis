@@ -111,3 +111,12 @@ The decisions P3-D1 to P3-D9 of `docs/PHASE3_MARKET_FEATURES_DESIGN.md` §15 are
 reason. P3-R1 (the source of market history), P3-R2 (the source of corporate-action evidence), P3-R3 (index capture)
 and P3-R4 (the merge into `main`) are reserved for the owner (C-0004). The design is a design only: it adds no code,
 no migration and no test, and changes no frozen file.
+
+## C-0008: Phase 4 design decisions ([delegated], 2026-11-11)
+
+The decisions P4-D1 to P4-D8 of `docs/PHASE4_DETERMINISTIC_ENGINES_DESIGN.md` §13 are taken as stated there, each with
+its reason. P4-R1 (extending the F5 concept vocabulary), P4-R2 (fixing the open findings P-18, P-23 and P-1 before the
+pilot) and P4-R3 (the merge into `main`) are reserved for the owner. P4-R1 and P4-R2 are within the delegation in
+principle, but each changes frozen F3/F5 code that the staged build contains, so each would force the build to be
+staged again on the workstation; they are left for the owner for that reason (C-0004, "Frozen code"). The design adds
+no code, no migration and no test, and changes no frozen file.
