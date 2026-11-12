@@ -1,6 +1,6 @@
 # Phase 4: financial features and deterministic engines (design)
 
-**Status: DESIGN, revision 2 (2026-11-11). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 3 (2026-11-12). Not implemented. Not accepted.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact and no change to `main`.
 
@@ -11,9 +11,16 @@ to its issuer is point-in-time (§4.6); a conflict at the newest period blocks i
 §5.4); cross-sectional scoring has a written formula, ranks issuers rather than securities, and uses one definition
 per rank (§7, §8); the baselines no longer emit invented probabilities (§9).*
 
+*Revision 3 (2026-11-12) answers the second audit, which failed revision 2 on one Blocker and seven Major findings
+(§17). The Blocker: earnings per share was restated onto the snapshot's share basis but divided by a raw carried
+price that could still be on the old basis. Valuation now uses Phase 3's `adj_ref` on both sides (§6.3). Other main
+changes: a defined fiscal-year EPS for interim dates; EPS valuation at security level; the anchor's duration, the
+newest period and `scope_changed` defined from one result; ratios that need a positive denominator say so; cash-flow
+signs are confirmed by an identity or the value is not used.*
+
 **Governing records:** Master Architecture (MA) §2, §6, §9 to §14, §21, §22, §39, §41, §42, §55 (Phase 4), §56 to
 §59, §68; `docs/F8_DESIGN.md` (§7, §8, §11, §12, §14); `docs/F6.2_DESIGN.md` (the economic fact, its states and
-intervals); `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 2 (market bars, universe, market features, targets;
+intervals); `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 3 (market bars, universe, market features, targets;
 "MF"). Where this document and those differ, they win.
 
 **Short names.** F7 is the financial feature layer (`docs/F8_DESIGN.md` §14's name). DE is the deterministic engine
@@ -66,12 +73,12 @@ MF snapshot rows (Phase 3) ─────────────────�
 
 | Family | v1 status |
 |---|---|
-| Revenue growth, earnings growth | Engine `fund_growth` |
-| Margins, ROE/ROA | Engine `fund_profitability` |
+| Revenue growth, earnings growth | Engines `fund_growth`, `fund_growth_bank` |
+| Margins, ROE/ROA | Engines `fund_profitability`, `fund_profitability_bank`. Margin change is a feature (`net_margin_chg`) |
 | Leverage, balance-sheet strength | Engines `fund_leverage` (general), `fund_bank_strength` (bank and finance). Interest cover and borrowings ratios are features only (§8 says why) |
-| Cash flow | Engine `fund_cash_flow` |
+| Cash flow | Engine `fund_cash_flow`, on values whose sign is confirmed (§4.5) |
 | Valuation | Engine `fund_valuation_eps`; `fund_valuation_mcap` is built and `blocked_quality` until `marketCap` is verified |
-| EPS | Features only (`eps_fy`, `eps_ttm_approx`); enters `fund_valuation_eps` |
+| EPS | Features (`eps_latest_fy`, `eps_ttm_approx`); `eps_latest_fy` enters `fund_valuation_eps` |
 | Liquidity (balance sheet) | Features only (`cash_to_assets`, `net_debt`). The vocabulary has no current assets or liabilities, so no current or quick ratio exists (P4-R1) |
 | Working capital | Features only (`receivables_days`, `inventory_days`) |
 | Dividends | Features only (`payout_ratio_cash`; `dividend_yield_cash` inside the blocked market-value engine) |
@@ -90,8 +97,10 @@ MF snapshot rows (Phase 3) ─────────────────�
 - `issuer_securities` (0007), under the as-of rule of §4.6.
 - `financial_concepts` (0008): a concept's family, period kind, value type, natural sign and industries. An immutable
   seed.
-- MF snapshot rows (Phase 3 §13.1), for the valuation join only: `px_ref`, `ref_session`, `stale_sessions`,
-  `market_cap_reported`, the snapshot's factor list.
+- MF snapshots (Phase 3 §13.1), for the valuation join only. From the snapshot row: `adj_ref`, `ref_session`,
+  `stale_sessions`, `market_cap_reported`, the symbol and the `company_id`. From the snapshot itself: the factor
+  list, which F7 needs per security as (action kind, ex-date, factor, status, flags); Phase 3 stores it with the
+  snapshot, and that shape is a requirement this design places on it.
 
 **DE reads:** F7's feature rows and MF's snapshot rows. Nothing else. In particular it never reads the raw layer or
 MF's target tables.
@@ -124,13 +133,15 @@ whose D\* is derived (Phase 3 §4.3). There is no separate financial cutoff: MA 
   (`point_in_time`, `reconstructed`). A row's governing class is `reconstructed` if either input is, otherwise
   `point_in_time`. `retrospective_current` never reaches a stored row.
 - A dataset over many dates uses `timeline`.
+- In `KNOWN_RECORDED` both layers return what they stored: the F7 panel stored for the purpose and the MF snapshot it
+  recorded as its input, by id. "One cutoff" then means the stored pair, not a recomputation.
 
 ### 4.2 Which facts are usable
 
 | What F8 returns for a fact | F7 treatment |
 |---|---|
 | State `single_source` or `corroborated`, with a numeric representative | Usable. The representative normalized value is used with the fact's interval [low, high] (F6.2 §7) as its uncertainty |
-| `corroborated` but `representative_ambiguous` (no single representative) | Not used as a number: `missing`, reason `representative_ambiguous`. v1 takes no midpoint |
+| F6's annotation `representative_ambiguous` on the fact's result, whatever its state (no single representative) | Not used as a number: `missing`, reason `representative_ambiguous`. v1 takes no midpoint |
 | State `conflicting` | **Not usable.** Every feature needing it is `conflicting` and null. F7 never picks a side |
 | State `none` with in-set exclusions `not_yet_available` | `missing`, reason `not_yet_available` (it exists but is not visible at T) |
 | State `none`, nothing in the set | `missing`, reason `absent` |
@@ -138,33 +149,44 @@ whose D\* is derived (Phase 3 §4.3). There is no separate financial cutoff: MA 
 | Fact flag `ambiguous_supersession` or `metadata_version_tie` | Not used: `untrusted`, with the flag as reason. F8 could not order the versions, so F7 does not rely on the one shown |
 | Observation flag `available_after_known` | Usable; the flag is recorded (it describes history, not doubt about the value) |
 | Availability `availability_unknown` | As F8 applies it: kept in `KNOWN`, excluded in `AVAILABLE` |
+| Availability flags `availability_sources_disagree`, `availability_evidence_changed`, `last_modified_after_upload` | Usable; recorded. They matter where F7 itself uses the availability instant, which is only the EPS basis (§6.3): there they make the value `untrusted` |
+| F6 annotations `restated_comparative_present`, `internal_conflict`, `sign_only_difference` | Recorded as reasons beside the state F6 gave. F7 adds no rule: a `sign_only_difference` fact is already `conflicting` |
+| Availability precision `day` | Counts from the end of that Colombo day, as F8 does |
 
 ### 4.3 Scope and the anchor period
 
 Facts of different scopes are different facts and are never mixed in one formula.
 
-- **Anchor concept:** `profit_for_period` (12-month or cumulative duration).
-- **Newest period:** the latest `period_end` at which the issuer has **any** anchor-concept fact visible at T, in any
-  scope and in any state. It is defined before the scope, so the two are not circular.
+- **Anchor concept:** `profit_for_period`, with `operations = total_or_unstated`.
+- **Newest period:** the latest `period_end` at which the issuer has an anchor-concept fact in state
+  `single_source`, `corroborated` or `conflicting`, in any scope and currency. A fact F8 reports as `none` does not
+  count: in `KNOWN` that includes a document the system holds but that is not yet public, which must not move the
+  anchor forward. It is defined before the scope, so the two are not circular.
 - **Scope policy `f7.scope.1`:** among the scopes that have an anchor-concept fact (in any state) at the newest
   period, take the first of `group`, `bank`, `company`. `unlabelled` is taken only when it is the **only** scope the
   issuer has at T. Statements without Group and Company columns are typical of single-entity issuers, and excluding
   them would restrict the platform to larger groups (MA §6). An `unlabelled` panel is labelled so on every value and
-  is never combined with a labelled scope.
+  is never combined with a labelled scope. If the newest period has the anchor only in `unlabelled` scope while the
+  issuer has older labelled facts, no scope qualifies and the panel's state is `scope_unavailable`.
+- **The anchor's duration n** is the largest `duration_months` not above 12 among the anchor facts at the newest
+  period in the chosen scope and currency. A half-year interim prints both a 3-month and a 6-month figure at one
+  period end; n is 6.
 - **The anchor period is the newest period in the chosen scope.** If the anchor fact there is `conflicting`,
   `untrusted` or not numeric, the panel's state is `critical_conflict` (or `anchor_unusable`): features are not
   computed from an older period instead. A conflict at the newest period is therefore visible, never stepped over.
-- **`scope_changed`:** the same call also determines the scope at T minus 12 months (same mode, same H). If it
-  differs, the panel carries `scope_changed` and no year-on-year feature is computed. This is a pure function of
-  (issuer, T, mode, H).
+- **`scope_changed`** is decided from the one result at T: the chosen scope has no anchor fact at the period twelve
+  months before the anchor, while another scope has one. The panel then carries `scope_changed` and no year-on-year
+  feature is computed. (Revision 2 asked F8 a second time at T minus 12 months. That is a different question, it
+  fails in the first live year when nothing had been recorded a year earlier, and it tests the wrong thing: what
+  matters is whether the comparative exists in the chosen scope as seen now.)
 - `operations`: formulas use `total_or_unstated`. If the anchor period also has `discontinued` facts, the panel
   carries `has_discontinued`, and features that divide a total-operations profit by revenue (usually continuing-only)
   are `partial` with that reason.
 
 ### 4.4 Currency
 
-**`f7.currency.1`:** the panel's currency is LKR if the issuer has the anchor fact in LKR; otherwise the single other
-currency it has; two or more non-LKR currencies without LKR give `blocked: currency_ambiguous`. Facts in any other
+**`f7.currency.1`:** the panel's currency is LKR if the issuer has the anchor fact in LKR at the newest period in the
+chosen scope; otherwise the single other currency it has there; two or more non-LKR currencies without LKR give `blocked: currency_ambiguous`. Facts in any other
 currency are ignored for the panel (an annual report's USD convenience translation, for example). Valuation features
 additionally need the panel currency to be LKR, the price currency. No FX conversion exists in this phase.
 
@@ -175,10 +197,21 @@ explicit, versioned rule and records each use:
 
 - **`f7.sign.2`.** The **magnitude** of the printed value is used only for these concepts, whose F5 mapping rules
   match gross labels that cannot net to the opposite sign: `cost_of_sales`, `finance_costs`, `interest_expense`,
-  `purchase_of_ppe`, `dividends_paid`. Each use records `sign_rule: magnitude` and the printed sign.
+  `purchase_of_ppe`, `dividends_paid`. Each use records `sign_rule: magnitude` and the printed sign. The magnitude is
+  taken **per fact, before any period arithmetic**, because F7P-2 adds and subtracts figures from documents that may
+  print the same expense with different signs. (`interest_expense` is listed for completeness; no v1 feature uses
+  it.)
 - Every other concept is used **with its printed sign, unchanged**. That includes `impairment_charges` and
   `income_tax_expense`, whose mapped labels are of the form "charges/(reversals)": there the sign is the information,
   and taking a magnitude would turn a reversal into a charge.
+- **Cash-flow totals need confirmation.** `net_cash_from_operating_activities` and the other two totals are
+  `as_printed`, and F5's rule also matches labels such as "net cash used in operating activities". A statement that
+  prints such a line without parentheses gives a positive number for an outflow, and F7 cannot see the label. So a
+  cash-flow total is used only when F7 can confirm its sign from its own inputs: operating plus investing plus
+  financing equals the change in `cash_at_end_of_period` over the same period, within the facts' intervals
+  (`f7.cashflow_sign.1`). Confirmed values carry `sign_confirmed`. Unconfirmed ones are present with state
+  `unlabelled`, reason `sign_unconfirmed`, and no engine admits them. How often confirmation fails is a real-data
+  question (§15).
 - Consequence: v1 has **no feature that needs the orientation of `impairment_charges`**. Revision 1's
   `cost_of_risk_proxy` is removed. F6.1 already determines sign conventions from arithmetic relations, but F8 does not
   expose that result; using it is reserved (P4-R4).
@@ -192,6 +225,11 @@ the row is labelled `reconstructed`). `evidenced` links the security to that iss
 `blocked: issuer_link_conflict` or `issuer_link_absent`. The decision id is part of the feature row's hash, so a later
 decision cannot silently change which fundamentals a security had at T.
 
+The security's `company_id` comes from the MF snapshot row (Phase 3 §8.1 keeps it beside the computed security key).
+A security that exists only in imported history has none, so it is always `issuer_link_absent`: over a
+`reconstructed` era, fundamental features and engines cover captured securities only. Rows of such an era carry
+`fundamental_coverage: captured_only`, so that a dataset built on them says so.
+
 ---
 
 ## 5. F7-2: period arithmetic
@@ -204,7 +242,10 @@ E−k, "k months before period end E", is `_add_months(E + 1 day, −k) − 1 da
 (`worker/financial_validation.py`): the day after the period end is shifted by whole months and stepped back one day.
 A month-end maps to a month-end and the 25th to the 25th. A rule applies only when a fact exists with **exactly** the
 required period end. Reporters whose year-end moves by a day or two (52/53-week years) will not match and get
-`missing`, reason `no_exact_period_match`; how common that is on CSE is an open question (§15).
+`missing`, reason `no_exact_period_match`; how common that is on CSE is an open question (§15). The rule is exact for
+month-ends and for days up to the 28th. For a period end on the 29th or 30th that is not a month-end, shifting by
+six months twice does not always equal shifting by twelve, which F7P-2 needs; such period ends also get
+`no_exact_period_match`.
 
 ### 5.2 Rules
 
@@ -214,19 +255,21 @@ With D_n(E) the duration fact of n months ending on E, and I(E) an instant fact:
 |---|---|---|
 | `F7P-1` | TTM(E) | D_12(E) |
 | `F7P-2` | TTM(E) | D_n(E) + D_12(E−n) − D_n(E−12), for any n from 1 to 11 for which all three facts exist |
-| `F7P-3` | TTM(E) | D_3(E) + D_3(E−3) + D_3(E−6) + D_3(E−9), printed three-month facts only (not quarters derived by F7P-4) |
-| `F7P-4` | Q(E) | D_3(E), or D_n(E) − D_{n−3}(E−3) |
+| `F7P-3` | TTM(E) | D_3(E) + D_3(E−3) + D_3(E−6) + D_3(E−9), printed three-month facts only |
 | `F7P-5` | AVG(E) | (I(E) + I(E−12)) / 2 |
+| `F7P-8` | G_inst(E) | I(E) / I(E−12) − 1, only when I(E−12) > 0; otherwise null, reason `base_not_positive` |
 | `F7P-6` | G_ttm(E) | TTM(E) / TTM(E−12) − 1, only when TTM(E−12) > 0; otherwise null, reason `base_not_positive` |
 | `F7P-7` | G_cum(E) | D_n(E) / D_n(E−12) − 1 for the anchor's own n, same condition |
 
 - **F7P-2 is an identity on intervals:** (E−n, E] plus (E−n−12, E−n] minus (E−n−12, E−12] is (E−12, E]. It holds for
   any facts with those ends, whatever the fiscal year. (Revision 1 wrongly tied it to the fiscal year's start.)
+- F7P-4 (a single quarter) was removed: no v1 feature used it. The rule ids keep their numbers.
 - **F7P-7 exists because F7P-6 is expensive.** TTM growth at an interim date needs filings from two earlier years.
   Growth of the cumulative period needs only the current filing and its comparative column.
-- **More than one path.** When several rules can produce TTM(E), all are computed. They agree if their values differ
-  by no more than the sum of their inputs' interval widths; then the lowest-numbered rule's value is used, marked
-  `corroborated_paths`. Otherwise the value is `conflicting` and every path is kept (P4-D8).
+- **More than one path.** When several rules can produce TTM(E), all are computed, each with the interval obtained by
+  adding and subtracting its inputs' intervals. They agree if those intervals overlap; then the lowest-numbered rule's
+  value is used, marked `corroborated_paths`. (F6 never moves a representative into its interval, so comparing
+  representatives against interval widths could call two consistent paths conflicting.) Otherwise the value is `conflicting` and every path is kept (P4-D8).
 - **Per-share values are not summed across periods without care.** §6.3.
 - Uncertainty: a sum's interval is the sum of its inputs' intervals, recorded. It is not propagated through ratios in
   v1 (P4-D5); the inputs' intervals are recorded instead.
@@ -264,13 +307,14 @@ Each id has one definition. Where two bases are possible they are two ids, and n
 | | `nii_g_cum` | F7P-7 of `net_interest_income` | bank_finance |
 | | `profit_g_cum`, `profit_g_ttm` | of `profit_for_period` | all |
 | | `profit_owners_g_ttm` | F7P-6 of `profit_attributable_to_owners` | all (null where the scope prints no owners' line) |
-| | `assets_g`, `equity_g` | I(E) / I(E−12) − 1 of `total_assets`, `total_equity` | all |
+| | `assets_g`, `equity_g` | F7P-8 of `total_assets`, `total_equity`. An interim balance sheet's comparative is usually the last year-end, not the same date a year earlier, so at interim anchors these often need last year's filing as well | all |
 | | `loans_g`, `deposits_g` | of `loans_and_advances_to_customers`, `customer_deposits` | bank_finance |
-| Earnings | `eps_fy` | D_12 `eps_basic`, restated (§6.3) | all |
+| Earnings | `eps_latest_fy` | The newest 12-month `eps_basic` visible at T in the chosen scope with period end at or before the anchor, restated (§6.3). A stated exception to §5.3: at an interim anchor no 12-month EPS exists for that period, so the last fiscal year's is used, with its own period end and age recorded | all |
 | | `eps_ttm_approx` | F7P-2 or F7P-3 of restated `eps_basic`; flagged `sum_of_per_share` | all |
 | Margins | `gross_margin`, `operating_margin` | TTM `gross_profit`, `operating_profit` / TTM `revenue` | general |
 | | `net_margin` | TTM `profit_for_period` / TTM `revenue` | general |
 | | `net_margin_bank` | TTM `profit_for_period` / TTM `gross_income` | bank_finance |
+| | `net_margin_chg` | `net_margin` (or `net_margin_bank`) at the anchor minus the same at the period twelve months before | all |
 | | `nim_proxy` | TTM `net_interest_income` / AVG `total_assets` | bank_finance |
 | Returns | `roe_end`, `roa_end` | TTM `profit_for_period` / `total_equity`, `total_assets` at E | all |
 | | `roe_avg`, `roa_avg` | The same over AVG balances | all |
@@ -294,8 +338,13 @@ Each id has one definition. Where two bases are possible they are two ids, and n
 
 - The vocabulary has no current assets, current liabilities or share count, so the current ratio, quick ratio and book
   value per share are not in v1 (P4-R1).
-- A denominator that is zero, nil, or negative where the ratio only has meaning for positive values gives null with a
-  named reason. No clipping, no sign flip.
+- **Denominators.** A zero or nil denominator gives null with a named reason. Each ratio's registry entry also says
+  whether it requires a **positive** denominator, and a non-positive one then gives null, reason
+  `denominator_not_positive`. It is required for: every `roe_*` and `roa_*`, `liabilities_to_equity`,
+  `borrowings_to_equity`, `equity_to_assets`, `loans_to_deposits`, `interest_cover`, every margin, `nim_proxy`,
+  `cfo_to_profit`, `fcf_margin`, `payout_ratio_cash`, both days ratios, `nci_share_of_profit`, and every yield and
+  price ratio of §6.3. Without it, an issuer with negative equity would rank as the least levered and a loss over
+  negative equity as a high return. No clipping, no sign flip.
 - The `_cum` growth features compare periods of the anchor's own length n. Issuers at different points of their year
   have different n; the value records n, and §8 notes the limit on comparing them.
 
@@ -309,25 +358,37 @@ the action's factor.
 `available_at` for the observation used), and a snapshot with cutoff session D\*:
 
 ```
-eps_restated = eps × Π f_k    over the MF snapshot's admitted actions k of the security with  date(A) < e_k ≤ D*
+eps_restated = eps × Π f_k    over the share-basis actions k of the security with  date(A) < e_k ≤ D*
+price        = adj_ref        the reference price on the basis of D* (Phase 3 §7.3, stored with the snapshot row)
 ```
 
-with f_k the price factors of Phase 3 §7.2 (fewer earnings per share after a split, exactly as the price falls).
+- **Both sides are on the basis of D\*.** `adj_ref` already carries the factor of any ex-date since the last trade.
+  The raw `px_ref` does not: after a 2-for-1 split with no trade yet, it is still the old 100 while restated EPS has
+  halved, and their ratio would be wrong by half until the next trade. That was revision 2's error.
+- **Share-basis actions** are sub-divisions, consolidations, bonus and scrip issues, and rights issues (their bonus
+  element, the same TERP factor). They are selected **by action kind**, not by MF's adjustment policy, so a later
+  policy that adjusts prices for cash dividends cannot scale EPS.
+- f_k are the price factors of Phase 3 §7.2 (fewer earnings per share after a split, exactly as the price falls). A
+  factor flagged `cum_price_stale` makes the restated value `partial` with that reason.
+- **A** is the latest availability instant among the fact's visible observations, and `date(A)` is its Colombo date
+  (a day-precision availability counts as that day).
 
 - **Why from A and not from the period end.** Accounting standards require a printed EPS to be restated already for a
-  bonus or split that happens before the statements are issued. An action with its ex-date between the period end and
-  A may or may not be in the printed figure. F7 cannot tell, so in that case the value is `untrusted`, reason
-  `eps_basis_ambiguous`. It is never guessed.
+  bonus or split that happens before the statements are issued. An action with period end < e ≤ date(A) may or may
+  not be in the printed figure. F7 cannot tell, so in that case the value is `untrusted`, reason
+  `eps_basis_ambiguous`. It is never guessed. The same applies when the fact has no availability instant, when its
+  observations' availability instants straddle an ex-date, or when an availability flag of §4.2 is set.
 - An `unresolved` factor in the interval, or an unexplained price move flagged by MF there, gives `untrusted`.
 - `eps_ttm_approx` restates each component EPS by its own document's A before adding. It remains an approximation
   (weighted-average share counts differ between periods) and says so.
-- With several listed lines of one issuer, EPS belongs to the ordinary share; v1 computes EPS valuation only for
-  equity lines and records the line.
+- **EPS valuation is per security.** Each equity line of the issuer gets the issuer's restated EPS over its own
+  `adj_ref` and its own factor list. v1 assumes voting and non-voting shares earn the same per share; that is
+  `provisional` and recorded on the value.
 
 | Feature | Definition | Needs |
 |---|---|---|
-| `earnings_yield_eps` | `eps_fy` (restated) / `px_ref` | EPS, the price, the factor list |
-| `pe_eps` | `px_ref` / `eps_fy`, null when EPS ≤ 0 (the yield stays defined) | As above |
+| `earnings_yield_eps` | `eps_latest_fy` (restated) / `adj_ref` | EPS, the price, the factor list |
+| `pe_eps` | `adj_ref` / `eps_latest_fy`, null when EPS ≤ 0 (the yield stays defined) | As above |
 | `issuer_market_value` | Sum of `market_cap_reported` over the issuer's equity lines linked at T (§4.6) on D\* | MF's field |
 | `earnings_yield_mcap`, `book_to_market`, `sales_to_market`, `cfo_yield`, `fcf_yield`, `dividend_yield_cash` | TTM `profit_for_period`, `total_equity`, TTM `revenue`, CFO, FCF, dividends paid, each / `issuer_market_value` | As above |
 
@@ -337,14 +398,19 @@ with f_k the price factors of Phase 3 §7.2 (fewer earnings per share after a sp
   last traded price times its `quantityIssued`, which suggests it is per security and price-at-capture based; that is
   five rows on one day. Until checked on real captures, every market-value feature carries reason
   `input_unverified`, engine `fund_valuation_mcap` is `blocked_quality`, and no eligibility criterion depends on any
-  of them (P4-D4). If any linked equity line lacks the value on D\*, `issuer_market_value` is null (`partial`).
+  of them (P4-D4): their state is `untrusted` while the policy says so. If any linked equity line lacks the value on
+  D\*, `issuer_market_value` is `missing`, reason `incomplete_lines`.
 
 ### 6.4 Quality state and reason codes
 
 Phase 3 §10.4's states, order and rule (the state describes the value; `missing`, `conflicting` and `untrusted` are
 null). Financial reason codes are separate from the states: `printed_nil`, `absent`, `not_yet_available`,
 `representative_ambiguous`, `no_exact_period_match`, `base_not_positive`, `currency_mismatch`, `eps_basis_ambiguous`,
-`input_unverified`, `has_discontinued`, `sum_of_per_share`, `scope_changed`. `unlabelled` as a **state** keeps MF's
+`input_unverified`, `has_discontinued`, `sum_of_per_share`, `scope_changed`, `denominator_not_positive`,
+`sign_unconfirmed`, `cum_price_stale`, `incomplete_lines`, `corroborated_paths`, `issuer_link_conflict`,
+`issuer_link_absent`, `currency_ambiguous`, `anchor_unusable`, `scope_unavailable`, `not_provided_by_baseline`.
+`currency_mismatch` is the reason when a formula's facts are not all in the panel currency, or when a valuation
+feature's panel currency is not LKR. `unlabelled` as a **state** keeps MF's
 meaning; an unlabelled **scope** is a property of the panel (§4.3), not a quality state.
 
 ---
@@ -356,7 +422,7 @@ meaning; an unlabelled **scope** is a property of the panel (§4.3), not a quali
 ```
 engine_id, version
 family            fundamental | market
-level             issuer (fundamental engines) | security (market engines)
+level             issuer (fundamental engines except EPS valuation) | security (market engines, EPS valuation)
 group             the ranking group: industry group for fundamental engines; all equity lines for market engines
 components        ordered list of (feature id, orientation ±1, weight, required: yes/no)
 min_components    how many components must be present for a score
@@ -370,8 +436,11 @@ No fitted parameter, no data-dependent constant, no clock, no randomness. Consta
 - **Market engines** rank the equity lines that are market-data eligible at T (Phase 3 §9).
 - **Fundamental engines rank issuers, not securities.** The universe is the issuers that are financially eligible at
   T (§11), have at least one market-data-eligible equity line linked at T (§4.6), and belong to the engine's industry
-  group. Each issuer counts once, however many lines it has listed. The issuer's output is then given to each of its
-  equity lines, with the issuer id recorded.
+  group. Each issuer counts once, however many lines it has listed. The issuer's output is then given to **every
+  equity line linked to it at T**, market-eligible or not, with the issuer id recorded; market eligibility stays a
+  separate fact about the line.
+- **`fund_valuation_eps` is the exception:** its input is per security (§6.3), so it ranks the market-data-eligible
+  equity lines whose issuer is financially eligible, within the issuer's industry group, with no fan-out.
 - **Industry group (`f7.industry.1`):** `bank_finance` if the panel has, at the anchor period in the chosen scope, a
   fact (in any state) of a concept whose `industries` is `bank_finance`; otherwise `general`. This is the same
   information as F5's per-document template, since bank concepts are mapped only in bank-template documents. Insurers
@@ -391,7 +460,8 @@ value of c, and n_c their number.
 - A member's score is the weighted mean of s_c over the components it has, if it has every `required` component and
   at least `min_components`; otherwise its state is `insufficient_inputs` and it has no score.
 - A component in state `conflicting` or `untrusted` is not used; if it was `required`, the state is
-  `blocked_quality`.
+  `blocked_quality`. A component in state `unlabelled` is not admissible either and counts as absent, without
+  blocking.
 
 Scores of members with different component sets are not strictly comparable. The output therefore lists
 `components_present`, and Phase 5 treats that list as part of the signal, not as noise.
@@ -426,8 +496,8 @@ Weights are equal (P4-D2). "R" marks a required component.
 | `fund_leverage` | issuer, general | `liabilities_to_equity` (−) R, `equity_to_assets` (+) | 1 |
 | `fund_bank_strength` | issuer, bank_finance | `equity_to_assets` (+) R, `loans_to_deposits` (−) | 1 |
 | `fund_cash_flow` | issuer, general | `cfo_to_profit` (+) R, `fcf_margin` (+) | 1 |
-| `fund_valuation_eps` | issuer (ordinary line), by group | `earnings_yield_eps` (+) R | 1 |
-| `fund_valuation_mcap` | issuer, by group | `book_to_market` (+) R, `earnings_yield_mcap` (+), `cfo_yield` (+), `dividend_yield_cash` (+) | 2; `blocked_quality` while `input_unverified` |
+| `fund_valuation_eps` | security, by the issuer's group | `earnings_yield_eps` (+) R | 1 |
+| `fund_valuation_mcap` | issuer, by group | `book_to_market` (+) R, `earnings_yield_mcap` (+), `cfo_yield` (+), `dividend_yield_cash` (+) | 2; `blocked_quality` while its inputs are `untrusted` (`input_unverified`) |
 | `mkt_momentum` | security | `mom_252_21` (+) R, `mom_126_21` (+) | 1 |
 | `mkt_trend` | security | `ret_63` (+) R, `dd_252` (+: closer to 0) | 1 |
 | `mkt_reversal` | security | `ret_5` (−) R, `ret_1` (−) | 1 |
@@ -442,7 +512,8 @@ Weights are equal (P4-D2). "R" marks a required component.
   and often a nil finance cost. Nil is not zero, so those features are null for exactly the least-levered issuers, and
   ranking on them would score the unlevered as "no data". `fund_leverage` uses ratios of balance-sheet totals, which
   every issuer has. The two features stay available to Phase 5 and to reasoning.
-- **Growth uses the cumulative-period features**, which need one filing. Issuers at different points of their fiscal
+- **Growth's required components are the cumulative-period features**, which need one filing. `assets_g` and
+  `loans_g` often need last year's filing too (§6.2) and are optional components for that reason. Issuers at different points of their fiscal
   year are compared on periods of different length; the limit is stated, and Phase 5 sees n.
 - "Favourable" is each engine's own definition and a hypothesis. Whether any direction predicts CSE returns is what
   the backtesting laboratory must test.
@@ -457,7 +528,7 @@ method for; every other field is null with reason `not_provided_by_baseline`. No
 | Baseline | Fills | From |
 |---|---|---|
 | `base_no_change` | Expected return 0; direction `flat`; probabilities: none | Nothing |
-| `base_rate_252` | Probability of rise, flat and fall; expected return; direction (the most frequent class) | MF's return-history features `hist_up_share_h`, `hist_flat_share_h`, `hist_down_share_h`, `hist_mean_ret_h` (Phase 3 §10.3), which use only h-session returns that ended at or before D\*, on the series as adjusted at T. Null where that feature is `missing` |
+| `base_rate_252` | Probability of rise, flat and fall; expected return; direction (the most frequent class; on a tie, `flat` if it is among the tied classes, otherwise none) | MF's return-history features `hist_up_share_h`, `hist_flat_share_h`, `hist_down_share_h`, `hist_mean_ret_h` (Phase 3 §10.3), which use only h-session returns that ended at or before D\*, on the series as adjusted at T. Null where that feature is `missing` |
 | `base_momentum_sign` | Direction only: `rise` if `mom_252_21` > 0, `fall` if < 0, none if it is 0 or null | MF's feature |
 
 - `base_rate_252`'s shares are observed frequencies with a stated window and method, which is what makes them
@@ -476,9 +547,9 @@ method for; every other field is null with reason `not_provided_by_baseline`. No
 
 | Table | Contents |
 |---|---|
-| `f7_configurations` | Canonical JSON and SHA-256: feature registry version, `f7.scope`, `f7.currency`, `f7.sign`, `f7.security_link`, `f7.eps_basis`, `f7.industry`, period rules, `financial_eligibility_policy` and its status, `N_min` |
-| `f7_panels` | One per (issuer, T, mode, **H where the mode has one**, F7 configuration): the F8 `result_hash` and `f8_configuration_id`, chosen scope and currency, newest and anchor period, panel state, counts by fact state, label class |
-| `f7_feature_rows` | One per (panel, security or issuer): the feature vector as canonical JSON with per-value state, reason, rules and `ef_key`s; the link decision id; the MF snapshot row hash used for valuation; `row_hash` |
+| `f7_configurations` | Canonical JSON and SHA-256: feature registry version, `f7.scope`, `f7.currency`, `f7.sign`, `f7.security_link`, `f7.eps_basis`, `f7.industry`, `f7.cashflow_sign`, period rules, `financial_eligibility_policy` and its status, `N_min` |
+| `f7_panels` | One per (issuer, T, mode, **H where the mode has one**, F7 configuration, `f8_configuration_id`): the F8 `result_hash`, chosen scope and currency, newest and anchor period, panel state, counts by fact state, label class |
+| `f7_feature_rows` | One per (panel, MF snapshot, security or issuer): the feature vector as canonical JSON with per-value state, reason, rules and `ef_key`s; the link decision id; the MF snapshot row hash used for valuation; `row_hash` |
 | `de_configurations` | Engine registry version and constants |
 | `de_runs` | One per (T, mode, H where the mode has one, MF snapshot, F7 configuration, DE configuration): universe digests, counts, label class |
 | `de_outputs` | One per (run, security, engine or baseline): the output as canonical JSON; `output_hash` |
@@ -521,8 +592,9 @@ and the measured values.
 | Days from the anchor period's end to T | ≤ 270 |
 | At least one growth feature and one return feature with a **non-null** value | required |
 
-Results: `eligible`, `no_panel`, `critical_conflict`, `insufficient_history`, `stale`, `insufficient_features`,
-`link_blocked`. They map onto MA §22's blockers. The values are placeholders labelled `provisional`; real values are
+Results: `eligible`, `no_panel`, `scope_unavailable`, `critical_conflict`, `insufficient_history`, `stale`,
+`insufficient_features`. (Whether a given security is linked to the issuer is a fact about the security, decided at
+the fan-out by §4.6, not an eligibility result of the issuer.) They map onto MA §22's blockers. The values are placeholders labelled `provisional`; real values are
 chosen on data before any declared final test period, under a Phase 5 protocol (Phase 3 §9 states the same rule).
 
 ---
@@ -552,12 +624,17 @@ asserts the converse: the same information placed at or before T changes the res
 | FL-13 | **Another** issuer's later filing | This issuer's ranks, n_c and industry group at T |
 | FL-14 | A split between an EPS document's availability and D\*, known at T | The restated EPS equals the hand-computed value; with the ex-date between period end and availability the value is `untrusted` |
 | FL-15 | An impairment reversal (a value printed with the opposite sign) | It is used with its printed sign; no feature takes its magnitude |
+| FL-16 | A split with **no trade since**, the ex-date between the last trade and D\* | `earnings_yield_eps` equals its hand-computed value before and after the first post-split trade (the revision 2 Blocker) |
+| FL-17 | A rights issue, and a cash dividend, between an EPS document and D\* | The rights factor is applied to EPS; the cash dividend is not, under any MF adjustment policy |
+| FL-18 | An EPS fact corroborated by two documents with a split between their availability dates; an EPS fact with no availability instant | `untrusted`, reason `eps_basis_ambiguous` |
+| FL-19 | A document the system holds but that is not yet public (`KNOWN`), for a period after the current anchor | The newest period and the anchor at T are unchanged |
+| FL-20 | An outflow printed without parentheses under a "net cash used in" label | The cash-flow identity does not confirm it; the value is `unlabelled` and no engine uses it |
 
 ---
 
 ## 13. Decisions
 
-### Taken [delegated] (`docs/governance/CLOUD_DECISION_LOG.md`, C-0008 and C-0011)
+### Taken [delegated] (`docs/governance/CLOUD_DECISION_LOG.md`, C-0008, C-0011 and C-0018)
 
 | ID | Decision | Reason |
 |---|---|---|
@@ -575,6 +652,11 @@ asserts the converse: the same information placed at or before T changes the res
 | P4-D12 | EPS is restated from its document's availability date by MF's factors; an ex-date between period end and availability makes it `untrusted` | The only honest reading of what a printed EPS already reflects |
 | P4-D13 | `fund_leverage` uses balance-sheet totals only | Nil-is-not-zero would otherwise penalise unlevered issuers |
 | P4-D14 | The link from a security to its issuer is taken as of T (`f7.security_link.1`) | Point-in-time correctness |
+| P4-D15 | Currency rule `f7.currency.1` (LKR at the newest period in the chosen scope, else the single other currency) | One stated rule; no conversion |
+| P4-D16 | Valuation divides restated EPS by `adj_ref`; EPS valuation is a security-level engine | Both sides on one share basis; an issuer's two lines have two prices |
+| P4-D17 | `eps_latest_fy` may come from an earlier period than the anchor, as a stated exception | Otherwise EPS valuation is missing for most of every issuer's year |
+| P4-D18 | A cash-flow total is used only when the cash identity confirms its sign (`f7.cashflow_sign.1`) | The printed sign of a "net cash used in" line is not reliable, and F7 cannot see the label |
+| P4-D19 | Ratios declare whether they need a positive denominator | Negative equity must not rank as low leverage or high return |
 
 ### Reserved for the owner
 
@@ -583,7 +665,7 @@ asserts the converse: the same information placed at or before T changes the res
 | P4-R1 | Extending the F5 concept vocabulary (current assets and liabilities, share count, dividends per share, insurance concepts): F5 change control, re-audit, re-freeze, re-staging | Current ratio, book value per share, insurers |
 | P4-R2 | Whether to fix the open F3/F5 findings (P-18, P-23, P-1) before the pilot | How many issuers have usable panels |
 | P4-R3 | The merge into `main` and the re-staging that follows | Production use |
-| P4-R4 | Exposing F6.1's sign-convention result through F8 (a change to frozen F8) | Any feature that needs the orientation of `impairment_charges` or tax |
+| P4-R4 | Exposing F6.1's sign-convention result, or the matched label, through F8 (a change to frozen F8) | Any feature that needs the orientation of `impairment_charges` or tax; cash-flow totals that the identity cannot confirm |
 
 ---
 
@@ -591,9 +673,9 @@ asserts the converse: the same information placed at or before T changes the res
 
 | Step | Content | Exit |
 |---|---|---|
-| F7-1 | Panel as of T from F8; guards per pipeline; usable-fact table; scope, anchor, currency, sign and link rules | Unit tests on new multi-concept, multi-period factories built over F8's (`tests/f8_factories.py` builds one value per document today); FL-1 to FL-5, FL-8, FL-11, FL-15 |
-| F7-2 | Period arithmetic F7P-1 to F7P-7, dates, disagreeing paths | Hand-computed cases for 3, 6, 9, 12-month and quarter-only reporters, March and December year-ends, a non-month-end period end |
-| F7-3 | Feature registry and set v1; EPS restatement; the valuation join with MF | Every formula against a hand-computed vector; FL-6, FL-12, FL-14 |
+| F7-1 | Panel as of T from F8; guards per pipeline; usable-fact table; scope, anchor, currency, sign and link rules | Unit tests on new multi-concept, multi-period factories built over F8's (`tests/f8_factories.py` builds one value per document today); FL-1 to FL-5, FL-8, FL-11, FL-15, FL-19 |
+| F7-2 | Period arithmetic F7P-1 to F7P-8, dates, disagreeing paths, the cash-flow sign identity | Hand-computed cases for 3, 6, 9, 12-month and quarter-only reporters, March and December year-ends, a non-month-end period end |
+| F7-3 | Feature registry and set v1; EPS restatement; the valuation join with MF | Every formula against a hand-computed vector, with a negative-equity and a loss-making case for each ratio; FL-6, FL-12, FL-14, FL-16 to FL-18, FL-20 |
 | F7-4 | Financial eligibility | Unit tests of each result |
 | DE-1 | Engine contract; universes; the score formula with ties, small n and absent components | Unit tests; determinism |
 | DE-2 | Engine set v1 | Each engine on a synthetic universe with known ranks; an issuer with two lines counted once; FL-7, FL-13 |
@@ -613,6 +695,15 @@ F7-1, F7-2 and F7-4 depend only on F8. F7-3's valuation part and all of DE need 
 - How often period ends fail to match exactly (§5.1), and how often derivation paths disagree.
 - Whether `marketCap` is per security and consistent with price × shares over time (§6.3).
 - How often an ex-date falls between a period end and its document's availability (§6.3).
+- How often the cash-flow identity fails to confirm a sign (§4.5), and so how much of `fund_cash_flow` survives.
+- **Interim against annual.** An unaudited fourth-quarter interim and the audited annual report give two
+  observations of the same year-end figures. If they differ, the anchor is `conflicting` and the issuer is blocked
+  until its next quarter.
+- Whether voting and non-voting shares earn the same per share (§6.3).
+- `eps_ttm_approx` will often be `conflicting` between its paths, because weighted share counts differ by period.
+- Fundamental ranks compare issuers whose anchor periods can be up to 270 days apart.
+- Where assets equal liabilities plus equity, `liabilities_to_equity` and `equity_to_assets` rank issuers
+  identically, so `fund_leverage` carries one piece of information, not two.
 - Every eligibility value, `N_min`, and whether any engine's "favourable" direction has predictive value at all.
 
 ## 16. The fifteen questions (MA §68)
@@ -625,7 +716,7 @@ F7-1, F7-2 and F7-4 depend only on F8. F7-3's valuation part and all of DE need 
 | 4 | Provenance retained | Row hashes, `ef_key`s, F8 `result_hash`, link decision id, MF row hashes (§10.3) |
 | 5 | Frozen components | None modified; the range-stating guards at DE-4 |
 | 6 | Migration | Yes: 0020, additive |
-| 7 | Leakage prevention | F8's two guards, explicit H and configuration, the as-of link, same-T universes, the target import ban, FL-1 to FL-15 |
+| 7 | Leakage prevention | F8's two guards, explicit H and configuration, the as-of link, same-T universes, the target import ban, FL-1 to FL-20 |
 | 8 | Testing | §12, §14; PostgreSQL 17 in CI |
 | 9 | Reproduction | Deterministic Decimal arithmetic; configuration and input hashes; `verify` |
 | 10 | Route 1 and Route 2 | Route 1 consumes signals, components and baselines. Route 2 receives the same features as structured input, never the scores as instructions |
@@ -673,4 +764,32 @@ run. Dispositions in revision 2:
 | 27 | Note | Factories build one value per document | Recorded in §14 (F7-1) and §3 |
 | 28 | Note | `mkt_ret_ew_63` missing in Phase 3 | Added in Phase 3 revision 2 |
 
-Revision 2 is to be audited again before any implementation.
+**Revision 2 (commit `9e26947`): audited 2026-11-12 (cloud, fresh-context agent). Verdict: FAIL**, one Blocker,
+seven Major, nine Minor, one Note. Of the 28 earlier findings it judged 21 resolved and 7 partly resolved. It
+verified by hand the factor direction for EPS, the five magnitude concepts' mapping rules, the link rule against
+migration 0007, the `AVAILABLE` semantics against F8's code, the score formula's range and ties, the date rule on
+month-ends, leap days and the 25th, and the F7P-2 interval identity. It did not re-read every Master Architecture
+section this round. Dispositions in revision 3:
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| N1 | Blocker | Restated EPS was divided by a raw carried price on the old share basis | **Fixed.** Both sides on D\*'s basis through `adj_ref` (§6.3, P4-D16); Phase 3 revision 3 stores it; FL-16 |
+| N2 | Major | `eps_fy` did not exist at interim anchors, so EPS valuation was mostly missing | **Fixed.** `eps_latest_fy` (§6.2, P4-D17) |
+| N3 | Major | The EPS product was not limited to share-count actions; `cum_price_stale` not carried | **Fixed.** By action kind; the flag carried; the factor list's shape required (§6.3, §3); FL-17 |
+| N4 | Major | The availability instant A undefined for several documents, for none, and at the boundary | **Fixed.** §6.3; FL-18 |
+| N5 | Major | "Issuer (ordinary line)" undefined; an issuer's second line would get the first line's price | **Fixed.** A security-level engine (§7.2, §8, P4-D16) |
+| N6 | Major | Cash-flow totals' printed sign is not label-safe | **Fixed.** `f7.cashflow_sign.1`: confirmed by the cash identity or not used (§4.5, P4-D18); FL-20; P4-R4 widened |
+| N7 | Major | The anchor's duration, `none` facts, the unlabelled-only newest period, `scope_changed`, operations | **Fixed.** §4.3; FL-19 |
+| N8 | Major | No list of ratios needing a positive denominator | **Fixed.** §6.2 (P4-D19); negative-equity and loss cases in F7-3's exit |
+| N9 | Minor | Magnitude before or after period arithmetic | **Fixed.** Per fact, before (§4.5) |
+| N10 | Minor | The mapping from MF's security key to `companies.id`; imported-only securities | **Fixed.** §4.6, with the coverage label; `link_blocked` removed from issuer eligibility (§11) |
+| N11 | Minor | Path agreement could reject consistent paths | **Fixed.** Interval overlap (§5.2) |
+| N12 | Minor | `unlabelled` inputs, `input_unverified`'s state, the fan-out target, a null called `partial` | **Fixed.** §7.2, §7.3, §6.3 |
+| N13 | Minor | F8 and F6 outputs still not covered | **Fixed.** §4.2 |
+| N14 | Minor | Keys and where the factor list lives | **Fixed.** §10.1, §3 |
+| N15 | Minor | Currency rule's period and scope; no decision id | **Fixed.** §4.4, P4-D15 |
+| N16 | Minor | A dead rule; date rule not associative on the 29th and 30th; instant growth without a base condition | **Fixed.** F7P-4 removed; §5.1; F7P-8 |
+| N17 | Minor | Reason codes missing; "one filing" overstated; `KNOWN_RECORDED` | **Fixed.** §6.4, §6.2, §8, §4.1 |
+| N18 | Note | Interim against annual; redundant leverage inputs; EPS paths; mixed anchor dates | Recorded (§15) |
+
+Revision 3 is to be audited again before any implementation.

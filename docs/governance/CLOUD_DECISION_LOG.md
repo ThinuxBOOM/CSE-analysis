@@ -193,3 +193,12 @@ repeats the last close on days without a trade). Revision 3 dispositions every f
 to P3-D18 are added (degraded sessions; a computed security key in place of a registry table; label protection
 against late corporate actions), P3-D15 is widened, and P3-R7 (a same-day re-capture rule, a change to frozen P3) is
 reserved for the owner. Revision 3 is not accepted until it is audited again.
+
+## C-0018: Phase 4 design, revision 3 ([delegated], 2026-11-12)
+
+The second audit (cloud, fresh-context agent) of Phase 4 revision 2 returned FAIL: one Blocker, seven Major, nine
+Minor, one Note. The Blocker: restated earnings per share was divided by a raw carried price that could still be on
+the pre-action share basis. Revision 3 dispositions every finding in its §17. Decisions P4-D15 to P4-D19 are added
+(the currency rule; valuation on Phase 3's `adj_ref` and EPS valuation at security level; a fiscal-year EPS usable at
+interim dates; cash-flow totals used only when the cash identity confirms their sign; ratios that require a positive
+denominator), and P4-R4 is widened. Revision 3 is not accepted until it is audited again.
