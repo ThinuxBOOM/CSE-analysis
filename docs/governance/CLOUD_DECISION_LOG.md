@@ -309,3 +309,20 @@ What this is and is not:
   is not the owner's own acceptance and not an acceptance for `main`.
 - The reserved decisions P3-R1 to P3-R7 are unchanged and still the owner's.
 - Implementation starts at MF-1. Nothing in Phase 3 contacts CSE.
+
+## C-0027: Phase 4 design accepted for implementation on integration/cloud ([delegated], 2026-11-12)
+
+The fifth audit of the Phase 4 design (revision 5; cloud, fresh-context agent) returned FAIL on one Major finding and
+no Blocker, and described the finding as "closable by one rule and one test case": with no trade since an ex-date
+that lies between a period end and the document's availability, a restated printed EPS could meet a price still on
+the old share basis. Revision 6 applies the auditor's rule as written (the EPS valuation is `untrusted` when the last
+traded close predates the document's availability) and adds the test case FL-21 (d).
+
+**The design is accepted [delegated] for implementation on `integration/cloud` at revision 6.** This departs from
+C-0005 in one respect, stated plainly: the final correction has not been audited by a fresh context. The reasons for
+stopping here: five audits have run; the last three each found a single, narrower residue of the same question; the
+correction is the auditor's own; and it has a named test. Master Architecture §68.1 rule 5 asks for an
+evidence-based stop, not auditing without end. The owner or the workstation's auditor may audit revision 6.
+
+The reserved decisions P4-R1 to P4-R4 are unchanged. Phase 3's accepted design gains one clarification that Phase 4
+needs (the snapshot row lists the symbol and `company_id`).

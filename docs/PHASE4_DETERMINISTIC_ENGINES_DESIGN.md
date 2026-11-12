@@ -1,6 +1,9 @@
 # Phase 4: financial features and deterministic engines (design)
 
-**Status: DESIGN, revision 5 (2026-11-12). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 6 (2026-11-12). ACCEPTED [delegated] for implementation on `integration/cloud` (C-0027):
+the fifth audit left one Major finding, closable by one rule and one test, and revision 6 applies exactly that
+correction (§17). The correction itself has not been audited again; test FL-21 (d) is its check at implementation.
+Not implemented. Not the owner's own acceptance, and not accepted for `main`.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact and no change to `main`.
 
@@ -25,7 +28,7 @@ factor list and the unexplained-move firings by date; §6.2 and §6.3 are comple
 
 **Governing records:** Master Architecture (MA) §2, §6, §9 to §14, §21, §22, §39, §41, §42, §55 (Phase 4), §56 to
 §59, §68; `docs/F8_DESIGN.md` (§7, §8, §11, §12, §14); `docs/F6.2_DESIGN.md` (the economic fact, its states and
-intervals); `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 4 (market bars, universe, market features, targets;
+intervals); `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 5 (market bars, universe, market features, targets;
 "MF"). Where this document and those differ, they win.
 
 **Short names.** F7 is the financial feature layer (`docs/F8_DESIGN.md` §14's name). DE is the deterministic engine
@@ -105,7 +108,7 @@ MF snapshot rows (Phase 3) ─────────────────�
 - MF snapshots (Phase 3 §13.1), for the valuation join only. From the snapshot row: `adj_ref`, `ref_session`,
   `stale_sessions`, `market_cap_reported`, the symbol and the `company_id`. From `mf_snapshot_factors`: the factor
   list per security (action kind, ex-date, factor, status, flags). From `mf_snapshot_move_flags`: the unexplained
-  moves by date. Phase 3 revision 4 stores both in that shape.
+  moves by date. Phase 3 revision 5 stores both in that shape, the move flags with a status `open` or `confirmed_no_action`.
 
 **DE reads:** F7's feature rows and MF's snapshot rows. Nothing else. In particular it never reads the raw layer or
 MF's target tables.
@@ -399,6 +402,16 @@ price        = adj_ref        the reference price on the basis of D* (Phase 3 §
   `no_action_confirmed` statement admitted at T does not count. Without the guard, a 2-for-1 split not yet entered
   would double the earnings yield and put the line at the top of the valuation rank; and an unentered action must
   not be treated more leniently than the same action once entered. (Revision 4 read firings only after date(A).)
+- **No close since the document.** The move record needs a printed close after the ex-date. If the security has not
+  traded since before the document became available (`ref_session` is before date(A)), nothing can show whether an
+  action lies between: the document may print EPS already restated for a split that the last traded price has not
+  seen. So when `ref_session` < date(A), the EPS valuation features are `untrusted`, reason
+  `no_close_since_document`. This also covers an ex-date after D\* but at or before date(A). It costs a liquid line
+  at most the day of publication; a line that has not traded since is not ranked on a price that predates the
+  figure. An action after date(A) with no trade since needs nothing: EPS and price are both on the old basis.
+- **When the price itself is not usable.** If `adj_ref` is undefined (MF's `price_unknown`) the valuation features
+  are `missing`, reason `price_unknown`; if it is null because a factor is unresolved they are `untrusted`,
+  reason `factor_unresolved`. For `eps_ttm_approx` every rule of this section applies to each component fact.
 - A rights factor is computed per line from that line's own cum price, so one issuer's EPS is restated to slightly
   different values on its voting and non-voting lines. An ex-date after D\* is not in the factor list and is not
   considered: it has not affected the price yet either.
@@ -438,7 +451,7 @@ null). Financial reason codes are separate from the states: `printed_nil`, `abse
 `representative_ambiguous`, `no_exact_period_match`, `base_not_positive`, `currency_mismatch`, `eps_basis_ambiguous`,
 `input_unverified`, `has_discontinued`, `sum_of_per_share`, `scope_changed`, `denominator_not_positive`,
 `denominator_zero`, `sign_unconfirmed`, `cum_price_stale`, `unexplained_move_since_document`, `factor_unresolved`,
-`availability_flagged`, `fy_eps_too_old`, `earlier_period_than_anchor`, `equal_earnings_per_line_assumed`,
+`no_close_since_document`, `price_unknown`, `fy_eps_too_old`, `earlier_period_than_anchor`, `equal_earnings_per_line_assumed`,
 `dividends_may_include_nci`, `ambiguous_supersession`, `metadata_version_tie`, `incomplete_lines`, `corroborated_paths`, `issuer_link_conflict`,
 `issuer_link_absent`, `currency_ambiguous`, `anchor_unusable`, `scope_unavailable`, `not_provided_by_baseline`.
 `currency_mismatch` is the reason when a formula's facts are not all in the panel currency, or when a valuation
@@ -662,7 +675,7 @@ asserts the converse: the same information placed at or before T changes the res
 | FL-18 | An EPS fact corroborated by two documents with a split between their availability dates; an EPS fact with no availability instant | `untrusted`, reason `eps_basis_ambiguous` |
 | FL-19 | A document the system holds but that is not yet public (`KNOWN`), for a period after the current anchor | The newest period and the anchor at T are unchanged |
 | FL-20 | An outflow printed without parentheses under a "net cash used in" label | The cash-flow identity does not confirm it; the total and every feature derived from it are null |
-| FL-21 | In `KNOWN`: a split **not yet entered at T** with one post-split trade, (a) after the EPS document's availability and (b) between the period end and that availability; and (c) the same move cleared by `no_action_confirmed` | MF's move record fires; in (a) and (b) the restated EPS is `untrusted`, not a doubled yield; in (c) it is used. Entered by T, the yield equals its hand-computed value |
+| FL-21 | In `KNOWN`: a split **not yet entered at T** with one post-split trade, (a) after the EPS document's availability and (b) between the period end and that availability; (c) a genuine large move cleared by `no_action_confirmed`; and (d) a split between the period end and the availability with **no trade since** | MF's move record fires; in (a) and (b) the restated EPS is `untrusted`, not a doubled yield; in (c) it is used; in (d) the valuation is `untrusted`, reason `no_close_since_document`, whether or not the action is entered. Entered by T, the yield equals its hand-computed value |
 | FL-22 | The newest fiscal-year EPS `conflicting`, with a clean one a year older; and a newest fiscal-year EPS more than twelve months before the anchor | `eps_latest_fy` is `conflicting`, not the older value; and `missing`, reason `fy_eps_too_old` |
 
 ---
@@ -857,4 +870,22 @@ factor; FL-12's mode; and the guard's residual limits (§15). Left as stated: th
 `eps_latest_fy` is inclusive, so the previous year's EPS is accepted at an annual anchor whose own EPS is absent,
 with the reason `earlier_period_than_anchor`.
 
-Revision 5 is to be audited again before any implementation.
+**Revision 5 (commit `42fa5ec`): audited 2026-11-12 (cloud, fresh-context agent). Verdict: FAIL**, no Blocker, one
+Major, twelve Minor. It worked five cases through §6.3 and found the fourth audit's Major resolved wherever a close
+exists after the action. The one remaining case: no trade since the ex-date, with the ex-date between the period
+end and the document's availability. The document may then print EPS already restated while the last price is still
+on the old basis, and nothing fires. The auditor's correction, "one rule and one test case": when `ref_session` is
+before date(A), the EPS valuation is `untrusted`. **Applied in revision 6** (§6.3, FL-21 (d)), with the Minor points:
+what valuation does when `adj_ref` is unusable; the stale revision references; one reason for the availability-flag
+case; FL-21 (c)'s wording; the per-component rule for `eps_ttm_approx`; and Phase 3 now lists the symbol and
+`company_id` among the snapshot row's columns.
+
+**Accepted [delegated] at revision 6** (C-0027). The acceptance rests on five audits and on a final correction that
+is the auditor's own, applied as written and not audited again. That is a deliberate stop, under Master Architecture
+§68.1 rule 5: the scope has been investigated, every finding is fixed or stated, and the one unaudited change has a
+named test.
+
+**Carried into implementation:** an uncleared genuine large move keeps EPS valuation `untrusted` until the owner
+clears it or the next fiscal-year EPS arrives, so the valuation engine depends on the owner path in practice; and
+§6.3's rules are to be implemented as one ordered decision table (availability and straddle, no close since the
+document, unresolved factor, the move guard, then the product), written out in the implementation record.
