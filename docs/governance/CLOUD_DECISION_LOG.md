@@ -286,3 +286,12 @@ corporate action not yet entered covered only moves after the EPS document's ava
 between the period end and that date was trusted. Revision 5 widens the guard to the span the rule for entered actions
 already covers, and records the audit's minor points. No decision id changes. Revision 5 is not accepted until audited
 again.
+
+## C-0025: Phase 3 design, revision 5 ([delegated], 2026-11-12)
+
+The fourth audit of Phase 3 (revision 4) returned FAIL on one Major finding and no Blocker. It confirmed the degraded
+session is gone, the gap rules are coherent, the cost stated in C-0023 is correct, and found no contradiction with the
+Master Architecture. The Major: a security that traded on a final session but has no usable close was carried as if
+it had not traded. Revision 5 adds the `price_unknown` rule and the label state `unresolvable_missing_price`, and makes
+the unexplained-move detector compare closes after admitted factors (which Phase 4 revision 5's guard relies on). No
+decision id changes. Revision 5 is not accepted until audited again.
