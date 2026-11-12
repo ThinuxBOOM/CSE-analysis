@@ -202,3 +202,22 @@ the pre-action share basis. Revision 3 dispositions every finding in its §17. D
 (the currency rule; valuation on Phase 3's `adj_ref` and EPS valuation at security level; a fiscal-year EPS usable at
 interim dates; cash-flow totals used only when the cash identity confirms their sign; ratios that require a positive
 denominator), and P4-R4 is widened. Revision 3 is not accepted until it is audited again.
+
+## C-0019: audit of the isolated-restore procedure, and fixes to its tool ([delegated], 2026-11-12)
+
+The isolated-restore procedure (REG-B01) was audited by a fresh-context agent: `docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`,
+recommendation APPROVE WITH CONDITIONS. The audit found that an unknown statement in `globals.sql` was executed before
+it was refused, that the line parser could be bypassed, that the proof of the globals was one-directional, and that
+teardown would stop a cluster the procedure had refused.
+
+- **Changed** (harness code, not a frozen component; no test pins these files): `ops/restore/isolated_restore.py`
+  (findings 1 to 5, 11), `ops/staging/restore_driver.sh` (finding 10), `tests/test_staging_unit.py` (new test `r13`),
+  `docs/ops/ISOLATED_RESTORE.md` (a dated note). Offline suite after the change: 2177 passed, 680 skipped.
+- **Not verified here:** `tests/test_staging_restore_postgres.py` i1 to i3 need PostgreSQL 17 and were not run in the
+  cloud session. They must be shown executed on PostgreSQL 17 (CI group L16, or the staging runner) before the
+  staging R2 run.
+- **Consequence for Phase C.** The staging driver injects its harness files from the working tree, so these fixes
+  reach an R2 run when the workstation uses a checkout that contains them; the accepted image is not rebuilt for
+  them.
+- **Reserved for the owner:** approval of the procedure (REG-B01), the runbook §6 change (REG-B27), and findings 6 to
+  8, which block any production checkpoint and need a production form of the procedure.
