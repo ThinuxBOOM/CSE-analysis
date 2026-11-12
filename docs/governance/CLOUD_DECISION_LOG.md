@@ -259,3 +259,22 @@ at `90b5d56`, both concluded `success`: all eighteen Linux PostgreSQL 17 groups 
 `tests/test_staging_restore_postgres.py`, among them), the three Windows groups and the summary job. Whether i1 to i3
 executed and were not skipped inside L16 was not read from the job's report; that is to be confirmed from the L16
 artifact before the staging R2 run relies on it.
+
+## C-0023: Phase 3 revision 4 and Phase 4 revision 4 ([delegated], 2026-11-12)
+
+**Phase 3.** The third audit of Phase 3 (revision 3) returned FAIL: one Blocker, three Major. It judged six of the
+second audit's eight Major findings resolved. The Blocker was in the "degraded session" that revision 3 had added
+(P3-D16): admitting a never-final capture to the session sequence made every traded security carry its previous
+close, a market-wide false zero return, and gave wrongly resolved labels. **P3-D16 is withdrawn.** A capture that
+never becomes final leaves a non-final session, from which nothing is taken. The cost is recorded in the design: one
+unrepaired early capture can cost up to 21 reference sessions of one-month labels for the whole market. P3-D5's
+tolerance is restated (one gap allowed in windows of 6 to 63 sessions). The label state for unexplained moves now
+stores a provisional return and can be cleared by an owner-entered `no_action_confirmed` statement.
+
+**Phase 4.** The third audit of Phase 4 (revision 3) returned FAIL: no Blocker, two Major. It confirmed by worked
+cases that the revision 2 Blocker (earnings per share against a carried price) is resolved. Revision 4 fixes the two
+findings: Phase 3 now stores the factor list and the unexplained-move firings per snapshot, which Phase 4's guard
+against a corporate action not yet entered reads; and `eps_latest_fy` states which fact states count and its maximum
+age. Unconfirmed cash-flow totals are now null, not flagged values.
+
+Neither revision is accepted until audited again.
