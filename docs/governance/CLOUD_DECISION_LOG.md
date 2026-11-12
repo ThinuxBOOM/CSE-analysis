@@ -221,3 +221,15 @@ teardown would stop a cluster the procedure had refused.
   them.
 - **Reserved for the owner:** approval of the procedure (REG-B01), the runbook §6 change (REG-B27), and findings 6 to
   8, which block any production checkpoint and need a production form of the procedure.
+
+## C-0020: milestone 10 design, revision 2 ([delegated], 2026-11-12)
+
+The audit of revision 1 (cloud, fresh-context agent) returned FAIL: one Blocker, seventeen Major, nine Minor, one
+Note. The Blocker: a recreated container would have run the frozen provisioning script's cluster-creation branch over
+the existing production data directory. Revision 2 dispositions every finding in its §12. Two delegated decisions are
+**withdrawn and returned to the owner**: LP-D3 (an outbound packet filter, chosen without stating that a stale address
+set can end a capture run and lose a session) becomes LP-R4, and LP-D5 (running P1's weekly restore check
+automatically) becomes LP-R7, because the owner has kept every restore under explicit authorization. LP-D2 is
+replaced, LP-D8 is added. Two gaps are stated as undesigned and blocking: moving to a newly accepted build while data
+exists (before milestone 12's exit), and recovery from a backup copy. Revision 2 is not accepted until it is audited
+again.
