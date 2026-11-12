@@ -1,6 +1,8 @@
 # Phase 3: market feature foundation (design)
 
-**Status: DESIGN, revision 5 (2026-11-12). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 5 (2026-11-12). ACCEPTED [delegated] for implementation on `integration/cloud` (C-0026),
+after a fifth audit with no Blocker or Major finding (§19). Not implemented. Not the owner's own acceptance, and not
+accepted for `main`.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact, no capture, no purchase and no change to `main`.
 
@@ -1013,4 +1015,30 @@ the `price_unknown` rule (§5.3), `spans_unknown` (§10.2), the label state `unr
 eligibility result (§9), ML-24. Minors fixed with it: the detector compares closes after admitted factors and honours
 `no_action_confirmed` (§7.3, §4.1); the snapshot tables' fields (§13.1); `hist_n_h` (§10.3); ML-21's wording.
 
-Revision 5 is to be audited again before any implementation.
+**Revision 5 (commit `d34b8bf`): audited 2026-11-12 (cloud, fresh-context agent). Verdict: PASS WITH FINDINGS**, no
+Blocker, no Major, sixteen Minor. The auditor worked the missing-close example session by session (rows 2 and 5) and
+found no sentence that asserts a zero return or a carried price over a day the security traded; it checked the
+detector on an unentered split behind an entered dividend, an entered split and a confirmed move, and found each
+correct; and it confirmed against P2's code the status names and that E2 reads `tradeSummary` only. It did not re-read
+the Master Architecture this round.
+
+**The Minor points are carried into implementation** as items to settle at the named step, each recorded in the
+implementation record when settled. None changes the design:
+
+| # | Point | Settled at |
+|---|---|---|
+| 1 | Whether `unresolvable_missing_price` covers a whole label row or return and volatility get separate states. Default: separate states per value, so a computable return is not discarded | MF-6 |
+| 2 | `stale_sessions`, and the stored `px_ref`, `ref_session`, `adj_ref`, are null with reason `price_unknown` while the price is unknown | MF-1 |
+| 3 | The order of eligibility results when several apply; freshness is not evaluated while the price is unknown | MF-4 |
+| 4 | A no-trade bar inside an unknown-price stretch is `missing`, reason `price_unknown` | MF-1 |
+| 5 | Row 5 for a symbol absent from `tradeSummary` is `traded = false` by MFB-3; `traded = unknown` is left out of the activity ratios | MF-1, MF-4 |
+| 6 | A `spans_unknown` return counts as an input like a `spans_gap` one and makes the window `partial`; it is left out of `beta_126` | MF-5 |
+| 7, 8 | Wording of r_u's formula and of m_u (a member without a return is left out; denominators are members with a value) | MF-5 |
+| 9 | Return history leaves out an h-return only when one of its ends is at an unknown price | MF-5 |
+| 10 | The import cases of `price_unknown` (a `row_absent` bar without `security_complete`; a traded row without a close) | MF-1 |
+| 11 | A rights factor whose cum session is `price_unknown` is `unresolved` | MF-3 |
+| 12 | The detector with an `unresolved` factor between the closes (not evaluable, recorded as such); confirmed moves stay stored; a confirmation is tied to its session pair | MF-3 |
+| 13 | A label whose reference price is already undefined may be resolved to `unresolvable_missing_price` at once | MF-6 |
+| 14 | ML-24's bar part belongs to MF-1's exit and its `spans_unknown` part to MF-5's | MF-1, MF-5 |
+| 15 | The header has no paragraph for revision 5 | This note |
+| 16 | `resolved_carried` requires a defined `px_ref` at the target session | MF-6 |

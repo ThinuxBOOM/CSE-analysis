@@ -295,3 +295,17 @@ Master Architecture. The Major: a security that traded on a final session but ha
 it had not traded. Revision 5 adds the `price_unknown` rule and the label state `unresolvable_missing_price`, and makes
 the unexplained-move detector compare closes after admitted factors (which Phase 4 revision 5's guard relies on). No
 decision id changes. Revision 5 is not accepted until audited again.
+
+## C-0026: Phase 3 design accepted for implementation on integration/cloud ([delegated], 2026-11-12)
+
+The fifth audit of the Phase 3 design (revision 5, commit `d34b8bf`; cloud, fresh-context agent) returned PASS WITH
+FINDINGS: no Blocker, no Major, sixteen Minor. Under C-0005, with no Blocker or Major open, the design is **accepted
+[delegated] for implementation on `integration/cloud`**. The sixteen Minor points are listed in the design's §19 with
+the implementation step that settles each.
+
+What this is and is not:
+- It took five audits and four failed revisions. The audit history is in the design's §19.
+- It is the cloud session's delegated acceptance, by a same-model auditor with a fresh context (C-0005's limit). It
+  is not the owner's own acceptance and not an acceptance for `main`.
+- The reserved decisions P3-R1 to P3-R7 are unchanged and still the owner's.
+- Implementation starts at MF-1. Nothing in Phase 3 contacts CSE.
