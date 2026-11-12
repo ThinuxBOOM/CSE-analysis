@@ -278,3 +278,11 @@ against a corporate action not yet entered reads; and `eps_latest_fy` states whi
 age. Unconfirmed cash-flow totals are now null, not flagged values.
 
 Neither revision is accepted until audited again.
+
+## C-0024: Phase 4 design, revision 5 ([delegated], 2026-11-12)
+
+The fourth audit of Phase 4 (revision 4) returned FAIL on one Major finding and no Blocker: the guard against a
+corporate action not yet entered covered only moves after the EPS document's availability, so an unentered split
+between the period end and that date was trusted. Revision 5 widens the guard to the span the rule for entered actions
+already covers, and records the audit's minor points. No decision id changes. Revision 5 is not accepted until audited
+again.
