@@ -294,3 +294,28 @@ The currently visible TradeIQ README describes a clean-history rebuild, says gen
 No TradeIQ archive was downloaded into an executable local workspace during this checkpoint. No workbook or CSV was independently parsed; no source-file SHA-256 inventory was produced; no row/date/security/corporate-action counts were recomputed; and no project Python or PostgreSQL test suite was run. GitHub file/commit access available in this session permits source inspection and branch documentation, but does not provide an attached checkout, Python test runner, or project PostgreSQL test database. The attempted archive download did not succeed. Therefore all raw-data tests remain **NOT RUN**, not PASS and not FAIL.
 
 No source data was imported, no database was contacted, no production code or schema was changed, and no frozen file was modified. The branch remains research-only. The next executable step requires a real local checkout/runtime with the TradeIQ archive available; run the independent parser and Phase 3 gate suite there, preserve outputs/hashes, and append exact results. Do not represent static review as runtime validation.
+
+
+## 13. GitHub Actions execution harness added — 2026-11-12
+
+The research branch now extends the repository's existing CI workflows rather than introducing a third general CI workflow (consistent with `docs/CI_TEST_STRATEGY.md`).
+
+### 13.1 Trigger and project regression
+- `.github/workflows/ci-fast.yml` now includes this research branch in its push trigger. It runs the existing offline-safe suite in the established no-network test container.
+- `.github/workflows/ci-regression.yml` now includes this research branch in its push trigger. It runs the existing full Linux/PostgreSQL 17 and Windows regression matrix.
+- Existing test commands, frozen test files, group partition, network isolation, CSE-host blocking, action pins, and permissions are retained. No test has been deselected or reclassified.
+- Existing CI strategy says manual `workflow_dispatch` is only available after a workflow exists on the default branch; no such default-branch change is made here.
+
+### 13.2 TradeIQ archive job
+A research-branch-only job was added to `ci-regression.yml`:
+- Clones the public `TradeIQ-CSE/cse-dataset` GitHub repository at its current default-branch tip and records the exact commit SHA.
+- Installs pinned `openpyxl` and `xlrd` readers.
+- Runs `scripts/research/audit_tradeiq_archive.py` to inventory files, calculate SHA-256 hashes, independently parse CSV and Excel workbooks, inspect worksheet dimensions, and reconcile conversion-manifest references and reported output row counts.
+- Uploads only the JSON/Markdown audit report as a 30-day artifact. It does not upload the underlying source archive.
+- Makes no CSE requests and does not write to the project database or canonical data tables.
+
+### 13.3 What this harness does and does not prove
+This job is a structural archive audit. It can expose parse failures, manifest references that do not resolve, and discrepancies between reported and independently counted converted-CSV rows. It does not by itself establish OHLCV semantic mapping, source authenticity, trading-calendar completeness, delisted-security completeness, corporate-action completeness, point-in-time safety, or rights to retain/redistribute underlying CSE data. Those remain separate gates and must not be marked PASS from a clean structural run.
+
+### 13.4 Execution state at documentation time
+The workflow and audit script have been committed to this isolated branch. The GitHub Actions execution result has not yet been retrieved in this checkpoint. Therefore no CI run is represented as passed, failed, or completed until its run summary and artifacts are inspected.
