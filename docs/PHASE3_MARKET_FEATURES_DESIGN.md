@@ -555,7 +555,7 @@ For a snapshot with cutoff session t = D\*, and final sessions u in the sequence
 | Liquidity | `amihud_21` | mean( \|r_u\| / turnover_u ) over the window's traded sessions with turnover > 0 | 10 |
 | | `zero_trade_ratio_63` | Share of the window with `traded = false` | 40 |
 | | `stale_sessions` | §5.3 | — |
-| Return history | `hist_up_share_h`, `hist_flat_share_h`, `hist_down_share_h`, `hist_mean_ret_h` for h ∈ {1, 5, 10, 21} | Over the 252 h-session returns c_u / c_{u−h} − 1 whose **end** session u lies in the window ending at t: the shares that are > 0, = 0, < 0, and their mean. Every return used ends at or before D\*, so nothing here is a label | 126 |
+| Return history | `hist_up_share_h`, `hist_flat_share_h`, `hist_down_share_h`, `hist_mean_ret_h`, `hist_n_h` for h ∈ {1, 5, 10, 21} | Over the 252 h-session returns c_u / c_{u−h} − 1 whose **end** session u lies in the window ending at t: the shares that are > 0, = 0, < 0, their mean, and their number n. Every return used ends at or before D\*, so nothing here is a label | 126 |
 | Size | `market_cap_reported` | §5.1's payload field on t (`provisional` semantics); null with reason when absent | — |
 | | `shares_implied` | `market_cap_reported` / `last_traded_price` on t, only on a traded session; `provisional` | — |
 | Range | `range_1` | (high − low) / `px_close` on t; traded sessions only | — |
@@ -625,8 +625,8 @@ For horizon h ∈ {1, 5, 10, 21} sessions (MA §4):
 
   A split inside the horizon is divided out. If the security has not traded since before an ex-date, s_F is before it,
   no factor applies, and the carried cum price is compared with itself.
-- **Direction:** `rise` if return > 0, `fall` if < 0, `flat` if = 0. How `flat` is scored is Phase 9's versioned
-  choice.
+- **Direction:** `rise` if return > 0, `fall` if < 0, `flat` if = 0. How `flat` is scored is the shared scoring
+  policy's versioned choice (Phase 5 §6).
 - **Realised volatility:** for h ≥ 5, the sample standard deviation of r_u (§10.2) over the h sessions in (D, F],
   as the target build sees them, with all h required. For h = 1, where a standard deviation does not exist, the target is the **absolute return**
   |ln(1 + return)|, the usual one-session proxy, stored under its own name `abs_ret_1` so that it is never mistaken
@@ -657,8 +657,8 @@ snapshot row's.
 
 **Several builds.** A later build never replaces an earlier one; both stay. A consumer always names the build it
 uses: a Phase 5 dataset pins the target-build id in its manifest, and Phase 9 records the build made at evaluation
-time. Two builds that disagree on a label are reported by `verify`. MF never drops a label silently; Phase 9 decides
-which states are scored.
+time. Two builds that disagree on a label are reported by `verify`. MF never drops a label silently. Which states are
+trained on and scored, and how, is the shared scoring policy's decision (Phase 5 §6), used by Phases 5, 9 and 10.
 
 ---
 

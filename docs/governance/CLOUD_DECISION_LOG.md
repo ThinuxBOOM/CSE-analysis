@@ -233,3 +233,29 @@ automatically) becomes LP-R7, because the owner has kept every restore under exp
 replaced, LP-D8 is added. Two gaps are stated as undesigned and blocking: moving to a newly accepted build while data
 exists (before milestone 12's exit), and recovery from a backup copy. Revision 2 is not accepted until it is audited
 again.
+
+## C-0021: Phase 5 design, revision 3 ([delegated], 2026-11-12)
+
+The second audit (cloud, fresh-context agent) of Phase 5 revision 2 returned FAIL: no Blocker, 22 Major, 15 Minor, 6
+Notes. It confirmed that the split rules are leak-free as written and found the remaining defects around them: test
+periods could overlap across protocols, the unit that is gated was undefined, the gate's statistical test was not
+specified, and the sufficiency arithmetic was a lower bound. Revision 3 dispositions every finding in its §19.
+Decisions P5-D15 to P5-D17 are added, P5-D5, P5-D6, P5-D11, P5-D13 and P5-D14 are replaced, and P5-R5 (waivers) is
+added; P5-R2 now includes the sufficiency minimums of a real protocol.
+
+**A consequence the owner should see.** Redone in usable dates, with five folds and the grace period, the
+provisional minimums put the first protocol that could gate a one-day-horizon output at about 1 590 sessions and a
+one-month-horizon output at about 2 590 (roughly seven and eleven years at an assumed 240 sessions a year). Revision 2
+said about five and seven. Forward capture alone cannot support Phase 5; the source of market history (P3-R1) decides
+whether this phase is usable at all.
+
+Phase 3 revision 3 gains `hist_n_h` and defers the scoring of label states to the shared scoring policy. Revision 3
+of Phase 5 is not accepted until it is audited again.
+
+## C-0022: CI on the isolated-restore fixes (2026-11-12)
+
+`ci-regression` run 43166013657 and `ci-fast` run 43166017132, started by `workflow_dispatch` on `integration/cloud`
+at `90b5d56`, both concluded `success`: all eighteen Linux PostgreSQL 17 groups (L16, which holds
+`tests/test_staging_restore_postgres.py`, among them), the three Windows groups and the summary job. Whether i1 to i3
+executed and were not skipped inside L16 was not read from the job's report; that is to be confirmed from the L16
+artifact before the staging R2 run relies on it.
