@@ -245,3 +245,52 @@ The conversion_manifest.csv currently has 594 lines including its header (593 da
 
 **Do not interpret the reported 1,625,510 rows or zero conversion failures as a passing data-quality result.** They are third-party report claims. No raw-data validation test has yet passed or failed because those tests have not yet been run.
 
+
+
+## 12. Static project-gate review — 2026-11-12, 20:18 Asia/Colombo
+
+This checkpoint records source inspection only. It is not a runtime test report.
+
+### 12.1 Project market-data controls inspected on main
+
+The following current-main files were read through GitHub:
+- `worker/validation.py` (blob `6f412d3a9397c67f1dfa593efaf461033ad15f4d`).
+- `supabase/migrations/0001_phase1_data_foundation.sql` (blob `d53612a9a2f7c9a3af8b0d652831bd9545d6e07e`).
+- `docs/ops/P2_MARKET_CAPTURE.md`.
+- `docs/ops/P3_SCHEDULER.md`.
+- `tests/test_p2_capture_unit.py` and `tests/test_p2_capture_postgres.py`.
+
+Observed safeguards in the inspected schema/design:
+- `raw_market_observations` is explicitly append-only and has a uniqueness constraint on `(request_attempt_id, company_id, capture_window)`.
+- `daily_market_data` is a derived/canonical table with a uniqueness constraint on `(company_id, trade_date)` and per-field provenance/contributing-observation references.
+- `companies` retains listing/delisting metadata and a separate `symbol_history` table; the schema comments prohibit filtering the capture universe by the current descriptive `trading_status`.
+- `corporate_actions` stores action type, announcement date, effective date, reported ratio/amount, source reference and supersession link. The migration explicitly leaves adjusted-price calculations to a later phase.
+- P2's documented path derives from archived responses through the frozen Stage E mapping, raw-observation insert, reconciliation, validation and canonical upsert. The P2 runbook says frozen Stage E files are not modified and are hash-pinned by tests.
+- P3 in `docs/ops/P3_SCHEDULER.md` is the capture scheduler/operations component. This must not be confused with Master Architecture Phase 3 (market-feature foundation: historical daily market data, feature calculations, activity/liquidity eligibility, corporate actions and survivorship-aware universe).
+
+### 12.2 Scope and limitations of the existing validator
+
+The inspected pure validator currently:
+- flags high below low;
+- flags closing price outside the observed high/low range;
+- flags non-positive high, low, closing price and last-traded price;
+- flags negative turnover, share volume and trade count;
+- flags an absolute close-to-previous-close move above the configured threshold (30% default) for review.
+
+It does not itself establish source-date authenticity, date/calendar completeness, symbol/security identity, delisted-universe completeness, corporate-action completeness, raw-versus-adjusted basis, zero-volume/no-trade semantics, or point-in-time action handling. Its large-move note explicitly says no same-day corporate-actions check is performed in that Stage B validator. These are additional historical-data admission tests; they must not be inferred from the existence of the validator or from P2's live-capture safeguards.
+
+The schema's raw market row does not expose an individual-equity `open` field; it deliberately distinguishes `post_open_price` from an actual session open. Therefore an OHLC test must not fabricate an open value from `post_open_price`.
+
+### 12.3 Existing test evidence versus fresh execution
+
+The P2 unit and PostgreSQL test files exist. The repository's CI strategy contains previously recorded test counts/results, but no test command was executed during this checkpoint. Those historical CI records are not presented as a fresh run against the current checkout or against TradeIQ data.
+
+### 12.4 TradeIQ repository-level caution
+
+The currently visible TradeIQ README describes a clean-history rebuild, says generated raw/processed/published artifacts from the prior repository are invalid until regenerated from validated source payloads, and explicitly warns that `tradeSummary` is not trusted as a historical source unless response dates are independently verifiable. It also describes date-level validation and quarantine for historical OHLCV backfill, and keeps publishing/backfill artifacts disabled until validation is proven. This reinforces the need to validate original files rather than accepting reported converted-row totals. The repository's MIT code licence does not, by itself, establish redistribution/storage rights for underlying CSE source data.
+
+### 12.5 Execution status and hard blocker
+
+No TradeIQ archive was downloaded into an executable local workspace during this checkpoint. No workbook or CSV was independently parsed; no source-file SHA-256 inventory was produced; no row/date/security/corporate-action counts were recomputed; and no project Python or PostgreSQL test suite was run. GitHub file/commit access available in this session permits source inspection and branch documentation, but does not provide an attached checkout, Python test runner, or project PostgreSQL test database. The attempted archive download did not succeed. Therefore all raw-data tests remain **NOT RUN**, not PASS and not FAIL.
+
+No source data was imported, no database was contacted, no production code or schema was changed, and no frozen file was modified. The branch remains research-only. The next executable step requires a real local checkout/runtime with the TradeIQ archive available; run the independent parser and Phase 3 gate suite there, preserve outputs/hashes, and append exact results. Do not represent static review as runtime validation.
