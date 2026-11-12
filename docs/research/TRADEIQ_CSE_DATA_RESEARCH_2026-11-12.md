@@ -210,3 +210,38 @@ TradeIQ:
 
 ---
 **Integrity note:** This document records the evidence reviewed and the work still outstanding as of 2026-11-12. It must be updated when raw files are actually downloaded, parsed, hashed, and tested. Never convert a planned test into a claimed result.
+
+
+## 11. Progress checkpoint — 2026-11-12, 18:41 Asia/Colombo
+
+A further repository-metadata pass was completed after the initial document commit.
+
+### 11.1 Confirmed repository inventory metadata
+
+The current TradeIQ historical-data report states:
+- 79 source files inventoried.
+- 593 converted tables/sheets.
+- 0 conversion failures reported by that report.
+- 1,625,510 non-empty rows reported across converted tables.
+
+Its area summary reports:
+- 8 source files / 9 converted tables / 194,316 rows for the 1991-2000 daily-share-price area.
+- 10 source files / 10 converted tables / 388,444 rows for the 2001-2010 daily-share-price area.
+- 2 source files / 4 converted tables / 4,402 rows for historical policy interest rates.
+- 59 source files / 570 converted tables / 1,038,348 rows for stock_data.
+
+The conversion_manifest.csv currently has 594 lines including its header (593 data records). These are claims and metadata from TradeIQ's own inventory, not independently reproduced counts.
+
+### 11.2 Progress classification
+
+- Repository discovery and documentary review: COMPLETE for the initial pass.
+- Project governance review and isolated branch setup: COMPLETE.
+- Research document committed and verified: COMPLETE.
+- Source archive inventory at metadata/report level: PARTIAL; repository report and manifest inspected, but source tree has not been fully enumerated or hashed.
+- Raw workbook/CSV download and independent parsing: NOT STARTED.
+- Independent row/date/security coverage checks: NOT STARTED.
+- Phase 3 acceptance tests against actual imported rows: NOT STARTED.
+- Canonical project ingestion: NOT STARTED and blocked pending evidence, rights review, and explicit approval.
+
+**Do not interpret the reported 1,625,510 rows or zero conversion failures as a passing data-quality result.** They are third-party report claims. No raw-data validation test has yet passed or failed because those tests have not yet been run.
+
