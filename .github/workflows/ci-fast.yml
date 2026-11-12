@@ -9,7 +9,7 @@ name: CI fast (offline suite)
 
 on:
   push:
-    branches: [claude/rf4-implementation]
+    branches: [claude/rf4-implementation, research/tradeiq-phase3-validation-2026-11-12]
   pull_request:
     branches: [main]
   workflow_dispatch: {}
