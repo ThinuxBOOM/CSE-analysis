@@ -139,7 +139,7 @@ class SessionSequence:
 
 def session_sequence(*, final_dates, non_final_dates, query: Query, calendar_observations=(),
                      no_session_evidence=()) -> SessionSequence:
-    finals = sorted(final_dates)
+    finals = sorted(set(final_dates))
     gaps, contradictions = [], []
     kw = dict(final_dates=set(final_dates), non_final_dates=set(non_final_dates), query=query,
               calendar_observations=calendar_observations, no_session_evidence=no_session_evidence)

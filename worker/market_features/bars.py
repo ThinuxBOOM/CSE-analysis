@@ -68,14 +68,19 @@ def dec(value):
 
 def select_observations(observations, governing: TerminalEvent, capture_run_ids):
     """Section 5.1 steps 1 and 2. `observations` are the admitted raw observations of one security and date, each a
-    dict as worker.db.get_raw_observations_for_date returns it plus 'request_attempt_id'. Returns (passed, superseded):
-    only rows that belong to a capture run are used, and of the post_close observations only the governing run's."""
+    dict with the columns of raw_market_observations that reconcile reads, plus 'id', 'request_attempt_id' (the run)
+    and 'raw_payload' (MFB-8 and the payload fields read it; the loader of MF-7 must select it). Returns
+    (passed, superseded): only rows that belong to a capture run are used, and of the post_close observations only
+    the governing run's. Run ids are compared as strings, so a UUID object and its text are the same run."""
     passed, superseded = [], []
+    capture_run_ids = {str(x) for x in capture_run_ids}
     for o in observations:
+        if "raw_payload" not in o:
+            raise ValueError("an observation is passed with its raw_payload")
         run_id = str(o["request_attempt_id"])
         if run_id not in capture_run_ids:
             continue                                             # belongs to no capture run: never used
-        if o["capture_window"] == POST_CLOSE and run_id != governing.run_id:
+        if o["capture_window"] == POST_CLOSE and run_id != str(governing.run_id):
             superseded.append(o)                                 # MFB-7 superseded_run
         else:
             passed.append(o)
@@ -112,7 +117,7 @@ def feature_bar(symbol, result: Optional[SecurityResult], observations, governin
     """The feature bar of one security on one FINAL session (section 5.2). `result` is the security's row in the pass
     the governing event names, or None if that pass has none. Returns None when the governing run's evidence shows
     the symbol in neither the universe nor tradeSummary: it is not a member that day."""
-    if result is not None and (result.run_id != governing.run_id or result.pass_no != governing.pass_no):
+    if result is not None and (str(result.run_id) != str(governing.run_id) or result.pass_no != governing.pass_no):
         raise ValueError("the per-security row must belong to the pass the governing terminal event names")
     if result is not None and not result.in_universe and not result.in_trade_summary:
         return None
@@ -130,7 +135,10 @@ def feature_bar(symbol, result: Optional[SecurityResult], observations, governin
                           share_volume=None, trade_count=None, turnover=None, open_price=None, high=None, low=None,
                           quality=MISSING, flags=("no_observation",), **common)
     if not result.in_trade_summary:
-        # Rows 3 and 4: in the universe, absent from tradeSummary. MFB-3 (provisional): no trade.
+        # Rows 3 and 4: in the universe, absent from tradeSummary. MFB-3 (provisional): no trade. The quality set
+        # here is the row's own; whether a carried price exists depends on the security's history, so the quality
+        # of the session (stale once a price is carried, missing before the first traded bar or while the price is
+        # unknown) is decided in reference.reference_series, as Reference.bar_quality.
         flags.append("MFB-3")
         if not eod:
             flags.append("no_observation")
@@ -154,6 +162,9 @@ def feature_bar(symbol, result: Optional[SecurityResult], observations, governin
         quality = CONFLICTING
     flags += [f"cross_check_differs:{name}" for name in disagreements if name not in PRICE_CROSS_CHECK_FIELDS]
     high, low = dec(raw.get("high")), dec(raw.get("low"))
+    if close is not None and (not close.is_finite() or close < 0):
+        flags.append("close_invalid")                            # never a price: row 1 needs a close above zero
+        close = None
     if close is None or close == 0:
         # Row 2: traded, close unpublished. No reference price for the session.
         return FeatureBar(row=2, traded=True, px_close=None, price_unknown=True, open_price=dec(raw.get("open_price")),

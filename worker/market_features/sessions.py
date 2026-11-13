@@ -59,11 +59,11 @@ def is_final_evidence(event: TerminalEvent, min_coverage: Decimal):
 
 
 def governing_event(events, trading_date: date, query: Query, min_coverage: Decimal):
-    """The governing terminal event of a date under a query: the latest admitted event, by recorded_at then run id,
-    that meets the finality conditions. None if the date is not a final session."""
+    """The governing terminal event of a date under a query: the latest admitted event, by recorded_at, then run id,
+    then pass number, that meets the finality conditions. None if the date is not a final session."""
     final = [e for e in _admitted(events, query)
              if e.trading_date == trading_date and is_final_evidence(e, min_coverage)]
-    return max(final, key=lambda e: (e.recorded_at, e.run_id)) if final else None
+    return max(final, key=lambda e: (e.recorded_at, str(e.run_id), e.pass_no)) if final else None
 
 
 def classify(events, trading_date: date, query: Query, min_coverage: Decimal, *, has_admitted_observation=False):

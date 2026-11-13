@@ -122,3 +122,24 @@ def test_c6_the_gap_tolerance_and_the_state_of_a_window():
     assert cal.window_gap_state(seq, last, 21)[0] == "ok"
     assert cal.window_gap_state(seq, 45, 21)[0] == "missing"      # two gaps in 21 sessions: beyond tolerance
     assert cal.window_gap_state(seq, last, 63)[0] == "missing"    # three gaps in 63: tolerance is 1
+
+
+# ------------------------------------------------------------------- added after the code audit (C-0032)
+
+def test_c7_p3_no_session_evidence_is_admitted_like_any_other_evidence():                             # ML-8
+    ev = cal.NoSessionEvidence(WED, "run-7", at(THU, 10))
+    assert classify(WED, none=[ev], query=Query(KNOWN, at(THU, 9))).kind == cal.UNKNOWN
+    assert classify(WED, none=[ev], query=Query(KNOWN, at(THU, 10))).kind == cal.CLOSURE
+    assert classify(WED, none=[ev], query=Query(AVAILABLE, at(THU, 9), at(TUE2))).kind == cal.UNKNOWN
+    assert classify(WED, none=[ev], query=Query(AVAILABLE, at(THU, 10), at(TUE2))).kind == cal.CLOSURE
+
+
+def test_c8_duplicates_the_far_side_of_a_window_and_contradictions_on_gap_days():
+    seq = cal.session_sequence(final_dates=[WED, MON, MON], non_final_dates=[], query=Q)
+    assert seq.sessions == (MON, WED) and seq.gaps_after == ((TUE,),)
+    seq = cal.session_sequence(final_dates=[MON, TUE, WED, FRI], non_final_dates=[], query=Q)
+    assert seq.gaps_between(0, 2) == () and seq.gaps_between(2, 3) == (THU,)      # the gap AFTER the window is not in it
+    assert cal.window_gap_state(seq, 2, 2) == ("ok", ())
+    seq = cal.session_sequence(final_dates=[MON, WED], non_final_dates=[TUE], query=Q,
+                               calendar_observations=[closed(TUE, recorded=at(MON))])
+    assert seq.contradictions == (TUE,) and seq.gaps_after == ((TUE,),)           # a session; flagged; still a gap

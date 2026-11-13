@@ -364,3 +364,22 @@ design records (N, X, D, W, R, P, U, B) and has not been checked against archive
 exist only on the laptop; `universe_rule` v1 stays `provisional` until it is. Minor points 3 and 5 of the design's
 audit record are settled as the implementation record states. Offline suite: 2219 passed, 680 skipped. Not accepted
 until audited (C-0005).
+
+## C-0032: first code audit of MF-1 to MF-3 and its fixes ([delegated], 2026-11-13)
+
+A fresh-context agent audited MF-1, MF-2 and MF-3 (C-0005) and returned **FAIL for each**: no Blocker and no leak,
+but two Majors in MF-3 that gave wrong rights factors (a `conflicting` cum price was used; an ex-date falling between
+the cum session and the rights ex-date was dropped), one Major in MF-1 (a no-trade bar was always `stale`), and test
+gaps shown by 50 surviving mutants. All Majors and all code Minors are fixed and tested; two test gaps and two
+deferred points remain open and are listed in `docs/PHASE3_MARKET_FEATURES_IMPLEMENTATION.md` ("Code audit 1").
+`CURRENT` now accepts an optional cutoff with H ≥ T, as design §4.2 says. The steps stay **not accepted** until a
+second audit passes. Lesson recorded: my own implementation record stated something about MF-1's behaviour that the
+code did not do; choices listed in a record are now each backed by a test that goes through the real modules.
+
+## C-0033: Phase 3 implementation, step MF-5 ([delegated], 2026-11-13)
+
+MF-5 (the arithmetic context, the carried adjusted series, the 45 per-security features with the quality states of
+§10.4, eligibility by session, the market return and the 9 market-context features) is implemented on
+`integration/cloud` as `numeric.py`, `series.py`, `features.py` and `market.py` in `worker/market_features/`, with
+`tests/test_mf5_unit.py` (16 tests). The record lists thirteen choices made inside the design's words. Offline suite:
+2246 passed, 680 skipped. No frozen file is changed. Not accepted until audited.

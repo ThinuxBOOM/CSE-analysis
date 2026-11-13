@@ -37,7 +37,7 @@ def _instant(name, value):
 @dataclass(frozen=True)
 class Query:
     mode: str
-    cutoff: Optional[datetime]          # T; None only in CURRENT
+    cutoff: Optional[datetime]          # T; may be None only in CURRENT
     horizon: Optional[datetime] = None  # H; None in KNOWN
 
     def __post_init__(self):
@@ -54,8 +54,10 @@ class Query:
                 raise Refused("invalid_query", "the knowledge horizon H must not be before the cutoff T")
         else:
             _instant("horizon", self.horizon)
-            if self.cutoff is not None:
-                raise Refused("invalid_query", "CURRENT has no information cutoff")
+            if self.cutoff is not None:                # T is optional in CURRENT; when given, H >= T (section 4.2)
+                _instant("cutoff", self.cutoff)
+                if self.horizon < self.cutoff:
+                    raise Refused("invalid_query", "the knowledge horizon H must not be before the cutoff T")
 
     @property
     def label(self):

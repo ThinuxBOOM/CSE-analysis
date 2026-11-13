@@ -22,24 +22,30 @@ class Reference:
     ref_session: Optional[date]
     stale_sessions: Optional[int]        # final sessions in (ref_session, session]; None while undefined
     state: str                           # known | price_unknown | no_price_yet
+    source_quality: Optional[str] = None # the quality of the bar that printed px_ref (conflicting: MFB-6, MFB-8)
+    bar_quality: Optional[str] = None    # the quality of THIS session's bar, decided with the history; None: no bar
+    bar_quality_reason: Optional[str] = None
 
 
 def reference_series(bars_by_session):
     """bars_by_session: [(session, FeatureBar or None)] for ONE security over consecutive FINAL sessions, in order.
     None means the security was not a member on that session (no bar): a price already carried is carried on.
     Returns one Reference per session."""
-    out, px, src, since, unknown = [], None, None, 0, False
+    out, px, src, since, unknown, src_quality = [], None, None, 0, False, None
     for session, bar in bars_by_session:
+        no_trade = bar is not None and bar.px_close is None and not bar.price_unknown
         if bar is not None and bar.px_close is not None:
-            px, src, since, unknown = bar.px_close, session, 0, False
+            px, src, since, unknown, src_quality = bar.px_close, session, 0, False, bar.quality
         elif bar is not None and bar.price_unknown:
             unknown = True
         elif px is not None:
-            since += 1
-        if unknown:
-            out.append(Reference(session, None, None, None, "price_unknown"))
-        elif px is None:
-            out.append(Reference(session, None, None, None, "no_price_yet"))
+            since += 1                   # a no-trade bar, or no bar at all: neither ends an unknown-price stretch
+        state = "price_unknown" if unknown else ("no_price_yet" if px is None else "known")
+        quality, reason = (None, None) if bar is None else (bar.quality, None)
+        if no_trade:                     # section 5.2: stale once a price is carried, missing before or while unknown
+            quality, reason = ("stale", None) if state == "known" else ("missing", state)
+        if state == "known":
+            out.append(Reference(session, px, src, since, state, src_quality, quality, reason))
         else:
-            out.append(Reference(session, px, src, since, "known"))
+            out.append(Reference(session, None, None, None, state, None, quality, reason))
     return out

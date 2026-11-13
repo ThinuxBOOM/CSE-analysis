@@ -2,7 +2,7 @@
 import hashlib
 import json
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 
@@ -10,15 +10,20 @@ def _plain(value):
     if is_dataclass(value) and not isinstance(value, type):
         return _plain(asdict(value))
     if isinstance(value, dict):
-        return {str(k): _plain(v) for k, v in value.items()}
+        out = {str(k): _plain(v) for k, v in value.items()}
+        if len(out) != len(value):
+            raise TypeError("two keys of a mapping have the same text")
+        return out
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
     if isinstance(value, (set, frozenset)):
-        return sorted(_plain(v) for v in value)
+        return sorted((_plain(v) for v in value), key=lambda x: json.dumps(x, sort_keys=True))
     if isinstance(value, Decimal):
         return {"decimal": format(value, "f")}
     if isinstance(value, datetime):
-        return {"instant": value.isoformat()}
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise TypeError("MF hashes no naive instant")
+        return {"instant": value.astimezone(timezone.utc).isoformat()}       # one instant, one text
     if isinstance(value, date):
         return {"date": value.isoformat()}
     if isinstance(value, float):

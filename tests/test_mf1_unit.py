@@ -82,9 +82,11 @@ def test_m1_modes_admit_evidence_by_the_right_clock_and_refuse_malformed_queries
     assert not avail.admits(t, t + timedelta(seconds=1))                   # published after T, recorded (ML-16)
     current = Query(CURRENT, None, t)
     assert current.label == "retrospective_current" and current.admits(t, t + timedelta(days=99))
+    assert not current.admits(t + timedelta(seconds=1), t - timedelta(days=9))       # recorded after H: never
+    assert Query(CURRENT, t - timedelta(days=1), t).admits(t, t)           # T is optional in CURRENT; H >= T
     for bad in (lambda: Query("LATEST", t), lambda: Query(KNOWN, t, t), lambda: Query(KNOWN, datetime(2026, 1, 1)),
                 lambda: Query(AVAILABLE, t, t - timedelta(seconds=1)), lambda: Query(AVAILABLE, t),
-                lambda: Query(CURRENT, t, t)):
+                lambda: Query(CURRENT, t, t - timedelta(seconds=1)), lambda: Query(CURRENT, None)):
         with pytest.raises(Refused):
             bad()
 
@@ -287,10 +289,13 @@ def test_g1_the_frozen_reconcile_is_unchanged_and_is_the_one_mf_calls():
 
 
 def test_g2_the_package_is_pure_no_database_network_clock_or_forbidden_source():
+    import re
     allowed = {"dataclasses", "datetime", "decimal", "typing", "hashlib", "json", "fractions", "re"}
-    forbidden_words = ("daily_market_data", "daily_index_data", "trading_calendar ", "from corporate_actions",
-                       "symbol_history ", "system_config ", "psycopg2", "requests", "urllib", "socket", "datetime.now",
-                       "time.time", "open(")
+    forbidden_words = ("psycopg2", "requests", "urllib", "socket", "time.time", "open(", "importlib", "__import__",
+                       "subprocess", "os.environ")
+    forbidden_tables = ("daily_market_data", "daily_index_data", "trading_calendar", "corporate_actions",
+                        "symbol_history", "system_config", "companies")
+    clock_attributes = {"now", "utcnow", "today", "fromtimestamp"}
     for name in sorted(os.listdir(PACKAGE)):
         if not name.endswith(".py"):
             continue
@@ -307,6 +312,13 @@ def test_g2_the_package_is_pure_no_database_network_clock_or_forbidden_source():
         code = "\n".join(line.split("#")[0] for line in src.split('"""')[::2])     # outside docstrings and comments
         for word in forbidden_words:
             assert word not in code, (name, word)
+        for table in forbidden_tables:                 # as a whole word, in code (docstrings may explain the ban)
+            assert not re.search(r"(?<![A-Za-z_])" + table + r"(?![A-Za-z_])", code), (name, table)
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, ast.Attribute):
+                assert node.attr not in clock_attributes, (name, node.attr)
+            if isinstance(node, ast.Name):
+                assert node.id not in ("eval", "exec", "__import__"), (name, node.id)
 
 
 def test_g3_canonical_json_is_exact_and_the_security_key_is_computed_from_the_symbol():
@@ -319,3 +331,105 @@ def test_g3_canonical_json_is_exact_and_the_security_key_is_computed_from_the_sy
     for bad in ("", " ABC.N0000", None):
         with pytest.raises(ValueError):
             canonical.security_id(bad)
+
+
+# ------------------------------------------------------------------- added after the MF-1 code audit (C-0032)
+
+def test_x1_a_session_is_proven_only_by_admitted_e1_evidence():
+    q = Query(KNOWN, at(D1, 12))
+    assert sessions.classify([event("r", D1, e2=False)], D1, q, MIN_COVERAGE) == "non_final"
+    assert sessions.classify([event("r", D1, e1=False)], D1, q, MIN_COVERAGE) == "no_evidence"
+    assert sessions.classify([event("r", D1, e1=None)], D1, q, MIN_COVERAGE) == "no_evidence"
+    late = event("r", D1, recorded=at(D1, 13))
+    assert sessions.classify([late], D1, q, MIN_COVERAGE) == "no_evidence"             # recorded after T (ML-14)
+    assert sessions.classify([late], D1, Query(KNOWN, at(D1, 13)), MIN_COVERAGE) == "final"
+
+
+def test_x2_the_governing_event_does_not_depend_on_the_order_of_the_rows():
+    q = Query(KNOWN, at(D1, 23))
+    a, b = event("run-1", D1, pass_no=1), event("run-1", D1, pass_no=2)
+    assert sessions.governing_event([a, b], D1, q, MIN_COVERAGE) is b
+    assert sessions.governing_event([b, a], D1, q, MIN_COVERAGE) is b
+    c, d = event("run-a", D1), event("run-b", D1)
+    assert sessions.governing_event([c, d], D1, q, MIN_COVERAGE) is sessions.governing_event([d, c], D1, q, MIN_COVERAGE) is d
+
+
+def test_x3_only_rows_of_capture_runs_are_used_and_run_ids_are_compared_as_text():
+    import uuid
+    stray = obs("o9", "manual-import", close=D("1"), window="bulletin_daily", source="CSE_BULLETIN_DAILY")
+    final = obs("o1", "run-1", close=D("100"))
+    b = bar([stray, final])
+    assert (b.px_close, b.quality, b.contributing_observation_ids) == (D("100"), "fresh", ("o1",))
+    run = uuid.UUID("12345678-1234-5678-1234-567812345678")
+    g = event(run, D1)
+    b = bars.feature_bar("ABC.N0000", result(str(run)), [obs("o1", str(run), close=D("100"))], g, {run}, TOL)
+    assert (b.row, b.px_close, b.superseded_observation_ids) == (1, D("100"), ())
+    broken = dict(final)
+    del broken["raw_payload"]
+    with pytest.raises(ValueError):
+        bar([broken])
+
+
+def test_x4_row_details_a_bad_close_is_never_a_price_and_a_null_volume_stays_null():
+    b = bar([obs("o1", "run-1", close=D("-5"), volume=10)])
+    assert (b.row, b.px_close, b.price_unknown) == (2, None, True) and "close_invalid" in b.flags
+    b = bar([obs("o1", "run-1", close=D("100"))])
+    assert (b.share_volume, b.trade_count, b.turnover) == (None, None, None)          # zero only by MFB-3, never here
+    b = bar([obs("o1", "run-1", close=19.6, high=19.6, low=19.6)])
+    assert b.px_close == D("19.6") and b.high == D("19.6")                           # a float is read by its text
+    # a traded symbol with only an intraday row: traded, price unknown (row 5), never row 2
+    b = bar([obs("o2", "run-1", close=D("55"), window="post_open")])
+    assert (b.row, b.traded, b.price_unknown) == (5, True, True)
+    # a zero printed close on a no-trade row is not kept as a printed close
+    b = bar([obs("o1", "run-1", close=D("0"))], result("run-1", ts=False))
+    assert (b.row, b.printed_close_no_trade, b.traded) == (3, None, False)
+    # a turnover-only disagreement beyond MF's tolerance is flagged and is not a conflict: only price fields are
+    big = {"cross_source_comparison": {"turnover": {"companyInfoSummery_value": 100.0, "tradeSummary_value": 200.0}}}
+    b = bar([obs("o1", "run-1", close=D("100"), payload=big)])
+    assert b.quality == "fresh" and b.flags == ("cross_check_differs:turnover",)
+    ltp = {"cross_source_comparison": {"last_traded_price": {"companyInfoSummery_value": 100.0, "tradeSummary_value": 104.0}}}
+    assert bar([obs("o1", "run-1", close=D("100"), payload=ltp)]).quality == "conflicting"
+    # MFB-8 uses MF's own tolerance key, not reconcile's
+    close = {"cross_source_comparison": {"closing_price": {"companyInfoSummery_value": 100.0, "tradeSummary_value": 100.3}}}
+    assert bar([obs("o1", "run-1", close=D("100"), payload=close)]).quality == "conflicting"
+    loose = dict(TOL, cross_check_closing_price_tolerance_pct=D("0.5"))
+    assert bar([obs("o1", "run-1", close=D("100"), payload=close)], tolerances=loose).quality == "fresh"
+    # market cap: tradeSummary's value is preferred when both are present
+    both = {"tradeSummary_matched_row": {"marketCap": 500.0},
+            "companyInfoSummery": {"body": {"reqSymbolInfo": {"marketCap": 700.0, "quantityIssued": 7}}}}
+    b = bar([obs("o1", "run-1", close=D("100"), payload=both)])
+    assert (b.market_cap_reported, b.quantity_issued) == (D("500.0"), D("7"))
+
+
+def test_x5_the_reference_series_with_gaps_in_membership_and_the_quality_of_a_no_trade_bar():
+    days = [date(2026, 11, d) for d in (2, 3, 4, 5, 6)]
+    series = reference.reference_series(list(zip(days, [make(D("100")), make(unknown=True), None, None, make()])))
+    assert [r.state for r in series] == ["known", "price_unknown", "price_unknown", "price_unknown", "price_unknown"]
+    assert all(r.px_ref is None for r in series[1:])              # a session without a bar does not bring 100 back
+    series = reference.reference_series(list(zip(days, [make(D("100")), None, None, make(), make(D("9"))])))
+    assert [r.stale_sessions for r in series] == [0, 1, 2, 3, 0]  # sessions without a bar are counted
+    # section 5.2: a no-trade bar is stale once a price is carried, missing before the first trade or while unknown
+    series = reference.reference_series(list(zip(days, [make(), make(D("100")), make(), make(unknown=True), make()])))
+    assert [(r.bar_quality, r.bar_quality_reason) for r in series] == [
+        ("missing", "no_price_yet"), ("fresh", None), ("stale", None), (series[3].bar_quality, None),
+        ("missing", "price_unknown")]
+    assert reference.reference_series([(days[0], None)])[0].bar_quality is None
+    # the quality of the bar that printed the price travels with the carried price
+    conflicting = bar([obs("o1", "run-1", close=D("50"), payload={"cross_source_comparison": {
+        "closing_price": {"companyInfoSummery_value": 58.0, "tradeSummary_value": 50.0}}})])
+    assert (conflicting.quality, conflicting.px_close) == ("conflicting", D("50"))
+    series = reference.reference_series([(days[0], conflicting), (days[1], make())])
+    assert [(r.px_ref, r.source_quality) for r in series] == [(D("50"), "conflicting"), (D("50"), "conflicting")]
+
+
+def test_x6_canonical_json_is_one_text_per_value_and_the_security_key_is_pinned():
+    colombo = timezone(timedelta(hours=5, minutes=30))
+    a = canonical.canonical_json(datetime(2026, 11, 2, 0, 0, tzinfo=UTC))
+    assert a == canonical.canonical_json(datetime(2026, 11, 2, 5, 30, tzinfo=colombo))
+    for bad in (datetime(2026, 11, 2), {"x": [1, (2.5,)]}, {1: "a", "1": "b"}):
+        with pytest.raises(TypeError):
+            canonical.canonical_json(bad)
+    assert canonical.canonical_json({D("2"), D("1")}) == '[{"decimal":"1"},{"decimal":"2"}]'
+    assert canonical.canonical_json({date(2026, 1, 2), date(2026, 1, 1)}).startswith('[{"date":"2026-01-01"}')
+    expected = hashlib.sha256(b'["cse_symbol","ABC.N0000"]').hexdigest()
+    assert canonical.security_id("ABC.N0000") == expected != canonical.security_id("abc.N0000")

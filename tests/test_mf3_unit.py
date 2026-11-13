@@ -108,6 +108,10 @@ def test_a3_rights_terp_and_every_edge_case():
     unknown[S[3]] = Reference(S[3], None, None, None, "price_unknown")        # a conflicting bar leaves this (5.3)
     (f,) = act.build_factors(SYM, [rights], Q, sessions=S, references=unknown, cutoff_session=S[-1])
     assert (f.status, f.flags) == (act.UNRESOLVED, ("cum_price_unknown",))    # never estimated (Minor 11)
+    conflicting = refs({3: 50})
+    conflicting[S[3]] = Reference(S[3], D("50"), S[3], 0, "known", source_quality="conflicting")
+    (f,) = act.build_factors(SYM, [rights], Q, sessions=S, references=conflicting, cutoff_session=S[-1])
+    assert (f.status, f.value, f.flags) == (act.UNRESOLVED, None, ("cum_price_conflicting",))
     assert act.adj(D("50"), S[1], S[9], [f]) is None              # an unresolved factor in (u, b]: untrusted
     assert act.adj(D("50"), S[4], S[9], [f]) == 50                # outside it: untouched
 
@@ -232,3 +236,72 @@ def test_a10_the_module_is_pure():
         elif isinstance(node, ast.ImportFrom):
             mods.add(node.module.split(".")[0] if node.level == 0 else "<package>")
     assert mods <= {"dataclasses", "datetime", "decimal", "fractions", "typing", "<package>"}
+
+
+# ------------------------------------------------------------------- added after the code audit (C-0032)
+
+def test_a11_an_ex_date_between_the_cum_session_and_the_rights_ex_date_is_not_dropped():
+    """Audit finding: a split whose ex-date falls on a day that is not a final session (a weekend, a closure, a
+    non-final session), followed by rights on the next final session. Last trade 100, split 2-for-1, rights 1-for-4
+    at 40: P_cum on the basis the split leaves is 50, TERP 48, f = 0.96. Dropping the split gives 0.88."""
+    saturday = date(2026, 3, 7)                                   # between S[4] (Friday) and S[5] (Monday)
+    assert S[4] < saturday < S[5] and saturday not in S
+    fs = build([st("s", act.SUBDIVISION, saturday, {"old_shares": 1, "new_shares": 2}),
+                st("r", act.RIGHTS, S[5], {"held": 4, "new": 1, "subscription_price": D("40")})], {4: 100})
+    assert [(f.kind, f.value) for f in fs] == [(act.SUBDIVISION, F(1, 2)), (act.RIGHTS, F(24, 25))]
+    # a bonus 1-for-4 on the same ex-date as the rights: 100 * 4/5 = 80; TERP (4*80 + 40)/5 = 72; f = 9/10
+    fs = build([st("b", act.BONUS, S[5], {"held": 4, "new": 1}),
+                st("r", act.RIGHTS, S[5], {"held": 4, "new": 1, "subscription_price": D("40")})], {4: 100})
+    assert [f.value for f in fs] == [F(4, 5), F(9, 10)]
+    # an action whose ex-date IS the cum session, which traded: its print is already ex and is not adjusted again
+    fs = build([st("s", act.SUBDIVISION, S[4], {"old_shares": 1, "new_shares": 2}),
+                st("r", act.RIGHTS, S[5], {"held": 4, "new": 1, "subscription_price": D("40")})], {4: 50})
+    assert fs[1].value == F(24, 25)
+    # 3-for-7 at 12.50, cum 19.60: TERP (7*19.6 + 3*12.5)/10 = 17.47; f = 1747/1960
+    (f,) = build([st("r", act.RIGHTS, S[5], {"held": 7, "new": 3, "subscription_price": D("12.50")})], {4: "19.60"})
+    assert f.value == F(1747, 1960)
+
+
+def test_a12_statements_of_other_securities_misdirection_and_what_cannot_be_built():
+    other = "XYZ.N0000"
+    mine = st("a", act.SUBDIVISION, S[3], {"old_shares": 1, "new_shares": 2})
+    theirs = st("t", act.SUBDIVISION, S[3], {"old_shares": 1, "new_shares": 10}, symbol=other)
+    assert [f.value for f in build([mine, theirs], {0: 100})] == [F(1, 2)]            # theirs feeds nothing of mine
+    # a statement of mine naming THEIR row supersedes nothing and does not itself apply
+    stray = st("m", act.BONUS, S[5], {"held": 1, "new": 1}, rec=at(S[1]), supersedes="t")
+    assert [f.value for f in build([mine, theirs, stray], {0: 100})] == [F(1, 2)]
+    assert act.applying([mine, theirs, stray], Q)[1] == [stray]
+    closes = [(S[0], D("100")), (S[2], D("50"))]
+    confirm_theirs = st("k", act.NO_ACTION_CONFIRMED, terms={"session_from": S[0], "session_to": S[2]}, symbol=other)
+    assert [m.state for m in act.detect_moves(SYM, closes, [], [confirm_theirs], Q, F(1, 4))] == [act.UNEXPLAINED]
+    # a withdrawal of a withdrawal does not revive the action
+    w1 = st("w1", act.WITHDRAWN, rec=at(S[1]), supersedes="a")
+    w2 = st("w2", act.WITHDRAWN, rec=at(S[2]), supersedes="w1")
+    assert act.applying([mine, w1, w2], Q)[0] == []
+    with pytest.raises(ValueError):
+        act.applying([mine, mine], Q)                             # two statements with one id
+    for bad in (lambda: act.Statement("z", SYM, act.BONUS, at(S[0]), at(S[0]), "n", S[3], (("held", 0), ("new", 1))),
+                lambda: act.Statement("z", SYM, act.CASH_DIVIDEND, datetime(2026, 3, 2), at(S[0]), "n", S[3])):
+        with pytest.raises(ValueError):
+            bad()                                                 # the dataclass itself validates
+
+
+def test_a13_the_detector_sees_rises_the_threshold_is_strict_and_the_hash_covers_every_field():
+    up = act.detect_moves(SYM, [(S[0], D("100")), (S[1], D("1000"))], [], [], Q, F(1, 4))
+    assert [(m.state, m.change) for m in up] == [(act.UNEXPLAINED, F(9))]             # an unentered consolidation
+    assert act.detect_moves(SYM, [(S[0], D("100")), (S[1], D("125"))], [], [], Q, F(1, 4)) == []     # exactly at it
+    assert len(act.detect_moves(SYM, [(S[0], D("100")), (S[1], D("125.01"))], [], [], Q, F(1, 4))) == 1
+    base = act.Factor(SYM, act.RIGHTS, S[3], 24, 25, act.APPLIED, (), ("r",))
+    h = act.adjustment_set_hash({SYM: [base]})
+    for changed in (act.Factor(SYM, act.RIGHTS, S[3], 24, 25, act.OUT_OF_THE_MONEY, (), ("r",)),
+                    act.Factor(SYM, act.RIGHTS, S[3], 24, 25, act.APPLIED, ("cum_price_stale",), ("r",)),
+                    act.Factor(SYM, act.RIGHTS, S[3], 24, 25, act.APPLIED, (), ("r2",)),
+                    act.Factor("XYZ.N0000", act.RIGHTS, S[3], 24, 25, act.APPLIED, (), ("r",))):
+        assert act.adjustment_set_hash({changed.symbol: [changed]}) != h
+    # ex_date_since_last_trade counts an out-of-the-money rights issue and an unresolved factor (the basis changed)
+    for status in (act.OUT_OF_THE_MONEY, act.UNRESOLVED):
+        f = act.Factor(SYM, act.RIGHTS, S[4], *((1, 1) if status == act.OUT_OF_THE_MONEY else (None, None)), status)
+        assert act.ex_date_since_last_trade(S[3], S[5], [f])
+    # two unnamed statements of a kind without a price factor are not a conflict
+    two = build([st("d1", act.CASH_DIVIDEND, S[4]), st("d2", act.CASH_DIVIDEND, S[4])], {0: 100})
+    assert [f.status for f in two] == [act.NO_PRICE_FACTOR, act.NO_PRICE_FACTOR]

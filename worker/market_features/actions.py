@@ -65,8 +65,12 @@ class Statement:
     available_at: datetime
     source_reference: str
     ex_date: Optional[date] = None
-    terms: tuple = ()                    # sorted (key, value) pairs; built by `statement`
+    terms: tuple = ()                    # sorted (key, value) pairs; `statement` builds them from a mapping
     supersedes: Optional[str] = None
+
+    def __post_init__(self):
+        _validate(self.statement_id, self.symbol, self.kind, self.recorded_at, self.available_at,
+                  self.source_reference, self.ex_date, dict(self.terms), self.supersedes)
 
     def term(self, key):
         return dict(self.terms)[key]
@@ -74,9 +78,16 @@ class Statement:
 
 def statement(statement_id, symbol, kind, *, recorded_at, available_at, source_reference, ex_date=None, terms=None,
               supersedes=None) -> Statement:
-    terms = dict(terms or {})
+    return Statement(statement_id, symbol, kind, recorded_at, available_at, source_reference, ex_date,
+                     tuple(sorted(dict(terms or {}).items())), supersedes)
+
+
+def _validate(statement_id, symbol, kind, recorded_at, available_at, source_reference, ex_date, terms, supersedes):
     if not statement_id or not symbol or not source_reference:
         raise ValueError("a statement keeps its id, its symbol and its source reference")
+    for instant in (recorded_at, available_at):
+        if not isinstance(instant, datetime) or instant.tzinfo is None or instant.utcoffset() is None:
+            raise ValueError("a statement's two instants are timezone-aware")
     if kind in ACTION_KINDS:
         if not isinstance(ex_date, date) or isinstance(ex_date, datetime):
             raise ValueError("an action carries its ex-date")
@@ -102,14 +113,17 @@ def statement(statement_id, symbol, kind, *, recorded_at, available_at, source_r
         raise ValueError(f"unknown statement kind {kind!r}")
     if supersedes == statement_id:
         raise ValueError("a statement cannot supersede itself")
-    return Statement(statement_id, symbol, kind, recorded_at, available_at, source_reference, ex_date,
-                     tuple(sorted(terms.items())), supersedes)
 
 
 def applying(statements, query: Query):
     """The statements that apply at (T, mode): admitted, named by no admitted statement, and not a withdrawal.
     A statement may only name a row of the same security; one that names another security's row is ignored and
-    returned in the second list, for the caller to report."""
+    returned in the second list, for the caller to report. Pass the statements of EVERY security, so that such a
+    row is seen. A withdrawal that is itself named (withdrawn or superseded) does not revive the action: the row it
+    named stays named. Two statements with one id are refused."""
+    statements = list(statements)
+    if len({s.statement_id for s in statements}) != len(statements):
+        raise ValueError("two statements share an id")
     admitted = [s for s in statements if query.admits(s.recorded_at, s.available_at)]
     by_id = {s.statement_id: s for s in admitted}
     named, misdirected = set(), []
@@ -157,12 +171,12 @@ def _product(factors, after, upto):
 def build_factors(symbol, statements, query: Query, *, sessions, references, cutoff_session):
     """The factor list of one security, in ex-date order.
 
-    statements       every statement about this security (admission is applied here)
+    statements       every statement, of every security (admission and supersession are applied here)
     sessions         the final sessions up to D*, ascending (calendar.SessionSequence.sessions)
     references       {session: reference.Reference} for this security on those sessions
     cutoff_session   D*
     """
-    live, _ = applying([s for s in statements if s.symbol == symbol], query)
+    live = [s for s in applying(statements, query)[0] if s.symbol == symbol]
     actions = sorted((s for s in live if s.kind in ACTION_KINDS and s.ex_date <= cutoff_session),
                      key=lambda s: (s.ex_date, ORDER.get(s.kind, 3), s.statement_id))
     seen, clash = {}, set()
@@ -203,13 +217,16 @@ def _rights(symbol, s, earlier, sessions, references):
     ref = references.get(cum)
     if ref is None or ref.px_ref is None:
         return unresolved("no_cum_price" if ref is None or ref.state != "price_unknown" else "cum_price_unknown")
-    basis, ok = _product(earlier, ref.ref_session, cum)          # onto the last cum session's own basis
-    same_day, ok2 = _product([f for f in earlier if f.ex_date == s.ex_date], cum, s.ex_date)
-    if not (ok and ok2):
+    if ref.source_quality == "conflicting":
+        return unresolved("cum_price_conflicting")               # the bar that supplies it disagrees: never estimated
+    # Every earlier factor after the session the price was printed on, up to and including this ex-date: those up
+    # to the last cum session bring the price onto that session's basis; an ex-date that falls between the cum
+    # session and e (a closure, a weekend, a non-final session) and the same-date actions that precede rights in
+    # the fixed order change the share basis the rights terms are stated on.
+    basis, ok = _product(earlier, ref.ref_session, s.ex_date)
+    if not ok:
         return unresolved("earlier_factor_unresolved")
-    # Actions of the same ex-date are applied in the fixed order, so rights come after that day's sub-division or
-    # bonus: the cum price and the subscription price are compared on the share basis those leave.
-    p_cum = Fraction(ref.px_ref) * basis * same_day
+    p_cum = Fraction(ref.px_ref) * basis
     p_sub = Fraction(s.term("subscription_price"))
     n, m = s.term("held"), s.term("new")
     flags = ("cum_price_stale",) if ref.ref_session != cum else ()
@@ -287,7 +304,7 @@ def detect_moves(symbol, closes, factors, statements, query: Query, threshold):
     threshold = Fraction(threshold)
     if threshold <= 0:
         raise ValueError("the unexplained-move threshold is positive")
-    live, _ = applying([s for s in statements if s.symbol == symbol], query)
+    live = [s for s in applying(statements, query)[0] if s.symbol == symbol]
     confirmed = {(s.term("session_from"), s.term("session_to")): s.statement_id
                  for s in sorted(live, key=lambda s: s.statement_id) if s.kind == NO_ACTION_CONFIRMED}
     moves = []

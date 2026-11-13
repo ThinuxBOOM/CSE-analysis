@@ -8,7 +8,7 @@ Each step below is implemented, tested, audited by a fresh-context agent (C-0005
 
 ## MF-1: modes, finality, bars, the reference price
 
-**Status: implemented and tested; audit pending.**
+**Status: implemented and tested; first code audit FAIL (no Blocker), findings fixed (see "Code audit 1"); re-audit pending.**
 
 ### What was built
 
@@ -77,7 +77,7 @@ and W3 on Windows by the partition's own rule.
 
 ## MF-2: the session calendar as of T
 
-**Status: implemented and tested; audit pending.**
+**Status: implemented and tested; first code audit FAIL (one Major, tests only), fixed; re-audit pending.**
 
 ### What was built
 
@@ -122,7 +122,7 @@ partition ok, 73 test files.
 
 ## MF-3: corporate actions and adjustment
 
-**Status: implemented and tested; audit pending.**
+**Status: implemented and tested; first code audit FAIL (two Majors, wrong rights factors), fixed; re-audit pending.**
 
 ### What was built
 
@@ -228,3 +228,107 @@ partition ok, 75 test files.
 - Imported universes (the rows of an admitted import for a date) and per-batch `survivorship` are MF-7's loader.
 - The store's refusal to mark a configuration `validated` without a report id is MF-7.
 - Joining bar series across a link when computing features is MF-5's use of `series_segments`.
+
+
+---
+
+## MF-5: arithmetic, the carried series, feature set v1, market context
+
+**Status: implemented and tested; audit pending.**
+
+### What was built
+
+| File | Content | Design |
+|---|---|---|
+| `worker/market_features/numeric.py` | The one Decimal context (precision 28, half-even), `ln`, `exp`, `sqrt`, quantization to 12 places, and the shared return primitive | §10.1, P3-D7 |
+| `worker/market_features/series.py` | c_u and r_u for one security on the snapshot's D\* basis: zero on a no-trade session, the whole move on the next trade, `spans_unknown`, `spans_gap`, `untrusted` | §10.2 |
+| `worker/market_features/features.py` | The 45 per-security features and the state rules of §10.4 (`Notes`, precedence, null states) | §10.3, §10.4 |
+| `worker/market_features/market.py` | Eligibility by session, m_u with membership fixed on the session before, and the 9 market-context features | §10.2, §10.3 |
+| `tests/test_mf5_unit.py` | 16 tests; expected values computed in the test independently of the code | §10, §12 |
+
+Choices made inside the design's words, to be checked by the audit:
+
+- **Windows.** A return window of n covers the stretch from position t−n to t. A session window of n ("the n
+  consecutive final sessions ending at t") covers positions t−n+1 to t, and a gap before its first session is not
+  counted. The tolerance is that of n in both cases.
+- **`stale` and the staleness limit** apply to each end of a window whose formula uses a price. `gap_1` does not mark
+  the previous price `stale` (it is a carried reference by definition), but the limit and an unknown price apply.
+- **`ret_1` across a gap is `missing`** (tolerance 0 for windows of 5 or fewer), as is `gap_1`.
+- **A known price directly after an `untrusted` or not-yet-priced stretch has no return** from before it; only an
+  unknown-price stretch is bridged (`spans_unknown`).
+- **Volume:** a traded bar with a null volume is left out and the value is `unlabelled`; a volume before a rights
+  ex-date is left out and the value is `partial`, reason `share_count_changed`; below 15 inputs it is `missing`.
+- **`vol_parkinson_21`** ignores unknown-price and adjustment states (it is a ratio of one session's own prints) and
+  uses sessions with high ≥ low > 0.
+- **`zero_trade_ratio_63`**: bars with `traded = unknown` and sessions without a bar are in neither part of the ratio.
+- **Return history:** an h-return is left out when it spans a gap or one of its ends is not a known price (Minor 9:
+  the ends only); an `untrusted` end makes the family `untrusted`. `hist_n_h` is always present.
+- **`xs_rank_ret_21`** = (average rank − ½) / N with rank 1 the lowest; it is `missing` when the security is not a
+  member of m_t with a value.
+- **`beta_126`** leaves out a `spans_unknown` return (Minor 6) and is `missing` (`zero_base`) when the market
+  returns have no variance.
+- **`mkt_ret_ew_n`** needs every m_u of the window; a gap inside it is `partial` or, beyond the tolerance, `missing`.
+- Session 0 of a sequence has no m_u (no earlier session fixes its membership).
+- **Not optimised:** eligibility by session calls the eligibility function once per security and session.
+
+### Tests and what they show
+
+`tests/test_mf5_unit.py`: **16 passed**. Full offline suite: **2246 passed, 680 skipped**. `groups.py --check`:
+partition ok, 76 test files.
+
+| Subject | Covered by |
+|---|---|
+| Arithmetic context; no float anywhere in the four modules | `test_n1` |
+| The carried series; bridging; gaps | `test_s1`, `test_s2` |
+| ML-19 (feature part): a split with no trade on the ex-date gives a flat series; an unresolved factor is `untrusted` | `test_s3` |
+| Every state of §10.4 and the precedence, on `ret_n` | `test_f1` |
+| Momentum, volatility (sample and Parkinson), drawdown | `test_f2` to `test_f4` |
+| Volume, adjustment for share-count actions, the rights rule, `zero_base`, null volume | `test_f5` |
+| Liquidity, `stale_sessions` | `test_f6` |
+| Return history (Minor 9; n always present) | `test_f7` |
+| Size, range, the opening gap on t's basis | `test_f8` |
+| A feature at t uses nothing after t, and the converse | `test_f9` |
+| Membership fixed on the session before; `min_constituents`; a non-equity line is never a member | `test_k1` |
+| Market return, breadth, relative return, beta (0.5, 1, 1.5 by construction), rank | `test_k2` |
+| The feature path imports no target module | `test_g1` |
+
+### Not done, not verified
+
+- The registry as stored data (formula text, units, `min_observations` per feature) and the configuration are MF-7.
+- Features across an identity link (`universe.series_segments`) are not exercised: the caller joins the bars.
+- ML-2's aggregate part is covered only by construction (the series is built up to D\*); a planted-future test
+  through the store is MF-7.
+- No real data; no performance measurement.
+
+---
+
+## Code audit 1 (MF-1, MF-2, MF-3): fresh-context agent, C-0005
+
+Audited at `9d9a01a` (MF-1) and `5e36376` (MF-2, MF-3). Verdicts: **MF-1 FAIL, MF-2 FAIL, MF-3 FAIL.** No Blocker and
+no leak in the code; 153 mutants run in a scratch copy (103 killed). The auditor could not reproduce the 2195 figure
+on an archive of `9d9a01a` (3 failures in that run, two in `tests/test_report_classification.py`, cause not
+investigated); the working tree gave 2219 passed. That discrepancy is open and is checked by CI on this commit.
+
+| # | Step | Severity | Finding | Disposition |
+|---|---|---|---|---|
+| 1 | MF-1 | Major | Rows 3 and 4 always `stale`; `missing` before the first trade and Minor 4 were not produced | **Fixed.** `Reference.bar_quality` and `bar_quality_reason`, decided with the history in `reference_series`; `test_x5` |
+| 2 | MF-1 | Major (tests) | Guards whose removal no test detected (admission in `classify`, E1, `CURRENT` after H, rows of no capture run, a session without a bar inside an unknown stretch, turnover-only disagreement, null volumes, the purity test) | **Fixed.** `test_m1`, `test_x1`, `test_x3`, `test_x4`, `test_x5`; `test_g2` now checks the seven table names as whole words, clock attributes by AST, and dynamic import |
+| 3 | MF-1 | Minor | A negative or non-finite close became a row-1 price | **Fixed.** Row 2 with flag `close_invalid`; `test_x4` |
+| 4 | MF-1 | Minor | `CURRENT` refused a cutoff, against §4.2 | **Fixed.** T is optional in `CURRENT`; when given, H ≥ T; `test_m1` |
+| 5 | MF-1 | Minor | The governing-event tie depended on row order | **Fixed.** Key is (`recorded_at`, run id, pass number); `test_x2` |
+| 6 | MF-1 | Minor | Canonical JSON: one instant had two texts; naive instants; sets of Decimals; colliding keys; the key's value not pinned | **Fixed.** `test_x6` |
+| 7 | MF-1 | Minor | Run ids compared without normalising | **Fixed.** Compared as text; `test_x3` |
+| 8 | MF-1 | Minor | The docstring misstated the input; without `raw_payload` MFB-8 silently did nothing | **Fixed.** An observation without the key is refused; `test_x3` |
+| 9 | MF-1 | Minor | Minor 10 and the `p2_fakes` check deferred | **Open, disclosed.** Both belong with the import path and the loader (MF-7) |
+| 10 | MF-1 | Minor (tests) | Other surviving mutants | **Partly fixed.** Row 5 with only an intraday row, a zero printed close on row 3, `last_traded_price`, MFB-8's own key, the market-cap preference, a non-binary float: `test_x4`; a session without a bar counted as stale: `test_x5`. **Not covered:** the provenance order inside `_close_observation`, and that the raw bar is not mutated |
+| 11 | MF-2 | Major (tests) | Admission of P3's no-session evidence untested | **Fixed.** `test_c7` |
+| 12 | MF-2 | Minor | Duplicate final dates were kept | **Fixed.** `test_c8` |
+| 13 | MF-2 | Minor (tests) | The far side of a window; contradictions on gap days | **Fixed.** `test_c8` |
+| 14 | MF-3 | Major | A `conflicting` cum bar gave an applied rights factor; the record wrongly said MF-1 makes such a bar `price_unknown` | **Fixed.** `Reference.source_quality`; the factor is `unresolved`, reason `cum_price_conflicting`; `test_a3`, and `test_x5` goes through `bars` and `reference` |
+| 15 | MF-3 | Major | Earlier factors with an ex-date strictly between the cum session and the rights ex-date were dropped (0.88 instead of 0.96) | **Fixed.** One product over the earlier factors after the price's source session up to the rights ex-date; `test_a11` |
+| 16 | MF-3 | Minor | A misdirected statement still applied through `build_factors` and `detect_moves` | **Fixed.** Both take the statements of every security and filter after `applying`; `test_a12` |
+| 17 | MF-3 | Minor | Validation could be bypassed; naive instants; duplicate ids; withdrawal of a withdrawal unstated | **Fixed.** The dataclass validates; duplicate ids are refused; a withdrawal of a withdrawal does not revive the action (stated and tested); `test_a12` |
+| 18 | MF-3 | Minor (tests) | Surviving mutants | **Fixed** for other securities' statements, rises, the threshold boundary, the hash's fields, `ex_date_since_last_trade`, an ex-date on the cum session: `test_a11` to `test_a13` |
+
+The auditor's judgement of the recorded choices: all sound except the two that findings 14 and 16 correct. Its note
+on level windows (a session window must not count the gap before its first session) is met in MF-5 by construction.
