@@ -326,3 +326,12 @@ evidence-based stop, not auditing without end. The owner or the workstation's au
 
 The reserved decisions P4-R1 to P4-R4 are unchanged. Phase 3's accepted design gains one clarification that Phase 4
 needs (the snapshot row lists the symbol and `company_id`).
+
+## C-0028: Phase 3 implementation, step MF-1 ([delegated], 2026-11-13)
+
+MF-1 (modes and admission, session finality and D\*, bars through the frozen `reconcile`, the feature-bar decision,
+the reference price) is implemented on `integration/cloud` as the pure package `worker/market_features/`, with
+`tests/test_mf1_unit.py` (18 tests) and the record `docs/PHASE3_MARKET_FEATURES_IMPLEMENTATION.md`. No frozen file is
+changed: the frozen `worker/reconciliation.py` is imported and called, and a test pins its hash. No migration, no
+database code, no network. Offline suite: 2195 passed, 680 skipped. The step is not accepted until its code audit
+(C-0005) reports.

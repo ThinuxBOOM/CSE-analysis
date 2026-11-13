@@ -1,0 +1,74 @@
+# Phase 3: market feature foundation (implementation record)
+
+**Design:** `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 5, accepted [delegated] for implementation on
+`integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0026). **Branch:** `integration/cloud` only. Nothing
+here is on `main`, nothing is frozen, and nothing has run against real data: no production data exists.
+
+Each step below is implemented, tested, audited by a fresh-context agent (C-0005) and recorded before the next.
+
+## MF-1: modes, finality, bars, the reference price
+
+**Status: implemented and tested; audit pending.**
+
+### What was built
+
+| File | Content | Design |
+|---|---|---|
+| `worker/market_features/__init__.py` | Package statement: pure, no database, clock, network or file | §3, §13.2 |
+| `worker/market_features/modes.py` | `Query` (KNOWN, AVAILABLE, CURRENT), admission by the two instants, `require_point_in_time` | §4.1, §4.2 |
+| `worker/market_features/canonical.py` | Canonical JSON with exact Decimals (a float is refused), SHA-256, the computed security key | §8.1, §10.1, §13.1 |
+| `worker/market_features/sessions.py` | `TerminalEvent`; finality; the governing terminal event; final and non-final sessions; D\* | §4.3 |
+| `worker/market_features/bars.py` | MFB-7 (`superseded_run`); the raw bar through the frozen `reconcile`; the five-row feature-bar decision; MFB-3, MFB-5, MFB-6, MFB-8; the payload fields | §5.1, §5.2 |
+| `worker/market_features/reference.py` | `px_ref` with its source session, `stale_sessions`, and the `price_unknown` rule | §5.3 |
+| `tests/test_mf1_unit.py` | 18 tests | §12, §16 |
+
+`KNOWN_RECORDED` returns a stored snapshot and so belongs to the store (MF-7); it is not in this step.
+
+### Design points settled here (the fifth audit's Minor list, design §19)
+
+| # | Point | How it was settled |
+|---|---|---|
+| 2 | `stale_sessions` and the reference price while the price is unknown | `Reference` carries `None` for `px_ref`, `ref_session` and `stale_sessions`, with state `price_unknown` |
+| 4 | A no-trade bar inside an unknown-price stretch | The stretch continues: the reference stays `price_unknown` until the next printed close (`test_r2`) |
+| 5 | Row 5 for a symbol absent from `tradeSummary` | It is row 4, `traded = false` by MFB-3. Row 5 is only a symbol in `tradeSummary` without an observation (traded, price unknown) or a symbol with no row in the governing pass (traded unknown, price unknown) |
+| 10 | Import cases of `price_unknown` | Not in this step: imported bars arrive with MF-3 and MF-4's inputs. Carried forward |
+| 14 | ML-24's bar part | `test_b4` and `test_r2` |
+
+Two further choices made in code, stated here because the design leaves them to the implementer:
+
+- **Tie-break of the governing event:** the latest by `recorded_at`, then by run id, so the choice is deterministic
+  when two events share an instant.
+- **MFB-8's tolerances** are read from MF's tolerance set under the keys `cross_check_<field>_tolerance_pct`, default 0.
+  The design says the frozen set has none for turnover and market capitalisation; the values used in the tests
+  (0.1% for prices, 0.5% for turnover and market capitalisation) are test values, not a configuration.
+
+### Tests and what they show
+
+`tests/test_mf1_unit.py`, 18 tests, pure and offline. Run in the cloud session with `PYTHONDONTWRITEBYTECODE=1`,
+Python 3.13.18: **18 passed**. Full offline suite afterwards: **2195 passed, 680 skipped** (2177 before this step,
+plus these 18). `.github/ci/groups.py --check`: partition ok, 72 test files; the new file lands in group L15 on Linux
+and W3 on Windows by the partition's own rule.
+
+| Design test | Covered by | Part covered |
+|---|---|---|
+| ML-1 to ML-3 | `test_b8` | Bar level: an observation recorded after the cutoff does not change the bar; recorded at the cutoff, it does |
+| ML-12 | `test_m2` | A `CURRENT` result, or a mislabelled one, is refused |
+| ML-14 | `test_s3` | Run evidence recorded after the cutoff changes neither D\* nor the final sessions; at the cutoff it does |
+| ML-16, ML-17 | `test_m1`, `test_s3` | `AVAILABLE` admission by both instants |
+| ML-20 | `test_s2`, `test_b5` | D\* does not advance on an early capture; after a second run no bar is `conflicting`, including the fallback-then-traded case; and the frozen `reconcile` is shown to flag exactly that without MFB-7 |
+| ML-22 | `test_b4` | A row of another pass or another run is refused |
+| ML-24 | `test_b4`, `test_r2` | Bar and reference parts: no zero volume, no carried price over a day the security traded |
+| Every row of §5.2 | `test_b1` to `test_b4` | Rows 1 to 5, and a symbol that is not a member |
+| MFB-5, MFB-6, MFB-8 | `test_b6` | Including that `agree_exactly` is ignored in both directions, and the real fixtures' turnover difference is not a conflict |
+| Frozen `reconcile` unchanged | `test_g1` | The SHA-256 P2 pins, and that MF calls that module |
+| Purity and the read list | `test_g2` | Imports limited to the standard library, this package and the frozen `reconciliation`; no database, network, clock or forbidden table name in code |
+
+### Not done, not verified
+
+- No PostgreSQL test: this step has no database code. The loader that turns P2's rows into `TerminalEvent`,
+  `SecurityResult` and observation dicts is MF-7, and the mapping from P2's `details.summary` to those fields is
+  untested until then.
+- The tests build evidence by hand in the frozen code's shapes; they do not run P2's capture path. Whether
+  `tests/p2_fakes.py` can produce the needed variety (design §16) was not tried in this step.
+- Nothing ran against real CSE data.
+- The labels' parts of ML-20 and ML-24, and the aggregate parts of ML-2, belong to MF-5 and MF-6.
