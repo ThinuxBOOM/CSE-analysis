@@ -332,3 +332,33 @@ investigated); the working tree gave 2219 passed. That discrepancy is open and i
 
 The auditor's judgement of the recorded choices: all sound except the two that findings 14 and 16 correct. Its note
 on level windows (a session window must not count the gap before its first session) is met in MF-5 by construction.
+
+---
+
+## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
+
+**Status: draft. Written, imports cleanly, NOT TESTED, NOT AUDITED. Do not build on it before its tests exist.**
+
+`worker/market_features/targets.py` was written just before the checkpoint (C-0034) and is committed so that the
+work is not lost. It has no test file. What it contains, against design §11:
+
+- `ReferenceRow` (what a label takes from the stored reference snapshot row), `Label`, `TargetPolicy`
+  (grace period 21, provisional), `label()` for one (row, horizon) at a target build, `_volatility`, and
+  `disagreements()` for `verify`.
+- The state precedence of §11; `abs_ret_1` for h = 1; the volatility's own state (Minor 1: a computable return is
+  not discarded with its volatility); Minor 13 (a label whose reference price is undefined is resolved at once to
+  `unresolvable_missing_price`); Minor 16 (`resolved_carried` needs a defined `px_ref` at F); `reference_revised`;
+  `resolved_at` as the latest admission instant over the sessions, statements and extra evidence passed in.
+
+Known gaps to settle when the step is resumed:
+
+- **No tests.** MF-6's exit (design §15) is: unit tests of each state and of the precedence; ML-11, ML-18, ML-19
+  (label part), ML-21; the label parts of ML-20 and ML-24. None exist.
+- `resolved_at` is only as complete as the instants the caller passes; the loader (MF-7) must supply every input's
+  admission instant, including calendar and identity evidence.
+- The `terminated` rule from leaving the universe uses "a session without a bar" as leaving; whether a session on
+  which the security is in the universe but has no bar can occur must be checked against MF-1's bar rules.
+- The confirmations counted into the adjustment set are those whose move overlaps (s_D, s_F]; to be checked against
+  the design's wording.
+- The import-graph test (the feature path must not import this module) exists in `tests/test_mf5_unit.py`
+  (`test_g1`) from the feature side only.

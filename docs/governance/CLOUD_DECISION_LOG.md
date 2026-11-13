@@ -383,3 +383,12 @@ MF-5 (the arithmetic context, the carried adjusted series, the 45 per-security f
 `integration/cloud` as `numeric.py`, `series.py`, `features.py` and `market.py` in `worker/market_features/`, with
 `tests/test_mf5_unit.py` (16 tests). The record lists thirteen choices made inside the design's words. Offline suite:
 2246 passed, 680 skipped. No frozen file is changed. Not accepted until audited.
+
+## C-0034: checkpoint of the cloud session (owner instruction, 2026-11-13)
+
+The owner asked for the work on this branch to be wrapped up and documented as a checkpoint. The state, the resume
+list and what needs the owner or the laptop are in `docs/governance/CLOUD_CHECKPOINT_2026-11-13.md`. At the
+checkpoint: CI fast and CI regression are green on `963de0e`; the offline suite gives 2246 passed, 680 skipped.
+MF-1 to MF-3 have had one code audit (FAIL, fixed); MF-4 and MF-5 have had none; the second audit was cut off by the
+usage limit and produced no result. The draft `worker/market_features/targets.py` (MF-6) is committed untested and
+unaudited, marked as such in the implementation record, so that it is not lost. Nothing is accepted for `main`.
