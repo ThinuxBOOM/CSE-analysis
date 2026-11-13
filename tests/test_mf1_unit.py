@@ -287,7 +287,7 @@ def test_g1_the_frozen_reconcile_is_unchanged_and_is_the_one_mf_calls():
 
 
 def test_g2_the_package_is_pure_no_database_network_clock_or_forbidden_source():
-    allowed = {"dataclasses", "datetime", "decimal", "typing", "hashlib", "json"}
+    allowed = {"dataclasses", "datetime", "decimal", "typing", "hashlib", "json", "fractions"}
     forbidden_words = ("daily_market_data", "daily_index_data", "trading_calendar ", "from corporate_actions",
                        "symbol_history ", "system_config ", "psycopg2", "requests", "urllib", "socket", "datetime.now",
                        "time.time", "open(")

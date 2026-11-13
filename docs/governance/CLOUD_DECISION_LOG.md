@@ -344,3 +344,13 @@ with `tests/test_mf2_unit.py` (6 tests), and recorded in `docs/PHASE3_MARKET_FEA
 written while the MF-1 code audit was running, because it is a separate module that changes no MF-1 file. No frozen
 file is changed; no migration, database code or network. Offline suite: 2201 passed, 680 skipped. Neither MF-1 nor
 MF-2 is accepted until its code audit (C-0005) reports.
+
+## C-0030: Phase 3 implementation, step MF-3 ([delegated], 2026-11-13)
+
+MF-3 (corporate-action statements, factors in ex-date order, adjustment by source session, the volume rule, the
+unexplained-move detector, `adjustment_set_hash`) is implemented on `integration/cloud` as the pure module
+`worker/market_features/actions.py` with `tests/test_mf3_unit.py` (10 tests). The record lists seven choices made
+inside the design's words for the audit to check, among them: two unnamed statements for one action leave both
+factors `unresolved`; a `not_evaluable` comparison does not itself set `unlabelled`. `tests/test_mf1_unit.py` allows
+the standard-library module `fractions`. No frozen file is changed. Offline suite: 2211 passed, 680 skipped. The MF-1
+code audit was cut off by the usage limit and is resumed; MF-1 to MF-3 are not accepted until audited (C-0005).
