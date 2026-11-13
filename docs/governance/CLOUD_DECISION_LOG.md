@@ -335,3 +335,12 @@ the reference price) is implemented on `integration/cloud` as the pure package `
 changed: the frozen `worker/reconciliation.py` is imported and called, and a test pins its hash. No migration, no
 database code, no network. Offline suite: 2195 passed, 680 skipped. The step is not accepted until its code audit
 (C-0005) reports.
+
+## C-0029: Phase 3 implementation, step MF-2 ([delegated], 2026-11-13)
+
+MF-2 (the session calendar as of T: closure evidence and its admission, the kinds of day, the session sequence, gaps,
+the P3-D5 tolerance) is implemented on `integration/cloud` as the pure module `worker/market_features/calendar.py`
+with `tests/test_mf2_unit.py` (6 tests), and recorded in `docs/PHASE3_MARKET_FEATURES_IMPLEMENTATION.md`. It was
+written while the MF-1 code audit was running, because it is a separate module that changes no MF-1 file. No frozen
+file is changed; no migration, database code or network. Offline suite: 2201 passed, 680 skipped. Neither MF-1 nor
+MF-2 is accepted until its code audit (C-0005) reports.

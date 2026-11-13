@@ -72,3 +72,48 @@ and W3 on Windows by the partition's own rule.
   `tests/p2_fakes.py` can produce the needed variety (design §16) was not tried in this step.
 - Nothing ran against real CSE data.
 - The labels' parts of ML-20 and ML-24, and the aggregate parts of ML-2, belong to MF-5 and MF-6.
+
+---
+
+## MF-2: the session calendar as of T
+
+**Status: implemented and tested; audit pending.**
+
+### What was built
+
+| File | Content | Design |
+|---|---|---|
+| `worker/market_features/calendar.py` | `CalendarObservation` (`declared_closed`, `import_calendar_complete`), `NoSessionEvidence` (P3's `not_applicable` event that names a run), admission of closure evidence under the query, `classify_day` (final, non-final, closure, unknown, not a candidate), `session_sequence` (final sessions up to D\*, the gap dates between consecutive ones, contradictions), `gap_tolerance` (P3-D5), `window_gap_state` | §6 |
+| `tests/test_mf2_unit.py` | 6 tests | §6, §12 |
+
+The module is pure. It takes the sets of final and non-final dates from the caller (MF-1's `sessions.py`, plus
+admitted imports once MF-4/MF-7 exist), and closure evidence as values. `calendar-sync`, the table
+`mf_calendar_observations` and the `verify` comparison with `trading_calendar` are MF-7.
+
+Choices made inside the design's words, to be checked by the audit:
+
+- An `import_calendar_complete` closure is admitted with `available_at` = the end of that Colombo day (23:59:59
+  +05:30), the rule §4.1 gives a date-only source instant. The design says "available on the date itself".
+- P3's no-session evidence carries one instant (the event's `recorded_at`); it is used as both instants.
+- A gap is counted per date: two unknown dates between two consecutive final sessions count as two towards the
+  tolerance.
+- `window_gap_state(sequence, end, n)` covers the `n` returns ending at position `end`, that is, the stretch from
+  position `end − n` to `end`.
+
+### Tests and what they show
+
+`tests/test_mf2_unit.py`: **6 passed**. Full offline suite: **2201 passed, 680 skipped**. `groups.py --check`:
+partition ok, 73 test files.
+
+| Design test | Covered by | Part covered |
+|---|---|---|
+| ML-8 (sequence part) | `test_c4` | A closure recorded after the cutoff changes nothing; recorded at the cutoff, it removes the gap; `AVAILABLE` admits by the notice date and H; an import's closure is not available before the end of its day |
+| §6 kinds | `test_c1`, `test_c3` | Each kind of day; a weekend needs no evidence; a special weekend session is a session; the run-less event is refused as evidence; an import's range and its rows |
+| Session evidence beats a closure | `test_c2` | The date stays a session and is flagged |
+| Sequence, `spans_gap` | `test_c5` | Final sessions only; a non-final session is a gap, a closure and a weekend are not |
+| P3-D5 | `test_c6` | The tolerance at 1, 5, 6, 21, 63, 64, 126, 252; ok, partial, missing, too short |
+
+### Not done, not verified
+
+- No database code and no PostgreSQL test in this step; ML-8's `verify` part is MF-7.
+- Imported sessions are represented only by the caller's `final_dates`; the import path itself is MF-4/MF-7.
