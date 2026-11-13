@@ -173,3 +173,58 @@ partition ok, 74 test files.
 - No database code. The owner path that enters statements, and the table, are MF-7.
 - ML-19's label part and its import part belong to MF-6 and MF-4/MF-7; ML-21 is MF-6.
 - The threshold's value is configuration (MF-7); the tests pass it in.
+
+---
+
+## MF-4: identity, the universe, eligibility
+
+**Status: implemented and tested; audit pending.**
+
+### What was built
+
+| File | Content | Design |
+|---|---|---|
+| `worker/market_features/universe.py` | The class suffix table and `security_class`; `IdentityObservation` (`link`, `symbol_reused`) and `series_segments`; `universe` (the union, the `active` flag recorded and never a filter); `worst_survivorship`; `EligibilityPolicy` v0 (`provisional`) and `eligibility` with every measured value | §8, §9 |
+| `tests/test_mf4_unit.py` | 8 tests | §8, §9 |
+| `tests/test_mf1_unit.py` | `test_g2`'s list of allowed standard-library modules gains `re` | §13.2 |
+
+Choices made inside the design's words, to be checked by the audit:
+
+- **The suffix table is provisional and not from archived bodies.** The design fixes it "from the archived
+  `allSecurityCode` evidence"; the cloud session has none. The table uses the classes the Phase 2 design records as
+  occurring (N, X, D, W, R, P, U, B): N and X are equity lines, the others and anything unrecognised are
+  `not_applicable`. The names given to U and B are placeholders. **It must be confirmed against real archived bodies
+  before `universe_rule` v1 leaves `provisional`** (laptop).
+- **Minor 3, the order when several results apply:** `not_applicable`, `no_data`, `price_unknown`,
+  `insufficient_history`, `blocked_quality`, `low_activity`, `stale`. Every failing criterion is also listed in
+  `failed`. Freshness is not evaluated while the price is unknown.
+- **Liquidity has no result name of its own in §9**; a median turnover below the minimum (or no turnover at all)
+  gives `low_activity`, with the measured median stored.
+- **Minor 5:** a bar with `traded = unknown` is left out of both the numerator and the denominator of the activity
+  ratio; with no known session in the window the ratio is null and the result `low_activity`.
+- A session of the window on which the security has no bar is likewise not in the ratio's denominator.
+- `worst_survivorship` orders `complete` < `survivors_only` < `unknown`.
+- `series_segments`: two admitted links with different content for one symbol, or a cycle, are refused rather than
+  resolved; a link older than an admitted `symbol_reused` date of the same symbol is not followed.
+
+### Tests and what they show
+
+`tests/test_mf4_unit.py`: **8 passed**. Full offline suite: **2219 passed, 680 skipped**. `groups.py --check`:
+partition ok, 75 test files.
+
+| Subject | Covered by |
+|---|---|
+| Class table; unrecognised symbols | `test_u1` |
+| Universe union; `active` not a filter; computed key | `test_u2` |
+| Survivorship label of a dataset | `test_u3` |
+| A link takes effect only from its admission (`KNOWN` by `recorded_at`, `AVAILABLE` by announcement), nothing is linked automatically; a reuse splits; conflicts and cycles refused | `test_u4` |
+| Each criterion at its boundary, with measured values | `test_e1` |
+| Precedence, the full `failed` list, Minor 3 | `test_e2` |
+| Minor 5 | `test_e3` |
+| The policy's values and `provisional` status | `test_e4` |
+
+### Not done, not verified
+
+- Imported universes (the rows of an admitted import for a date) and per-batch `survivorship` are MF-7's loader.
+- The store's refusal to mark a configuration `validated` without a report id is MF-7.
+- Joining bar series across a link when computing features is MF-5's use of `series_segments`.

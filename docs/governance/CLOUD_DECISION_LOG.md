@@ -354,3 +354,13 @@ inside the design's words for the audit to check, among them: two unnamed statem
 factors `unresolved`; a `not_evaluable` comparison does not itself set `unlabelled`. `tests/test_mf1_unit.py` allows
 the standard-library module `fractions`. No frozen file is changed. Offline suite: 2211 passed, 680 skipped. The MF-1
 code audit was cut off by the usage limit and is resumed; MF-1 to MF-3 are not accepted until audited (C-0005).
+
+## C-0031: Phase 3 implementation, step MF-4 ([delegated], 2026-11-13)
+
+MF-4 (security class, identity observations, the universe of a session, the survivorship label, eligibility policy
+v0) is implemented on `integration/cloud` as the pure module `worker/market_features/universe.py` with
+`tests/test_mf4_unit.py` (8 tests). **The class suffix table is provisional:** it lists the classes the Phase 2
+design records (N, X, D, W, R, P, U, B) and has not been checked against archived `allSecurityCode` bodies, which
+exist only on the laptop; `universe_rule` v1 stays `provisional` until it is. Minor points 3 and 5 of the design's
+audit record are settled as the implementation record states. Offline suite: 2219 passed, 680 skipped. Not accepted
+until audited (C-0005).
