@@ -643,3 +643,10 @@ Audit 9 reported **no Blocker** in MF-6: an independent oracle agreed with `labe
 313 000 cases, and audit 8's fuzzing had found no look-ahead. MF-6 is accepted (C-0037). Its two Majors are settled
 and tested (an identity event dated D terminates the label; confirmations belong in the adjustment set); the design
 wording is clarified; `abs_ret_1` uses the exact return. All of MF-1 to MF-6 and MF-7a are now accepted on the branch.
+
+## C-0061: Phase 3 MF-7c, imported bars and the snapshot builder ([delegated], 2026-11-14)
+
+The pure core of the snapshot step is implemented and tested, and a full snapshot of the TradeIQ history at
+2025-12-31 was built in the container (692 securities, 5 958 sessions, about 85 s). The provisional detector threshold
+(25%) leaves 5 593 moves without an entered action over 25 years; calibrating it is flagged for the owner and for
+Phase 5. The database loader, writer, `verify` and CLI remain. Accepted when an audit reports no Blocker.

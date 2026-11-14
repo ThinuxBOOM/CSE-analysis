@@ -628,3 +628,33 @@ or P_F**. The disagreements were three design readings (now stated in §11) and 
 | 6 | Minor | A conflicting close between the row's s_D and D reaches the label only through detector moves | **Carried** |
 
 MF-6 took nine audits; the record above (audits 3 to 9) lists every Blocker and its fix.
+
+---
+
+## MF-7c (first part): imported bars and the snapshot builder
+
+**Status: implemented and tested (2026-11-14); audit pending. The database loader and writer, `verify` and the CLI are
+not yet written.**
+
+| File | Content |
+|---|---|
+| `worker/market_feature_store/history_bars.py` | Imported rows as feature bars by §5.4's revision-6 rules (a row, no price printed, a printed zero, quarantined, `security_complete`, not a member); imported final sessions |
+| `worker/market_feature_store/snapshot.py` | One snapshot at (T, mode): calendar, bars, references, factors, the detector, series, eligibility, the 54 features, the market; the rows, factors, move flags and `adjustment_set_hash` the writer stores |
+| `worker/market_features/market.py` | `eligibility_by_session(start=...)`: membership computed only for the sessions a snapshot's market windows read (backward compatible) |
+| `tests/test_mf7_history_bars_unit.py`, `tests/test_mf7_snapshot_unit.py` | Every §5.4 case; a synthetic snapshot with a split adjusted (and, without it, the fall flagged as unexplained) |
+
+**Real run on the TradeIQ history** (research, in the cloud container; 2001 to 2025, `AVAILABLE` mode, T = the end of
+2025-12-31, the 138 splits and 100 reconstructed actions, the import's per-year calendar): 692 securities over 5 958
+sessions, built in about 85 s. Eligibility at D\*: 264 eligible, 300 not applicable (not ordinary shares), 91 low
+activity, 24 low liquidity, 8 insufficient history, 4 price unknown, 1 stale. `ret_21` fresh for 269 securities
+(missing mostly for securities that stopped trading long ago), `vol_63` fresh for 665, `beta_126` fresh for 652.
+Factors: 233 applied, 2 unresolved. The market: `mkt_ret_ew_21` = −7.0%, `mkt_ret_ew_63` = −2.7%, breadth 56%.
+
+**A finding for the owner and Phase 5:** with the provisional 25% detector threshold, **5 593 day-on-day moves have no
+entered action** across the 25 years, mostly in thinly traded, low-priced lines. Labels spanning them are
+`unexplained_move_in_horizon` and stay out of training (`scoring.1`). The threshold is a configuration value to be
+calibrated on data before any declared test period (§17, Phase 5 §5.4).
+
+An error of mine in the first real run: the import calendar was not passed, so every public holiday was an unknown
+date and every window looked broken (all multi-session features `missing`); with the per-year calendar the results
+above follow.

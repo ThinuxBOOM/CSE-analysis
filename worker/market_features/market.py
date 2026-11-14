@@ -32,14 +32,17 @@ class MarketPoint:
     spans_unknown: bool = False
 
 
-def eligibility_by_session(series_by_symbol, references_by_symbol, policy: EligibilityPolicy = EligibilityPolicy()):
-    """{symbol: [eligible at each session of the sequence]}, each computed from the bars up to that session only."""
+def eligibility_by_session(series_by_symbol, references_by_symbol, policy: EligibilityPolicy = EligibilityPolicy(),
+                           start=0):
+    """{symbol: [eligible at each session of the sequence]}, each computed from the bars up to that session only.
+    Sessions before `start` are reported as not eligible without being computed (a snapshot needs membership only
+    for the sessions its market windows read)."""
     out = {}
     for symbol, series in series_by_symbol.items():
         refs = references_by_symbol[symbol]
         sessions = series.sequence.sessions
-        out[symbol] = [eligibility(symbol, series.bars[:i + 1], refs.get(sessions[i]), policy,
-                                   series.points[:i + 1]).result == ELIGIBLE
+        out[symbol] = [i >= start and eligibility(symbol, series.bars[:i + 1], refs.get(sessions[i]), policy,
+                                                  series.points[:i + 1]).result == ELIGIBLE
                        for i in range(len(sessions))]
     return out
 
