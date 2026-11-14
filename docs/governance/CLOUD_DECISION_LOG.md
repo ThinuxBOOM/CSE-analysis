@@ -466,3 +466,13 @@ The MF-6 draft (`worker/market_features/targets.py`, C-0034) now has `tests/test
 state and the precedence, ML-19's and ML-21's label parts, Minor points 1, 13 and 16, and the import graph. No change
 to the module was needed. 11 of 12 mutants are killed; the survivor is equivalent. Accepted when an audit reports no
 Blocker (C-0037).
+
+## C-0042: Phase 5 design, revision 4 ([delegated], 2026-11-14)
+
+Revision 4 of `docs/PHASE5_ML_DESIGN.md` applies the six findings of the research-branch review (P5-A01 to P5-A06)
+and the owner decisions C-0035, C-0036 and C-0039: `unresolvable_missing_price` is scored (out of training and the
+headline, counted); the upstream designs are pinned at Phase 3 revision 5 (`6a034ea`) and Phase 4 revision 6
+(`62f77fc`) with a compatibility table; `calibrated_engine` is an engine calibration and the engine-derived component
+of a combination; MLK-20 covers ML-24, FL-21 and FL-22; the bootstrap and conformal claims are narrowed to stated
+estimands, with an evidence minimum and a new simulation test (MLK-23). It also notes CSE's carried close (TradeIQ
+F11). Accepted when its audit reports no Blocker (C-0037).

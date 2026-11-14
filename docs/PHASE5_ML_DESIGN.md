@@ -1,10 +1,19 @@
 # Phase 5: ML and the Route 1 combination (design)
 
-**Status: DESIGN, revision 3 (2026-11-12). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 4 (2026-11-14). Not implemented. Not accepted.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact, no training on real data and no change to `main`.
 
-*Revision 3 replaces revision 2 (commit `5c67269`). The second audit found no Blocker and confirmed that the split
+*Revision 4 replaces revision 3 (commit `36322ae`). It applies the six findings of the review recorded on the
+research branch (`research/tradeiq-phase3-validation-2026-11-12`, P5-A01 to P5-A06; §19) and three owner decisions:
+Route 1 may be ML-only (C-0036), validation on `reconstructed` data is waived (C-0039), and historical prices come from
+the TradeIQ archive (C-0035). The main changes: the label state `unresolvable_missing_price` is scored (§6); the
+upstream designs are pinned at Phase 3 revision 5 and Phase 4 revision 6, with a compatibility statement (§18.1);
+`calibrated_engine` is an engine calibration, not an ML adapter (§7.2); the inherited leakage tests are brought up to
+date (MLK-20); the uncertainty claims are narrowed to what is shown, and a simulation test of them at realistic sizes
+is added (§8.2, §12.3, MLK-23).*
+
+*Revision 3 replaced revision 2 (commit `5c67269`). The second audit found no Blocker and confirmed that the split
 rules of §5.2 and §5.3 are leak-free as written, then failed the design on 22 Major findings in what surrounds the
 splits (§19). The main changes: test periods of different protocols cannot overlap, and the count of things tried is
 kept across protocols (§5.4); the gated unit is a **configuration**, and the tested unit is its final fit, with the
@@ -13,12 +22,13 @@ scale and the baselines are defined (§6 to §8); a designation list is evaluate
 sufficiency arithmetic is redone in usable dates, which lengthens the honest timescale considerably (§5.5).*
 
 **Governing records:** Master Architecture (MA) §2, §4, §11 to §14, §21 to §23, §25, §27, §28, §32 to §37, §43.1, §55
-(Phase 5), §56 to §62, §68; `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 3 ("MF": features, universe, labels);
-`docs/PHASE4_DETERMINISTIC_ENGINES_DESIGN.md`, revision 3 (financial features "F7", engines and baselines "DE").
+(Phase 5), §56 to §62, §68; `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, **revision 5**, accepted at `6a034ea` ("MF":
+features, universe, labels); `docs/PHASE4_DETERMINISTIC_ENGINES_DESIGN.md`, **revision 6**, accepted at `62f77fc`
+(financial features "F7", engines and baselines "DE"). What this design takes from each is listed in §18.1.
 Where this document and those differ, they win.
 
 **Identifiers.** Steps are M5-1 to M5-8 (§15). Tests are MLK-*n* (§13). Decisions are P5-D*n* ([delegated]) and
-P5-R*n* (reserved) (§14). Phase 3's leakage tests are "MF's ML-1 to ML-23" here.
+P5-R*n* (reserved) (§14). Phase 3's leakage tests are "MF's ML-1 to ML-24" here.
 
 ---
 
@@ -60,7 +70,7 @@ MF snapshot rows + F7 feature rows + DE outputs ─▶ dataset builder ─▶ ve
 | Every model has ID, version, training dataset, feature schema, training cutoff, validation period, test period, hyperparameters, artifact hash, metrics, creation timestamp, deployment status | §12.2, §28, §61 | Met: §9.1 |
 | Statuses `candidate`, `validated`, `production`, `retired`, `rejected` | §28 | Met: §9.2 |
 | A candidate passes its gates and receives a new immutable version; research never silently becomes production | §58, §27, §59 | Met: §9.2 |
-| Route 1 is deterministic engines plus ML; the combination is versioned and keeps component outputs | §12, §13 | Met in mechanism: §10. **Not guaranteed in content:** a combination contains whichever components passed their gates, and may contain no engine-derived one. Such a prediction is flagged `no_engine_component`, and the security's full engine outputs are stored with every prediction regardless (§11.1). A recorded deviation, for the owner |
+| Route 1 is deterministic engines plus ML; the combination is versioned and keeps component outputs | §12, §13 | Met in mechanism: §10. A combination contains whichever components passed their gates and may contain no engine-derived one: **the owner decided this is allowed (C-0036, 2026-11-14).** Such a prediction is flagged `no_engine_component`, shown with that flag wherever it is displayed, and the security's full engine outputs are stored with every prediction regardless (§11.1). `calibrated_engine` (§7.2) is the engine-derived component |
 | Reasoning from feature contributions | §14 | Met: §8.3 |
 | The prediction contract for every horizon, including volatility | §4 | Met: §6 |
 | Confidence statistically grounded | §21 | Met: §8 |
@@ -107,7 +117,7 @@ snapshot's cutoff.
 **The two clocks of a row.** T and each label's resolution instant R_h are on the **admission clock of the row's
 era**: `recorded_at` in a `KNOWN` era; `available_at` in an `AVAILABLE` era, with H pinned in the manifest. (Taking
 `recorded_at` for imported history would make every imported label "resolve" at the import instant.) R_h is the
-label's `resolved_at`, which Phase 3 revision 3 defines over every input including corporate actions; for a label
+label's `resolved_at`, which Phase 3 §11 defines over every input including corporate actions; for a label
 whose inputs span two eras, it is the latest of their admission instants, each on its own era's clock.
 
 Features and labels are separate files, and training code receives labels only through the split object of §5.
@@ -319,11 +329,16 @@ the label states and this policy decides how they are scored):
 | `resolved`, `resolved_carried` | Yes | Yes | `resolved` alone, as a secondary stratum |
 | `terminated` | No in v1: it has no agreed return | No | Its count; and a **pessimistic sensitivity** in which each such label counts as a total loss (return −1, class `fall`) |
 | `unexplained_move_in_horizon` | No | No | Its count; and a sensitivity that includes it at its raw return. Leaving these out removes the largest moves that have no entered action, which flatters return error, volatility error and interval coverage |
+| `unresolvable_missing_price` | No | No | Its count, by horizon, period and liquidity class. **No sensitivity:** the label has no value, and inventing one (a return, a class) would be fabrication. Counted separately from the next row so that a rise in missing prices is visible |
 | `unresolvable_quality`, `unknown_session_in_horizon`, `pending` | No | No | Counts |
 
 - Including `resolved_carried` is deliberate: whether a security will trade on the target session is unknown at T,
   so excluding those rows would condition on the future. Their return is zero at the one-session horizon and whatever
   the last trade gave at longer ones.
+- **CSE's carried close.** From 2015 CSE's official close stays at the previous close on a day too little trades,
+  although the security traded (`docs/research/TRADEIQ_VALIDATION.md`, F11). The labels use CSE's close as Phase 3
+  defines it, so such a day contributes a zero return and lowers the volatility label. This is CSE's definition, not
+  an error; the share of target sessions whose close equals the previous close is reported per stratum.
 - Excluding `terminated` and `unexplained_move_in_horizon` from the headline is the same kind of conditioning, done
   for want of an agreed value. The two sensitivities bound what it hides, and every report shows them.
 
@@ -360,7 +375,12 @@ describe(artifact) -> feature schema, clipping bounds, envelope, hyperparameters
 | `linear` | All three | Regularised multinomial logistic regression; ridge regression on return and on volatility | Coefficient × standardised value |
 | `gbt` | All three | Gradient-boosted trees | The library's exact tree contribution values |
 
-- v1 ML adapters take MF and F7 features, not engine scores (P5-D3).
+- **Two kinds of component (P5-D3, revision 4).** `linear` and `gbt` are the ML adapters: they take MF and F7
+  features and never an engine score. `calibrated_engine` is not an ML adapter: it is a **calibration of one Phase 4
+  engine**, the one component whose input is an engine score. It is registered with kind `calibrated_engine`, its
+  provenance names the engine and the engine's version, its contributions are the engine's own components, and in
+  §10 it is the engine-derived component. A combination that contains no `calibrated_engine` is flagged
+  `no_engine_component`.
 - For `linear` and `gbt` the "class scores" given to calibration are the model's log-probabilities.
 - Libraries are pinned at M5-4 in `requirements-ml.txt`; the capture, backfill and financial-truth packages import
   none of them (MLK-14).
@@ -406,6 +426,12 @@ Split-conformal on the conformal slice, **scale-normalised and class-conditional
 - Coverage on validation folds is reported against the nominal level, overall and per class. The tolerance reflects
   how few independent label windows a slice holds; with a handful, the coverage estimate is coarse and the report
   says so.
+- **What is claimed (revision 4).** Split-conformal guarantees rest on exchangeability, which serially dependent and
+  cross-sectionally correlated returns do not have. The claim is therefore only this: **the share of rows of a period
+  whose realised return falls inside the interval, averaged over that period's dates, per liquidity class**, measured
+  on validation folds and on the test period. No conditional coverage (for one security, one regime or one day) is
+  claimed. MLK-23 measures the claimed coverage under dependence at realistic sizes; if it misses the nominal level
+  there, the interval is reported with its measured coverage, not the nominal one.
 
 ### 8.3 Contributions
 
@@ -619,6 +645,12 @@ distribution has its minimum length.
   together. The number of blocks is reported; with few, the interval is reported as unreliable.
 - Blocks address label overlap, and with the data-driven length some of the clustering in volatility; the reports do
   not claim more.
+- **The estimand (revision 4)** of every headline interval and of the gate test is the **mean over dates of the
+  date-level loss** (the equal-weighted mean over the date's rows) for the period. Resampling whole dates keeps the
+  dependence between securities on one date; blocks of dates keep serial dependence up to the block length. Nothing is
+  claimed for a single security, a stratum smaller than the reporting minimum, or a different period.
+- The number of independent blocks (period length over block length) is reported with every interval; below 20 the
+  interval is marked unreliable, and the gate test of §9.3 is not run (the gate is failed as `insufficient_evidence`).
 - Per-security metrics over few rows are shown with their counts and are not ranked.
 
 ---
@@ -648,9 +680,10 @@ Synthetic archives and facts are generated through the lower layers' own factori
 | MLK-17 | **Strata.** Later data planted after T | Liquidity class, regime tags and age strata at T unchanged |
 | MLK-18 | **Labels carried.** `reconstructed`, `survivors_only` and mixed eras; two target builds offered to one dataset | The worst label is carried; the second build is refused |
 | MLK-19 | **Designation.** One recorded after a prediction's cutoff | The prediction uses the one in force at its cutoff |
-| MLK-20 | **Inherited leakage.** MF's ML-1 to ML-23 and Phase 4's FL-1 to FL-20 plants below a built dataset | The dataset at T and predictions from it are unchanged |
+| MLK-20 | **Inherited leakage.** MF's ML-1 to ML-24 and Phase 4's FL-1 to FL-22 plants below a built dataset, including an unknown price inside a label's horizon (ML-24), a corporate action not yet entered at the cutoff with no close since the document (FL-21) and a conflicting or too old fiscal-year EPS (FL-22) | The dataset at T and predictions from it are unchanged, and each upstream refusal or `untrusted` state reaches the dataset as a null with its reason, never as a value |
 | MLK-21 | **Routing.** A list of two combinations on rows with and without fundamentals | Metrics are per position on the rows routed to it; a position's gate uses only those rows |
-| MLK-22 | **Scoring policy.** Each label state | Trained, scored, counted and given its sensitivity exactly as §6's table says |
+| MLK-22 | **Scoring policy.** Each label state, including `unresolvable_missing_price` | Trained, scored, counted and given its sensitivity exactly as §6's table says; `unresolvable_missing_price` never enters training or a headline metric, and its count is reported for every horizon |
+| MLK-23 | **Coverage and size under dependence.** Synthetic panels at the protocol's actual minimum sizes, varying serial dependence, a common date factor, volatility clustering, a regime change, unbalanced security coverage and liquidity-class composition | The conformal interval's measured coverage (the §8.2 estimand) and the gate test's type-I error are reported for each case; a case outside the acceptance region marks that configuration of the method as unreliable in every report that uses it |
 
 ---
 
@@ -662,7 +695,7 @@ Synthetic archives and facts are generated through the lower layers' own factori
 |---|---|---|
 | P5-D1 | Models are adapters behind one interface; v1 has `ref`, `calibrated_engine`, `linear`, `gbt` | MA §12.2 mandates no algorithm |
 | P5-D2 | Direction is three classes | Thin securities often do not move |
-| P5-D3 | v1 ML models take features, not engine scores | Keeps engines and ML separable (MA §13, §31) |
+| P5-D3 | v1 ML models take features, not engine scores; `calibrated_engine` is an engine calibration, the one engine-score component (revision 4) | Keeps engines and ML separable (MA §13, §31) |
 | P5-D4 | ML dependencies in `requirements-ml.txt` and separate packages | The staged build's dependency set is unchanged |
 | P5-D5 | One test access per protocol, on a test period disjoint from every other, for declared nominees, against a criterion of a minimum form | MA §36 |
 | P5-D6 | Sufficiency minimums in usable dates (§5.5), provisional | A floor in independent information, not in rows |
@@ -685,8 +718,8 @@ Synthetic archives and facts are generated through the lower layers' own factori
 | P5-R1 | Any promotion to `production` and its designation, with the labels it must cite | Live Route 1 predictions |
 | P5-R2 | For each real protocol: the family, the test period, the nomination rule, the criterion, the level and effect sizes, and the sufficiency minimums | The first real training |
 | P5-R3 | Acceptance of the ML dependency set into a deployable build, with re-staging | Deployment |
-| P5-R4 | The deviations from MA §12 to §13, §25 and §37 recorded in §2 | Acceptance of this design |
-| P5-R5 | Any waiver: survivorship that is not `complete`; validation on `reconstructed` data only | Gates 7 and 11 |
+| P5-R4 | The deviations from MA §12 to §13, §25 and §37 recorded in §2. **Route 1 without an engine component: decided, allowed (C-0036).** Sector and the two regimes: open | Acceptance of this design |
+| P5-R5 | Any waiver: survivorship that is not `complete`; validation on `reconstructed` data only. **Validation on `reconstructed` data: waived (C-0039).** Survivorship: open; until decided, no protocol uses an era whose survivorship is not `complete` | Gates 7 and 11 |
 
 ---
 
@@ -716,7 +749,9 @@ pinned libraries for the Windows CI jobs are unverified, so ML tests are planned
 - Whether anything beats the baselines on CSE data. It may not, and that is a legitimate result.
 - Whether the gate's test can be passed at all at the long horizons with obtainable data (§9.3).
 - Every provisional number.
-- How much history exists and of what kind (Phase 3, P3-R1).
+- How much usable history the TradeIQ archive gives once imported (P3-R1, decided: C-0035). Its first validation
+  (`docs/research/TRADEIQ_VALIDATION.md`) finds daily prices for 1992 to 2025, in the `reconstructed` era; corporate
+  actions other than splits are not yet adjustable (P3-R2), so their windows and labels are excluded by §6.
 - Whether `reconstructed` and `point_in_time` eras behave alike.
 - Whether weighting, class balancing or time decay help. Fundamental features change a few times a year per issuer,
   so daily rows repeat them.
@@ -745,11 +780,39 @@ pinned libraries for the Windows CI jobs are unverified, so ML tests are planned
 
 ## 18. How the phases' wording lines up
 
+### 18.1 What this design takes from Phase 3 revision 5 and Phase 4 revision 6
+
+| Upstream | What Phase 5 uses | Changes since the revisions cited by Phase 5 revision 3, and how they are taken |
+|---|---|---|
+| Phase 3 §5.3 | `px_ref`, `ref_session`, `stale_sessions` per snapshot row | Revision 5's `price_unknown`: the reference price is null with a reason; a row with no reference price has a null predicted price and is refused (§11.2, missing critical feature) |
+| Phase 3 §10 | Feature values with their quality states | No change of contract; nulls stay nulls (§4.4) |
+| Phase 3 §11 | Label states, `resolved_at`, `abs_ret_1` | Revision 5 added `unresolvable_missing_price`: scored by §6. Revision 4 removed the degraded session: no effect here |
+| Phase 3 §12 | ML-1 to ML-24 | ML-24 added: MLK-20 |
+| Phase 4 F7 | Financial feature rows with their guards | Revisions 4 to 6 added `eps_basis_ambiguous`, `unexplained_move_since_document` and `no_close_since_document`: each reaches a dataset as a null with its reason (MLK-20) |
+| Phase 4 DE | Engine scores and their component sets | `calibrated_engine` uses a score only where the engine used its full component set; a guarded input makes the engine's output absent for that row, and the calibration is not applied there |
+| Phase 4 tests | FL-1 to FL-22 | FL-21 and FL-22 added: MLK-20 |
+
+Phase 5 consumes nothing else from those revisions. Any later revision of Phase 3 or 4 is checked against this table
+before Phase 5's next acceptance.
+
 - Phases 3 and 4 say no model trained under a `provisional` eligibility policy can pass; gate 6 enforces it.
 - Phase 3 defines the label states; the scoring policy here decides how each is scored, for Phases 5, 9 and 10.
 - Phase 3 exposes `hist_n_h` for the baseline smoothing of §7.3.
 
 ## 19. Audit record
+
+**Review on the research branch (2026-11-12, recorded in `docs/research/PHASE5_ML_DESIGN_AUDIT_2026-11-12.md` on
+`research/tradeiq-phase3-validation-2026-11-12`; not a fresh-context audit under C-0005).** Dispositions in revision 4:
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| P5-A01 | Major | `unresolvable_missing_price` had no scoring disposition | **Fixed.** §6 row; MLK-22 |
+| P5-A02 | Major | `calibrated_engine` contradicted "ML adapters take features, not engine scores" | **Fixed** by the review's option A: an engine calibration, not an ML adapter (§7.2, P5-D3) |
+| P5-A03 | Major | Upstream revisions cited were stale | **Fixed.** Pinned at Phase 3 revision 5 and Phase 4 revision 6 with commits; compatibility table §18.1 |
+| P5-A04 | Major | Inherited leakage tests out of date | **Fixed.** MLK-20 covers ML-24, FL-21, FL-22 and the survival of upstream refusals |
+| P5-A05 | Blocker (owner decision) | Route 1 could contain no engine component | **Decided by the owner: allowed** (C-0036); §2, P5-R4 |
+| P5-A06 | Major review item | Bootstrap and conformal assumptions under dependence | **Fixed by narrowing and testing:** the estimands are stated (§8.2, §12.3), the evidence minimum is set, and MLK-23 measures coverage and type-I error under dependence at realistic sizes |
+
 
 **Revision 1 (commit `301811b`): audited 2026-11-11. FAIL**, three Blockers, fifteen Major. Its 40 findings and
 their dispositions are in revision 2 (`git show 5c67269:docs/PHASE5_ML_DESIGN.md`, §19).
