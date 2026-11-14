@@ -102,11 +102,19 @@ class TestResult:
     rejects: Optional[bool] = None
 
 
-def gate_test(d, *, delta, h, level, replicates=DEFAULT_REPLICATES, seed=0, block=None):
-    """The one-sided test of H0: mean(d) >= -delta at `level` (alpha / m for a family of m)."""
+def gate_test(d, *, delta, h, level, replicates=None, seed=0, block=None, simulation=False):
+    """The one-sided test of H0: mean(d) >= -delta at `level` (alpha / m for a family of m).
+    The design's floors are enforced: L >= max(h, 10) and B >= max(9 999, ceil(20 / level)). `simulation=True` lifts
+    them, for size studies only (MLK-8); a gate never passes it."""
     d = [float(v) for v in d]
     if delta < 0 or not 0 < level < 1:
         raise ValueError("delta >= 0 and level in (0, 1)")
+    floor_b = max(DEFAULT_REPLICATES, math.ceil(20 / level))
+    replicates = replicates if replicates is not None else floor_b
+    if not simulation and (replicates < floor_b or (block is not None and block < max(h, 10))):
+        raise ValueError("the block length or the number of replicates is below the design's floor")
+    if len(d) < 10:
+        return TestResult("insufficient_evidence", None, None, 0, 0.0, 0)
     L = block if block is not None else block_length(d, h)
     blocks = len(d) / L
     if blocks < MIN_BLOCKS:
@@ -118,12 +126,13 @@ def gate_test(d, *, delta, h, level, replicates=DEFAULT_REPLICATES, seed=0, bloc
     return TestResult("tested", obs, p, L, blocks, replicates, p <= level)
 
 
-def family_test(d_by_baseline, *, delta, h, alpha, m, replicates=None, seed=0):
+def family_test(d_by_baseline, *, delta, h, alpha, m, replicates=None, seed=0, simulation=False):
     """§9.3: M must reject against every baseline (intersection-union, no correction across baselines), each at the
     Bonferroni level alpha / m. Returns (passes, {baseline: TestResult})."""
     level = alpha / m
     replicates = replicates or replicates_for(m, alpha)
-    results = {b: gate_test(d, delta=delta, h=h, level=level, replicates=replicates, seed=seed)
+    results = {b: gate_test(d, delta=delta, h=h, level=level, replicates=replicates, seed=seed,
+                            simulation=simulation)
                for b, d in sorted(d_by_baseline.items())}
     passes = bool(results) and all(r.state == "tested" and r.rejects for r in results.values())
     return passes, results

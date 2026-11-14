@@ -102,6 +102,10 @@ class Calculator:
         if start < 0:
             return notes.add(MISSING, "insufficient_history")
         gaps = self.s.sequence.gaps_between(start, end)
+        first = self.s.points[start + 1] if start + 1 <= end else None
+        if prices and first is not None and first.spans_unknown and first.base_index is not None \
+                and first.base_index < start:
+            gaps = self.s.sequence.gaps_between(first.base_index, start) + gaps   # the bridged return's stretch
         if gaps:
             notes.add(*((PARTIAL, "spans_gap") if len(gaps) <= gap_tolerance(n) else (MISSING, "gaps_beyond_tolerance")))
         for i in range(start, end + 1):

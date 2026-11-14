@@ -68,6 +68,8 @@ class Fold:
         return self.horizon + self.grace
 
     def check(self, cal: Calendar):
+        if self.horizon < 1 or self.grace < 0 or self.embargo < 0:
+            raise Refused("bad_parameters", "horizon >= 1, grace >= 0, embargo >= 0")
         if not (self.c_train < self.v_start <= self.v_end):
             raise Refused("bad_fold", "C_train < V_start <= V_end")
         if self.v_start < cal.shift(self.c_train, self.embargo):
@@ -82,6 +84,8 @@ class Fold:
         out = {TRAINING: [], VALIDATION: [], RESOLVED_LATE: [], UNUSED: []}
         reasons = {}
         for row in rows:
+            if row.r is not None and not row.r > row.t:
+                raise Refused("bad_row", "a label resolves after its row's cutoff: R_h > T (§5.1)")
             if row.r is not None and row.r <= self.c_train:
                 out[TRAINING].append(row)
             elif self.v_start <= row.t <= last_t and row.r is not None:
@@ -105,6 +109,8 @@ class Slices:
     embargo: int = 1
 
     def check(self, cal: Calendar):
+        if self.horizon < 1 or self.grace < 0 or self.embargo < 0:
+            raise Refused("bad_parameters", "horizon >= 1, grace >= 0, embargo >= 0")
         if not (self.s1 < self.s2 < self.s3 < self.c_train):
             raise Refused("bad_slices", "S1 < S2 < S3 < C_train")
         g = self.horizon + self.grace

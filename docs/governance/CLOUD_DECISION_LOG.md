@@ -522,3 +522,23 @@ three Majors. All are fixed and tested. **Decision [delegated]:** a reference cl
 an input of the label, so the label is `unresolvable_quality` (audit finding MJ-T2; the conservative reading of §11).
 Neither step is accepted until a re-audit reports no Blocker. The archive-only test failures are explained (an export
 under `/tmp`), not a defect.
+
+## C-0048: code audit 4 (MF-5, MF-6), and a CSE request found in an old test ([delegated], 2026-11-14)
+
+**MF-5 accepted** (no Blocker); its Majors fixed. **MF-6: two further Blockers** (a deciding unresolved factor
+missing from `resolved_at`; the build's own conflicting D bar not checked) and three Majors, all fixed; MF-6 waits for
+a re-audit.
+
+**Incident, recorded for the owner.** `tests/test_capture_multiple_companies.py` (from before this session) called the
+real `cse_client.get_trade_summary_all` once per run. Every attempt from this session was refused by the container's
+network policy, and CI has always run that test without network (Linux `--network none`; Windows with CSE's hosts
+blocked and checked), so **no request reached CSE**. The test is fixed (the counter wraps the fake), and this session
+now runs every suite with an in-process guard that refuses any CSE request; the full suite logs zero attempts. The
+owner may wish to bring the same guard into the repository's test setup.
+
+## C-0049: Phase 5 steps M5-1 and M5-3 accepted ([delegated], 2026-11-14)
+
+A fresh-context audit reported **no Blocker** in either step (C-0037). Its four Majors are fixed: the gate test now
+enforces the design's floors on block length and replicates; the missing tests are added; MLK-8 runs 400 seeds and
+measures the rate among tested seeds (8.2% at nominal 5%: the method's known small-sample oversize, which MLK-23
+addresses at gate time); the slice purge and embargo are asserted. Record: `docs/PHASE5_ML_IMPLEMENTATION.md`.

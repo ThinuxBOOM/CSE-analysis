@@ -92,7 +92,10 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     session_instants   {session: the latest admission instant, under the build's mode, of that session's finality
                         and of this security's bar on it}
     statement_instants {statement_id: its admission instant under the build's mode}
-    extra_instants     admission instants of any calendar or identity evidence the build rests on
+    extra_instants     admission instants of any calendar or identity evidence the build rests on, AND of every
+                        corporate-action statement of the security that no longer appears in `series.factors`
+                        because it was withdrawn or superseded, with the withdrawing or superseding statement, when
+                        its ex-date or session pair lies in (s_D, F] (audit 4: a withdrawal changes the label too)
     """
     if horizon not in HORIZONS:
         raise ValueError(f"horizon must be one of {HORIZONS}")
@@ -131,6 +134,25 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         return Label(state=PENDING, **base)
     base["target_session"] = sessions[f]
 
+    # ---- an absence of the universe inside the horizon, or one already running at D, is examined first: while its
+    # grace period runs the label is pending (§11's precedence; audit 4)
+    starts = [i for i in range(d + 1, f + 1) if series.bars[i] is None and series.bars[i - 1] is not None]
+    if series.bars[d] is None:                   # an absence running at D (audit 4): find where it began
+        k = d
+        while k > 0 and series.bars[k - 1] is None:
+            k -= 1
+        starts.insert(0, k)
+    for left in starts:
+        window_end = left + policy.grace_sessions
+        returned = any(series.bars[i] is not None for i in range(left + 1, min(window_end, last) + 1))
+        if returned:
+            continue
+        if last < window_end:
+            return Label(state=PENDING, **base)                   # the grace period is still running
+        break
+    else:
+        left = None
+
     # ---- terminated: an identity event inside the horizon, or it left the universe and did not come back
     events = [x for x in series.factors if x.kind in TERMINATING_KINDS and row.session < x.ex_date <= sessions[f]]
     if events:
@@ -139,18 +161,11 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         prior = references.get(sessions[before[-1]]) if before else None
         return done(TERMINATED, f, e.statement_ids, left_session=e.ex_date, evidence=(e.kind,) + tuple(e.statement_ids),
                     last_px_ref=None if prior is None else prior.px_ref)
-    # every absence that starts inside the horizon is examined, in order (audit 3, B-T1)
-    for left in range(d + 1, f + 1):
-        if series.bars[left] is not None or series.bars[left - 1] is None:
-            continue
+    # every absence that starts inside the horizon, or is running at D, is examined in order (audits 3 and 4)
+    if left is not None:
         window_end = left + policy.grace_sessions
-        returned = any(series.bars[i] is not None for i in range(left + 1, min(window_end, last) + 1))
-        if returned:
-            continue
-        if last < window_end:
-            return Label(state=PENDING, **base)                   # the grace period is still running
-        prior = references.get(sessions[left - 1])
-        return done(TERMINATED, window_end, left_session=sessions[left], evidence=("left_universe",),
+        prior = references.get(sessions[left - 1]) if left > 0 else None
+        return done(TERMINATED, max(window_end, d), left_session=sessions[left], evidence=("left_universe",),
                     last_px_ref=None if prior is None else prior.px_ref)
 
     if series.sequence.gaps_between(d, f):
@@ -170,9 +185,16 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     conflicting = any(b is not None and b.quality == CONFLICTING for b in series.bars[d + 1:f + 1])
     # an unresolved factor in (s_D, F] (not after F: audit 3, MJ-T1); P_D printed by a conflicting bar is an input
     # too (audit 3, MJ-T2, decided conservatively: C-0047)
-    unresolved = any(x.status == actions.UNRESOLVED and row.ref_session < x.ex_date <= sessions[f]
-                     for x in series.factors)
-    if (conflicting or future.source_quality == CONFLICTING or row.source_quality == CONFLICTING or unresolved):
+    unresolved = [x for x in series.factors if x.status == actions.UNRESOLVED
+                  and row.ref_session < x.ex_date <= sessions[f]]
+    # the build's own price at D is the base of the volatility's first return: a conflicting bar there, or a price
+    # carried into D from one, is an input too (audit 4, B-T4)
+    own_conflicting = (own is not None and own.source_quality == CONFLICTING) or (
+        series.bars[d] is not None and series.bars[d].quality == CONFLICTING)
+    if (conflicting or future.source_quality == CONFLICTING or row.source_quality == CONFLICTING or unresolved
+            or own_conflicting):
+        # resolved_at covers every statement that decided the state (audit 4, B-T3)
+        ids = tuple(sorted(set(ids) | {i for x in unresolved for i in x.statement_ids}))
         return done(QUALITY, f, ids, volatility_state=QUALITY)
 
     product = Fraction(1)

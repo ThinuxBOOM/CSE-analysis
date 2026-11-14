@@ -81,13 +81,16 @@ def test_tradeSummary_fetched_exactly_once_per_batch():
     """Requirement 4: one tradeSummary call regardless of symbol count."""
     real_data = load_real_fixtures()
     call_count = {"count": 0}
-    original_get_ts = cse_client.get_trade_summary_all
+    # The fake is installed FIRST and the counter wraps the fake. Until 2026-11-14 this test saved the real client
+    # function before installing the fake, so every run sent one real request to www.cse.lk/api/tradeSummary
+    # (refused by CI's network isolation and by the cloud session's proxy; never answered). C-0048.
+    install_mock_cse_client(real_data)
+    mocked_get_ts = cse_client.get_trade_summary_all
 
     def counting_get_ts():
         call_count["count"] += 1
-        return original_get_ts()
+        return mocked_get_ts()
 
-    install_mock_cse_client(real_data)
     cse_client.get_trade_summary_all = counting_get_ts
 
     report = cmc.capture_multiple_companies(

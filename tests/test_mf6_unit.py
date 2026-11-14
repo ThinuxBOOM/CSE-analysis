@@ -244,3 +244,28 @@ def test_l15_a_conflicting_close_carried_from_before_d_and_the_builds_own_view_o
     inst = {sessions[0]: at(100), sessions[1]: at(1), sessions[2]: at(2)}
     lab = tg.label(stored, 1, sb, refs, session_instants=inst)
     assert (lab.state, lab.resolved_at) == ("resolved", at(100))    # the build's own P_D evidence is an input
+
+
+# ------------------------------------------------------------------- added after audit 4 (C-0048)
+
+def test_l16_resolved_at_covers_the_deciding_unresolved_factor_and_the_builds_conflicting_d():      # B-T3, B-T4
+    s = days(7)
+    bad = [act.Factor(SYM, act.RIGHTS, s[4], None, None, act.UNRESOLVED, (), ("r",))]
+    lab, _ = label([bar(100), bar(100), bar(105), bar(), bar(), bar(), bar()], d_index=1, h=5, factors=bad,
+                   statement_instants={"r": at(500)})
+    assert (lab.state, lab.resolved_at) == ("unresolvable_quality", at(500))
+    sb, refs, sessions = build([bar(100, quality="conflicting"), bar(110), bar(100), bar(110), bar(100), bar(110)])
+    fresh_row = tg.ReferenceRow(SYM, sessions[0], D("100"), sessions[0], source_quality="fresh")
+    lab = tg.label(fresh_row, 5, sb, refs, session_instants={})
+    assert (lab.state, lab.volatility) == ("unresolvable_quality", None)   # the build's own D bar conflicts
+
+
+def test_l17_an_absence_running_at_d_and_pending_before_an_identity_event():
+    policy = tg.TargetPolicy(grace_sessions=3)
+    lab, s = label([bar(100)] + [None] * 9, d_index=1, h=5, policy=policy)
+    assert (lab.state, lab.left_session, lab.last_px_ref) == ("terminated", s[1], D("100"))
+    ss = days(5)
+    merger = [act.Factor(SYM, act.MERGER, ss[3], 1, 1, act.NO_PRICE_FACTOR, (), ("m",))]
+    lab, _ = label([bar(100), None, None, None, None], h=1, factors=merger,
+                   policy=tg.TargetPolicy(grace_sessions=21))
+    assert lab.state == "pending"                                    # the earlier absence's grace period runs first

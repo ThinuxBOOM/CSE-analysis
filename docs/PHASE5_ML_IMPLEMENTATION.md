@@ -5,7 +5,7 @@
 
 ## M5-1: the evaluation library, `scoring.1`, the gate test
 
-**Status: implemented and tested (2026-11-14); audit pending.**
+**Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
 
 | File | Content | Design |
 |---|---|---|
@@ -37,7 +37,7 @@ says.
 
 ## M5-3: folds and slices
 
-**Status: implemented and tested (2026-11-14); audit pending.**
+**Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
 
 | File | Content | Design |
 |---|---|---|
@@ -55,3 +55,23 @@ Choices made inside the design's words, for the audit:
 Mutation check (6 mutants: no purge, late rows fitted, training by T, slices without purge or R bound, no embargo,
 an open fit scope): all killed. Three of my first test expectations were wrong (no late row without a late
 confirmation; a memoriser that used non-overlapping labels; reused keys) and were corrected before commit.
+
+
+---
+
+## Audit of M5-1 and M5-3: fresh-context agent
+
+Audited at `53d15b2`. Verdicts: **both ACCEPT** (no Blocker). The bootstrap's recentring and p-value, the geometric
+blocks, the circular wrap and Politis–White were verified numerically; the oversize of MLK-8 comes from the method at
+small n (a non-studentised test with about 30 blocks, and the stationary bootstrap's down-weighting of an MA overlap),
+not from the code: 6.45% for iid data at n = 300, 5.3% at n = 2 000.
+
+| Finding | Severity | Disposition |
+|---|---|---|
+| The design's floors on L and B were not enforced inside `gate_test` | Major | **Fixed.** Refused below max(h, 10) and max(9 999, ⌈20/level⌉); only `simulation=True` lifts them, for size studies |
+| Test gaps (p without +1, geometric mean, last-block cut, family at α/m, an insufficient baseline in a family, Politis–White) | Major | **Fixed.** `test_b3` (exact p, family level, an untestable baseline fails the family, the fast resampler against a direct step-by-step one on autocorrelated data), `test_b4` (Politis–White against AR(1) theory) |
+| MLK-8 at 200 seeds and counting `insufficient_evidence` as non-rejection | Major | **Fixed.** 400 seeds; the rate among tested seeds. Measured: 30 of 368 tested (8.2%), 32 untestable; inside the acceptance region, and oversized as stated above |
+| Slice T-side purge and embargo never asserted | Major | **Fixed.** `check_mlk1` asserts them; an embargo of 3 case |
+| R_h ≤ T rows; negative grace or embargo; length and class checks in metrics; fewer than 10 dates; pending row in a window; R = C_train; inclusive coverage; balanced accuracy over present classes | Minor | **Fixed** and tested |
+| `price_error` equals the return error | Minor | **Stated** in its docstring |
+| `era_absence` mixes two states; the datetime session convention | Minor | **Carried** |

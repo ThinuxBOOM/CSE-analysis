@@ -478,3 +478,32 @@ def test_a6_rel_volume_counts_gaps_once_and_gap_1_checks_t_and_market_eligibilit
 def test_a7_a_window_built_on_a_price_carried_from_a_conflicting_bar_is_conflicting():
     f = feats([bar(100)] * 5 + [bar(100, quality="conflicting")] + [bar()] * 25)
     assert f["vol_21"].state == "conflicting" and f["ret_21"].state == "conflicting"
+
+
+# ------------------------------------------------------------------- added after audit 4 (C-0048)
+
+def test_a8_bridged_base_carried_conflict_gaps_parkinson_market_spans_and_rank_state():
+    bars = [bar(100 + i % 3) for i in range(31)]
+    bars[6] = bar(150, quality="conflicting")
+    bars[7] = bar()                                                   # 150 carried into session 7
+    bars[8] = bar(unknown=True, traded=True)
+    bars[9] = bar(unknown=True, traded=True)                          # r(10) bridged from 7, whose close is carried
+    assert feats(bars)["vol_21"].state == "conflicting"
+    clean = [bar(100 + i % 3) for i in range(31)]
+    clean[8] = bar(unknown=True, traded=True)
+    clean[9] = bar(unknown=True, traded=True)
+    v = feats(clean, gaps={7: 3})["vol_21"]                           # three gap dates before the window start
+    assert v.state == "missing" and ("missing", "gaps_beyond_tolerance") in v.reasons
+    pk = [bar(100, high=101, low=99)] * 30
+    pk[2] = bar(100, quality="conflicting")
+    pk[3:30] = [bar(100, high=101, low=99)] * 27
+    pk[5] = bar()                                                     # a carried price; Parkinson uses no price
+    assert feats(pk)["vol_parkinson_21"].state == "fresh"
+    pts = [mk.MarketPoint(None, (), 0)] + [mk.MarketPoint(D("0"), ("A",), 3, False, True)] * 5
+    seq = SessionSequence(tuple(days(6)), tuple(() for _ in range(5)))
+    assert mk.market_features(pts, seq)["mkt_ret_ew_5"].state == "partial"   # spans_unknown carried into the sum
+    point = mk.MarketPoint(D("0.01"), ("A.N0000", "B.N0000", "C.N0000"), 3)
+    stale = ft.Value("ret_21", D("0.1"), "stale", (("stale", "carried_price"),))
+    others = {s_: ft.Value("ret_21", D(str(i)), "fresh") for i, s_ in enumerate(("B.N0000", "C.N0000"))}
+    r = mk._rank("A.N0000", point, {"A.N0000": stale, **others}, CFG)
+    assert r.state == "stale"                                         # the own value's state is carried as it is

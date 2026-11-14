@@ -234,7 +234,7 @@ partition ok, 75 test files.
 
 ## MF-5: arithmetic, the carried series, feature set v1, market context
 
-**Status: audit 3 found one further Blocker (B1′), now fixed and tested; a re-audit is required before acceptance (C-0047).**
+**Status: ACCEPTED on the branch (C-0048: audit 4 reported no Blocker; its Majors are fixed as recorded in "Code audit 4").**
 
 ### What was built
 
@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 3 found two Blockers (B-T1, B-T2), now fixed and tested; a re-audit is required before acceptance (C-0047).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: audit 4 found two further Blockers (B-T3, B-T4), now fixed and tested; a re-audit is required before acceptance (C-0048).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -438,3 +438,32 @@ whenever s_F is before D it equals the build's own source session of P_D, which 
 The three failures both auditors saw on a `git archive` export are explained: the export was unpacked under `/tmp`,
 which also holds the tests' temporary roots, and `tests/test_report_classification.py` refuses on purpose a temporary
 root that contains the repository. Not a defect; CI's clean checkouts pass.
+
+
+---
+
+## Code audit 4 (MF-5, MF-6 re-audit): fresh-context agent
+
+Audited at `53d15b2`. Verdicts: **MF-5 ACCEPT** (no Blocker), **MF-6 REJECT** (two Blockers). Every Blocker and Major
+of audits 2 and 3 confirmed fixed. No look-ahead in features, membership or the return. 43 mutants, 30 killed.
+
+| # | Step | Severity | Finding | Disposition |
+|---|---|---|---|---|
+| B-T3 | MF-6 | **Blocker** | An unresolved factor in (s_F, F] decided `unresolvable_quality` without its statement in `resolved_at` | **Fixed.** Its statement ids enter `resolved_at`. `test_l16` |
+| B-T4 | MF-6 | **Blocker** | The build's own D bar `conflicting` (the volatility's base) was not checked | **Fixed.** `unresolvable_quality`. `test_l16` |
+| — | MF-6 | Major | An absence already running at D was never examined | **Fixed.** `test_l17` |
+| — | MF-6 | Major | An identity event returned `terminated` while an earlier absence's grace ran | **Fixed** to §11's order: pending first. `test_l17` |
+| — | MF-6 | Major | Withdrawn or superseded statements leave no id for `resolved_at` | **Fixed in the contract:** `extra_instants` must carry them; MF-7's loader must supply them |
+| — | MF-5 | Major | A bridged return's gaps before the window start were not counted | **Fixed.** `test_a8` |
+| — | MF-5 | Major (tests) | Four non-equivalent survivors (bridged base carried conflict, Parkinson, market `spans_unknown`, the rank's state) | **Fixed.** `test_a8` |
+| — | MF-5 | Minor | `stale_sessions` never `conflicting`; volatility state name after an unresolved factor beyond F; an untrusted window start; history over-marking; rel_volume step with prices | **Carried** |
+
+### The CSE request found during audit 4 (C-0048)
+
+The auditor saw the agent proxy refuse connections to `www.cse.lk`. Traced: `tests/test_capture_multiple_companies.py`
+(`test_tradeSummary_fetched_exactly_once_per_batch`, a test from before this session) saved the **real**
+`cse_client.get_trade_summary_all` before installing its fake, then called it: one real `POST
+https://www.cse.lk/api/tradeSummary` per run. **No request reached CSE**: the cloud container's network policy refused
+every connection, and CI runs Linux tests with `--network none` and Windows tests with CSE's host names blocked and
+checked unreachable. Fixed: the counter wraps the fake. From now on this session runs the suite with an in-process
+guard plugin that refuses and logs any request to a CSE host; the full suite logs **zero** attempts.

@@ -40,8 +40,10 @@ def check_mlk1(rows, cal, fold, slices):
     for name, hi in ((fd.FIT, slices.s1), (fd.SELECT, slices.s2), (fd.CALIBRATE, slices.s3),
                      (fd.CONFORMAL, slices.c_train)):
         assert all(r.r <= hi for r in sl[name]), name                 # no label past its slice's boundary
-    for name, lo in ((fd.SELECT, slices.s1), (fd.CALIBRATE, slices.s2), (fd.CONFORMAL, slices.s3)):
-        assert all(r.t > lo for r in sl[name]), name
+    g = slices.horizon + slices.grace
+    for name, lo, hi in ((fd.SELECT, slices.s1, slices.s2), (fd.CALIBRATE, slices.s2, slices.s3),
+                         (fd.CONFORMAL, slices.s3, slices.c_train)):
+        assert all(cal.shift(lo, slices.embargo) <= r.t <= cal.shift(hi, -g) for r in sl[name]), name   # T-side
     return roles, sl
 
 
@@ -131,3 +133,20 @@ def test_mlk3_fit_scope_refuses_rows_outside_its_slice():
     conformal = fd.FitScope.of(sl, fd.CONFORMAL)
     with pytest.raises(fd.Refused):
         conformal.admit(sl[fd.CALIBRATE][:1])
+
+
+def test_m53_audit_edges_embargo_bounds_malformed_rows_and_parameters():
+    cal = fd.Calendar(range(400))
+    with pytest.raises(fd.Refused):
+        fd.Fold(250, 252, 330, H, embargo=3).check(cal)            # V_start one session short of the embargo
+    fd.Fold(250, 253, 330, H, embargo=3).check(cal)
+    rows = rows_on(list(range(400)))
+    check_mlk1(rows, cal, fd.Fold(250, 253, 330, H, embargo=3), fd.Slices(100, 150, 200, 250, H, embargo=3))
+    with pytest.raises(fd.Refused):
+        fd.Fold(100, 101, 200, H).assign([fd.Row(("x",), 150, 90)], cal)   # R before T: refused
+    for bad in (fd.Fold(100, 101, 200, H, grace=-5), fd.Fold(100, 101, 200, 0), fd.Fold(100, 101, 200, H, embargo=-1)):
+        with pytest.raises(fd.Refused):
+            bad.check(cal)
+    roles, reasons = fd.Fold(250, 251, 330, H).assign([fd.Row(("p",), 260, None), fd.Row(("c",), 240, 250)], cal)
+    assert [r.key for r in roles[fd.UNUSED]] == [("p",)] and reasons == {"pending": 1}   # pending in the window
+    assert [r.key for r in roles[fd.TRAINING]] == [("c",)]                               # R = C_train is training

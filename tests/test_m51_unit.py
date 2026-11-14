@@ -92,7 +92,7 @@ def test_s1_scoring_policy_for_every_state():                                   
 def test_b1_replicates_blocks_and_insufficient_evidence():
     assert bs.replicates_for(1, 0.05) == 9999 and bs.replicates_for(1000, 0.05) == 400000
     assert bs.gate_test([0.0] * 150, delta=0, h=1, level=0.05, block=10).state == "insufficient_evidence"   # 15 blocks
-    r = bs.gate_test([0.0] * 200, delta=0, h=1, level=0.05, block=10, replicates=99)
+    r = bs.gate_test([0.0] * 200, delta=0, h=1, level=0.05, block=10, replicates=99, simulation=True)
     assert (r.state, r.blocks) == ("tested", 20.0)
     rng = random.Random(1)
     iid = [rng.gauss(0, 1) for _ in range(500)]
@@ -106,14 +106,14 @@ def test_b1_replicates_blocks_and_insufficient_evidence():
 def test_b2_the_test_finds_a_real_difference_and_is_deterministic():
     rng = random.Random(7)
     better = [-0.05 + rng.gauss(0, 0.05) for _ in range(400)]       # M's loss lower by 0.05 per date
-    a = bs.gate_test(better, delta=0.0, h=1, level=0.01, replicates=999, seed=3)
-    b = bs.gate_test(better, delta=0.0, h=1, level=0.01, replicates=999, seed=3)
+    a = bs.gate_test(better, delta=0.0, h=1, level=0.01, replicates=999, seed=3, simulation=True)
+    b = bs.gate_test(better, delta=0.0, h=1, level=0.01, replicates=999, seed=3, simulation=True)
     assert a == b and a.rejects and a.p_value <= 0.002
-    assert not bs.gate_test(better, delta=0.1, h=1, level=0.01, replicates=999, seed=3).rejects   # effect < delta
+    assert not bs.gate_test(better, delta=0.1, h=1, level=0.01, replicates=999, seed=3, simulation=True).rejects   # effect < delta
     worse = [-v for v in better]
-    assert not bs.gate_test(worse, delta=0.0, h=1, level=0.05, replicates=999, seed=3).rejects
+    assert not bs.gate_test(worse, delta=0.0, h=1, level=0.05, replicates=999, seed=3, simulation=True).rejects
     passes, res = bs.family_test({"base_no_change": better, "base_rate_252": worse}, delta=0, h=1, alpha=0.05, m=1,
-                                 replicates=999)
+                                 replicates=999, simulation=True)
     assert not passes and res["base_no_change"].rejects and not res["base_rate_252"].rejects     # every baseline
 
 
@@ -154,18 +154,100 @@ def _null_series(rng, n=300, h=5, securities=30):
 
 
 def test_mlk8_size_of_the_test_under_dependence():                                                 # MLK-8
-    seeds, alpha = 200, 0.05
-    single = sum(1 for s in range(seeds) if bs.gate_test(_null_series(random.Random(s)), delta=0, h=5, level=alpha,
-                                                         replicates=199, seed=s).rejects)
-    assert _binomial_lower(seeds, alpha) <= single <= _binomial_upper(seeds, alpha)     # (a) the nominal size
-    m = 5
-    family = 0
-    for s in range(seeds):
+    """400 seeds as the design says. The rate is measured among the seeds the test ran on; the share it refused as
+    `insufficient_evidence` is reported, never counted as a non-rejection."""
+    seeds, alpha = 400, 0.05
+    results = [bs.gate_test(_null_series(random.Random(s)), delta=0, h=5, level=alpha, replicates=199, seed=s,
+                            simulation=True) for s in range(seeds)]
+    tested = [r for r in results if r.state == "tested"]
+    rejected = sum(1 for r in tested if r.rejects)
+    assert len(tested) >= 300                                          # most series reach 20 blocks
+    assert _binomial_lower(len(tested), alpha) <= rejected <= _binomial_upper(len(tested), alpha)   # (a)
+    m, family, ran = 5, 0, 0
+    for s in range(200):
         rng = random.Random(10_000 + s)
-        if any(bs.gate_test(_null_series(rng), delta=0, h=5, level=alpha / m, replicates=199, seed=s).rejects
-               for _ in range(m)):
-            family += 1
-    assert family <= _binomial_upper(seeds, alpha)                    # (b) family-wise rate within alpha
+        rs = [bs.gate_test(_null_series(rng), delta=0, h=5, level=alpha / m, replicates=199, seed=s, simulation=True)
+              for _ in range(m)]
+        if all(r.state == "tested" for r in rs):
+            ran += 1
+            family += any(r.rejects for r in rs)
+    assert family <= _binomial_upper(ran, alpha)                      # (b) family-wise rate within alpha
+
+
+def test_b3_floors_exact_p_family_level_and_the_resampler():
+    with pytest.raises(ValueError):
+        bs.gate_test([-0.1] * 300, delta=0, h=1, level=0.05, replicates=99, block=1)       # below both floors
+    with pytest.raises(ValueError):
+        bs.gate_test([-0.1] * 300, delta=0, h=1, level=0.05, block=5)
+    assert bs.gate_test([0.0] * 5, delta=0, h=1, level=0.05).state == "insufficient_evidence"   # under 10 dates
+    # an exact p: a constant series has every replicate mean at the null boundary (-delta = 0) above obs = -1
+    r = bs.gate_test([-1.0] * 200, delta=0, h=1, level=0.05, replicates=99, block=10, simulation=True)
+    assert r.p_value == 1 / 100                                        # (1 + 0) / (99 + 1)
+    r = bs.gate_test([0.0] * 200, delta=0, h=1, level=0.05, replicates=99, block=10, simulation=True)
+    assert r.p_value == 1.0                                            # every replicate ties: counts against M
+    # the family level is alpha / m: a p between alpha / m and alpha passes alone but not in a family of 5
+    rng = random.Random(11)
+    d = [-0.0075 + rng.gauss(0, 0.05) for _ in range(400)]       # p = 0.0275 with this seed
+    alone = bs.gate_test(d, delta=0, h=1, level=0.05, replicates=1999, seed=1, simulation=True)
+    assert 0.01 < alone.p_value <= 0.05, alone.p_value
+    assert bs.family_test({"b": d}, delta=0, h=1, alpha=0.05, m=1, replicates=1999, seed=1, simulation=True)[0]
+    assert not bs.family_test({"b": d}, delta=0, h=1, alpha=0.05, m=5, replicates=1999, seed=1, simulation=True)[0]
+    strong = [-0.2 + rng.gauss(0, 0.05) for _ in range(400)]
+    passes, res = bs.family_test({"a": strong, "b": [-0.2] * 150}, delta=0, h=1, alpha=0.05, m=1, replicates=999,
+                                 simulation=True)
+    assert res["b"].state == "insufficient_evidence" and not passes    # one untestable baseline fails the family
+    # the resampler: geometric blocks of mean L, circular, cut at n; the variance of the mean of iid data is s^2/n
+    gen = random.Random(2)
+    x = [0.0]
+    for _ in range(499):
+        x.append(0.7 * x[-1] + gen.gauss(0, 1))                       # autocorrelated: the block length matters
+    means = bs.stationary_means(x, 10, 4000, random.Random(3))
+    n = len(x)
+
+    def naive(rng):                                                   # Politis and Romano's definition, step by step
+        i, total = rng.randrange(n), 0.0
+        for k in range(n):
+            if k and rng.random() < 1 / 10:
+                i = rng.randrange(n)                                  # start a new block with probability 1/L
+            elif k:
+                i = (i + 1) % n                                       # or continue the block, wrapping round
+            total += x[i]
+        return total / n
+    nrng = random.Random(5)
+    slow = [naive(nrng) for _ in range(4000)]
+
+    def var(v):
+        mv = sum(v) / len(v)
+        return sum((u - mv) ** 2 for u in v) / len(v)
+    assert 0.9 < var(means) / var(slow) < 1.1                         # the fast resampler is the same distribution
+    trend = [float(i) for i in range(100)]                             # a long block would wrap past n otherwise
+    assert all(0 <= m_ <= 99 for m_ in bs.stationary_means(trend, 1000, 200, random.Random(4)))
+
+
+def test_b4_politis_white_against_ar1_theory():
+    """For AR(1) with coefficient phi the stationary-bootstrap optimum is (2 G^2 / D)^(1/3) n^(1/3) with
+    G = 2 phi / (1 - phi)^2 ... evaluated in closed form below."""
+    for phi, lo, hi in ((0.5, 25, 45),):
+        rng = random.Random(9)
+        x = [0.0]
+        for _ in range(19_999):
+            x.append(phi * x[-1] + rng.gauss(0, 1))
+        n = len(x)
+        g0 = 1 / (1 - phi ** 2)
+        G = 2 * g0 * phi / (1 - phi) ** 2                                 # sum over k != 0 of |k| gamma(k)
+        spec0 = g0 * (1 + phi) / (1 - phi)                                # sum over k of gamma(k)
+        theory = (2 * G * G / (2 * spec0 ** 2)) ** (1 / 3) * n ** (1 / 3)
+        est = bs.politis_white(x)
+        assert abs(est / theory - 1) < 0.2 and lo < est < hi, (est, theory)
+
+
+def test_d4_lengths_classes_inclusive_intervals_and_absent_classes():
+    for bad in (lambda: mt.directional_accuracy(["rise", "rise"], ["rise"]), lambda: mt.brier(["up"], [P(0, 0, 1)]),
+                lambda: mt.interval_coverage([0.0, 1.0], [0.0], [1.0]), lambda: mt.mse([1.0], [1.0, 2.0])):
+        with pytest.raises(ValueError):
+            bad()
+    assert mt.interval_coverage([0.0, 1.0], [0.0, 0.0], [1.0, 1.0])[0] == 1.0      # bounds are inclusive
+    assert mt.balanced_accuracy(["rise", "rise"], ["rise", "fall"]) == 0.5           # only classes present
 
 
 def test_p1_the_library_is_pure():
