@@ -621,3 +621,11 @@ The audit of migration 0019 reported no Blocker, so MF-7a is accepted (C-0037). 
 pending file (a column for the reference close's source quality; guards as an allow-list, which also covers the
 reader login `cse_verifier`; tests of grants, guards and constraints). The Minors are carried to the writer and the
 import (MF-7b, MF-7c).
+
+## C-0058: code audit 8 (MF-6) and its fix ([delegated], 2026-11-14)
+
+Audit 8 fuzzed every input kind (about 90 000 perturbations) and found **no look-ahead in `resolved_at`**, and one
+wrong value: a revised row whose stored reference close has no support in the build from s_D through F. Such a label
+now has no value (`unresolvable_quality`, `reference_not_in_build`), the conservative option; the calendar contract of
+`extra_instants` is stated (all calendar and identity evidence of the build). After the fix both fuzzers report 0
+leaks. MF-6 waits for a re-audit.

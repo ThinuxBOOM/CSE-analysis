@@ -411,3 +411,24 @@ def test_l24_resolved_at_reaches_the_last_print_before_a_revised_rows_s_d():    
         inst = {x: at(300) for x in sessions}
         inst[sessions[0]] = at(500)
         assert tg.label(stored, 1, sb, refs, session_instants=inst).resolved_at == at(500)
+
+
+# ------------------------------------------------------------------- added after audit 8 (C-0058)
+
+def test_l25_no_close_in_the_build_from_s_d_through_f_compares_on_s_ds_basis():                    # B-T10
+    s = days(5)
+    split = [act.Factor(SYM, act.SUBDIVISION, s[1], 1, 2, act.APPLIED, (), ("sp",))]
+    sb, refs, sessions = build([bar(100), bar(), bar(), bar(), bar()], factors=split)   # the s1 print revised away
+    stored = tg.ReferenceRow(SYM, sessions[2], D("50"), sessions[1])                       # the snapshot saw 50 on s1
+    lab = tg.label(stored, 1, sb, refs, session_instants={})
+    assert (lab.state, lab.ret, lab.evidence) == ("unresolvable_quality", None, ("reference_not_in_build",))
+    bad = [act.Factor(SYM, act.RIGHTS, s[1], None, None, act.UNRESOLVED)]
+    sb, refs, sessions = build([bar(100), bar(), bar(), bar(), bar()], factors=bad)
+    assert tg.label(stored, 1, sb, refs, session_instants={}).state == "unresolvable_quality"
+
+
+def test_l26_a_factor_between_s_d_and_d_applies_to_the_carried_cum_price():                        # M15
+    s = days(4)
+    split = [act.Factor(SYM, act.SUBDIVISION, s[1], 1, 2, act.APPLIED, (), ("sp",))]
+    lab, _ = label([bar(100), bar(), bar(), bar(50)], d_index=2, h=1, factors=split)
+    assert (lab.state, lab.ret) == ("resolved", D("0"))              # P_D = 100 printed on s0, cum; F prints 50 ex

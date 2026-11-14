@@ -719,7 +719,12 @@ prices of (D, F] adjusted to **F's** basis, so a corporate action after F change
 at or before D through the furthest session the label read (including a session after F whose bar ended an absence's
 grace period), over every statement behind the security's factors and confirmed moves, and over the instants of any
 withdrawn or superseding statement and of calendar or identity evidence. A later `resolved_at` only delays a label's
-use. An absence already running at D is examined like one that starts inside the horizon.
+use. An absence already running at D is examined like one that starts inside the horizon. When the build has no close from the stored s_D through F
+(s_F before s_D), the stored reference close is one the build no longer supports and the return is undefined: the
+label is `unresolvable_quality`, evidence `reference_not_in_build` (C-0058). The caller passes in `extra_instants` the
+latest admission instant of all the build's calendar evidence and identity evidence, and of every withdrawn or
+superseded statement of the security. A label whose reference close is undefined resolves at once to
+`unresolvable_missing_price`, ahead of `pending` and `terminated` (Minor 13 of §19).
 
 Each label stores **`resolved_at`**: the latest admission instant, under the build's mode, over **every** input it
 used, namely the target session's finality (or the terminating evidence), each bar in the horizon, each

@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 7 found one further Blocker (B-T9), fixed generally; a property test now checks the rule directly; a re-audit is required before acceptance (C-0054).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: audit 8 found no look-ahead (about 90 000 fuzzed perturbations over every input kind) and one wrong value (B-T10), now fixed; a re-audit is required before acceptance (C-0058).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -565,3 +565,23 @@ the designed grants; applies on the chain; nothing reads the pending folder but 
 | Ma-2 | Major | Guards named NOLOGIN `cse_reader`, not the reader login `cse_verifier` | **Fixed** by an allow-list: owner evidence only as `cse_owner`; calendar copies only as `cse_worker` with the `trading_calendar:` prefix, which the owner may not use; prefix tested with `left()`, not `like` (mi-3) |
 | Ma-3 | Major (tests) | Guards, grants and several constraints untested | **Fixed.** `test_x6` (exact grants by aclexplode), `test_x7` (every login but the owner refused under a mistaken grant; each owner-only table carries the guard), `test_x8` (a bad row per constraint), `test_s2` (no raw-response column). The guard and PUBLIC-grant mutants are now killed |
 | mi-1 to mi-9 | Minor | A free-text validation report id; non-canonical JSON; spoofable defaults; looser constraints (factor kind, signs, JSON validity, empty symbols); no FK from labels to snapshot rows; the move-flag mapping; history import gaps; DISABLE TRIGGER by the owner (shared since 0007) | **Carried** to MF-7b and MF-7c, where the writer and the import define them |
+
+
+---
+
+## Code audit 8 (MF-6 re-audit, fuzzing every input kind): fresh-context agent
+
+Audited at `bde044a`. Verdict: **REJECT**, one Blocker, a wrong value; **no look-ahead**. The auditor extended the
+fuzzer to calendar dates, absences, identity events, corporate-action statements, confirmations and bars, for plain
+and revised rows, checking both worlds: 0 leaks in every kind (and in a larger run up to 34 sessions and h = 21).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-T10 | **Blocker** | With no close in the build from the stored s_D through F (s_F before s_D), factors between s_F and s_D were never applied: a 1:2 split gave +100% instead of 0 | **Fixed conservatively:** such a label has no value, `unresolvable_quality`, evidence `reference_not_in_build` (an attempt to compare on s_D's basis made the label read moves after F, which the property test caught). `test_l25` |
+| — | Major (tests) | A factor with ex-date in (s_D, D] untested | **Fixed.** `test_l26` |
+| — | Major (contract) | Which calendar evidence goes into `extra_instants` | **Fixed:** the latest instant of all the build's calendar and identity evidence (the broad reading, 0 leaks in the fuzzer); docstring and §11 |
+| — | Minor | §11's precedence text did not show Minor 13 | **Fixed** in §11 |
+| — | Minor | An event dated exactly D; confirmations in the stored adjustment set; defensive move extensions | **Carried** |
+
+After the fix: audit 7's fuzzer, 6 runs, 0 leaks; audit 8's extended fuzzer (all six input kinds, plain and revised,
+seeds 1 to 5, 30 000 labels), 0 leaks.

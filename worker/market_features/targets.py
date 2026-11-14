@@ -93,7 +93,8 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     session_instants   {session: the latest admission instant, under the build's mode, of that session's finality
                         and of this security's bar on it}
     statement_instants {statement_id: its admission instant under the build's mode}
-    extra_instants     admission instants of any calendar or identity evidence the build rests on, AND of EVERY
+    extra_instants     the latest admission instant of the build's calendar evidence (all of it: closures, import
+                        ranges, no-session evidence; audit 8), of its identity evidence, AND of EVERY
                         statement of the security (corporate action or `no_action_confirmed`) that no longer
                         applies because it was withdrawn or superseded, with the withdrawing or superseding
                         statement, whatever its ex-date or session pair (audits 4 and 6: the conservative rule)
@@ -212,14 +213,19 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     if future.ref_session in sessions:
         lo.append(sessions.index(future.ref_session))
 
-    used = [x for x in series.factors if row.ref_session < x.ex_date <= future.ref_session
-            and x.status != actions.NO_PRICE_FACTOR]
+    # When the build has no close from the stored s_D through F, s_F is before s_D: the stored reference close is
+    # one the build no longer supports, and §11's formula (factors over s_D < e <= s_F) is undefined. The label gets
+    # no value (audit 8, B-T10; the conservative option, C-0058).
+    if future.ref_session < row.ref_session:
+        return done(QUALITY, f, evidence=("reference_not_in_build",), volatility_state=QUALITY)
+    lo_s, hi_s = row.ref_session, future.ref_session
+    used = [x for x in series.factors if lo_s < x.ex_date <= hi_s and x.status != actions.NO_PRICE_FACTOR]
     ids = tuple(sorted(i for x in used for i in x.statement_ids))
     conflicting = any(b is not None and b.quality == CONFLICTING for b in series.bars[d + 1:f + 1])
     # an unresolved factor in (s_D, F] (not after F: audit 3, MJ-T1); P_D printed by a conflicting bar is an input
     # too (audit 3, MJ-T2, decided conservatively: C-0047)
     unresolved = [x for x in series.factors if x.status == actions.UNRESOLVED
-                  and row.ref_session < x.ex_date <= sessions[f]]
+                  and lo_s < x.ex_date <= sessions[f]]
     # the build's own price at D is the base of the volatility's first return: a conflicting bar there, or a price
     # carried into D from one, is an input too (audit 4, B-T4)
     own_conflicting = (own is not None and own.source_quality == CONFLICTING) or (
@@ -236,12 +242,12 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     ret = numeric.q(numeric.to_decimal(Fraction(future.px_ref) / product / Fraction(row.px_ref) - 1))
     direction = "rise" if ret > 0 else ("fall" if ret < 0 else "flat")
     confirmations = tuple(m.statement_id for m in series.moves if m.statement_id
-                          and m.session_from < future.ref_session and m.session_to > row.ref_session)
+                          and m.session_from < hi_s and m.session_to > lo_s)
     ids = tuple(sorted(set(ids + confirmations)))
     if horizon == 1:                                              # abs_ret_1: |ln(1 + return)|, never a deviation
         volatility, vol_state = numeric.q(abs(numeric.ln(CTX.add(Decimal(1), ret)))) if ret > -1 else None, None
     more = dict(ret=ret, direction=direction, factor_statement_ids=ids, volatility=volatility)
-    if actions.unlabelled(series.moves, row.ref_session, future.ref_session):
+    if actions.unlabelled(series.moves, lo_s, hi_s):
         return done(UNEXPLAINED_MOVE, f, ids, provisional=True, volatility_state=vol_state or UNEXPLAINED_MOVE, **more)
     if future.ref_session != sessions[f]:
         return done(RESOLVED_CARRIED, f, ids, stale_sessions=future.stale_sessions,
