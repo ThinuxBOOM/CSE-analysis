@@ -374,7 +374,8 @@ A date at or before D\* is, at T under the mode:
 - The 0001 table `corporate_actions` is not used: nothing writes it, it is mutable, and it supersedes by an in-place
   flag. MF keeps `mf_corporate_action_observations` (append-only): one row per statement about an action, verbatim
   terms, source reference, the source's announcement date and ex-date, `available_at` and `recorded_at`.
-- **Where the evidence comes from is reserved (P3-R2).** No component captures CSE announcements. Until a source is
+- **Revision 6 addendum (C-0055): P3-R2 decided.** Splits come from TradeIQ's split workbook; bonus and rights issues from TradeIQ's workbooks with their ex-dates reconstructed by the strict rule of C-0055, outside MF, as evidence marked `reconstructed_from_prices.v1` (`docs/research/TRADEIQ_VALIDATION.md` §6). Events the rule cannot date stay unentered. The owner path remains for anything else.
+- **Where the evidence comes from was reserved (P3-R2), until C-0055.** No component captures CSE announcements. Until a source is
   decided, actions are entered through the **owner path** (`cse_migrator` acting as `cse_owner`), from CSE's published
   notices, with the reference kept. This is deliberately stricter than P3's `declare-closed`, which is an operator
   command run as the capture worker: an action changes every adjusted price, a closure only the calendar.

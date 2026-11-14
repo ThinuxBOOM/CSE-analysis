@@ -1,0 +1,295 @@
+{
+ "by_sheet": {
+  "1996": {
+   "rights_unreadable_ratio": 1
+  },
+  "2000": {
+   "bonus_ambiguous_name": 2,
+   "bonus_no_match": 13,
+   "rights_ambiguous_name": 1,
+   "rights_no_match": 6,
+   "rights_unmatched_name": 2
+  },
+  "2001": {
+   "bonus_ambiguous_match": 1,
+   "bonus_ambiguous_name": 2,
+   "bonus_no_match": 2,
+   "bonus_reconstructed": 1,
+   "bonus_unmatched_name": 2,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 1,
+   "rights_no_match": 1,
+   "rights_reconstructed": 1,
+   "rights_unmatched_name": 1
+  },
+  "2002": {
+   "bonus_ambiguous_match": 1,
+   "bonus_ambiguous_name": 4,
+   "bonus_no_match": 8,
+   "bonus_reconstructed": 4,
+   "bonus_unmatched_name": 1,
+   "rights_ambiguous_match": 1,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 1,
+   "rights_no_match": 1,
+   "rights_reconstructed": 3,
+   "rights_unmatched_name": 1,
+   "rights_unreadable_ratio": 1
+  },
+  "2003": {
+   "bonus_ambiguous_match": 1,
+   "bonus_ambiguous_name": 1,
+   "bonus_no_match": 5,
+   "bonus_reconstructed": 5,
+   "bonus_unmatched_name": 2,
+   "rights_ambiguous_match": 2,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 5,
+   "rights_no_match": 4,
+   "rights_reconstructed": 1,
+   "rights_unmatched_name": 5
+  },
+  "2004": {
+   "bonus_ambiguous_match": 2,
+   "bonus_ambiguous_name": 3,
+   "bonus_no_match": 10,
+   "bonus_reconstructed": 7,
+   "bonus_unmatched_name": 3,
+   "rights_ambiguous_match": 1,
+   "rights_ambiguous_name": 2,
+   "rights_no_subscription_price": 14,
+   "rights_unmatched_name": 7
+  },
+  "2005": {
+   "bonus_ambiguous_name": 3,
+   "bonus_no_match": 9,
+   "bonus_reconstructed": 12,
+   "bonus_unmatched_name": 4,
+   "rights_ambiguous_match": 7,
+   "rights_ambiguous_name": 2,
+   "rights_no_match": 2,
+   "rights_reconstructed": 4,
+   "rights_unmatched_name": 3
+  },
+  "2006": {
+   "bonus_ambiguous_match": 2,
+   "bonus_ambiguous_name": 1,
+   "bonus_no_match": 5,
+   "bonus_reconstructed": 6,
+   "bonus_unmatched_name": 7,
+   "rights_ambiguous_match": 5,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 2,
+   "rights_no_match": 1,
+   "rights_reconstructed": 3,
+   "rights_unmatched_name": 3
+  },
+  "2007": {
+   "bonus_ambiguous_name": 2,
+   "bonus_no_match": 2,
+   "bonus_reconstructed": 6,
+   "bonus_unmatched_name": 2,
+   "rights_ambiguous_match": 7,
+   "rights_below_threshold": 1,
+   "rights_no_match": 8,
+   "rights_reconstructed": 4,
+   "rights_unmatched_name": 1
+  },
+  "2008": {
+   "bonus_no_match": 1,
+   "bonus_unmatched_name": 3,
+   "rights_ambiguous_match": 1,
+   "rights_ambiguous_name": 2,
+   "rights_no_match": 3,
+   "rights_reconstructed": 2,
+   "rights_unmatched_name": 1
+  },
+  "2009": {
+   "rights_ambiguous_match": 4,
+   "rights_ambiguous_name": 2,
+   "rights_below_threshold": 1,
+   "rights_no_match": 2,
+   "rights_reconstructed": 2,
+   "rights_unmatched_name": 2
+  },
+  "2010": {
+   "bonus_no_match": 5,
+   "bonus_reconstructed": 3,
+   "bonus_unmatched_name": 2,
+   "bonus_unreadable_ratio": 1,
+   "rights_ambiguous_match": 3,
+   "rights_ambiguous_name": 3,
+   "rights_no_match": 12,
+   "rights_reconstructed": 5,
+   "rights_unmatched_name": 5
+  },
+  "2011": {
+   "bonus_ambiguous_name": 1,
+   "bonus_no_match": 3,
+   "bonus_reconstructed": 3,
+   "rights_ambiguous_match": 1,
+   "rights_ambiguous_name": 7,
+   "rights_below_threshold": 1,
+   "rights_no_match": 11,
+   "rights_reconstructed": 4,
+   "rights_unmatched_name": 3
+  },
+  "2012": {
+   "bonus_reconstructed": 1,
+   "bonus_unmatched_name": 1,
+   "rights_ambiguous_match": 7,
+   "rights_ambiguous_name": 3,
+   "rights_no_match": 4,
+   "rights_reconstructed": 2,
+   "rights_unmatched_name": 4
+  },
+  "2013": {
+   "bonus_no_match": 2,
+   "bonus_unmatched_name": 1,
+   "bonus_unreadable_ratio": 1,
+   "rights_ambiguous_match": 2,
+   "rights_below_threshold": 1,
+   "rights_no_match": 3,
+   "rights_reconstructed": 2
+  },
+  "2014": {
+   "bonus_no_match": 2,
+   "rights_ambiguous_name": 3,
+   "rights_below_threshold": 2,
+   "rights_no_match": 2,
+   "rights_reconstructed": 3
+  },
+  "2015": {
+   "bonus_reconstructed": 1,
+   "rights_ambiguous_match": 4,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 1,
+   "rights_no_match": 5,
+   "rights_reconstructed": 5
+  },
+  "2016": {
+   "bonus_no_match": 3,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 2,
+   "rights_no_match": 2,
+   "rights_unmatched_name": 1,
+   "rights_unreadable_ratio": 1
+  },
+  "2017": {
+   "bonus_no_allotment_date": 1,
+   "bonus_no_match": 3,
+   "bonus_reconstructed": 1,
+   "rights_ambiguous_match": 2,
+   "rights_ambiguous_name": 3,
+   "rights_below_threshold": 2,
+   "rights_no_match": 8,
+   "rights_unreadable_ratio": 2
+  },
+  "2018": {
+   "bonus_ambiguous_name": 4,
+   "rights_ambiguous_name": 5,
+   "rights_below_threshold": 4,
+   "rights_no_match": 3,
+   "rights_unmatched_name": 4,
+   "rights_unreadable_ratio": 1
+  },
+  "2019": {
+   "rights_ambiguous_name": 4,
+   "rights_below_threshold": 6,
+   "rights_no_match": 3,
+   "rights_reconstructed": 1,
+   "rights_unmatched_name": 3,
+   "rights_unreadable_ratio": 2
+  },
+  "2020": {
+   "rights_ambiguous_match": 4,
+   "rights_ambiguous_name": 5,
+   "rights_below_threshold": 4,
+   "rights_no_match": 1,
+   "rights_reconstructed": 1,
+   "rights_unmatched_name": 1
+  },
+  "2021": {
+   "bonus_unreadable_ratio": 1,
+   "rights_ambiguous_match": 3,
+   "rights_ambiguous_name": 4,
+   "rights_below_threshold": 2,
+   "rights_no_match": 3,
+   "rights_unmatched_name": 3,
+   "rights_unreadable_ratio": 2
+  },
+  "2022": {
+   "bonus_no_match": 1,
+   "bonus_unreadable_ratio": 1,
+   "rights_ambiguous_match": 5,
+   "rights_ambiguous_name": 3,
+   "rights_below_threshold": 2,
+   "rights_no_match": 1,
+   "rights_reconstructed": 3,
+   "rights_unmatched_name": 1
+  },
+  "2023": {
+   "bonus_no_match": 2,
+   "rights_ambiguous_match": 1,
+   "rights_ambiguous_name": 1,
+   "rights_below_threshold": 3,
+   "rights_no_match": 4,
+   "rights_reconstructed": 2,
+   "rights_unmatched_name": 1,
+   "rights_unreadable_ratio": 1
+  },
+  "2024": {
+   "rights_ambiguous_match": 2,
+   "rights_ambiguous_name": 2,
+   "rights_below_threshold": 6,
+   "rights_no_match": 4,
+   "rights_reconstructed": 1,
+   "rights_unmatched_name": 3
+  },
+  "2025": {
+   "rights_ambiguous_name": 5,
+   "rights_no_match": 1,
+   "rights_reconstructed": 1
+  }
+ },
+ "counts": {
+  "bonus_ambiguous_match": 7,
+  "bonus_ambiguous_name": 23,
+  "bonus_no_allotment_date": 1,
+  "bonus_no_match": 76,
+  "bonus_reconstructed": 50,
+  "bonus_rows": 189,
+  "bonus_unmatched_name": 28,
+  "bonus_unreadable_ratio": 4,
+  "rights_ambiguous_match": 62,
+  "rights_ambiguous_name": 63,
+  "rights_below_threshold": 47,
+  "rights_no_match": 95,
+  "rights_no_subscription_price": 14,
+  "rights_reconstructed": 50,
+  "rights_rows": 397,
+  "rights_unmatched_name": 55,
+  "rights_unreadable_ratio": 11
+ },
+ "max_factor": "9/10",
+ "method": "reconstructed_from_prices.v1",
+ "splits": 138,
+ "tolerance": "7/100",
+ "validation_on_splits": {
+  "ambiguous_match": 1,
+  "correct": 91,
+  "no_match": 43,
+  "no_series": 3,
+  "wrong": 0
+ },
+ "windows_days": {
+  "bonus": [
+   45,
+   7
+  ],
+  "rights": [
+   60,
+   21
+  ]
+ }
+}

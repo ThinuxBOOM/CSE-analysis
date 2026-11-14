@@ -96,7 +96,46 @@ issues a year are affected. The data is not wrong; it is not fully adjustable.
 3. **Accept the gaps:** use splits only and let the detector mark the rest; the affected windows and labels are
    excluded from training and scoring by the scoring policy.
 
-## 6. Not done yet
+## 6. Bonus and rights ex-dates reconstructed (owner decision C-0055, 2026-11-14)
+
+Code: `scripts/research/tradeiq/ca_reconstruct.py` (the rule), `run_ca_reconstruct.py` (the run; counts in
+`docs/research/tradeiq_ca_reconstruction_summary.json`), tests `tests/test_tradeiq_ca_reconstruct_unit.py`. The rule is
+stated in C-0055: an event with an unambiguous company and a readable ratio is dated only when exactly one session in
+its window shows a close-to-close fall within 7% of its own expected factor (both readings of the ratio tried; falls
+under 10% not attempted).
+
+**Accuracy, measured on the 138 share splits with their effective dates hidden** (window ±30 days):
+
+| Tolerance | Correct | **Wrong** | No match | Ambiguous | No series |
+|---|---|---|---|---|---|
+| 3% | 47 | **0** | 88 | 0 | 3 |
+| 5% | 70 | **0** | 65 | 0 | 3 |
+| **7% (used)** | **91** | **0** | 43 | 1 | 3 |
+| 10% | 107 | **0** | 26 | 2 | 3 |
+| 15% | 116 | **0** | 14 | 5 | 3 |
+
+The rule never chose a wrong date on the splits. Splits are large, clean falls; rights issues often fall only 10 to 20%,
+where an ordinary price move is easier to mistake for the event, so the strict 7% is kept; the table is the evidence
+for any later change.
+
+**Result on the archive** (real event rows, after removing the workbooks' summary tables):
+
+| | Bonus | Rights |
+|---|---|---|
+| Event rows | 189 | 397 |
+| **Reconstructed** | **50** | **50** |
+| Company name ambiguous or not matched | 51 | 118 |
+| Ratio unreadable, no allotment date, or no subscription price | 5 | 26 |
+| No matching fall in the window | 76 | 95 |
+| Several matching falls (ambiguous) | 7 | 62 |
+| Fall under 10%, or out of the money (not attempted) | — | 47 |
+
+The 100 reconstructed dates become corporate-action evidence (MF-7's import), each marked
+`reconstructed_from_prices.v1` with its matched reading, expected and observed factors, cum session and source row,
+and `available_at` = the announcement date where given, else the reconstructed date. Every other event stays
+unentered: Phase 3's detector flags its price move, and Phase 5 keeps those labels apart (`candidate_event`).
+
+## 7. Not done yet
 
 - Dividends and scrip dividends: not examined.
 - Survivorship from 2001 rests on the daily files alone (no de-listing list exists).

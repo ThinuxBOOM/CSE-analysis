@@ -606,3 +606,11 @@ action from a price move; it reads the evidence like any other. The rule (implem
 - before use, the rule is measured on the share splits, whose effective dates are known (hidden from the rule), and
   the accuracy is reported.
 Phase 3's design records it as the source of evidence for these two kinds (P3-R2), in its next revision.
+
+## C-0056: the ex-date reconstruction run and its measured accuracy ([delegated], 2026-11-14)
+
+The rule of C-0055 is implemented and run. On the 138 share splits with their dates hidden it chose **no wrong date**
+at any tolerance from 3% to 15%; at the 7% used it dated 91 and declined 44. On the archive it reconstructed **100**
+ex-dates (50 bonus of 189, 50 rights of 397); the rest stay unentered and are flagged by the detector. Results and
+the tolerance table: `docs/research/TRADEIQ_VALIDATION.md` §6. Loading them into `mf_corporate_action_observations`
+is part of MF-7's import. Not yet audited (C-0037).
