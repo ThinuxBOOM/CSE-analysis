@@ -142,12 +142,15 @@ def main(root, work, out_json):
             counts[f"{kind}_{why}"] += 1
             by_year[sheet][f"{kind}_{why}"] += 1
             if m is not None:
+                new, held = (ratio[0], ratio[1]) if m.reading == "new:held" else (ratio[1], ratio[0])
                 rows_out.append([f"tiq:{kind}:{sha[:12]}:{sheet}:{i}", sym, kind, m.ex_date.isoformat(), m.reading,
+                                 held, new, "" if price is None else str(price),
                                  str(m.expected), str(m.observed), m.cum_session.isoformat(),
                                  (announce or m.ex_date).isoformat(), ca.METHOD, f"{fname} [{sheet}] row {i}", sha])
     with open(os.path.join(work, "reconstructed_actions.csv"), "w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["statement_id", "symbol", "kind", "ex_date", "reading", "expected_factor", "observed_factor",
+        w.writerow(["statement_id", "symbol", "kind", "ex_date", "reading", "held", "new", "subscription_price",
+                    "expected_factor", "observed_factor",
                     "cum_session", "available_on", "method", "source_row", "source_sha256"])
         w.writerows(rows_out)
     splits = []

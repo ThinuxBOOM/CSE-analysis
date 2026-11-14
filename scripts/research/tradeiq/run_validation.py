@@ -42,9 +42,12 @@ def sha256(path):
 
 def parse_all(root, out_csv):
     files, footers = [], {}
-    with open(out_csv, "w", newline="") as fo:
+    rej_path = os.path.join(os.path.dirname(out_csv), "rejected.csv")
+    with open(out_csv, "w", newline="") as fo, open(rej_path, "w", newline="") as fr:
         w = csv.writer(fo)
         w.writerow(FIELDS)
+        wr = csv.writer(fr)
+        wr.writerow(["file", "sheet", "row", "reason", "symbol", "date"])
         for d in DAILY_DIRS:
             for name in sorted(os.listdir(os.path.join(root, d))):
                 path = os.path.join(root, d, name)
@@ -56,6 +59,16 @@ def parse_all(root, out_csv):
                         w.writerow([r.symbol, r.company_code, r.security_class or "", r.trade_date.isoformat(),
                                     r.close, r.high, r.low, r.open, r.trades, r.shares, r.turnover, r.layout, name,
                                     sheet, r.source_row, r.source_block, "|".join(r.flags)])
+                    for b in bad:                # the quarantine of the import: symbol and date where readable
+                        sym = day = ""
+                        if lay == "L4" and len(b.cells) > 4:
+                            try:
+                                sym = dp.symbol(b.cells[0], b.cells[1] or None, b.cells[2]) if b.cells[1] else ""
+                            except ValueError:
+                                sym = ""
+                            d0 = dp.to_date(b.cells[4])
+                            day = d0.isoformat() if d0 else ""
+                        wr.writerow([name, sheet, b.source_row, b.reason, sym, day])
                     stated = None
                     for b in bad:          # SQL*Plus footer of the 1990s exports: "<n> rows selected."
                         m = re.match(r"^(\d+)\s*rows\s*selec", " ".join(b.cells))

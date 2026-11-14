@@ -585,3 +585,26 @@ and revised rows, checking both worlds: 0 leaks in every kind (and in a larger r
 
 After the fix: audit 7's fuzzer, 6 runs, 0 leaks; audit 8's extended fuzzer (all six input kinds, plain and revised,
 seeds 1 to 5, 30 000 labels), 0 leaks.
+
+---
+
+## MF-7b: the TradeIQ import
+
+**Status: implemented and tested (2026-11-14); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/market_feature_store/tradeiq_import.py` | `plan()` (from the research outputs: batches with their declarations, bars, the 1990s code mapping, quarantine, `security_complete`, calendar completeness against the index workbook, splits and reconstructed actions) and `write()` (one transaction through the owner path) |
+| `tests/test_mf7_tradeiq_import.py` | The plan on a synthetic work directory; the write into a throwaway cluster, and the worker refused |
+| `scripts/research/tradeiq/run_validation.py`, `run_ca_reconstruct.py` | Now also write the rejected rows (for the quarantine) and each reconstructed event's ratio and subscription price |
+
+**Full run, local throwaway PostgreSQL 16 (2026-11-14; deleted afterwards):** 33 batches (8 with survivorship
+`unknown`, 1991 to 2000; 25 `complete`), 31 of them calendar-complete against the index; **1 404 336 bars** written in
+31 s; 1 902 quarantined pairs (765 days a workbook printed twice with different prices, 1 137 shifted 2023 rows);
+9 002 `security_complete` ranges; 238 corporate-action statements (138 splits, 50 bonus, 50 rights reconstructed);
+14 913 bars of 1990s codes left out because the code does not map to one ordinary voting line.
+
+Choices for the audit: the batch is the source workbook; `security_complete` per security runs from its first to its
+last row in the workbook (quarantined pairs override it); a split's `available_at` is the end of its announcement day,
+else of its effective day; a split with a non-whole ratio is left out (one case); the 1990s mapping requires the code to
+appear in 2001-2002 with ordinary voting shares only.

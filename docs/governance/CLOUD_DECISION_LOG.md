@@ -629,3 +629,10 @@ wrong value: a revised row whose stored reference close has no support in the bu
 now has no value (`unresolvable_quality`, `reference_not_in_build`), the conservative option; the calendar contract of
 `extra_instants` is stated (all calendar and identity evidence of the build). After the fix both fuzzers report 0
 leaks. MF-6 waits for a re-audit.
+
+## C-0059: Phase 3 MF-7b, the TradeIQ import ([delegated], 2026-11-14)
+
+The import of the validated TradeIQ archive into migration 0019's tables is implemented and tested, and a full run
+into a local throwaway database succeeded (1 404 336 bars, 238 corporate-action statements, 1 902 quarantined pairs).
+It is an owner-run step through the owner path; no production database exists and nothing was loaded anywhere
+permanent. Accepted when an audit reports no Blocker.
