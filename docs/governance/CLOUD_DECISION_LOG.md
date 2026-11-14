@@ -392,3 +392,41 @@ checkpoint: CI fast and CI regression are green on `963de0e`; the offline suite 
 MF-1 to MF-3 have had one code audit (FAIL, fixed); MF-4 and MF-5 have had none; the second audit was cut off by the
 usage limit and produced no result. The draft `worker/market_features/targets.py` (MF-6) is committed untested and
 unaudited, marked as such in the implementation record, so that it is not lost. Nothing is accepted for `main`.
+
+## C-0035: historical prices from TradeIQ, and G-1 extended (owner decision, 2026-11-14)
+
+The owner decided P3-R1: **the source of historical market data is the public third-party copy
+`TradeIQ-CSE/cse-dataset`**, with the legal risk accepted, and **G-1 extended** to cover it. The extension is recorded
+in `docs/governance/G-1_CSE_DATA_USE.md` §9 (E1). The owner also allowed the cloud session to fetch that repository
+to validate the data. The data is validated before any of it is used (`docs/research/TRADEIQ_VALIDATION.md`); it
+enters project tables only through Phase 3's import path, with per-batch provenance, after its data family shows no
+blocker. No data file is committed to Git, and no CSE request is involved.
+
+The research on `research/tradeiq-phase3-validation-2026-11-12` (its report and audit script) is the starting point;
+that branch is not merged.
+
+Still open and the owner's: P5-R5, the waiver to validate models on `reconstructed` data only, which using imported
+history alone will require; and P3-R2 (corporate-action evidence), which TradeIQ may answer once validated.
+
+## C-0036: Route 1 may be ML-only (owner decision, 2026-11-14)
+
+The owner decided P5-A05 (research branch review) and the matching deviation in Phase 5 §2 (P5-R4, MA §12 to §13): a
+Route 1 combination **may contain no deterministic-engine component**. Such a prediction stays flagged
+`no_engine_component`, and the security's full engine outputs are still stored with every prediction (Phase 5
+§11.1). Phase 5 revision 4 records this as the owner's decision rather than an open deviation.
+
+## C-0037: audit policy, stop at no Blocker (owner decision, 2026-11-14)
+
+The owner decided the open question of C-0034: **a design or implementation step is accepted when its latest audit
+reports no Blocker.** Major and Minor findings no longer hold up acceptance. They are still recorded, each with a
+disposition (fixed, or carried with the step where it will be fixed), and a carried Major is fixed before the work
+reaches `main`. C-0005 is amended accordingly; everything else in it stands.
+
+Applied to the state at C-0034:
+- **MF-1, MF-2, MF-3:** their first code audit (C-0032) reported no Blocker. They are **accepted on the branch**,
+  with their findings fixed or carried as recorded.
+- **MF-4, MF-5:** not yet audited; accepted when an audit reports no Blocker.
+- **Phase 5:** revision 3's second audit reported no Blocker (C-0021). Revision 4 will apply the research branch's
+  six findings and C-0036, and is accepted on its next audit if that reports no Blocker.
+- **Milestone 10 design:** revision 2 still needs its audit (revision 1's audit found a Blocker).
+- **Phases 6 and 7:** still need a first audit.

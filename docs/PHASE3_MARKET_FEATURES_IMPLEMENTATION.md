@@ -8,7 +8,7 @@ Each step below is implemented, tested, audited by a fresh-context agent (C-0005
 
 ## MF-1: modes, finality, bars, the reference price
 
-**Status: implemented and tested; first code audit FAIL (no Blocker), findings fixed (see "Code audit 1"); re-audit pending.**
+**Status: ACCEPTED on the branch (C-0037: first code audit reported no Blocker; its findings are fixed or carried as recorded in "Code audit 1").**
 
 ### What was built
 
@@ -77,7 +77,7 @@ and W3 on Windows by the partition's own rule.
 
 ## MF-2: the session calendar as of T
 
-**Status: implemented and tested; first code audit FAIL (one Major, tests only), fixed; re-audit pending.**
+**Status: ACCEPTED on the branch (C-0037: no Blocker; the Major, tests only, is fixed).**
 
 ### What was built
 
@@ -122,7 +122,7 @@ partition ok, 73 test files.
 
 ## MF-3: corporate actions and adjustment
 
-**Status: implemented and tested; first code audit FAIL (two Majors, wrong rights factors), fixed; re-audit pending.**
+**Status: ACCEPTED on the branch (C-0037: no Blocker; both Majors, wrong rights factors, are fixed).**
 
 ### What was built
 
