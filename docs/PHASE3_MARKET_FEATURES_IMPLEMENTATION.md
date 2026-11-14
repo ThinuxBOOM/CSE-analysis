@@ -178,7 +178,7 @@ partition ok, 74 test files.
 
 ## MF-4: identity, the universe, eligibility
 
-**Status: implemented and tested; audit pending.**
+**Status: ACCEPTED on the branch (C-0043: audit 2 reported no Blocker; its findings are fixed or carried as recorded in "Code audit 2").**
 
 ### What was built
 
@@ -234,7 +234,7 @@ partition ok, 75 test files.
 
 ## MF-5: arithmetic, the carried series, feature set v1, market context
 
-**Status: implemented and tested; audit pending.**
+**Status: audit 2 found one Blocker (B1), now fixed and tested; a re-audit of the fix is required before acceptance (C-0043).**
 
 ### What was built
 
@@ -379,3 +379,34 @@ Known gaps to settle when the step is resumed:
   the design's wording.
 - The import-graph test (the feature path must not import this module) exists in `tests/test_mf5_unit.py`
   (`test_g1`) from the feature side only.
+
+
+---
+
+## Code audit 2 (MF-4, MF-5): fresh-context agent, C-0005 and C-0037
+
+Audited at `241f78c`. Verdicts: **MF-4 ACCEPT (no Blocker); MF-5 REJECT (one Blocker).** No leakage found;
+arithmetic matched an independent 50-digit implementation on random series and a random market; 56 mutants run (37
+killed). Fixes on 2026-11-14; full suite 2268 passed, 680 skipped.
+
+| # | Step | Severity | Finding | Disposition |
+|---|---|---|---|---|
+| B1 | MF-5 | **Blocker** | A `conflicting` input at the first session of a window (or carried into it) was not checked; the value came out `fresh` in ret_n, dd_252, Parkinson, return history, rel_volume and the session means | **Fixed.** `_stretch` checks [start, end]; `Point.source_conflicting` carries a close printed by a `conflicting` bar into every value that uses it; return history checks both ends of each h-return; rel_volume checks the step to t. `test_a1`; mutants for each part killed |
+| M1 | MF-5 | Major | `shares_implied` divided by the close; §10.3 says the last traded price | **Fixed to the design:** CSE's last traded price from the reconciled bar; null with reason `no_last_traded_price` when absent. `test_f8` |
+| M2 | MF-5 | Major (tests) | 13 surviving non-equivalent mutants | **Fixed:** `test_a1` to `test_a4` (vol window edge, momentum end, session minimum, history untrusted, gap_1 on t's basis and its gap guard, traded = unknown in zero_trade_ratio, precedence of conflicting over missing, breadth, the market gap guard, beta without bridged returns) |
+| M3 | MF-4 | Major | The `untrusted` half of the quality criterion was never set by any caller | **Fixed.** `eligibility` takes the series points; `market.eligibility_by_session` passes them. `test_x1` through the real series |
+| M4 | MF-4 | Major (tests) | Three untested guards | **Fixed.** `test_x2` (a link older than a reuse; the link filter; the median of an even count) |
+| m1 | MF-5 | Minor | rel_volume ignored a gap between t−1 and t | **Fixed** with B1 |
+| m2 | MF-5 | Minor | `breadth` raised on an empty market | **Fixed.** `test_a4` |
+| m3 | MF-5 | Minor | xs_rank turned a `stale` own value into `partial`, and ignored m_t's spans flags | **Fixed** in code; the state carry-over is not separately tested (carried) |
+| m4 | MF-5 | Minor | amihud and Parkinson never report `partial` for fewer inputs | **Carried:** by definition their inputs are traded sessions; to be stated in the design at its next revision |
+| m5 | MF-5 | Minor | dd_days on a carried series takes the last carried session of a tied peak | **Carried:** literal to "latest, if tied"; design clarification at the next revision |
+| m6 | MF-5 | Minor | A member's `conflicting` bar on u still enters m_u | **Carried:** the design is silent; design decision at the next revision |
+| m7 | MF-4 | Minor | History counts bars with `traded = unknown` | **Carried:** design clarification |
+| m8 | MF-4 | Minor | A rename back to an earlier symbol is refused as a cycle | **Carried:** fails loudly; safe |
+| m9 | MF-4 | Minor | Symbol forms outside the regex are `not_applicable` without notice | **Carried:** to be checked against real CSE symbols with the suffix table (laptop) |
+
+The auditor judged every recorded MF-5 choice sound. Of the MF-4 choices, the provisional suffix table "contradicts
+the letter of §8.1" and is acceptable only with its stated gate; "liquidity failure gives `low_activity`" needs a
+design change (a result name of its own) at the next revision. CSE's carried close (TradeIQ F11) is handled as the
+design says: a traded session with r = 0.

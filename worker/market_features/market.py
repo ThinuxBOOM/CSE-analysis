@@ -38,7 +38,8 @@ def eligibility_by_session(series_by_symbol, references_by_symbol, policy: Eligi
     for symbol, series in series_by_symbol.items():
         refs = references_by_symbol[symbol]
         sessions = series.sequence.sessions
-        out[symbol] = [eligibility(symbol, series.bars[:i + 1], refs.get(sessions[i]), policy).result == ELIGIBLE
+        out[symbol] = [eligibility(symbol, series.bars[:i + 1], refs.get(sessions[i]), policy,
+                                   series.points[:i + 1]).result == ELIGIBLE
                        for i in range(len(sessions))]
     return out
 
@@ -92,10 +93,10 @@ def market_features(points, sequence):
 
 def breadth(points, series_by_symbol):
     t = len(points) - 1
-    p = points[t]
     notes = Notes()
-    if p.m is None:
+    if t < 0 or points[t].m is None:                                   # an empty market too (audit 2, m2)
         return finish("mkt_breadth_1", None, notes.add(MISSING, "below_min_constituents"))
+    p = points[t]
     up = sum(1 for s in p.members if series_by_symbol[s].points[t].r > 0)
     if p.spans_gap:
         notes.add(PARTIAL, "spans_gap")
@@ -164,7 +165,11 @@ def _rank(symbol, point, ret_21_by_symbol, config):
     equal = sum(1 for v in values.values() if v == own)
     average_rank = CTX.add(Decimal(below), CTX.divide(Decimal(equal + 1), Decimal(2)))
     own_state = ret_21_by_symbol[symbol].state
-    if own_state != FRESH:
-        notes.add(PARTIAL if own_state not in (UNLABELLED,) else UNLABELLED, "ret_21_" + own_state)
+    if own_state != FRESH:                     # the own value's state carries over as it is (audit 2, m3)
+        notes.add(own_state, "ret_21_" + own_state)
+    if point.spans_gap:
+        notes.add(PARTIAL, "spans_gap")
+    if point.spans_unknown:
+        notes.add(PARTIAL, "spans_unknown")
     return finish("xs_rank_ret_21", CTX.divide(CTX.subtract(average_rank, Decimal("0.5")), Decimal(len(values))),
                   notes, None, len(values))

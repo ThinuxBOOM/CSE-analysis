@@ -92,18 +92,22 @@ class Calculator:
 
     # ------------------------------------------------------------------------------------------------- helpers
     def _stretch(self, start, end, n) -> Notes:
-        """The states a window owes to the stretch of sessions (start, end]: gaps, flagged bars, unexplained moves,
-        untrusted adjustment, a bridged unknown-price stretch. n is the window's nominal length for the tolerance."""
+        """The states a window owes to the stretch of sessions from start to end: gaps and unexplained moves between
+        them, untrusted adjustment and bridged unknown prices in (start, end], and a `conflicting` input anywhere in
+        [start, end], including a price carried from a `conflicting` bar (audit 2, B1). n is the window's nominal
+        length for the tolerance."""
         notes = Notes()
         if start < 0:
             return notes.add(MISSING, "insufficient_history")
         gaps = self.s.sequence.gaps_between(start, end)
         if gaps:
             notes.add(*((PARTIAL, "spans_gap") if len(gaps) <= gap_tolerance(n) else (MISSING, "gaps_beyond_tolerance")))
-        for i in range(start + 1, end + 1):
+        for i in range(start, end + 1):
             bar, p = self.s.bars[i], self.s.points[i]
-            if bar is not None and bar.quality == CONFLICTING:
+            if (bar is not None and bar.quality == CONFLICTING) or p.source_conflicting:
                 notes.add(CONFLICT, "conflicting_bar")
+            if i == start:
+                continue
             if p.state == UNTRUSTED:
                 notes.add(UNTRUST, "unresolved_factor")
             if p.spans_unknown or p.state == PRICE_UNKNOWN:
@@ -118,6 +122,8 @@ class Calculator:
         if i < 0:
             return notes.add(MISSING, "insufficient_history")
         p = self.s.points[i]
+        if p.source_conflicting:
+            notes.add(CONFLICT, "conflicting_bar")
         if p.state == UNTRUSTED:
             notes.add(UNTRUST, "unresolved_factor")
         elif p.state == PRICE_UNKNOWN:
@@ -273,6 +279,10 @@ class Calculator:
         today, note = self._volume(self.t)
         if note:
             notes.add(*note)
+        if self.t >= 1:                          # the step from the base to t: a gap, a conflicting bar at t (m1, B1)
+            step = self._stretch(self.t - 1, self.t, 21)
+            notes.merge(step)
+            notes.items = [x for x in notes.items if x != (PARTIAL, "spans_unknown")]
         if today is None and not note:
             notes.add(MISSING, "no_bar")
         if base_value is not None and base_value == 0:
@@ -322,6 +332,9 @@ class Calculator:
                 if a < 0:
                     continue
                 pa, pu = self.s.points[a], self.s.points[u]
+                if any((b is not None and b.quality == CONFLICTING) for b in (self.s.bars[a], self.s.bars[u])) \
+                        or pa.source_conflicting or pu.source_conflicting:
+                    notes.add(CONFLICT, "conflicting_bar")                 # audit 2, B1
                 if UNTRUSTED in (pa.state, pu.state):
                     notes.add(UNTRUST, "unresolved_factor")
                     continue
@@ -361,8 +374,16 @@ class Calculator:
         cap = None if bar is None else bar.market_cap_reported
         out.append(simple("market_cap_reported", cap, "no_bar" if bar is None else "not_reported"))
         traded = bar is not None and bar.traded is True and bar.px_close is not None and bar.px_close > 0
-        out.append(simple("shares_implied", CTX.divide(cap, bar.px_close) if traded and cap is not None else None,
-                          "not_traded" if not traded else "not_reported"))
+        ltp = None
+        if traded:                               # §10.3: market cap over CSE's last traded price (audit 2, M1)
+            try:
+                ltp = numeric.to_decimal(bar.raw.get("last_traded_price")) if bar.raw.get("last_traded_price") \
+                    not in (None, "") else None
+            except (TypeError, ValueError, ArithmeticError):
+                ltp = None
+        ltp = ltp if ltp is not None and ltp > 0 else None
+        out.append(simple("shares_implied", CTX.divide(cap, ltp) if traded and cap is not None and ltp else None,
+                          "not_traded" if not traded else ("not_reported" if cap is None else "no_last_traded_price")))
         rng = traded and bar.high is not None and bar.low is not None
         out.append(simple("range_1", CTX.divide(CTX.subtract(bar.high, bar.low), bar.px_close) if rng else None,
                           "not_traded" if not traded else "no_high_low"))

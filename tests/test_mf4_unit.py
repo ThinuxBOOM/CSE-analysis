@@ -157,3 +157,43 @@ def test_e4_the_policy_is_provisional_and_its_values_are_the_designs():
             p.max_stale_sessions, p.quality_block_window) == ("provisional", 252, 63, F(1, 2), D("100000"), 5, 21)
     lenient = uni.EligibilityPolicy(min_history_sessions=10)
     assert uni.eligibility(SYM, [bar()] * 10, ref(), lenient).result == uni.ELIGIBLE
+
+
+# ------------------------------------------------------------------- added after audit 2 of MF-4 and MF-5 (C-0043)
+
+def test_x1_an_untrusted_session_blocks_through_the_real_series():                                         # M3
+    from worker.market_features import actions as act
+    from worker.market_features import series as sr
+    from worker.market_features.calendar import SessionSequence
+    from worker.market_features.reference import reference_series
+    sessions = [D0 + timedelta(days=i) for i in range(400) if (D0 + timedelta(days=i)).weekday() < 5][:260]
+    from decimal import Decimal as Dd
+    priced = [FeatureBar(symbol=SYM, row=1, traded=True, px_close=Dd("10"), price_unknown=False, share_volume=Dd(1),
+                         trade_count=None, turnover=Dd("500000"), open_price=None, high=None, low=None, quality="fresh")
+              for _ in sessions]
+    refs = {r.session: r for r in reference_series(list(zip(sessions, priced)))}
+    seq = SessionSequence(tuple(sessions), tuple(() for _ in sessions[1:]))
+    unresolved = [act.Factor(SYM, act.RIGHTS, sessions[-3], None, None, act.UNRESOLVED)]
+    s = sr.build_series(SYM, seq, dict(zip(sessions, priced)), refs, unresolved)
+    assert uni.eligibility(SYM, priced, refs[sessions[-1]]).result == uni.ELIGIBLE
+    e = uni.eligibility(SYM, priced, refs[sessions[-1]], uni.EligibilityPolicy(), s.points)
+    assert (e.result, e.quality_blocks) == (uni.BLOCKED_QUALITY, 18)    # the sessions before the ex-date
+
+
+def test_x2_link_filters_and_the_median_of_an_even_count():                                              # M4
+    q = Query(KNOWN, at(date(2026, 12, 1)))
+    Seg = uni.Segment
+    link = uni.IdentityObservation(uni.LINK, "NEW.N0000", date(2026, 6, 1), at(date(2026, 6, 2)),
+                                   at(date(2026, 5, 20)), "n", predecessor="OLD.N0000")
+    reuse = uni.IdentityObservation(uni.SYMBOL_REUSED, "NEW.N0000", date(2026, 8, 1), at(date(2026, 8, 2)),
+                                    at(date(2026, 8, 1)), "n")
+    assert uni.series_segments("NEW.N0000", [link, reuse], q) == [Seg("NEW.N0000", date(2026, 8, 1), None)]
+    later = uni.IdentityObservation(uni.LINK, "OLD.N0000", date(2026, 7, 1), at(date(2026, 7, 2)),
+                                    at(date(2026, 6, 20)), "n", predecessor="OLDER.N0000")
+    assert uni.series_segments("NEW.N0000", [link, later], q) == [Seg("OLD.N0000", None, date(2026, 6, 1)),
+                                                                  Seg("NEW.N0000", date(2026, 6, 1), None)]
+    window = [bar(turnover="90000"), bar(turnover="120000")] * 31 + [bar(turnover="100000")]
+    assert uni.eligibility(SYM, [bar()] * 189 + window, ref()).median_turnover == D("100000")      # odd: the middle
+    even = [bar(False, None)] + [bar(turnover="90000"), bar(turnover="120000")] * 31          # 62 traded sessions
+    e = uni.eligibility(SYM, [bar()] * 189 + even, ref())
+    assert (e.activity_sessions_known, e.median_turnover) == (63, D("105000"))      # the mean of the two middle

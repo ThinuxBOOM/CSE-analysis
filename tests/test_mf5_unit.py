@@ -248,8 +248,13 @@ def test_f7_return_history_counts_only_returns_that_end_in_the_window_and_always
 
 
 def test_f8_size_range_and_the_opening_gap():
-    f = feats([bar(100), bar(110, high=112, low=108, open_=105, cap=1100000)])
-    assert f["market_cap_reported"].value == 1100000 and f["shares_implied"].value == 10000
+    import dataclasses
+    t_bar = dataclasses.replace(bar(110, high=112, low=108, open_=105, cap=1100000), raw={"last_traded_price": D("112")})
+    f = feats([bar(100), t_bar])
+    assert f["market_cap_reported"].value == 1100000                  # §10.3: over the last traded price, not the close
+    assert f["shares_implied"].value == num.q(num.CTX.divide(D(1100000), D(112)))
+    no_ltp = feats([bar(100), bar(110, high=112, low=108, open_=105, cap=1100000)])["shares_implied"]
+    assert no_ltp.reasons == (("missing", "no_last_traded_price"),)
     assert f["range_1"].value == num.q(num.CTX.divide(D(4), D(110))) and f["gap_1"].value == D("0.05")
     f = feats([bar(100), bar()])
     assert [f[k].reasons[0][1] for k in ("market_cap_reported", "shares_implied", "range_1", "gap_1")] == [
@@ -349,3 +354,89 @@ def test_g1_the_feature_path_does_not_import_the_target_module_and_is_pure():
             assert not any("target" in x or "label" in x for x in names), (module.__name__, names)
     assert set(mk.MARKET_FEATURE_IDS).isdisjoint(ft.SECURITY_FEATURE_IDS)
     assert len(ft.SECURITY_FEATURE_IDS) + len(mk.MARKET_FEATURE_IDS) == 54
+
+
+# ------------------------------------------------------------------- added after audit 2 of MF-4 and MF-5 (C-0043)
+
+def test_a1_a_conflicting_input_at_the_first_session_of_a_window_or_carried_into_it_is_conflicting():      # B1
+    assert feats([bar(100), bar(100, quality="conflicting"), bar(110)])["ret_1"].state == "conflicting"
+    carried = feats([bar(90, quality="conflicting"), bar(), bar(), bar(95)])["ret_1"]
+    assert (carried.value, carried.state) == (None, "conflicting")       # a close carried from a conflicting bar
+    g = feats([bar(90, quality="conflicting"), bar(), bar(95, open_=96)])["gap_1"]
+    assert (g.value, g.state) == (None, "conflicting")                 # gap_1's c(t-1) is that carried close
+    long = [bar(100)] * 300
+    long[300 - 1 - 63] = bar(100, quality="conflicting")
+    assert feats(long[:-1] + [bar(110)])["ret_63"].state == "conflicting"
+    dd = [bar(100)] * 260
+    dd[260 - 252] = bar(300, quality="conflicting")
+    assert feats(dd)["dd_252"].state == "conflicting"
+    pk = [bar(100, high=101, low=99)] * 30
+    pk[30 - 21] = bar(100, high=200, low=50, quality="conflicting")
+    assert feats(pk)["vol_parkinson_21"].state == "conflicting"
+    hist = [bar(100 + i % 3) for i in range(300)]
+    hist[200] = bar(101, quality="conflicting")
+    h = feats(hist)
+    assert all(h[f"hist_{k}_1"].state == "conflicting" for k in ("up_share", "flat_share", "down_share", "mean_ret"))
+    sv = [bar(100)] * 22
+    sv[22 - 21] = bar(100, quality="conflicting")
+    assert feats(sv)["vol_shares_avg_21"].state == "conflicting"     # the session window's first bar
+    rv = [bar(100)] * 22 + [bar(100, volume="5000", quality="conflicting")]
+    assert feats(rv)["rel_volume_21"].state == "conflicting"
+    gap = feats([bar(100)] * 22 + [bar(100, volume="5000")], gaps={21: 1})["rel_volume_21"]
+    assert (gap.value, gap.state) == (D(5), "partial")                 # a gap between t-1 and t (m1)
+
+
+def test_a2_window_edges_momentum_end_and_session_minimum():
+    jump = [bar(100)] * 9 + [bar(200)] * 22                           # the only move is r at t-21
+    v = feats(jump)["vol_21"]
+    assert (v.value, v.inputs) == (0, 21)                              # outside the 21 returns ending at t
+    mom = [bar(100)] * 107 + [bar(150)] * 20
+    assert feats(mom)["mom_126_21"].value == 0                         # c(t-21) = c(t-126) = 100
+    fifteen = [bar(100)] + [None] * 6 + [bar(100)] * 15
+    assert feats(fifteen)["vol_shares_avg_21"].state == "partial"      # exactly the minimum: a value
+    fourteen = [bar(100)] * 2 + [None] * 7 + [bar(100)] * 14
+    assert feats(fourteen)["vol_shares_avg_21"].state == "missing"
+
+
+def test_a3_history_untrusted_gap_1_on_ts_basis_and_its_gap_guard_and_unknown_trading():
+    d = days(300)
+    bad = [act.Factor(SYM, act.RIGHTS, d[250], None, None, act.UNRESOLVED)]
+    h = feats([bar(100 + i % 3) for i in range(300)], factors=bad)
+    assert h["hist_up_share_1"].state == "untrusted"
+    d2 = days(3)
+    split_at_t = [act.Factor(SYM, act.SUBDIVISION, d2[2], 1, 2, act.APPLIED)]
+    g = feats([bar(100), bar(100), bar(52, open_=51)], factors=split_at_t)["gap_1"]
+    assert g.value == D("0.02")                                        # t-1 traded at 100: 50 on t's basis
+    assert feats([bar(100), bar(100), bar(101, open_=101)], gaps={1: 1})["gap_1"].state == "missing"
+    unknown = FeatureBar(symbol=SYM, row=5, traded=None, px_close=None, price_unknown=True, share_volume=None,
+                         trade_count=None, turnover=None, open_price=None, high=None, low=None, quality="missing")
+    z = feats([bar(100)] * 50 + [unknown] * 13)["zero_trade_ratio_63"]
+    assert (z.inputs, z.value) == (50, 0)                              # traded = unknown is in neither part
+    both = feats([bar(100), bar(100, quality="conflicting"), bar(100), bar(100), bar(100), bar(unknown=True, traded=True)])["ret_5"]
+    assert both.state == "conflicting" and ("missing", "price_unknown") in both.reasons
+
+
+def test_a4_market_breadth_flat_is_not_up_the_gap_guard_and_beta_without_bridged_returns():
+    def sym(i):
+        return f"S{i}.N0000"
+    flat = {sym(i): [bar(100, symbol=sym(i))] * 4 + [bar(110 if i < 2 else 100, symbol=sym(i))] for i in range(3)}
+    series, eligible, pts = market(flat)
+    assert mk.breadth(pts, series).value == num.q(num.CTX.divide(D(2), D(3)))
+    assert mk.breadth([], {}).state == "missing"                       # an empty market (m2)
+    seq = series[sym(0)].sequence
+    gapped = SessionSequence(seq.sessions, seq.gaps_after[:-1] + ((date(2000, 1, 1),),))
+    assert mk.market_features(pts, gapped)["mkt_ret_ew_1"].state == "missing"
+    n = 130
+
+    def path(s, mult, unknown_at=None):
+        px, out = D(100), []
+        for u in range(n):
+            if u:
+                px = num.exp(num.CTX.multiply(D(mult), D("0.01") if u % 2 else D("-0.02"))) * px
+            out.append(bar(unknown=True, traded=True, symbol=s) if u == unknown_at else bar(px, symbol=s))
+        return out
+    paths = {sym(i): path(sym(i), i + 1, 60 if i == 0 else None) for i in range(4)}
+    series, eligible, pts = market(paths)
+    ret21 = {s: ft.Calculator(series[s], CFG).all()["ret_21"] for s in series}
+    beta = mk.security_market_features(sym(0), series[sym(0)], pts, ret21, CFG)["beta_126"]
+    assert beta.inputs == 124                                          # r(60) undefined, r(61) bridged: both out

@@ -176,7 +176,7 @@ def _median(values):
     return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
 
 
-def eligibility(symbol, bars, reference, policy: EligibilityPolicy = EligibilityPolicy()) -> Eligibility:
+def eligibility(symbol, bars, reference, policy: EligibilityPolicy = EligibilityPolicy(), points=None) -> Eligibility:
     """bars: this security's feature bars on the final sessions up to D*, in order, None where it has no bar (not a
     member). reference: its reference.Reference at D*."""
     if not is_equity_line(symbol):
@@ -190,8 +190,13 @@ def eligibility(symbol, bars, reference, policy: EligibilityPolicy = Eligibility
         failed.append(PRICE_UNKNOWN)
     if history < policy.min_history_sessions:
         failed.append(INSUFFICIENT_HISTORY)
-    blocks = sum(1 for b in bars[-policy.quality_block_window:]
-                 if b is not None and (b.quality == CONFLICTING or "untrusted" in b.flags))
+    # §9's quality criterion: a `conflicting` bar, or an `untrusted` session (its adjusted price crosses an unresolved
+    # factor; series.Point.state), in the block window. `points` is the security's series up to D* (audit 2, M3).
+    window = len(bars[-policy.quality_block_window:])
+    pts = list(points[-window:]) if points is not None else [None] * window
+    blocks = sum(1 for b, p in zip(bars[-window:], pts)
+                 if (b is not None and (b.quality == CONFLICTING or "untrusted" in b.flags))
+                 or (p is not None and p.state == "untrusted"))
     if blocks:
         failed.append(BLOCKED_QUALITY)
     window = [b for b in bars[-policy.activity_window:] if b is not None and b.traded is not None]

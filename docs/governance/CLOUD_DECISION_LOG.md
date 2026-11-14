@@ -476,3 +476,13 @@ headline, counted); the upstream designs are pinned at Phase 3 revision 5 (`6a03
 of a combination; MLK-20 covers ML-24, FL-21 and FL-22; the bootstrap and conformal claims are narrowed to stated
 estimands, with an evidence minimum and a new simulation test (MLK-23). It also notes CSE's carried close (TradeIQ
 F11). Accepted when its audit reports no Blocker (C-0037).
+
+## C-0043: code audit 2 of MF-4 and MF-5, and its fixes ([delegated], 2026-11-14)
+
+A fresh-context agent audited MF-4 and MF-5. **MF-4: no Blocker, accepted** (C-0037); its two Majors are fixed (the
+`untrusted` quality criterion is now wired through the series; three untested guards now tested). **MF-5: one
+Blocker**, a `conflicting` input at the first session of a window, or carried into it, not marked, so a value could
+reach Phases 4 and 5 as `fresh`. It is fixed and tested, together with both Majors (`shares_implied` now follows the
+design's last traded price; 13 guards newly tested) and three Minors; six Minors are carried to the next design
+revision. No leakage was found. MF-5 is accepted when a re-audit of the fix reports no Blocker. Full record:
+`docs/PHASE3_MARKET_FEATURES_IMPLEMENTATION.md`, "Code audit 2".

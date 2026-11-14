@@ -29,6 +29,7 @@ class Point:
     spans_gap: bool = False
     spans_unknown: bool = False
     base_index: Optional[int] = None     # the index r runs from (index - 1 unless spans_unknown)
+    source_conflicting: bool = False     # c was printed by a `conflicting` bar (Reference.source_quality)
 
 
 @dataclass(frozen=True)
@@ -69,7 +70,8 @@ def build_series(symbol, sequence: SessionSequence, bars, references, factors, m
             r = numeric.log_return(c, points[base].c)
             unknown = base != i - 1
             gap = bool(sequence.gaps_between(base, i))
-        points.append(Point(c, KNOWN, ref.ref_session != session, ref.stale_sessions, r, gap, unknown, base))
+        points.append(Point(c, KNOWN, ref.ref_session != session, ref.stale_sessions, r, gap, unknown, base,
+                            ref.source_quality == "conflicting"))
         last_known = i
     # A known price directly after an untrusted or not-yet-priced stretch has no return from it: only an
     # unknown-price stretch is bridged. Drop the returns whose stretch holds anything but unknown prices.
@@ -77,7 +79,7 @@ def build_series(symbol, sequence: SessionSequence, bars, references, factors, m
     for i, p in enumerate(points):
         if p.r is not None and p.spans_unknown and any(points[j].state != PRICE_UNKNOWN
                                                        for j in range(p.base_index + 1, i)):
-            p = Point(p.c, p.state, p.carried, p.stale_sessions)
+            p = Point(p.c, p.state, p.carried, p.stale_sessions, source_conflicting=p.source_conflicting)
         fixed.append(p)
     return Series(symbol, sequence, tuple(fixed), tuple(bars.get(s) for s in sequence.sessions), tuple(factors),
                   tuple(moves))
