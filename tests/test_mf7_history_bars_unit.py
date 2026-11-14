@@ -30,3 +30,11 @@ def test_h1_each_case_of_section_5_4():
                           complete=imp.complete, quarantined=imp.quarantined)
     assert hb.bar_on(S, clipped, date(2015, 1, 8)) is None
     assert hb.available_at(date(2015, 1, 2)) == datetime(2015, 1, 2, 18, 29, 59, tzinfo=timezone.utc)
+
+
+def test_h2_a_quarantine_wins_over_a_row():
+    imp = hb.Imported(rows={date(2015, 1, 2): {"close": "1.9", "shares": "100", "turnover": "190", "flags": ""}},
+                      complete=(), quarantined=frozenset({date(2015, 1, 2)}))
+    b = hb.bar_on(S, imp, date(2015, 1, 2))
+    assert (b.row, b.price_unknown, b.flags) == (5, True, ("quarantined",))
+

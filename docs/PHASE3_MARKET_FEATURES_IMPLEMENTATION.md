@@ -590,8 +590,8 @@ seeds 1 to 5, 30 000 labels), 0 leaks.
 
 ## MF-7b: the TradeIQ import
 
-**Status: implemented and tested (2026-11-14); rejected by its first audit (two Blockers), fixed (C-0062); re-audit
-pending. The record below is the first version; the fixes follow the MF-7c section.**
+**Status: accepted (C-0063) after a rejection (two Blockers) and fixes (C-0062). The record below is the first
+version; the fixes follow the MF-7c section.**
 
 | File | Content |
 |---|---|
@@ -696,11 +696,29 @@ conflicts, `terms_json` decoding, `imported_inputs` in `KNOWN`) is carried to th
 
 ## MF-7c (second part): the database load and write
 
-**Status: implemented and tested (2026-11-14); audit pending.**
+**Status: accepted (C-0063); the audit's Majors fixed and tested (below). `verify`, the CLI and the target-build
+writer remain.**
 
 | File | Content |
 |---|---|
 | `worker/market_feature_store/store.py` | `load()`: imports, bars, quarantine, `security_complete`, calendar observations (with each batch's dates) and statements in one read-only REPEATABLE READ transaction, rows admitted by the query; two batches disagreeing on a close are quarantined. `write()`: the snapshot, its rows (canonical features, `row_hash`), factors and move flags in one transaction as the worker |
 | `worker/market_feature_store/history_bars.py` | A complete range is read only up to the security's last admitted row (Major 6) |
 | `tests/test_mf7_store_postgres.py` | Load, build and write round trip in a throwaway cluster |
+| `tests/test_mf7_store_guards_postgres.py` | Each loader and writer guard (after the re-audit) |
+
+## Re-audit of MF-7b and audit of MF-7c second part: fresh-context agent
+
+At `ab41ed7`. Guard logs empty. The real plan reproduced byte for byte. **MF-7b: ACCEPT. MF-7c second part: ACCEPT.**
+No Blocker; nothing stores a wrong state or price on the real data, nothing leaks.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| M-A | Major | 12 loader and writer guards untested (basis filter, horizon, conflict quarantine, quarantine and ranges loaded, batch dates, label, one transaction, `subscription_price`, move closes, quarantine order, read-only) | **Tested** in `test_mf7_store_guards_postgres.py`; with 4 more mutants of mine, 16 of 16 killed |
+| M-B | Major | A row without a volume overrides one with a volume (last wins; only closes compared) | **Fixed.** `store.merge`: field by field, any disagreement quarantines the pair. `test_g3` |
+| M-C | Major | An unadmitted batch's calendar observation, with empty dates, closes gaps | **Fixed.** Observations of unadmitted batches are skipped. `test_g1` |
+| M-D | Major | `imported_inputs` not recorded; the digest changes with later evidence; `KNOWN` admits rows dated after T | **Fixed.** Column `imported_inputs` (pending 0019); the evidence lists admitted statements and calendar observation ids only; rows dated after T's day refused. `test_g2`, `test_g5`, `test_g6` |
+| — | Minor | Quarantine against another batch's row | **Decided:** the quarantine wins (stated in §5.4). `test_h2`, `test_g4` |
+| — | Minor | M7 (calendar from 1991), M11 (split tolerance), M18 (`b.calendar` with two ranges) survived | **Tested:** `test_t11`, `test_t12`; all three killed |
+| — | Minor | "One observation per year" against merged years | **Wording fixed** (§14, C-0062) |
+| — | Minors | The F12 rows (AAIC 2009) safe by evidence only; the SAMP sheet overlapping SAMP.N0000 in 2001 without links applied; the F1 filter reads prices after T (C-0062); per-row `window_digest`, `company_id`; one action available after its ex-date (later than the truth) | **Carried** |
 

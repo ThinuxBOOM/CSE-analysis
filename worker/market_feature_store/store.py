@@ -35,17 +35,41 @@ def _statement(r):
                              source_reference=source_reference, ex_date=ex_date, terms=terms, supersedes=supersedes)
 
 
+FIELDS = ("close", "high", "low", "open_price", "trades", "shares", "turnover")
+
+
+def merge(candidates):
+    """One row from the rows several batches (or one batch twice) hold for a (security, date): field by field, a
+    value present in one row fills another's gap; two different values in any field return None (the pair is
+    quarantined). A row without a volume never erases one with a volume (audit M-B)."""
+    out = {}
+    for f in FIELDS:
+        vals = {r[f] for r in candidates if r[f] is not None}
+        if len(vals) > 1:
+            return None
+        out[f] = next(iter(vals), None)
+    out["flags"] = "|".join(sorted({x for r in candidates for x in r["flags"].split("|") if x}))
+    return out
+
+
+def _row_admitted(query, recorded, d):
+    """A row is admitted by its batch's recorded_at and the end of its own Colombo day (§4.1). In KNOWN too a row
+    dated after T's day is never admitted: it cannot be a final session at T (audit M-D)."""
+    if not query.admits(recorded, hb.available_at(d)):
+        return False
+    return query.cutoff is None or hb.available_at(d) <= query.cutoff
+
+
 def load(conn, query):
     """(imported_by_symbol, statements, calendar_observations, evidence) for the query. `evidence` lists what was
-    admitted, for the snapshot's input digest."""
+    admitted, for the snapshot's input digest: evidence recorded later never changes it."""
     with conn.cursor() as cur:
         cur.execute("set transaction isolation level repeatable read, read only")
         cur.execute("select import_id, recorded_at, calendar_complete_from, calendar_complete_to, source_sha256 "
                     "from mf_history_imports where price_basis = 'raw' and no_trade_convention = 'row_absent' "
                     "order by import_id")
         imports = cur.fetchall()
-        rows = collections.defaultdict(dict)
-        closes = collections.defaultdict(set)
+        candidates = collections.defaultdict(list)
         quarantined = collections.defaultdict(set)
         complete = collections.defaultdict(list)
         batch_dates = collections.defaultdict(set)
@@ -55,13 +79,13 @@ def load(conn, query):
                         "from mf_history_bars where import_id = %s order by symbol, trade_date, id", (imp,))
             n = 0
             for sym, d, close, high, low, opn, trades, shares, turnover, flags in cur.fetchall():
-                if not query.admits(recorded, hb.available_at(d)):
+                if not _row_admitted(query, recorded, d):
                     continue
                 n += 1
                 batch_dates[imp].add(d)
-                closes[(sym, d)].add(close)
-                rows[sym][d] = {"close": close, "high": high, "low": low, "open_price": opn, "trades": trades,
-                                "shares": shares, "turnover": turnover, "flags": flags}
+                candidates[(sym, d)].append({"close": close, "high": high, "low": low, "open_price": opn,
+                                             "trades": trades, "shares": shares, "turnover": turnover,
+                                             "flags": flags})
             if not n:
                 continue
             admitted_imports.append((imp, sha, n))
@@ -72,25 +96,33 @@ def load(conn, query):
                         (imp,))
             for sym, lo, hi in cur.fetchall():
                 complete[sym].append((lo, hi))
-        cur.execute("select kind, date_from, date_to, available_at, source_reference, import_id, recorded_at "
+        cur.execute("select id, kind, date_from, date_to, available_at, source_reference, import_id, recorded_at "
                     "from mf_calendar_observations order by id")
-        cal_obs = []
-        for kind, lo, hi, avail, ref, imp, recorded in cur.fetchall():
+        cal_obs, cal_ids = [], []
+        for oid, kind, lo, hi, avail, ref, imp, recorded in cur.fetchall():
+            if imp is not None and imp not in batch_dates:
+                continue                  # its batch is not admitted: its range must not close that batch's gaps
+            if imp is None and not query.admits(recorded, avail):
+                continue
+            cal_ids.append(oid)
             cal_obs.append(calendar.CalendarObservation(kind, lo, hi, recorded, avail, ref,
-                                                        frozenset(batch_dates.get(imp, ())) if imp else frozenset()))
+                                                        frozenset(batch_dates[imp]) if imp else frozenset()))
         cur.execute("select statement_id, symbol, kind, ex_date, terms_json, supersedes, available_at, "
                     "source_reference, recorded_at from mf_corporate_action_observations order by statement_id")
         statements = [_statement(r) for r in cur.fetchall()]
     conn.rollback()
-    for (sym, d), cs in closes.items():               # two batches disagreeing on one day: quarantined
-        if len(cs) > 1:
+    rows = collections.defaultdict(dict)
+    for (sym, d), cs in candidates.items():
+        m = merge(cs)
+        if m is None:                     # two rows disagree on a value: quarantined
             quarantined[sym].add(d)
-            rows[sym].pop(d, None)
+        elif d not in quarantined[sym]:   # a quarantine of any admitted batch wins over a row (C-0063)
+            rows[sym][d] = m
     imported = {sym: hb.Imported(rows=dict(r), complete=tuple(sorted(complete.get(sym, ()))),
                                  quarantined=frozenset(quarantined.get(sym, ())))
                 for sym, r in rows.items()}
-    evidence = {"imports": admitted_imports, "statements": sorted(s.statement_id for s in statements),
-                "calendar": len(cal_obs)}
+    admitted_statements = sorted(s.statement_id for s in statements if query.admits(s.recorded_at, s.available_at))
+    evidence = {"imports": admitted_imports, "statements": admitted_statements, "calendar": cal_ids}
     return imported, statements, cal_obs, evidence
 
 
@@ -110,10 +142,10 @@ def write(conn, snap, query, *, configuration_id, code_version, evidence, import
                                               "evidence": evidence}))
     with conn.cursor() as cur:
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
-                    "code_version, input_digest, adjustment_set_hash, row_count) values "
-                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
+                    "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs) values "
+                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
                     (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
-                     input_digest, snap.adjustment_set_hash, len(snap.rows)))
+                     input_digest, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"])))
         sid = cur.fetchone()[0]
         for r in snap.rows:
             fj = row_payload(r)

@@ -58,10 +58,10 @@ class Imported:
 
 
 def bar_on(symbol, imp: Imported, session: date) -> Optional[FeatureBar]:
+    if session in imp.quarantined:          # a quarantine wins over a row another batch holds (C-0063)
+        return _bar(symbol, 5, None, None, True, "missing", ("quarantined",))
     if session in imp.rows:
         return from_row(symbol, imp.rows[session])
-    if session in imp.quarantined:
-        return _bar(symbol, 5, None, None, True, "missing", ("quarantined",))
     last_row = max(imp.rows) if imp.rows else None
     # a complete range never reaches past the security's last admitted row: the stored range may end at a row the
     # query has not admitted, and reading it would extend membership with evidence from after T (audit, Major 6)

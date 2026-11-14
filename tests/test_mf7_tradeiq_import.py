@@ -233,3 +233,21 @@ def test_t10_write_is_one_transaction(tmp_path):
         assert set(_counts(fs, ec, db).values()) == {0}
     finally:
         ec.stop()
+
+
+def test_t11_1991_is_never_calendar_complete_and_split_tolerance(tmp_path):
+    rows = ROWS + [l1("SAMP", "1991-08-27", "23", "1991-1993 data.xls", 3)]
+    w = workdir(tmp_path, rows)
+    p = ti.plan(w, w / "summary.json", SPLITS, w / "recon.csv", SESSIONS + [date(1991, 8, 27)])
+    assert p.batches["1991-1993 data.xls"].calendar_years == [(date(1992, 1, 1), date(1992, 12, 31))]
+    s = [(date(2015, 1, 2), Decimal("10")), (date(2015, 1, 5), Decimal("6.5"))]     # 30% off a 1:2 ratio
+    assert ti.split_confirmed(s, 1, 2, date(2015, 1, 5)) == "other_move"
+
+
+def test_t12_a_batch_with_two_calendar_ranges_declares_none_on_the_import(tmp_path):
+    rows = ROWS + [cls_row("AAF", "N", "2017-01-02", "0.475", "L3", "2015 Data.xls", 50)]
+    w = workdir(tmp_path, rows)
+    p = ti.plan(w, w / "summary.json", SPLITS, w / "recon.csv", SESSIONS + [date(2017, 1, 2)])
+    b = p.batches["2015 Data.xls"]
+    assert b.calendar_years == [(date(2015, 1, 1), date(2015, 12, 31)), (date(2017, 1, 1), date(2017, 12, 31))]
+    assert b.calendar is None

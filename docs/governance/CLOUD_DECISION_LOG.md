@@ -657,7 +657,16 @@ The audit rejected MF-7b with two Blockers and accepted the first part of MF-7c.
 conservative option: no `security_complete` for the 1991-2000 batches (their exports lost rows), rejected 1990s rows
 quarantined by code and date, nothing before 1991 admitted, and a security a workbook prints as two series
 quarantined for that whole workbook. The Majors are fixed or tested: calendar completeness per year (equal to the
-index), 1990s rows verbatim with identity links, splits written only where raw prices confirm them (8 of 138 left
+index; consecutive complete years stored as one observation), 1990s rows verbatim with identity links, splits written only where raw prices confirm them (8 of 138 left
 out), and the snapshot's range clipping and four guards tested against mutants. The database loader and writer are
 added. MF-7b waits for a re-audit; nothing was loaded anywhere permanent.
+
+## C-0063: MF-7b and MF-7c (second part) accepted; the loader's Majors fixed ([delegated], 2026-11-14)
+
+The re-audit found **no Blocker** in MF-7b or in the snapshot loader and writer, so both are accepted (C-0037). Its
+Majors are fixed and tested: a row without a volume no longer erases one with it (rows merged field by field, any
+disagreement quarantined); a batch that is not admitted no longer closes calendar gaps; the input digest lists only
+admitted evidence; a row dated after T's day is never admitted, in `KNOWN` too; snapshots record `imported_inputs`
+(a new column in pending migration 0019); a quarantine from any batch wins over another batch's row. New tests
+catch each of the 16 loader and writer mutants the audit and I tried, and the three import mutants that had survived.
 

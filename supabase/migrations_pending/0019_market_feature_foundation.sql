@@ -187,6 +187,7 @@ create table mf_snapshots (
   input_digest text not null,
   adjustment_set_hash text not null,
   row_count integer not null,
+  imported_inputs boolean not null default false,   -- section 4.2: an imported batch was read
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
   constraint chk_mfn_mode check ((mode, result_label) in (('KNOWN', 'point_in_time'), ('AVAILABLE', 'reconstructed'),
