@@ -441,3 +441,12 @@ securities are present. Notable: the 1990s exports lost 478 rows against their o
 are corrupted by split thousands separators and are quarantined; CSE's official close is carried on thinly traded
 days from 2015 (a design note for Phase 3). Corporate-action and listing files are not yet validated. No data file is
 committed; the summary is counts only.
+
+## C-0039: P5-R5 waiver, validation on reconstructed data (owner decision, 2026-11-14)
+
+The owner approved the Phase 5 waiver P5-R5 for **validating models on `reconstructed` data only**: history imported
+from TradeIQ is used in `AVAILABLE` mode, because the project recorded it in 2026 and so cannot know what was known at
+the time. Every protocol, result and model trained this way carries the label `reconstructed`, as Phase 5 requires;
+no result may be described as point-in-time. The other half of P5-R5, survivorship that is not `complete`, was not
+asked and stays open; until it is decided, a protocol uses no era whose survivorship is not `complete` (for TradeIQ,
+1991 to 2000 is `unknown`, `docs/research/TRADEIQ_VALIDATION.md` F3).
