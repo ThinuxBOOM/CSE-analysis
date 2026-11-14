@@ -67,10 +67,39 @@ U, B occur.
 4. Calendar from the index workbook; imported history is usable in `AVAILABLE` (reconstructed) mode only, which is
    why Phase 5 needs the owner's waiver P5-R5.
 
-## 5. Not done yet
+## 5. Corporate actions and listings (second pass, 2026-11-14)
 
-- Bonus issues, rights issues, dividends and listings/delistings workbooks: not yet parsed or checked (needed for
-  P3-R2 and for survivorship from 2001).
+Probe: `scripts/research/tradeiq/corporate_actions_probe.py` (counts only).
+
+| Workbook | What it holds | Usable by Phase 3 as it stands? |
+|---|---|---|
+| Share splits (`05`) | Security code, old and new proportion, effective date; announcement date for 30 of 138 | **Yes.** The effective date is the ex-date: 131 of 138 show the ratio's price drop on it (F1). Announcement date missing: use the effective date as `available_at` (F17) |
+| Bonus issues (`03`) | Company **name** (not a code), ratio, allotment and listing dates; no ex-date | **No, not automatically.** 481 rows: ratio readable in 182 (30 of them only after decoding Excel's conversion of "1:4" into a time of day), name matching exactly one ordinary-voting code in 159, a date in 187. Where a fall of 10% or more is found, it lies 0 to 35 days **before** the allotment date, most often 7 to 14 days: the ex-date cannot be read off the allotment date |
+| Rights issues (`04`) | Company name, ratio, issue price, allotment and listing dates, announcement date from 2015; no ex-date | **No, not automatically.** 622 rows: ratio readable in 225 (80 by the time decoding), name matched in 292; the fall, where found, spreads from 42 days before to 14 days after the allotment date |
+| New listings and de-listings (`06`) | **New listings only**; no de-listing section exists in any sheet | Listings only. Survivorship rests on the daily files, where 640 securities stop trading before 2025 |
+| Dividends (`01`), scrip dividends (`02`) | Not examined | Not needed for prices under `adjustment_policy` v1 (P3-D2) |
+
+**Consequence.** With splits only, every bonus and rights issue is an **unentered action** to Phase 3: its price
+fall is flagged by the unexplained-move detector (§7.3), the windows containing it are `unlabelled`, and the labels
+spanning it are `unexplained_move_in_horizon` until the action is entered. Roughly 15 to 25 bonus and 15 to 30 rights
+issues a year are affected. The data is not wrong; it is not fully adjustable.
+
+**Ways forward (an owner decision; P3-R2):**
+1. **Enter bonus and rights issues by hand** from CSE notices (the design's current owner path). Exact, slow: about
+   1,100 events since 1990, fewer if only 2002 onwards is used.
+2. **Reconstruct ex-dates from the archive with a strict, recorded rule:** for an event whose ratio and company are
+   read unambiguously, the ex-date is the one session between the announcement (or 45 days before allotment) and the
+   allotment date whose price fall matches the event's own factor within a tolerance; anything else stays unentered.
+   This is a **change to the Phase 3 design**, which says MF never infers an action from a price move: the
+   reconstruction would run outside MF, as a recorded research step producing evidence rows marked as reconstructed,
+   each checkable against the ratio. It would also need an audit.
+3. **Accept the gaps:** use splits only and let the detector mark the rest; the affected windows and labels are
+   excluded from training and scoring by the scoring policy.
+
+## 6. Not done yet
+
+- Dividends and scrip dividends: not examined.
+- Survivorship from 2001 rests on the daily files alone (no de-listing list exists).
 - Resolving F10 by continuity, and the 7 split exceptions (F1), by hand.
 - A cross-check against the project's own captured days: none exist in this sandbox.
 - No other data family (indices beyond the calendar, market statistics, GICS sectors, foreign holding) is validated.

@@ -450,3 +450,12 @@ the time. Every protocol, result and model trained this way carries the label `r
 no result may be described as point-in-time. The other half of P5-R5, survivorship that is not `complete`, was not
 asked and stays open; until it is decided, a protocol uses no era whose survivorship is not `complete` (for TradeIQ,
 1991 to 2000 is `unknown`, `docs/research/TRADEIQ_VALIDATION.md` F3).
+
+## C-0040: TradeIQ corporate actions and listings, first validation ([delegated], 2026-11-14)
+
+Second pass of `docs/research/TRADEIQ_VALIDATION.md` (§5). **Splits are usable** (effective date = ex-date, 131 of
+138 confirmed). **Bonus and rights issues are not usable automatically:** they name companies rather than codes,
+give allotment dates rather than ex-dates, and a third of their ratios were turned into times of day by Excel. **No
+de-listing list exists.** Until P3-R2 is decided among the three options in §5 (hand entry, a recorded ex-date
+reconstruction outside MF, or splits only), the import loads splits only and Phase 3's detector marks the other
+actions. P3-R2 stays the owner's decision.
