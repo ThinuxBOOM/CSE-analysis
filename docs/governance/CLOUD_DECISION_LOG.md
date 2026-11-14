@@ -498,3 +498,10 @@ late-resolving labels scored, not dropped; bonus and rights dilution kept out of
 ML-only combinations; sufficiency per list position (only market-only components can be gated with today's history).
 **Carried to Phase 3's next revision:** the universe of a `row_absent` import (audit finding M8), together with the six
 design clarifications carried from code audit 2 (C-0043). Phase 5 implementation can start with M5-1.
+
+## C-0045: Phase 5 implementation, step M5-1 ([delegated], 2026-11-14)
+
+The evaluation library `worker/evaluation_metrics/` (metrics, `scoring.1`, the gate test) is implemented with
+`tests/test_m51_unit.py` (8 tests) and recorded in `docs/PHASE5_ML_IMPLEMENTATION.md`. MLK-8's simulation measured the
+gate test at 7.5% single and 8% family-wise at a nominal 5%: inside the acceptance region for 200 trials, but mildly
+oversized under strong dependence, recorded for MLK-23. Accepted when an audit reports no Blocker (C-0037).
