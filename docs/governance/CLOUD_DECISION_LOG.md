@@ -437,7 +437,7 @@ The cloud session fetched `TradeIQ-CSE/cse-dataset` at `7903c39` from GitHub (no
 original daily share-price workbooks with its own parser, against the archive's index calendar and split list.
 Result, `docs/research/TRADEIQ_VALIDATION.md`: **usable for 1992 to 2025 with bounded defects** that the import must
 quarantine or flag (17 findings). Prices are raw; the calendar matches the index exactly from 1992; delisted
-securities are present. Notable: the 1990s exports lost 479 rows against their own stated counts; 1.8% of 2023's rows
+securities are present. Notable: the 1990s exports lost 478 rows against their own stated counts; 1.8% of 2023's rows
 are corrupted by split thousands separators and are quarantined; CSE's official close is carried on thinly traded
 days from 2015 (a design note for Phase 3). Corporate-action and listing files are not yet validated. No data file is
 committed; the summary is counts only.
