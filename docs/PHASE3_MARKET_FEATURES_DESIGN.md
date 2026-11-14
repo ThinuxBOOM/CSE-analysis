@@ -1,8 +1,15 @@
 # Phase 3: market feature foundation (design)
 
-**Status: DESIGN, revision 5 (2026-11-12). ACCEPTED [delegated] for implementation on `integration/cloud` (C-0026),
-after a fifth audit with no Blocker or Major finding (§19). Not implemented. Not the owner's own acceptance, and not
-accepted for `main`.** Written by the cloud session on the branch
+**Status: DESIGN, revision 6 (2026-11-14). ACCEPTED [delegated] for implementation on `integration/cloud`
+(revision 5: C-0026; revision 6 records decisions and clarifications from the implementation's code audits, C-0051).
+MF-1 to MF-5 implemented and accepted; MF-6 under re-audit; MF-7 not started. Not the owner's own acceptance, and not
+accepted for `main`.**
+
+*Revision 6 (2026-11-14) adds no new mechanism. It records the owner's decision on market history (TradeIQ, C-0035)
+and how that source is declared (§14); the universe of a `row_absent` import (§5.4); a liquidity result of its own
+(§9); CSE's carried close (§10.2); that a conflicting member's return stays out of m_u (§10.2); four clarifications of
+§10.4; and, in §11, the conservative `resolved_at`, the realised volatility on F's price basis and a conflicting
+reference close (C-0047, C-0050).* Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact, no capture, no purchase and no change to `main`.
 
@@ -304,7 +311,7 @@ no factor: the revision 1 error again, for imported history.
 | Batch's `no_trade_convention` | Rule |
 |---|---|
 | `volume_zero` | `traded` = volume > 0, or trade count > 0 where the batch has one (either is enough). On a row with `traded = false` the close is not a price: `px_close` is null and the printed value is kept as `printed_close_no_trade` |
-| `row_absent` | A row exists only for traded days: every row is `traded = true`. A security with rows before and after a session but none on it has a no-trade bar there, provided the batch declares itself complete **for that security** over the range (`security_complete`); otherwise the bar is `missing` |
+| `row_absent` | A row exists only for traded days: every row is `traded = true`. A security with rows before and after a session but none on it has a no-trade bar there, provided the batch declares itself complete **for that security** over the range (`security_complete`); otherwise the bar is `missing`. **Revision 6: the universe of an imported date** under `row_absent` is the securities with a row in the batch on that date **plus** those for which the batch is `security_complete` over a range containing the date (they did not trade). Without `security_complete` a security without a row is not a member that day: its absence is not evidence that it left (Phase 5 counts such labels apart, `era_absence`). A (security, date) the import quarantined is excluded from `security_complete` and is `missing`, never a no-trade bar |
 | `unknown` | The batch is admitted to `CURRENT` only |
 
 `mf_history_bars` requires, per row: the security's symbol, the date, the close, and the volume (unless the
@@ -503,7 +510,7 @@ feature bars and a versioned `eligibility_policy`:
 | Freshness: `stale_sessions` at D\* | `max_stale_sessions` | 5 |
 | Quality: no `conflicting` or `untrusted` bar in the last `quality_block_window` sessions | `quality_block_window` | 21 |
 
-- Results: `eligible`, `no_data` (no bar at all), `price_unknown` (no reference price at D\*, §5.3), `insufficient_history`, `low_activity`, `stale`, `blocked_quality`,
+- Results: `eligible`, `no_data` (no bar at all), `price_unknown` (no reference price at D\*, §5.3), `insufficient_history`, `low_activity` (the traded share), `low_liquidity` (the median turnover; revision 6: a result of its own), `stale`, `blocked_quality`,
   `not_applicable` (security class), each with the measured value of every criterion. They map onto MA §22's
   blockers.
 - An older flagged bar does not block the security; it makes the individual features whose windows contain it
@@ -559,6 +566,14 @@ For a snapshot with cutoff session t = D\*, and final sessions u in the sequence
   measured rather than dropped. Each window also reports `traded_sessions`, so a consumer can tell a quiet security
   from an untraded one.
 - A window "of n sessions ending at t" is the n consecutive final sessions ending at t.
+- **CSE's carried close (revision 6).** From 2015 CSE's official close stays at the previous close on a day too
+  little trades, although the security traded (`docs/research/TRADEIQ_VALIDATION.md`, F11; the same in P2's capture,
+  MFB-5). MF uses CSE's close as published: such a day is a traded session with r_u = 0. Features based on |r|
+  (amihud) understate illiquidity on those days, and `hist_flat_share_h` rises; the move appears on the next printed
+  close. This is CSE's definition and is not corrected.
+- **A conflicting member (revision 6).** A member whose bar on u is `conflicting`, or whose r_u rests on a price
+  printed by a `conflicting` bar, contributes no return to m_u; m_u is then computed from the others under the same
+  `min_constituents`.
 - **Market return m_u** = the equal-weighted mean of r_u over the equity lines that were market-data eligible **as of
   session u−1**, with that eligibility recomputed from the snapshot's own evidence at (T, mode) and with adjusted
   values on the snapshot's D\* basis. Membership uses no information from session u or later, as an index fixes its
@@ -629,7 +644,18 @@ The state describes the **value**. `missing`, `conflicting` and `untrusted` valu
 | `untrusted` | An input's adjustment crosses an `unresolved` factor |
 
 Where several apply, the first in the order `untrusted`, `conflicting`, `missing`, `unlabelled`, `partial`, `stale`,
-`fresh` is recorded, with the others listed. A null is never replaced by zero or by a cross-sectional fill in MF.
+`fresh` is recorded, with the others listed.
+
+**Clarifications (revision 6, from the code audits):**
+- A `conflicting` input is any bar the formula reads, at either end or inside the window, and, for formulas that use
+  prices, any price the formula uses that was printed by a `conflicting` bar, including the base of a return bridged
+  over unknown prices from before the window. Features that use no price (volume means, Parkinson, the activity
+  ratio) are not affected by a carried price.
+- `amihud_21` and `vol_parkinson_21` take traded sessions only, so "fewer inputs than the window" is their normal case
+  and does not make them `partial`; `min_observations` alone applies.
+- `dd_days_252` counts from the latest session at the window's maximum of c_u, which on a carried series can be a
+  no-trade session carrying that price.
+- History (§9) counts every session with a feature bar, including a bar with `traded = unknown`. A null is never replaced by zero or by a cross-sectional fill in MF.
 Imputation, if any, is a Phase 5 decision made on the training side only.
 
 ---
@@ -684,6 +710,15 @@ For horizon h ∈ {1, 5, 10, 21} sessions (MA §4):
 its grace period is still running); then `terminated`;
 `unknown_session_in_horizon` (no value stored); `unresolvable_missing_price`; `unresolvable_quality`;
 `unexplained_move_in_horizon`; `resolved_carried`; `resolved`.
+
+**Revision 6 (C-0047, C-0050).** A reference close printed by a `conflicting` bar, in the stored row or in the
+build's own view at D, is an input: the label is `unresolvable_quality`. The realised volatility is computed from the
+prices of (D, F] adjusted to **F's** basis, so a corporate action after F changes nothing. `resolved_at` is
+**conservative by construction**: the latest admission instant over every session from the build's last printed close
+at or before D through the furthest session the label read (including a session after F whose bar ended an absence's
+grace period), over every statement behind the security's factors and confirmed moves, and over the instants of any
+withdrawn or superseding statement and of calendar or identity evidence. A later `resolved_at` only delays a label's
+use. An absence already running at D is examined like one that starts inside the horizon.
 
 Each label stores **`resolved_at`**: the latest admission instant, under the build's mode, over **every** input it
 used, namely the target session's finality (or the terminating evidence), each bar in the horizon, each
@@ -819,7 +854,18 @@ history exists a year later, and walk-forward ML needs several years. The option
 
 - Imported bars never enter `raw_market_observations`. Import is a file-based, owner-run step; MF never fetches.
 - An imported date is a final session when an admitted `raw`-basis batch has at least one traded bar for it.
-- **Recommendation to the owner.** Decide P3-R1 early, because it determines when Phase 5 can produce anything real,
+- **Decided (revision 6): the TradeIQ archive** (the public copy `TradeIQ-CSE/cse-dataset`; owner decision C-0035,
+  G-1 extension E1; validation `docs/research/TRADEIQ_VALIDATION.md`). Its batches are declared, per source workbook:
+  `price_basis = raw` (131 of 138 splits show the ratio's fall on the effective date); `no_trade_convention =
+  row_absent` (rows only on traded days; a printed zero is not a price); `calendar_complete` for each year from 1992
+  whose dates match the archive's daily index workbook; `security_complete` for each security between its first and
+  last row in a year's workbook, less the quarantined (security, date) pairs, on the evidence that the workbook is
+  CSE's full daily list of traded securities; `survivorship = unknown` for 1991 to 2000 (the exports lost rows against
+  their own stated counts) and `complete` from 2001, pending a de-listing check, because no de-listing list exists;
+  `values_as_of` = the archive commit's date; provenance = repository, commit, file, sheet, row and SHA-256. Splits
+  are entered as corporate-action evidence with `available_at` = the announcement date, or the effective date where
+  none is given (later than the truth, so never a leak). Bonus and rights issues wait for P3-R2.
+- **Recommendation to the owner (revision 5, kept for the record).** Decide P3-R1 early, because it determines when Phase 5 can produce anything real,
   and require a raw price basis and delisted securities from whatever source is chosen. Option B is the only one that
   also reduces the G-1 risk rather than adding to it.
 
@@ -849,6 +895,9 @@ history exists a year later, and walk-forward ML needs several years. The option
 | P3-D16 | Withdrawn in revision 4. A capture that never becomes final leaves a non-final session; nothing is taken from it | The degraded session asserted end-of-day facts from a mid-session snapshot |
 | P3-D17 | The security key is a hash of the symbol, not a registry row | Identity must not depend on when MF first ran |
 | P3-D18 | Labels have the state `unexplained_move_in_horizon`, and `resolved_at` covers every input including actions | Actions are entered by hand and arrive late |
+| P3-D19 | Revision 6: `resolved_at` is conservative by construction; the volatility is on F's basis; a conflicting reference close makes a label `unresolvable_quality` | Three code audits found gaps in a case-by-case rule (C-0047, C-0050) |
+| P3-D20 | Revision 6: `low_liquidity` is an eligibility result of its own; a conflicting member's return stays out of m_u | Code audit 2 (m6, and the result name) |
+| P3-D21 | Revision 6: TradeIQ batches declared as in §14, with `security_complete` from each year's workbook less the quarantined pairs | The universe of a `row_absent` import (Phase 5 audit, M8) |
 
 ### Reserved for the owner
 

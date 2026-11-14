@@ -153,8 +153,10 @@ class EligibilityPolicy:
 
 ELIGIBLE, NO_DATA, PRICE_UNKNOWN, INSUFFICIENT_HISTORY = "eligible", "no_data", "price_unknown", "insufficient_history"
 LOW_ACTIVITY, STALE, BLOCKED_QUALITY, NOT_APPLICABLE = "low_activity", "stale", "blocked_quality", "not_applicable"
+LOW_LIQUIDITY = "low_liquidity"          # design revision 6: liquidity has its own result
 # When several apply, the result is the first of these; `failed` lists all that apply.
-PRECEDENCE = (NOT_APPLICABLE, NO_DATA, PRICE_UNKNOWN, INSUFFICIENT_HISTORY, BLOCKED_QUALITY, LOW_ACTIVITY, STALE)
+PRECEDENCE = (NOT_APPLICABLE, NO_DATA, PRICE_UNKNOWN, INSUFFICIENT_HISTORY, BLOCKED_QUALITY, LOW_ACTIVITY, LOW_LIQUIDITY,
+              STALE)
 
 
 @dataclass(frozen=True)
@@ -204,8 +206,10 @@ def eligibility(symbol, bars, reference, policy: EligibilityPolicy = Eligibility
     ratio = Fraction(len(traded), len(window)) if window else None
     turnovers = [b.turnover for b in traded if b.turnover is not None]
     median = _median(turnovers) if turnovers else None
-    if ratio is None or ratio < policy.min_traded_ratio or median is None or median < policy.min_median_turnover_lkr:
+    if ratio is None or ratio < policy.min_traded_ratio:
         failed.append(LOW_ACTIVITY)
+    if median is None or median < policy.min_median_turnover_lkr:
+        failed.append(LOW_LIQUIDITY)
     stale = None if price_unknown else reference.stale_sessions       # not evaluated while the price is unknown
     if stale is not None and stale > policy.max_stale_sessions:
         failed.append(STALE)

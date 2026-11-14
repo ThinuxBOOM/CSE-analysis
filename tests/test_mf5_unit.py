@@ -507,3 +507,11 @@ def test_a8_bridged_base_carried_conflict_gaps_parkinson_market_spans_and_rank_s
     others = {s_: ft.Value("ret_21", D(str(i)), "fresh") for i, s_ in enumerate(("B.N0000", "C.N0000"))}
     r = mk._rank("A.N0000", point, {"A.N0000": stale, **others}, CFG)
     assert r.state == "stale"                                         # the own value's state is carried as it is
+
+
+def test_a9_a_conflicting_members_return_is_left_out_of_the_market_return():          # design revision 6 (m6)
+    paths = {f"S{i}.N0000": [bar(100, symbol=f"S{i}.N0000")] * 4 + [bar(110, symbol=f"S{i}.N0000")] for i in range(3)}
+    paths["Q.N0000"] = [bar(100, symbol="Q.N0000")] * 4 + [bar(200, symbol="Q.N0000", quality="conflicting")]
+    series, eligible, pts = market(paths)
+    assert pts[4].members == ("S0.N0000", "S1.N0000", "S2.N0000")      # Q's conflicting r_4 is out
+    assert abs(pts[4].m - dln("1.1")) < D("1e-26")

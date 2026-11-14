@@ -44,6 +44,16 @@ def eligibility_by_session(series_by_symbol, references_by_symbol, policy: Eligi
     return out
 
 
+def _conflicting_return(series, u):
+    p = series.points[u]
+    bar = series.bars[u]
+    base = series.points[p.base_index] if p.base_index is not None else None
+    base_bar = series.bars[p.base_index] if p.base_index is not None else None
+    return ((bar is not None and bar.quality == "conflicting") or p.source_conflicting
+            or (base is not None and base.source_conflicting)
+            or (base_bar is not None and base_bar.quality == "conflicting"))
+
+
 def market_points(series_by_symbol, eligible, min_constituents):
     """One MarketPoint per session. Session 0 has no earlier session to fix membership on: missing."""
     symbols = sorted(series_by_symbol)
@@ -51,7 +61,10 @@ def market_points(series_by_symbol, eligible, min_constituents):
     points = [MarketPoint(None, (), 0)]
     for u in range(1, length):
         pool = [s for s in symbols if eligible[s][u - 1]]
-        with_return = [s for s in pool if series_by_symbol[s].points[u].r is not None]
+        # design revision 6 (audit 2, m6): a member whose bar on u is conflicting, or whose return rests on a price
+        # printed by a conflicting bar, contributes no return to m_u
+        with_return = [s for s in pool if series_by_symbol[s].points[u].r is not None
+                       and not _conflicting_return(series_by_symbol[s], u)]
         if len(with_return) < min_constituents:
             points.append(MarketPoint(None, (), len(pool)))
             continue

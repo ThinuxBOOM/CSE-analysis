@@ -118,9 +118,9 @@ def test_e1_eligible_and_each_single_failure_with_its_measured_values():
     assert uni.eligibility(SYM, [bar()] * 189 + [bar(False, None)] * 31 + [bar()] * 32, ref()).result == uni.ELIGIBLE
     # liquidity: the median turnover of the traded sessions of the window
     e = uni.eligibility(SYM, [bar()] * 189 + [bar(turnover="99999.99")] * 63, ref())
-    assert (e.result, e.median_turnover) == (uni.LOW_ACTIVITY, D("99999.99"))
+    assert (e.result, e.median_turnover) == (uni.LOW_LIQUIDITY, D("99999.99"))       # revision 6: its own result
     assert uni.eligibility(SYM, [bar()] * 189 + [bar(turnover="100000")] * 63, ref()).result == uni.ELIGIBLE
-    assert uni.eligibility(SYM, [bar()] * 189 + [bar(turnover=None)] * 63, ref()).result == uni.LOW_ACTIVITY
+    assert uni.eligibility(SYM, [bar()] * 189 + [bar(turnover=None)] * 63, ref()).result == uni.LOW_LIQUIDITY
     # freshness
     assert uni.eligibility(SYM, good, ref(stale=5)).result == uni.ELIGIBLE
     e = uni.eligibility(SYM, good, ref(stale=6))
@@ -139,7 +139,7 @@ def test_e2_precedence_all_failures_are_listed_and_freshness_is_not_evaluated_wh
     assert e.stale_sessions is None and uni.STALE not in e.failed                              # Minor 3
     assert uni.eligibility(SYM, [bar()] * 252, None).result == uni.PRICE_UNKNOWN
     e = uni.eligibility(SYM, [bar(False, None)] * 252, ref(stale=300))
-    assert (e.result, e.failed) == (uni.LOW_ACTIVITY, (uni.LOW_ACTIVITY, uni.STALE))
+    assert (e.result, e.failed) == (uni.LOW_ACTIVITY, (uni.LOW_ACTIVITY, uni.LOW_LIQUIDITY, uni.STALE))
 
 
 def test_e3_a_bar_whose_trading_is_unknown_is_left_out_of_the_activity_ratio():                 # Minor 5

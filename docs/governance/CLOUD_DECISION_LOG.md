@@ -554,3 +554,14 @@ realised volatility is computed on F's price basis. MF-6 waits for a re-audit.
 `test_cse_endpoints.py`, which sends real requests to CSE. In this session that only happened inside the audit
 agent's run, under the in-process guard, so nothing left the process; CI never collects it. A root `pytest.ini`
 (`testpaths = tests`) now prevents it. The owner may also wish to move or rename that script.
+
+## C-0051: Phase 3 design, revision 6 ([delegated], 2026-11-14)
+
+Revision 6 of `docs/PHASE3_MARKET_FEATURES_DESIGN.md` records, without adding any mechanism: the owner's choice of
+TradeIQ for market history and how its batches are declared (raw basis, `row_absent`, calendar completeness from the
+index workbook, `security_complete` per year less quarantined pairs, survivorship `unknown` before 2001); the universe
+of a `row_absent` import (Phase 5 audit M8); `low_liquidity` as its own eligibility result; that a conflicting
+member's return stays out of m_u (code audit 2, m6); CSE's carried close; four clarifications of the quality rules;
+and the label rules of C-0047 and C-0050. The two code changes it needs (`low_liquidity`, the market member rule) are
+made and tested in MF-4 and MF-5. Not re-audited, as a clarifying revision of an accepted design (as C-0027 and
+C-0044); the next code audit of MF-7 reads it.
