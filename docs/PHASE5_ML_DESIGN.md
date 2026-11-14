@@ -1,10 +1,19 @@
 # Phase 5: ML and the Route 1 combination (design)
 
-**Status: DESIGN, revision 4 (2026-11-14). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 5 (2026-11-14). ACCEPTED [delegated] for implementation on `integration/cloud`
+(C-0044): revision 4's audit reported no Blocker (C-0037); revision 5 applies its dispositions (§19) and is not
+re-audited. Not implemented. Not accepted for `main`.** Written by the cloud session on the branch
 `integration/cloud` under the owner's instruction of 2026-11-11 (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002,
 C-0003). It authorizes no CSE contact, no training on real data and no change to `main`.
 
-*Revision 4 replaces revision 3 (commit `36322ae`). It applies the six findings of the review recorded on the
+*Revision 5 (2026-11-14) applies the dispositions of revision 4's audit (no Blocker; 9 Major, 9 Minor; §19): test
+periods long enough for the gate test to run (§5.5); the size of the gate test shown at the protocol's own dependence
+before a gate can pass (§9.3); rows whose label resolved after a scored window are scored, not dropped (§5.2, §5.4);
+bonus and rights moves kept apart from genuine moves (§6); reconstructed evidence carried to every model and
+prediction (§9.1, §11, gate 12); a defined route for roll-forward versions (§5.6); engines as baselines for ML-only
+combinations (gate 5); the scored population of a `row_absent` era (§6); sufficiency per list position (§5.5, §10).*
+
+*Revision 4 replaced revision 3 (commit `36322ae`). It applies the six findings of the review recorded on the
 research branch (`research/tradeiq-phase3-validation-2026-11-12`, P5-A01 to P5-A06; §19) and three owner decisions:
 Route 1 may be ML-only (C-0036), validation on `reconstructed` data is waived (C-0039), and historical prices come from
 the TradeIQ archive (C-0035). The main changes: the label state `unresolvable_missing_price` is scored (§6); the
@@ -22,7 +31,7 @@ scale and the baselines are defined (§6 to §8); a designation list is evaluate
 sufficiency arithmetic is redone in usable dates, which lengthens the honest timescale considerably (§5.5).*
 
 **Governing records:** Master Architecture (MA) §2, §4, §11 to §14, §21 to §23, §25, §27, §28, §32 to §37, §43.1, §55
-(Phase 5), §56 to §62, §68; `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, **revision 5**, accepted at `6a034ea` ("MF":
+(Phase 5), §56 to §62, §68; `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, **revision 5**, as amended at `62f77fc` (the snapshot row's security key, symbol and `company_id`) ("MF":
 features, universe, labels); `docs/PHASE4_DETERMINISTIC_ENGINES_DESIGN.md`, **revision 6**, accepted at `62f77fc`
 (financial features "F7", engines and baselines "DE"). What this design takes from each is listed in §18.1.
 Where this document and those differ, they win.
@@ -56,9 +65,11 @@ MF snapshot rows + F7 feature rows + DE outputs ─▶ dataset builder ─▶ ve
 5. **Nothing here can be validated yet.** No model leaves `candidate` on synthetic data.
 6. **The honest timescale is long.** By the provisional minimums of §5.5, the first protocol that could gate a
    one-day-horizon output needs roughly 1 600 sessions and a one-month-horizon output roughly 2 600: about seven and
-   eleven years of trading days. Forward capture alone cannot support Phase 5 on any useful timescale. The source of
-   market history (Phase 3, P3-R1) is the decision this phase depends on, and the minimums themselves are the owner's
-   to set for a real protocol (P5-R2).
+   eleven years of trading days. Forward capture alone cannot support Phase 5 on any useful timescale. **The source
+   of market history is now decided (C-0035):** the TradeIQ archive gives daily prices from 2001 to 2025 usable under
+   the survivorship rule (about 238 to 242 sessions a year, matched to the index calendar), in the `reconstructed`
+   era, whose validation is waived (C-0039). That meets the minimums for market-only components; components that use
+   fundamentals still wait (§5.5). The minimums themselves are the owner's to set for a real protocol (P5-R2).
 7. **ML dependencies stay out of the frozen build**, and artifacts live in PostgreSQL so P1's backups cover them.
 
 ---
@@ -164,7 +175,7 @@ longest any label of horizon h can take to reach a terminal state.
 | Rows | Condition |
 |---|---|
 | Training | R_h ≤ C_train |
-| Validation | V_start ≤ T ≤ V_end − g sessions, **and** R_h ≤ V_end |
+| Validation | V_start ≤ T ≤ V_end − g sessions, **and** R_h ≤ V_end for any row used to fit, select, calibrate or train a combiner. **Scoring only** (revision 5): a row whose label resolved after V_end is scored with its state in the dataset's pinned target build and reported as the stratum `resolved_late`; nothing is fitted on it |
 | Embargo | V_start is at least `embargo_sessions` after C_train (default 1), for the uncertainty of assumed availability times in `reconstructed` eras |
 
 - **Why the validation rows stop g sessions before V_end.** Labels do not all resolve at the same speed. A label of
@@ -214,8 +225,13 @@ criterion; and the test period [P_start, P_end].
 - **Test periods are pairwise disjoint.** A declared interval may not overlap any interval ever declared, spent or
   not. One interval, one protocol, one access. (Revision 2 allowed many protocols to declare the same interval, which
   made "one access per protocol" best-of-many again.)
-- P_start is at least `embargo_sessions` after the last V_end. Test rows have P_start ≤ T ≤ P_end − g and
-  R_h ≤ P_end.
+- P_start is at least `embargo_sessions` after the last V_end. Test rows have P_start ≤ T ≤ P_end − g. The test
+  fits nothing, so a test row whose label resolved after P_end is scored with its state in the pinned target build
+  (stratum `resolved_late`; revision 5). Without this, confirming a genuine move later would remove it from every
+  report.
+- **Research already done on the history counts as scoring.** A retrospective test period over the imported
+  history is `previously_scored` by default, because the data's validation research has already looked at its
+  moves (`docs/research/TRADEIQ_VALIDATION.md`).
 - **No protocol**, `exploratory` ones included, takes training or validation rows from another protocol's declared,
   unspent interval.
 - **The count of what was tried follows the sessions, not the protocol.** For each (output, horizon), the registry
@@ -256,10 +272,20 @@ with usable rows**; a window's span is longer by the purge at its edges.
 | Each of select, calibrate, conformal | max(42, 6·h) | + h |
 | Each validation fold | max(63, 8·h) | + h + 21 (the grace period) |
 | Folds | 5 (a combination needs one more fold than its components, and every Route 1 output is a combination) | |
-| The test period | max(126, 8·h) | + h + 21 |
+| The test period | max(126, 8·h, 20·L) | + h + 21 |
 | Distinct securities with rows, per fold and in the test period | 50 | |
 
 A protocol below them can run, labelled `exploratory`; nothing under it can pass a gate.
+
+- **Revision 5.** L is the protocol's declared block length (§9.3), at least max(h, 10). The test period must hold at
+  least 20 blocks, or the gate test cannot run (§12.3) and the one access would be spent on a failure certain in
+  advance: about 420 usable dates at h = 21. A protocol whose declared intervals cannot reach 20 blocks is not
+  `sufficient`.
+- **Sufficiency is per list position.** Each position of a designation list (§10) is gated on its own rows, and the
+  minimums above apply to each. A position that cannot be gated is absent from the list; a list may be market-only.
+  With the history available now (prices from 2001 in the `reconstructed` era; fundamentals for about five years),
+  **only market-only components can be gated**; components that use F7 features or fundamental engines wait until
+  their own rows meet the minimums.
 
 **What this implies.** Rows with complete market-context features start about 380 sessions after capture begins
 (Phase 3 §9). Then:
@@ -303,6 +329,11 @@ it is already older than most of what was evaluated.
   procedure, as a version marked `rollforward_of`. Its evidence is the configuration's walk-forward and test, which
   measured the procedure, not this artifact; the registry says so on the version, and the owner's promotion of a
   roll-forward cites it. Without this, every production model would be stale by construction.
+- **How a roll-forward becomes `validated`** (revision 5). It inherits gates 2 and 4 to 9 **by reference** to the
+  configuration's gate report and its nominee's test result, which it cites; it passes gates 1 and 3 itself (the
+  dataset and the leakage suite on its code version), shows determinism (MLK-11) and records its own validated
+  domain, with model age counted from its own C_train. Gates 10 to 12 apply to its promotion as to any version. With
+  history ending in 2025 and serving after it, roll-forwards are the only route to production.
 
 ---
 
@@ -328,13 +359,25 @@ the label states and this policy decides how they are scored):
 |---|---|---|---|
 | `resolved`, `resolved_carried` | Yes | Yes | `resolved` alone, as a secondary stratum |
 | `terminated` | No in v1: it has no agreed return | No | Its count; and a **pessimistic sensitivity** in which each such label counts as a total loss (return −1, class `fall`) |
-| `unexplained_move_in_horizon` | No | No | Its count; and a sensitivity that includes it at its raw return. Leaving these out removes the largest moves that have no entered action, which flatters return error, volatility error and interval coverage |
+| `unexplained_move_in_horizon` | No | No | Its count, **in two parts** (revision 5): moves whose security has a known but unentered bonus or rights issue near them in the corporate-action evidence (for TradeIQ, its bonus and rights workbooks; P3-R2), counted as an exclusion with no sensitivity, because their raw return is dilution, not a return; and moves with no such candidate, given a sensitivity that includes them at their raw return. Leaving the second kind out removes the largest genuine moves, which flatters return error, volatility error and interval coverage |
 | `unresolvable_missing_price` | No | No | Its count, by horizon, period and liquidity class. **No sensitivity:** the label has no value, and inventing one (a return, a class) would be fabrication. Counted separately from the next row so that a rise in missing prices is visible |
 | `unresolvable_quality`, `unknown_session_in_horizon`, `pending` | No | No | Counts |
 
 - Including `resolved_carried` is deliberate: whether a security will trade on the target session is unknown at T,
   so excluding those rows would condition on the future. Their return is zero at the one-session horizon and whatever
   the last trade gave at longer ones.
+- **Baselines take the same admissible states as the models** (revision 5): a baseline input that is `unlabelled` is
+  treated as absent for that row, so a bonus or rights issue not yet entered cannot feed a baseline a false fall. The
+  share of rows and features lost to `unlabelled`, by year, is reported with every dataset.
+- **A `row_absent` era without `security_complete`** (TradeIQ's daily files, §4.3): a security without a row on a day
+  may simply not have traded, so its absence is not evidence that it left the universe. In such an era,
+  `terminated` and `unresolvable_missing_price` labels are counted apart (`era_absence`), left out of the pessimistic
+  sensitivity, and the label-state mix is reported by era. Phase 3's universe of a `row_absent` import is raised for
+  its next revision (C-0044).
+- **Quarantined source rows** (TradeIQ F6, F10) leave holes that are not random: 2023's quarantine removes days of
+  securities priced at 1,000 rupees or more. Any period that contains quarantined rows is flagged, and the price
+  band is a reported stratum.
+- **`reference_revised`** labels are scored with the stored row's reference close, as Phase 3 defines, and counted.
 - **CSE's carried close.** From 2015 CSE's official close stays at the previous close on a day too little trades,
   although the security traded (`docs/research/TRADEIQ_VALIDATION.md`, F11). The labels use CSE's close as Phase 3
   defines it, so such a day contributes a zero return and lowers the volatility label. This is CSE's definition, not
@@ -454,7 +497,7 @@ combination, the components' outputs are the decomposition. Contributions descri
 | `ml_runs`, `ml_run_events` | A run and its state history |
 | `ml_trials` | Every hyperparameter trial |
 | `ml_fold_models` | Per (configuration, fold): slice boundaries, artifact hash, the hash of its frozen validation predictions |
-| `ml_models` | A registered artifact: kind (`ref`, `calibrated_engine`, `linear`, `gbt`, `combination`); configuration; output and horizon; training dataset version; training cutoff; validation and test periods; environment tuple; artifact SHA-256 and size; validated domain; `environment` (`research`, `production`); `promoted_from`; `rollforward_of`; creation timestamp |
+| `ml_models` | A registered artifact: kind (`ref`, `calibrated_engine`, `linear`, `gbt`, `combination`); configuration; output and horizon; training dataset version; training cutoff; validation and test periods; **the label class of its evidence (`point_in_time`, `reconstructed`, mixed; revision 5)**; environment tuple; artifact SHA-256 and size; validated domain; `environment` (`research`, `production`); `promoted_from`; `rollforward_of`; creation timestamp |
 | `ml_artifacts` | Artifact bytes as base64 `text`, content-addressed, with a CHECK that the decoded bytes match the SHA-256 and are at most 32 MiB (P2's representation for response bodies) |
 | `ml_model_metrics` | Append-only metric rows per model or configuration, fold or test, stratum (including age and refusal rates) |
 | `ml_gate_reports` | One per gate evaluation: each check, its evidence hashes, the multiplicity used, pass or fail |
@@ -498,7 +541,8 @@ scored dates:
 - Hypothesis: H0, "M is not better than B by at least δ" (the mean of d ≥ −δ), against "M is better by more than δ".
   δ is the protocol's declared minimum effect size, per output.
 - p-value by a **stationary bootstrap** of the d_t series, recentred to the null, with expected block length
-  L = max(h, 10, a data-driven estimate) dates and B = 9 999 replicates: p = (1 + the number of replicates at least
+  L = max(h, 10, a data-driven estimate) dates and B = max(9 999, ⌈20·m/α⌉) replicates (revision 5: with B fixed,
+  no configuration could pass once the family size m exceeds about 500): p = (1 + the number of replicates at least
   as extreme) / (B + 1). Pooling the validation dates of expanding folds tests the average performance of the
   procedure; the gaps at fold boundaries are at least h, which makes the concatenation tolerable.
 - **Across baselines** M must reject H0 for every one. That is an intersection-union test and needs no correction.
@@ -528,7 +572,12 @@ scored dates:
 3. The leakage suite of §13 passed on the code version.
 4. Walk-forward metrics exist for every fold; reliability and interval coverage are within tolerance overall and per
    liquidity class; refusal rates are reported overall and by regime.
-5. The test above is passed against every baseline that fills the output.
+5. The test above is passed against every baseline that fills the output; for a combination that will be flagged
+   `no_engine_component`, **every gated `calibrated_engine` configuration for the same output and horizon is also a
+   baseline** (MA §13: engines are first-class baselines; revision 5). The test's **size is shown first**: MLK-23 is
+   run at the protocol's own dependence parameters (serial dependence, common date factor, volatility clustering,
+   estimated on training rows only) and sizes, and the gate fails as `size_not_shown` when the type-I error lies
+   outside its acceptance region (revision 5). The same holds for gate 9.
 6. The eligibility policies and every ML policy used are not `provisional`.
 7. The dataset's survivorship is `complete`, or an `ml_waivers` row covers it and the label carries
    `survivorship_waived`.
@@ -542,7 +591,7 @@ scored dates:
 11. Validation holds `point_in_time` rows in at least the protocol's declared share, or an `ml_waivers` row accepts
     `reconstructed`-only evidence.
 12. The designation cites every label the model carries: `survivorship_waived`, `retrospective`,
-    `previously_scored`, `rollforward_of`, `no_engine_component`, and the lifetime count of test accesses. A
+    `previously_scored`, `rollforward_of`, `no_engine_component`, `reconstructed_evidence`, and the lifetime count of test accesses. A
     designation that omits one is refused.
 
 ---
@@ -589,7 +638,8 @@ Per (security, D, T, horizon, designation id): the state; for each output, the c
 and its position in the list; the three probabilities and predicted direction; expected return and its interval with
 the nominal level; predicted price; expected volatility; flags; every component's output and contributions; **the
 security's full set of Phase 4 engine outputs at T, whether or not any was a component**; the MF, F7 and DE row
-hashes; the artifact hashes; the label class; the code version tuple; `row_hash`.
+hashes; the artifact hashes; the label class of the row **and of the model's evidence** (`reconstructed_evidence`,
+shown with the prediction wherever it is displayed; revision 5); the code version tuple; `row_hash`.
 
 A prediction is never overwritten. A re-run with identical inputs reproduces the row's hash in the recorded
 environment; with different inputs it is a new row.
@@ -606,7 +656,7 @@ envelope; its training cutoff and the ages evaluated.
 | A `critical` feature null or inadmissible | `insufficient_data` (`missing_critical_features`) |
 | A `critical`, non-rank feature outside the envelope (the 0.1st to 99.9th percentile of the fit slice, widened by the policy's margin) | `blocked` (`outside_validated_domain`). A market-wide feature blocks every security that day, which is intended |
 | The eligibility policy version, or the version of a feature in the model's schema, differs from the domain's | `blocked`. An unrelated feature added to the registry does not block |
-| The row's label class or industry group is not in the domain, and no waiver covers it | `blocked` |
+| The row's label class or industry group is not in the domain, and no waiver covers it. **The C-0039 waiver covers the label class:** a model validated on `reconstructed` evidence may predict `point_in_time` rows, flagged `reconstructed_evidence` (revision 5) | `blocked` |
 | Older than `max_model_age_sessions` | `blocked` (`model_stale`) |
 | An incident flag covers T **and was recorded at or before T** | `blocked`. A flag entered later does not remove a day from validation with hindsight; such days are a reported stratum |
 | No designation for the purpose | `not_applicable` |
@@ -683,6 +733,7 @@ Synthetic archives and facts are generated through the lower layers' own factori
 | MLK-20 | **Inherited leakage.** MF's ML-1 to ML-24 and Phase 4's FL-1 to FL-22 plants below a built dataset, including an unknown price inside a label's horizon (ML-24), a corporate action not yet entered at the cutoff with no close since the document (FL-21) and a conflicting or too old fiscal-year EPS (FL-22) | The dataset at T and predictions from it are unchanged, and each upstream refusal or `untrusted` state reaches the dataset as a null with its reason, never as a value |
 | MLK-21 | **Routing.** A list of two combinations on rows with and without fundamentals | Metrics are per position on the rows routed to it; a position's gate uses only those rows |
 | MLK-22 | **Scoring policy.** Each label state, including `unresolvable_missing_price` | Trained, scored, counted and given its sensitivity exactly as §6's table says; `unresolvable_missing_price` never enters training or a headline metric, and its count is reported for every horizon |
+| MLK-24 | **Revision 5 rules.** A roll-forward offered for `validated` without citing its configuration's gate report, or without its own gates 1 and 3; a `no_engine_component` combination tested without the gated engine baselines; a designation omitting `reconstructed_evidence`; a `point_in_time` row predicted by a `reconstructed`-evidence model; a test period under 20 blocks declared `sufficient`; a dataset mixing two H values or holding a `basis_not_raw` input; a late-resolving test row | Refused, refused, refused, predicted and flagged, refused, refused, scored as `resolved_late` |
 | MLK-23 | **Coverage and size under dependence.** Synthetic panels at the protocol's actual minimum sizes, varying serial dependence, a common date factor, volatility clustering, a regime change, unbalanced security coverage and liquidity-class composition | The conformal interval's measured coverage (the §8.2 estimand) and the gate test's type-I error are reported for each case; a case outside the acceptance region marks that configuration of the method as unreliable in every report that uses it |
 
 ---
@@ -718,7 +769,7 @@ Synthetic archives and facts are generated through the lower layers' own factori
 | P5-R1 | Any promotion to `production` and its designation, with the labels it must cite | Live Route 1 predictions |
 | P5-R2 | For each real protocol: the family, the test period, the nomination rule, the criterion, the level and effect sizes, and the sufficiency minimums | The first real training |
 | P5-R3 | Acceptance of the ML dependency set into a deployable build, with re-staging | Deployment |
-| P5-R4 | The deviations from MA §12 to §13, §25 and §37 recorded in §2. **Route 1 without an engine component: decided, allowed (C-0036).** Sector and the two regimes: open | Acceptance of this design |
+| P5-R4 | The deviations from MA §12 to §13, §25 and §37 recorded in §2. **Route 1 without an engine component: decided, allowed (C-0036)**; such a combination faces the engines as gate baselines (gate 5). Sector and the two regimes: open | Acceptance of this design |
 | P5-R5 | Any waiver: survivorship that is not `complete`; validation on `reconstructed` data only. **Validation on `reconstructed` data: waived (C-0039).** Survivorship: open; until decided, no protocol uses an era whose survivorship is not `complete` | Gates 7 and 11 |
 
 ---
@@ -750,7 +801,8 @@ pinned libraries for the Windows CI jobs are unverified, so ML tests are planned
 - Whether the gate's test can be passed at all at the long horizons with obtainable data (§9.3).
 - Every provisional number.
 - How much usable history the TradeIQ archive gives once imported (P3-R1, decided: C-0035). Its first validation
-  (`docs/research/TRADEIQ_VALIDATION.md`) finds daily prices for 1992 to 2025, in the `reconstructed` era; corporate
+  (`docs/research/TRADEIQ_VALIDATION.md`) finds daily prices for 1992 to 2025, of which 2001 to 2025 are usable while the survivorship waiver is open (C-0039),
+  with survivorship "complete pending" because no de-listing list exists; all in the `reconstructed` era; corporate
   actions other than splits are not yet adjustable (P3-R2), so their windows and labels are excluded by §6.
 - Whether `reconstructed` and `point_in_time` eras behave alike.
 - Whether weighting, class balancing or time decay help. Fundamental features change a few times a year per issuer,
@@ -768,7 +820,7 @@ pinned libraries for the Windows CI jobs are unverified, so ML tests are planned
 | 4 | Provenance retained | Source row hashes, dataset version, fold and artifact hashes, designation and combination versions |
 | 5 | Frozen components | None modified |
 | 6 | Migration | Yes: 0021, additive |
-| 7 | Leakage prevention | Bounded, purged splits; fitting inside training rows; disjoint test periods with one access; multiplicity counted across protocols; out-of-fold stacking; MLK-1 to MLK-22 |
+| 7 | Leakage prevention | Bounded, purged splits; fitting inside training rows; disjoint test periods with one access; multiplicity counted across protocols; out-of-fold stacking; MLK-1 to MLK-24 |
 | 8 | Testing | §13; PostgreSQL 17 in CI |
 | 9 | Reproduction | Dataset version over logical content, seed, environment tuple, canonical artifacts |
 | 10 | Route 1 and Route 2 | This is Route 1. Route 2 is never a component and never replaces it |
@@ -784,7 +836,9 @@ pinned libraries for the Windows CI jobs are unverified, so ML tests are planned
 
 | Upstream | What Phase 5 uses | Changes since the revisions cited by Phase 5 revision 3, and how they are taken |
 |---|---|---|
-| Phase 3 §5.3 | `px_ref`, `ref_session`, `stale_sessions` per snapshot row | Revision 5's `price_unknown`: the reference price is null with a reason; a row with no reference price has a null predicted price and is refused (§11.2, missing critical feature) |
+| Phase 3 §5.3, §9 | `px_ref`, `ref_session`, `stale_sessions` per snapshot row; the eligibility result | Revision 5's `price_unknown`: the reference price is null with a reason, and §9's eligibility result `price_unknown` makes the security not market-data eligible, so it has no dataset row and its prediction is `insufficient_data` (§11.2) |
+| Phase 3 §13.1 (amended at `62f77fc`) | The snapshot row's security key, symbol and `company_id` | The link to "the issuer linked at T" for F7 rows |
+| Phase 3 §4 | Modes and labels | The builder refuses `CURRENT`, `retrospective_current` and `basis_not_raw` inputs, and requires the snapshot's H and the target build's H to be equal within a dataset (revision 5) |
 | Phase 3 §10 | Feature values with their quality states | No change of contract; nulls stay nulls (§4.4) |
 | Phase 3 §11 | Label states, `resolved_at`, `abs_ret_1` | Revision 5 added `unresolvable_missing_price`: scored by §6. Revision 4 removed the degraded session: no effect here |
 | Phase 3 §12 | ML-1 to ML-24 | ML-24 added: MLK-20 |
@@ -800,6 +854,32 @@ before Phase 5's next acceptance.
 - Phase 3 exposes `hist_n_h` for the baseline smoothing of §7.3.
 
 ## 19. Audit record
+
+**Revision 4 (commit `f9180e5`): audited 2026-11-14 (cloud, fresh-context agent; C-0005). Verdict: ACCEPT** (no
+Blocker; C-0037), 9 Major, 9 Minor. The auditor re-verified that the split rules are leak-free, including in the
+`reconstructed` era and for labels whose `resolved_at` moves later. Dispositions, applied in revision 5:
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| M1 | Major | The test-period minimum could not reach the 20 blocks the gate test needs | **Fixed.** max(126, 8h, 20L); a protocol that cannot reach 20 blocks is not `sufficient` (§5.5) |
+| M2 | Major | MLK-23 had no consequence | **Fixed.** Gates 5 and 9 require the test's size shown at the protocol's own dependence (`size_not_shown`) |
+| M3 | Major | Labels resolving after a window left every evaluation | **Fixed.** Scored with their state in the pinned build as `resolved_late`; the bound kept for anything fitted (§5.2, §5.4) |
+| M4 | Major | Splits-only adjustment put dilution into the sensitivity and two baselines | **Fixed.** The sensitivity is split by candidate event; baselines take the models' admissible states; loss to `unlabelled` reported by year (§6) |
+| M5 | Major | Reconstructed-only validation not carried through | **Fixed.** The waiver's scope over the domain check; `reconstructed_evidence` on models, predictions, gate 12 (§9.1, §11, gate 12) |
+| M6 | Major | No route for a roll-forward to `validated` | **Fixed.** Inherits gates 2, 4 to 9 by reference; passes 1 and 3 itself (§5.6) |
+| M7 | Major | ML-only combinations never faced an engine | **Fixed.** Gated engine calibrations are their gate baselines (gate 5) |
+| M8 | Major | The scored population of a `row_absent` era was unstated | **Fixed in Phase 5** (`era_absence`, reported by era, §6); **carried to Phase 3's next revision** for the universe of such an import (C-0044) |
+| M9 | Major | Sufficiency undefined per position | **Fixed.** Per list position; market-only lists allowed; only market-only components can be gated now (§5.5) |
+| m1 | Minor | Phase 3 pin missed the `62f77fc` amendment | **Fixed** (header, §18.1) |
+| m2 | Minor | `price_unknown` eligibility missing from §18.1 | **Fixed** (§18.1) |
+| m3 | Minor | `CURRENT` and `basis_not_raw` inputs, H equality | **Fixed** (§18.1, MLK-24) |
+| m4 | Minor | No disposition for `reference_revised` | **Fixed** (§6) |
+| m5 | Minor | Stale text on history | **Fixed** (§1 item 6, §16) |
+| m6 | Minor | Fixed B makes large families unpassable | **Fixed.** B = max(9 999, ⌈20m/α⌉) (§9.3) |
+| m7 | Minor | 2023's quarantine biases coverage | **Fixed.** Flagged; price band a stratum (§6) |
+| m8 | Minor | §17 cited MLK-1 to MLK-22 | **Fixed** |
+| m9 | Minor | Research already looked at the history | **Fixed.** Retrospective test periods over it are `previously_scored` (§5.4) |
+
 
 **Review on the research branch (2026-11-12, recorded in `docs/research/PHASE5_ML_DESIGN_AUDIT_2026-11-12.md` on
 `research/tradeiq-phase3-validation-2026-11-12`; not a fresh-context audit under C-0005).** Dispositions in revision 4:

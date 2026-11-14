@@ -486,3 +486,15 @@ reach Phases 4 and 5 as `fresh`. It is fixed and tested, together with both Majo
 design's last traded price; 13 guards newly tested) and three Minors; six Minors are carried to the next design
 revision. No leakage was found. MF-5 is accepted when a re-audit of the fix reports no Blocker. Full record:
 `docs/PHASE3_MARKET_FEATURES_IMPLEMENTATION.md`, "Code audit 2".
+
+## C-0044: Phase 5 design accepted for implementation on integration/cloud ([delegated], 2026-11-14)
+
+A fresh-context agent audited Phase 5 revision 4: **ACCEPT, no Blocker** (C-0037); the split rules re-verified as
+leak-free, including in the `reconstructed` era. Its 9 Major and 9 Minor findings are dispositioned in **revision 5**
+(§19), which is accepted [delegated] for implementation on the branch without a further audit, as Phase 4 revision 6
+was (C-0027). Main changes: test periods long enough for the gate test; the test's size shown before a gate passes;
+late-resolving labels scored, not dropped; bonus and rights dilution kept out of the sensitivity and the baselines;
+`reconstructed_evidence` carried to every model and prediction; a route for roll-forwards; engines as baselines for
+ML-only combinations; sufficiency per list position (only market-only components can be gated with today's history).
+**Carried to Phase 3's next revision:** the universe of a `row_absent` import (audit finding M8), together with the six
+design clarifications carried from code audit 2 (C-0043). Phase 5 implementation can start with M5-1.
