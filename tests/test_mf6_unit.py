@@ -366,3 +366,48 @@ def test_l22_each_part_of_the_revised_row_rule_alone():                         
     inst[sessions[1]] = at(500)
     lab = tg.label(stored, 1, sb, refs, session_instants=inst)
     assert lab.resolved_at == at(500)
+
+
+# ------------------------------------------------------------------- added after audit 7 (C-0054)
+
+def test_l23_an_unexplained_move_comes_before_resolved_carried():                                   # M-d
+    s = days(6)
+    move = [act.Move(SYM, s[0], s[1], act.UNEXPLAINED, F(-1, 2))]
+    lab, _ = label([bar(100), bar(50), bar(), bar(), bar(), bar()], h=5, moves=move)
+    assert lab.state == "unexplained_move_in_horizon"                # F is carried, but the move comes first (§11)
+
+
+def _detected(bars, sessions):
+    closes = [(x, b.px_close) for x, b in zip(sessions, bars) if b is not None and b.px_close is not None]
+    return tuple(act.Move(SYM, u, w, act.UNEXPLAINED, F(q) / F(p) - 1)
+                 for (u, p), (w, q) in zip(closes, closes[1:]) if abs(F(q) / F(p) - 1) > F(1, 4))
+
+
+def test_l24_resolved_at_reaches_the_last_print_before_a_revised_rows_s_d():                       # B-T9
+    for first in (100, 50):                                          # 50 makes the pair (s0, s2) fire
+        bars = [bar(first), bar(unknown=True), bar(95), bar(95), bar(95)]
+        sb, refs, sessions = build(bars)
+        sb = sr.Series(sb.symbol, sb.sequence, sb.points, sb.bars, sb.factors, _detected(bars, sessions))
+        stored = tg.ReferenceRow(SYM, sessions[3], D("95"), sessions[1])
+        inst = {x: at(300) for x in sessions}
+        inst[sessions[0]] = at(500)
+        lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+        assert lab.resolved_at == at(500), (first, lab.state)          # bar s0 decided the state either way
+    # the value: a rights cum price carried from a bar before the row's s_D
+    s = days(5)
+    for p0 in (100, 80):
+        bars = [bar(p0), bar(), bar(96), bar(96), bar(96)]
+        sessions = days(5)
+        refs = {r.session: r for r in reference_series(list(zip(sessions, bars)))}
+
+        class St:
+            statement_id, ex_date = "rt", s[2]
+
+            def term(self, k):
+                return {"held": 1, "new": 1, "subscription_price": D(40)}[k]
+        factors = [act._rights(SYM, St(), [], sessions, refs)]
+        sb, refs, sessions = build(bars, factors=factors)
+        stored = tg.ReferenceRow(SYM, sessions[3], D("100"), sessions[1])
+        inst = {x: at(300) for x in sessions}
+        inst[sessions[0]] = at(500)
+        assert tg.label(stored, 1, sb, refs, session_instants=inst).resolved_at == at(500)

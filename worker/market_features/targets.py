@@ -121,14 +121,7 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     #   - every statement behind the security's factors and confirmed moves, whatever its ex-date (B-T3, B-T7), and
     #   - `extra_instants`.
     # A resolved_at later than necessary only delays a label's use; one earlier than an input would be a leak.
-    lo = [d]
-    k = d
-    while k > 0:
-        ref_k = references.get(sessions[k])
-        if ref_k is not None and ref_k.state == "known" and ref_k.ref_session == sessions[k]:
-            break
-        k -= 1
-    lo.append(k)
+    lo = [d]                     # the walk back to the last printed close (below) starts from the earliest of these
     if own is not None and own.ref_session in sessions:
         lo.append(sessions.index(own.ref_session))
     # the stored row's own s_D, and the start of every move that can reach the horizon: a revised row reads bars
@@ -137,6 +130,21 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         lo.append(bisect.bisect_left(sessions, row.ref_session))
         lo.extend(bisect.bisect_left(sessions, m.session_from) for m in series.moves
                   if m.session_to > row.ref_session)
+    # and, generally, the build's last printed close at or before the earliest of all these: a price carried into the
+    # covered stretch, or the earlier close of a consecutive pair the detector reads, comes from that bar (audit 7,
+    # B-T9). Repeated until nothing earlier is added.
+    while True:
+        j = min(lo)
+        while j > 0:
+            ref_j = references.get(sessions[j])
+            if ref_j is not None and ref_j.state == "known" and ref_j.ref_session == sessions[j]:
+                break
+            j -= 1
+        if j >= min(lo):
+            break
+        lo.append(j)
+        lo.extend(bisect.bisect_left(sessions, m.session_from) for m in series.moves
+                  if m.session_to > sessions[j])
     hi = [d]
     all_ids = tuple(sorted({i for x in series.factors for i in x.statement_ids}
                            | {m.statement_id for m in series.moves if m.statement_id}))

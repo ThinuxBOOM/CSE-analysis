@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 6 found one further Blocker (B-T8, `resolved_at` for revised rows), fixed; a re-audit is required before acceptance (C-0052).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: audit 7 found one further Blocker (B-T9), fixed generally; a property test now checks the rule directly; a re-audit is required before acceptance (C-0054).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -532,3 +532,20 @@ calendar-sync rule); move flags may be `not_evaluable` (MF-3's state).
 
 **Verified here:** on PostgreSQL 16 as an unprivileged user (the container has no PostgreSQL 17): 5 passed. The
 authority is CI's PostgreSQL 17 job.
+
+
+---
+
+## Code audit 7 (MF-6 re-audit): fresh-context agent
+
+Audited at `259738f`. Verdict: **REJECT**, one Blocker. The auditor wrote a fuzzer that perturbs one bar at a time
+(moves and a rights factor recomputed from the bars) and checks that every session whose bar changes a label's state
+or value is covered by `resolved_at`: 0 leaks for plain rows, 1 to 4 per 4 000 for revised rows.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-T9 | **Blocker** | For a revised row whose stored s_D has no close in the build, the build's previous close before it decided a move or a rights cum price outside `resolved_at` | **Fixed generally:** the lower bound walks back to the build's last printed close at or before the earliest covered session, repeated until nothing earlier is added. The earlier walk from D alone is subsumed by it and removed. `test_l24`; the auditor's fuzzer at full size: **0 leaks in 6 runs** (revised and plain, seeds 1 to 3, about 12 000 labels) |
+| — | — | The fuzzer as a permanent test | **Added:** `tests/test_mf6_fuzz.py` (600 trials per seed and mode, about 9 s); a regression net, with the deterministic `test_l24` for the specific case |
+| M-c | Major (tests) | The walk from D untested | **Moot:** removed as subsumed |
+| M-d | Major (tests) | `unexplained_move_in_horizon` before `resolved_carried` untested | **Fixed.** `test_l23` |
+| — | Minor | An event dated exactly D; confirmations in the stored adjustment set; `session_instants` should name membership facts | **Carried** to MF-7, where the caller fills these |

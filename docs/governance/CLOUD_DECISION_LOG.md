@@ -580,3 +580,10 @@ than in the migration chain, so that no frozen guard needs a change on this bran
 part of the owner's merge decision (P3-R6), with the change-control entries design §13.3 names. Tests pass locally on
 PostgreSQL 16 run as an unprivileged user; CI's PostgreSQL 17 job is the authority. Accepted when an audit reports no
 Blocker.
+
+## C-0054: code audit 7 (MF-6) and its fix ([delegated], 2026-11-14)
+
+Audit 7 found one more Blocker of the `resolved_at` family (revised rows whose stored s_D has no close in the build).
+The lower bound is now general (walk back to the last printed close before the earliest covered session, to a fixed
+point), and the auditor's fuzzer, which tests the property directly, reports 0 leaks in about 12 000 labels and is kept
+as `tests/test_mf6_fuzz.py`. MF-6 waits for a re-audit.
