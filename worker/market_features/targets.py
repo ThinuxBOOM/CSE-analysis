@@ -113,15 +113,31 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     own = references.get(row.session)
     base["reference_revised"] = own is None or own.px_ref != row.px_ref or own.ref_session != row.ref_session
 
-    # resolved_at covers every session whose evidence the label reads, from the earliest of D, the build's own
-    # source session of P_D, and s_F (a price carried into the horizon from before D; audit 3, B-T2)
+    # resolved_at is conservative by construction (audit 5): it covers
+    #   - every session from the build's last printed close at or before D (which reaches back over any carried or
+    #     unknown-price stretch: B-T2, B-T6) through the furthest session the label read (F, and any session after F
+    #     whose bar ended an absence's grace period: B-T5), and
+    #   - every statement behind the security's factors and confirmed moves, whatever its ex-date (B-T3, B-T7), and
+    #   - `extra_instants`.
+    # A resolved_at later than necessary only delays a label's use; one earlier than an input would be a leak.
     lo = [d]
+    k = d
+    while k > 0:
+        ref_k = references.get(sessions[k])
+        if ref_k is not None and ref_k.state == "known" and ref_k.ref_session == sessions[k]:
+            break
+        k -= 1
+    lo.append(k)
     if own is not None and own.ref_session in sessions:
         lo.append(sessions.index(own.ref_session))
+    hi = [d]
+    all_ids = tuple(sorted({i for x in series.factors for i in x.statement_ids}
+                           | {m.statement_id for m in series.moves if m.statement_id}))
 
     def instants(upto, ids=()):
-        return _latest([session_instants.get(sessions[i]) for i in range(min(lo), upto + 1)],
-                       [statement_instants.get(x) for x in ids], extra_instants)
+        top = max(upto, max(hi))
+        return _latest([session_instants.get(sessions[i]) for i in range(min(lo), top + 1)],
+                       [statement_instants.get(x) for x in set(ids) | set(all_ids)], extra_instants)
 
     def done(state, upto, ids=(), **more):
         vol_state = more.pop("volatility_state", state)
@@ -144,8 +160,10 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         starts.insert(0, k)
     for left in starts:
         window_end = left + policy.grace_sessions
-        returned = any(series.bars[i] is not None for i in range(left + 1, min(window_end, last) + 1))
-        if returned:
+        seen = range(left + 1, min(window_end, last) + 1)
+        back = next((i for i in seen if series.bars[i] is not None), None)
+        hi.append(back if back is not None else min(window_end, last))       # what decided it was read (B-T5)
+        if back is not None:
             continue
         if last < window_end:
             return Label(state=PENDING, **base)                   # the grace period is still running
@@ -165,14 +183,14 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     if left is not None:
         window_end = left + policy.grace_sessions
         prior = references.get(sessions[left - 1]) if left > 0 else None
-        return done(TERMINATED, max(window_end, d), left_session=sessions[left], evidence=("left_universe",),
+        return done(TERMINATED, max(window_end, f), left_session=sessions[left], evidence=("left_universe",),
                     last_px_ref=None if prior is None else prior.px_ref)
 
     if series.sequence.gaps_between(d, f):
         return done(UNKNOWN_SESSION, f, evidence=tuple(g.isoformat() for g in series.sequence.gaps_between(d, f)))
 
     future = references.get(sessions[f])
-    volatility, vol_state = _volatility(series, d, f, horizon)
+    volatility, vol_state = _volatility(series, references, d, f, horizon)
     if future is None or future.px_ref is None:
         return done(MISSING_PRICE, f, evidence=("no_reference_price_at_F",), volatility_state=MISSING_PRICE)
     base.update(future_px=future.px_ref, future_px_session=future.ref_session)
@@ -216,17 +234,24 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     return done(RESOLVED, f, ids, volatility_state=vol_state or RESOLVED, **more)
 
 
-def _volatility(series: Series, d: int, f: int, horizon: int):
-    """(value, state or None). For h >= 5: the sample standard deviation of r_u over the h sessions in (D, F], all h
-    required, each a one-session return. None as the state means: the label's own state applies."""
+def _volatility(series: Series, references, d: int, f: int, horizon: int):
+    """(value, state or None). For h >= 5: the sample standard deviation of the one-session log returns over the h
+    sessions in (D, F], all h required, on the price basis of F (factors with ex-date in (u, F] only), so a factor
+    after F changes nothing (audit 5, B-T7). An undefined price is `unresolvable_missing_price`; a price whose
+    adjustment to F crosses an unresolved factor is `unresolvable_quality`. None as the state: the label's own."""
     if horizon == 1:
         return None, None
-    rs = []
-    for i in range(d + 1, f + 1):
-        p = series.points[i]
-        if p.r is None or p.spans_unknown or p.spans_gap:
+    sessions = series.sequence.sessions
+    prices = []
+    for i in range(d, f + 1):
+        ref = references.get(sessions[i])
+        if ref is None or ref.px_ref is None or ref.ref_session is None:
             return None, MISSING_PRICE
-        rs.append(p.r)
+        v = actions.adj(ref.px_ref, ref.ref_session, sessions[f], series.factors)
+        if v is None:
+            return None, QUALITY
+        prices.append(numeric.to_decimal(v))
+    rs = [numeric.log_return(b, a) for a, b in zip(prices, prices[1:])]
     m = numeric.mean(rs)
     ss = numeric.add(*[CTX.multiply(CTX.subtract(r, m), CTX.subtract(r, m)) for r in rs])
     return numeric.q(numeric.sqrt(CTX.divide(ss, Decimal(len(rs) - 1)))), None

@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 4 found two further Blockers (B-T3, B-T4), now fixed and tested; a re-audit is required before acceptance (C-0048).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: audit 5 found three further Blockers (B-T5 to B-T7), all in `resolved_at`; `resolved_at` is now conservative by construction; a re-audit is required before acceptance (C-0050).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -467,3 +467,29 @@ https://www.cse.lk/api/tradeSummary` per run. **No request reached CSE**: the cl
 every connection, and CI runs Linux tests with `--network none` and Windows tests with CSE's host names blocked and
 checked unreachable. Fixed: the counter wraps the fake. From now on this session runs the suite with an in-process
 guard plugin that refuses and logs any request to a CSE host; the full suite logs **zero** attempts.
+
+
+---
+
+## Code audit 5 (MF-6 re-audit): fresh-context agent
+
+Audited at `2c645c3`. Verdict: **REJECT**, three Blockers, all in `resolved_at` (the return has no leak). Every earlier
+finding confirmed fixed. Because three audits in a row found `resolved_at` gaps, the rule was rewritten to be
+**conservative by construction** rather than patched case by case: `resolved_at` is the latest admission instant over
+every session from the build's last printed close at or before D through the furthest session the label read
+(including a bar after F that ended an absence's grace period), over every statement behind the security's factors
+and confirmed moves whatever its ex-date, and over `extra_instants`. A later `resolved_at` only delays a label's use.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-T5 | **Blocker** | A return after F, inside an absence's grace period, decided the state but was after `resolved_at` | **Fixed** by the conservative rule. `test_l18` |
+| B-T6 | **Blocker** | An unknown-price bar before D (the build's own P_D undefined) decided the state | **Fixed** by the conservative rule. `test_l18` |
+| B-T7 | **Blocker** | The volatility on the D\* basis was nulled by an unresolved factor after F, whose statement was not covered | **Fixed at the root:** the volatility is computed on F's price basis (a factor after F changes nothing), and every factor statement is covered. `test_l18` |
+| M0 | Major | Termination by absence did not cover F's finality | **Fixed.** `test_l18` |
+| M1 to M5 | Major (tests) | `extra_instants`, event ids, an event on F, the earliest of two events, suspension, a conflicting price carried into D, a conflicting bar on F | **Fixed.** `test_l19`; 10 mutants, all killed |
+| — | Minor | `disagreements` ignores labels in one build only and `left_session`; `abs_ret_1` uses the rounded return; a delisting on D | **Carried** |
+
+**Second CSE finding.** A bare `pytest` at the repository root also collected `test_cse_endpoints.py`, a Phase 0
+discovery script that sends real requests to CSE (68 attempts in the auditor's run, all refused in-process by the
+guard). CI passes explicit file lists and never collected it. A root `pytest.ini` now sets `testpaths = tests`; a bare
+`pytest` from the root collects only `tests/` and logs zero CSE attempts.

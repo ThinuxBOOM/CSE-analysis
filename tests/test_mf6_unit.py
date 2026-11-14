@@ -269,3 +269,48 @@ def test_l17_an_absence_running_at_d_and_pending_before_an_identity_event():
     lab, _ = label([bar(100), None, None, None, None], h=1, factors=merger,
                    policy=tg.TargetPolicy(grace_sessions=21))
     assert lab.state == "pending"                                    # the earlier absence's grace period runs first
+
+
+# ------------------------------------------------------------------- added after audit 5 (C-0050)
+
+def test_l18_resolved_at_reaches_every_session_and_statement_that_decided_the_label():   # B-T5, B-T6, B-T7, M0
+    policy = tg.TargetPolicy(grace_sessions=3)
+    lab, _ = label([bar(100), None, None, bar(101)], h=1, policy=policy)
+    assert (lab.state, lab.resolved_at) == ("resolved_carried", at(3))  # the return after F decided it
+    sb, refs, sessions = build([bar(100), bar(unknown=True), bar(), bar()])
+    stored = tg.ReferenceRow(SYM, sessions[2], D("100"), sessions[0])
+    inst = {sessions[0]: at(0), sessions[1]: at(500), sessions[2]: at(2), sessions[3]: at(3)}
+    lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+    assert (lab.state, lab.resolved_at) == ("unresolvable_missing_price", at(500))   # the unknown bar before D
+    s = days(10)
+    after_f = [act.Factor(SYM, act.RIGHTS, s[8], None, None, act.UNRESOLVED, (), ("r9",))]
+    prices = [100, 110, 100, 110, 100, 110, 110, 110, 110, 110]
+    lab, _ = label([bar(p) for p in prices], h=5, factors=after_f, statement_instants={"r9": at(900)})
+    plain, _ = label([bar(p) for p in prices], h=5)
+    assert lab.volatility == plain.volatility is not None              # a factor after F changes nothing (F basis)
+    assert lab.resolved_at == at(900)                                  # and its statement is still covered
+    gone, _ = label([bar(100)] + [None] * 10, h=10, policy=policy)
+    assert (gone.state, gone.resolved_at) == ("terminated", at(10))    # waits for F's finality (M0)
+
+
+def test_l19_contract_and_event_details():                                                         # M1 to M5
+    lab, _ = label([bar(100), bar(110)], h=1, extra_instants=(at(700),))
+    assert lab.resolved_at == at(700)                                  # a withdrawal's instant, via the contract
+    s = days(6)
+    on_f = [act.Factor(SYM, act.DELISTING, s[1], 1, 1, act.NO_PRICE_FACTOR, (), ("dl",))]
+    lab, _ = label([bar(100), bar(101)], h=1, factors=on_f, statement_instants={"dl": at(800)})
+    assert (lab.state, lab.left_session, lab.resolved_at) == ("terminated", s[1], at(800))
+    two = [act.Factor(SYM, act.MERGER, s[4], 1, 1, act.NO_PRICE_FACTOR, (), ("m",)),
+           act.Factor(SYM, act.SUSPENSION, s[2], 1, 1, act.NO_PRICE_FACTOR, (), ("su",))]
+    lab, _ = label([bar(100)] * 6, h=5, factors=two)
+    assert (lab.state, lab.left_session, lab.evidence[0]) == ("terminated", s[2], act.SUSPENSION)
+    carried_conflict = [bar(100, quality="conflicting"), bar(), bar(105), bar(106), bar(107), bar(108), bar(109)]
+    sb, refs, sessions = build(carried_conflict)
+    fresh_row = tg.ReferenceRow(SYM, sessions[1], D("100"), sessions[0], source_quality="fresh")
+    assert tg.label(fresh_row, 5, sb, refs, session_instants={}).state == "unresolvable_quality"   # M4
+    no_trade_conflict_at_f = [bar(100), bar(101)] + [bar(102)] * 3 + [FeatureBar(
+        symbol=SYM, row=3, traded=False, px_close=None, price_unknown=False, share_volume=D(0), trade_count=None,
+        turnover=None, open_price=None, high=None, low=None, quality="conflicting")]
+    assert label(no_trade_conflict_at_f, h=5)[0].state == "unresolvable_quality"                     # M5
+    one, _ = label([bar(100), bar(90)], h=1)
+    assert one.volatility_state == "resolved"

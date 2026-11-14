@@ -542,3 +542,15 @@ A fresh-context audit reported **no Blocker** in either step (C-0037). Its four 
 enforces the design's floors on block length and replicates; the missing tests are added; MLK-8 runs 400 seeds and
 measures the rate among tested seeds (8.2% at nominal 5%: the method's known small-sample oversize, which MLK-23
 addresses at gate time); the slice purge and embargo are asserted. Record: `docs/PHASE5_ML_IMPLEMENTATION.md`.
+
+## C-0050: code audit 5 (MF-6), resolved_at made conservative, and pytest collection limited ([delegated], 2026-11-14)
+
+Audit 5 found three more Blockers in MF-6, all in `resolved_at`. Instead of a fourth case-by-case patch,
+`resolved_at` is now **conservative by construction** (every session from the last printed close at or before D to
+the furthest session read; every factor and confirmation statement of the security; `extra_instants`), and the
+realised volatility is computed on F's price basis. MF-6 waits for a re-audit.
+
+**Second CSE-related finding:** a bare `pytest` at the repository root collected the root-level Phase 0 script
+`test_cse_endpoints.py`, which sends real requests to CSE. In this session that only happened inside the audit
+agent's run, under the in-process guard, so nothing left the process; CI never collects it. A root `pytest.ini`
+(`testpaths = tests`) now prevents it. The owner may also wish to move or rename that script.
