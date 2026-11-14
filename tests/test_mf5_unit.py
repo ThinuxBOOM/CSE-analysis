@@ -440,3 +440,41 @@ def test_a4_market_breadth_flat_is_not_up_the_gap_guard_and_beta_without_bridged
     ret21 = {s: ft.Calculator(series[s], CFG).all()["ret_21"] for s in series}
     beta = mk.security_market_features(sym(0), series[sym(0)], pts, ret21, CFG)["beta_126"]
     assert beta.inputs == 124                                          # r(60) undefined, r(61) bridged: both out
+
+
+# ------------------------------------------------------------------- added after audit 3 (C-0047)
+
+def test_a5_a_bridged_return_reaches_back_to_a_conflicting_base_and_non_price_features_ignore_carried_prices():
+    bars = [bar(100 + i % 3) for i in range(31)]
+    bars[8] = bar(150, quality="conflicting")
+    bars[9] = bar(unknown=True, traded=True)                          # r(10) is bridged from session 8
+    f = feats(bars)
+    assert f["vol_21"].state == "conflicting" and f["amihud_21"].state == "conflicting"        # B1'
+    bars[8] = bar(150)
+    assert feats(bars)["vol_21"].state == "partial"                   # the same series without the conflict
+    carried = [bar(100)] * 5 + [bar(100, quality="conflicting")] + [bar()] * 64
+    f = feats(carried)                                                # MJ-1: no price is an input of these
+    assert [f[k].state for k in ("vol_shares_avg_21", "turnover_avg_21", "trades_avg_21", "zero_trade_ratio_63")] == [
+        "fresh"] * 4
+    assert f["ret_1"].state == "conflicting"                          # but a return on that carried price is
+    hist = [bar(100 + i % 3) for i in range(300)]
+    hist[40] = bar(101, quality="conflicting")
+    hist[41:48] = [bar()] * 7                                         # carried into first - h of hist_*_5
+    assert feats(hist)["hist_up_share_5"].state == "conflicting"
+
+
+def test_a6_rel_volume_counts_gaps_once_and_gap_1_checks_t_and_market_eligibility_uses_the_series():
+    two = feats([bar(100)] * 22 + [bar(100, volume="5000")], gaps={10: 1, 21: 1})["rel_volume_21"]
+    assert two.state == "missing" and ("missing", "gaps_beyond_tolerance") in two.reasons                    # MJ-2
+    assert feats([bar(100), bar(100), bar(101, open_=101, quality="conflicting")])["gap_1"].state == "conflicting"
+    d = days(12)
+    sym = "U.N0000"
+    bad = [act.Factor(sym, act.RIGHTS, d[10], None, None, act.UNRESOLVED)]
+    s, refs = build([bar(10, symbol=sym)] * 12, factors=bad, symbol=sym)
+    el = mk.eligibility_by_session({sym: s}, {sym: refs}, LENIENT)
+    assert el[sym][5] is False                                        # untrusted sessions block (M3 through market)
+
+
+def test_a7_a_window_built_on_a_price_carried_from_a_conflicting_bar_is_conflicting():
+    f = feats([bar(100)] * 5 + [bar(100, quality="conflicting")] + [bar()] * 25)
+    assert f["vol_21"].state == "conflicting" and f["ret_21"].state == "conflicting"

@@ -234,7 +234,7 @@ partition ok, 75 test files.
 
 ## MF-5: arithmetic, the carried series, feature set v1, market context
 
-**Status: audit 2 found one Blocker (B1), now fixed and tested; a re-audit of the fix is required before acceptance (C-0043).**
+**Status: audit 3 found one further Blocker (B1′), now fixed and tested; a re-audit is required before acceptance (C-0047).**
 
 ### What was built
 
@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: implemented and tested (2026-11-14); audit pending.** The draft of the checkpoint (C-0034) is unchanged;
+**Status: audit 3 found two Blockers (B-T1, B-T2), now fixed and tested; a re-audit is required before acceptance (C-0047).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -410,3 +410,31 @@ The auditor judged every recorded MF-5 choice sound. Of the MF-4 choices, the pr
 the letter of §8.1" and is acceptable only with its stated gate; "liquidity failure gives `low_activity`" needs a
 design change (a result name of its own) at the next revision. CSE's carried close (TradeIQ F11) is handled as the
 design says: a traded session with r = 0.
+
+
+---
+
+## Code audit 3 (MF-5 re-audit, MF-6 first audit): fresh-context agent, C-0005 and C-0037
+
+Audited at `7f4262e`. Verdicts: **MF-5 REJECT** (one Blocker), **MF-6 REJECT** (two Blockers). No leak in the label's
+return. Fixes on 2026-11-14; 19 mutants on the fixes, 18 killed (the survivor, s_F in `resolved_at`, is defensive:
+whenever s_F is before D it equals the build's own source session of P_D, which is checked).
+
+| # | Step | Severity | Finding | Disposition |
+|---|---|---|---|---|
+| B1′ | MF-5 | **Blocker** | A window's first return bridged over an unknown price from a base before the window: a conflicting base fed vol_21 and amihud unmarked | **Fixed.** `_stretch` checks the base of a bridged return. `test_a5` |
+| MJ-1 | MF-5 | Major | The B1 fix marked volume means, Parkinson and zero_trade_ratio `conflicting` because of a carried price they do not use | **Fixed.** `_stretch(prices=False)` for features that use no price. `test_a5` |
+| MJ-2 | MF-5 | Major | rel_volume applied the gap tolerance twice | **Fixed.** Gaps counted once over t−21..t. `test_a6` |
+| MJ-3 | MF-5 | Major (tests) | Survivors on the B1 fix and on M3 | **Fixed.** `test_a5` to `test_a7` (carried and bridged conflicts, history, gap_1 at t, market eligibility through the series) |
+| B-T1 | MF-6 | **Blocker** | Only the first absence in the horizon was examined: leave, return, leave for good gave a return | **Fixed.** Every absence starting in (D, F] is examined. `test_l11` |
+| B-T2 | MF-6 | **Blocker** | `resolved_at` ignored a price carried from before D (look-ahead through the training cutoff) | **Fixed.** The instant range starts at the earliest of D, the build's own source session of P_D, and s_F. `test_l12`, `test_l15` |
+| MJ-T1 | MF-6 | Major | An unresolved factor after F made the label `unresolvable_quality` | **Fixed.** Only unresolved factors with ex-date in (s_D, F]. `test_l13` |
+| MJ-T2 | MF-6 | Major (design) | P_D printed by a `conflicting` bar was not checked | **Decided conservatively (C-0047):** it is an input; `ReferenceRow.source_quality`; such a label is `unresolvable_quality`. `test_l13` |
+| MJ-T3 | MF-6 | Major (tests) | 12 surviving mutants | **Fixed.** `test_l14`, `test_l15` |
+| — | MF-5 | Minor | xs_rank's reason for a conflicting own value; its state mapping and spans flags untested; a float in `bar.raw` read as no last traded price; dead code; return history conservative on a skipped pair | **Carried** (the dead first-bar check is removed) |
+| — | MF-6 | Minor | A delisting dated on D is ignored; `label()` raises when D is no longer final (MF-7 must map it); the volatility's spans check is narrowly non-equivalent | **Carried** to MF-7 and the next design revision |
+| m6 | MF-5 | (carried from audit 2) | A member's conflicting bar enters m_u | **Still carried**: a design decision for the next revision |
+
+The three failures both auditors saw on a `git archive` export are explained: the export was unpacked under `/tmp`,
+which also holds the tests' temporary roots, and `tests/test_report_classification.py` refuses on purpose a temporary
+root that contains the repository. Not a defect; CI's clean checkouts pass.

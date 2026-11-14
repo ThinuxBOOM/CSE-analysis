@@ -24,7 +24,7 @@ from typing import Optional
 from . import actions, numeric
 from .bars import CONFLICTING
 from .numeric import CTX
-from .series import UNTRUSTED, Series
+from .series import Series
 
 TARGET_DEFINITION_VERSION = "targets.1"
 HORIZONS = (1, 5, 10, 21)
@@ -49,6 +49,7 @@ class ReferenceRow:
     px_ref: Optional[Decimal]            # P_D; None when the price was undefined at D
     ref_session: Optional[date]          # s_D
     snapshot_row_id: Optional[str] = None
+    source_quality: Optional[str] = None # the quality of the bar that printed P_D, as stored with the row
 
 
 @dataclass(frozen=True)
@@ -109,8 +110,14 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     own = references.get(row.session)
     base["reference_revised"] = own is None or own.px_ref != row.px_ref or own.ref_session != row.ref_session
 
+    # resolved_at covers every session whose evidence the label reads, from the earliest of D, the build's own
+    # source session of P_D, and s_F (a price carried into the horizon from before D; audit 3, B-T2)
+    lo = [d]
+    if own is not None and own.ref_session in sessions:
+        lo.append(sessions.index(own.ref_session))
+
     def instants(upto, ids=()):
-        return _latest([session_instants.get(sessions[i]) for i in range(d, upto + 1)],
+        return _latest([session_instants.get(sessions[i]) for i in range(min(lo), upto + 1)],
                        [statement_instants.get(x) for x in ids], extra_instants)
 
     def done(state, upto, ids=(), **more):
@@ -132,16 +139,19 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         prior = references.get(sessions[before[-1]]) if before else None
         return done(TERMINATED, f, e.statement_ids, left_session=e.ex_date, evidence=(e.kind,) + tuple(e.statement_ids),
                     last_px_ref=None if prior is None else prior.px_ref)
-    left = next((i for i in range(d + 1, f + 1) if series.bars[i] is None), None)
-    if left is not None:
+    # every absence that starts inside the horizon is examined, in order (audit 3, B-T1)
+    for left in range(d + 1, f + 1):
+        if series.bars[left] is not None or series.bars[left - 1] is None:
+            continue
         window_end = left + policy.grace_sessions
         returned = any(series.bars[i] is not None for i in range(left + 1, min(window_end, last) + 1))
-        if not returned:
-            if last < window_end:
-                return Label(state=PENDING, **base)               # the grace period is still running
-            prior = references.get(sessions[left - 1])
-            return done(TERMINATED, window_end, left_session=sessions[left], evidence=("left_universe",),
-                        last_px_ref=None if prior is None else prior.px_ref)
+        if returned:
+            continue
+        if last < window_end:
+            return Label(state=PENDING, **base)                   # the grace period is still running
+        prior = references.get(sessions[left - 1])
+        return done(TERMINATED, window_end, left_session=sessions[left], evidence=("left_universe",),
+                    last_px_ref=None if prior is None else prior.px_ref)
 
     if series.sequence.gaps_between(d, f):
         return done(UNKNOWN_SESSION, f, evidence=tuple(g.isoformat() for g in series.sequence.gaps_between(d, f)))
@@ -151,13 +161,18 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     if future is None or future.px_ref is None:
         return done(MISSING_PRICE, f, evidence=("no_reference_price_at_F",), volatility_state=MISSING_PRICE)
     base.update(future_px=future.px_ref, future_px_session=future.ref_session)
+    if future.ref_session in sessions:
+        lo.append(sessions.index(future.ref_session))
 
     used = [x for x in series.factors if row.ref_session < x.ex_date <= future.ref_session
             and x.status != actions.NO_PRICE_FACTOR]
     ids = tuple(sorted(i for x in used for i in x.statement_ids))
     conflicting = any(b is not None and b.quality == CONFLICTING for b in series.bars[d + 1:f + 1])
-    if (conflicting or future.source_quality == CONFLICTING or any(x.status == actions.UNRESOLVED for x in used)
-            or any(series.points[i].state == UNTRUSTED for i in range(d + 1, f + 1))):
+    # an unresolved factor in (s_D, F] (not after F: audit 3, MJ-T1); P_D printed by a conflicting bar is an input
+    # too (audit 3, MJ-T2, decided conservatively: C-0047)
+    unresolved = any(x.status == actions.UNRESOLVED and row.ref_session < x.ex_date <= sessions[f]
+                     for x in series.factors)
+    if (conflicting or future.source_quality == CONFLICTING or row.source_quality == CONFLICTING or unresolved):
         return done(QUALITY, f, ids, volatility_state=QUALITY)
 
     product = Fraction(1)

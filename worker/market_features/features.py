@@ -91,11 +91,13 @@ class Calculator:
             raise ValueError("a snapshot has at least one final session")
 
     # ------------------------------------------------------------------------------------------------- helpers
-    def _stretch(self, start, end, n) -> Notes:
+    def _stretch(self, start, end, n, prices=True) -> Notes:
         """The states a window owes to the stretch of sessions from start to end: gaps and unexplained moves between
-        them, untrusted adjustment and bridged unknown prices in (start, end], and a `conflicting` input anywhere in
-        [start, end], including a price carried from a `conflicting` bar (audit 2, B1). n is the window's nominal
-        length for the tolerance."""
+        them, untrusted adjustment and bridged unknown prices in (start, end], and a `conflicting` bar anywhere in
+        [start, end] (audit 2, B1). With `prices` (a formula that uses c or r), also a price carried from a
+        `conflicting` bar, and the base of a return bridged from before `start` (audit 3, B1'); without it (volume,
+        Parkinson, activity) a carried price is not an input and is not checked (audit 3, MJ-1). n is the window's
+        nominal length for the tolerance."""
         notes = Notes()
         if start < 0:
             return notes.add(MISSING, "insufficient_history")
@@ -104,10 +106,14 @@ class Calculator:
             notes.add(*((PARTIAL, "spans_gap") if len(gaps) <= gap_tolerance(n) else (MISSING, "gaps_beyond_tolerance")))
         for i in range(start, end + 1):
             bar, p = self.s.bars[i], self.s.points[i]
-            if (bar is not None and bar.quality == CONFLICTING) or p.source_conflicting:
+            if (bar is not None and bar.quality == CONFLICTING) or (prices and p.source_conflicting):
                 notes.add(CONFLICT, "conflicting_bar")
             if i == start:
                 continue
+            if prices and p.spans_unknown and p.base_index is not None and p.base_index < start:
+                base_bar, base = self.s.bars[p.base_index], self.s.points[p.base_index]
+                if (base_bar is not None and base_bar.quality == CONFLICTING) or base.source_conflicting:
+                    notes.add(CONFLICT, "conflicting_bar")
             if p.state == UNTRUSTED:
                 notes.add(UNTRUST, "unresolved_factor")
             if p.spans_unknown or p.state == PRICE_UNKNOWN:
@@ -179,10 +185,7 @@ class Calculator:
         first = last - n + 1
         if first < 0:
             return finish(fid, None, Notes().add(MISSING, "insufficient_history")), None
-        notes = self._stretch(first, last, n)
-        first_bar = self.s.bars[first]
-        if first_bar is not None and first_bar.quality == CONFLICTING:
-            notes.add(CONFLICT, "conflicting_bar")
+        notes = self._stretch(first, last, n, prices=False)
         values = []
         for i in range(first, last + 1):
             v, note = getter(i)
@@ -235,7 +238,7 @@ class Calculator:
         first = self.t - n + 1
         if first < 0:
             return finish("vol_parkinson_21", None, Notes().add(MISSING, "insufficient_history"))
-        notes = self._stretch(first, self.t, n)
+        notes = self._stretch(first, self.t, n, prices=False)
         notes.items = [x for x in notes.items if x[1] not in ("spans_unknown", "unresolved_factor")]   # a ratio
         squares = []
         for i in range(first, self.t + 1):
@@ -279,10 +282,17 @@ class Calculator:
         today, note = self._volume(self.t)
         if note:
             notes.add(*note)
-        if self.t >= 1:                          # the step from the base to t: a gap, a conflicting bar at t (m1, B1)
-            step = self._stretch(self.t - 1, self.t, 21)
+        if self.t >= 1:                          # the step from the base to t: a conflicting bar at t (m1, B1)
+            step = self._stretch(self.t - 1, self.t, 21, prices=False)
             notes.merge(step)
-            notes.items = [x for x in notes.items if x != (PARTIAL, "spans_unknown")]
+            # gaps are counted once over t-21..t against the 21-session tolerance (audit 3, MJ-2)
+            notes.items = [x for x in notes.items if x not in ((PARTIAL, "spans_unknown"), (PARTIAL, "spans_gap"),
+                                                                (MISSING, "gaps_beyond_tolerance"))]
+            if self.t >= 21:
+                gaps = self.s.sequence.gaps_between(self.t - 21, self.t)
+                if gaps:
+                    notes.add(*((PARTIAL, "spans_gap") if len(gaps) <= gap_tolerance(21)
+                                else (MISSING, "gaps_beyond_tolerance")))
         if today is None and not note:
             notes.add(MISSING, "no_bar")
         if base_value is not None and base_value == 0:
@@ -303,7 +313,7 @@ class Calculator:
         amihud = finish("amihud_21", None if notes.is_null() else numeric.mean(terms), notes,
                         self._traded(start + 1, self.t), len(terms))
         first = self.t - 62
-        zn = Notes().add(MISSING, "insufficient_history") if first < 0 else self._stretch(first, self.t, 63)
+        zn = Notes().add(MISSING, "insufficient_history") if first < 0 else self._stretch(first, self.t, 63, prices=False)
         zn.items = [x for x in zn.items if x[1] not in ("spans_unknown", "unresolved_factor", "unexplained_move")]
         known = [b for b in self.s.bars[max(first, 0):self.t + 1] if b is not None and b.traded is not None]
         if len(known) < 40:

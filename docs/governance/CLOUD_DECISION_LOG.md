@@ -511,3 +511,14 @@ oversized under strong dependence, recorded for MLK-23. Accepted when an audit r
 Folds and slices (`worker/ml_protocol/folds.py`) with `tests/test_m53_unit.py` (MLK-1 to MLK-3), recorded in
 `docs/PHASE5_ML_IMPLEMENTATION.md`. Done before M5-2 because it is pure and depends on nothing; M5-2 (the dataset
 builder) needs Phase 3's store (MF-7). Accepted when an audit reports no Blocker (C-0037).
+
+## C-0047: code audit 3 (MF-5 re-audit, MF-6 first audit) and its fixes ([delegated], 2026-11-14)
+
+A fresh-context agent re-audited MF-5's Blocker fix and audited MF-6. **MF-5: one further Blocker** (a conflicting
+price reaching a window through a return bridged over an unknown price) and two Majors introduced by the first fix
+(over-marking non-price features; gaps counted twice). **MF-6: two Blockers** (only the first absence in a horizon
+examined; `resolved_at` missing a price carried from before D, which could let a label into training too early) and
+three Majors. All are fixed and tested. **Decision [delegated]:** a reference close printed by a `conflicting` bar is
+an input of the label, so the label is `unresolvable_quality` (audit finding MJ-T2; the conservative reading of §11).
+Neither step is accepted until a re-audit reports no Blocker. The archive-only test failures are explained (an export
+under `/tmp`), not a defect.

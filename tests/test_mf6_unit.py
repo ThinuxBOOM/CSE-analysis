@@ -173,3 +173,74 @@ def test_l10_the_feature_path_never_imports_the_target_module():
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 names = [getattr(node, "module", None) or ""] + [a.name for a in node.names]
                 assert not any("targets" in x for x in names), module.__name__
+
+
+# ------------------------------------------------------------------- added after audit 3 (C-0047)
+
+def test_l11_every_absence_in_the_horizon_is_examined():                                             # B-T1
+    policy = tg.TargetPolicy(grace_sessions=3)
+    gone = [bar(100), None, bar(103), None, None, None, None, None, None, None]
+    lab, s = label(gone, h=5, policy=policy)
+    assert (lab.state, lab.ret, lab.left_session) == ("terminated", None, s[3])
+    running = [bar(100), None, bar(103), None, None, None]
+    assert label(running, h=5, policy=policy)[0].state == "pending"
+
+
+def test_l12_resolved_at_covers_a_price_carried_from_before_d():                                    # B-T2
+    s, refs, sessions = build([bar(100), bar(), bar()])
+    row_ = tg.ReferenceRow(SYM, sessions[1], refs[sessions[1]].px_ref, refs[sessions[1]].ref_session)
+    inst = {sessions[0]: at(100), sessions[1]: at(1), sessions[2]: at(2)}
+    lab = tg.label(row_, 1, s, refs, session_instants=inst)
+    assert (lab.state, lab.resolved_at) == ("resolved_carried", at(100))
+
+
+def test_l13_quality_factor_windows_and_the_reference_bar():                                        # MJ-T1, MJ-T2
+    s = days(10)
+    after_f = [act.Factor(SYM, act.RIGHTS, s[8], None, None, act.UNRESOLVED)]
+    lab, _ = label([bar(100)] * 5 + [bar(105)] * 5, h=5, factors=after_f)
+    assert (lab.state, lab.ret) == ("resolved", D("0.05"))           # an unresolved factor after F is not in it
+    sb, refs, sessions = build([bar(100), bar(110)])
+    conflicting_d = tg.ReferenceRow(SYM, sessions[0], D("100"), sessions[0], source_quality="conflicting")
+    assert tg.label(conflicting_d, 1, sb, refs, session_instants={}).state == "unresolvable_quality"
+    sb, refs, sessions = build([bar(100), bar(110, quality="conflicting")])
+    assert tg.label(row(refs, sessions[0]), 1, sb, refs, session_instants={}).state == "unresolvable_quality"
+
+
+def test_l14_factor_boundaries_precedence_and_small_cases():                                       # MJ-T3
+    s = days(7)
+    on_sd = [act.Factor(SYM, act.SUBDIVISION, s[0], 1, 2, act.APPLIED)]
+    lab, _ = label([bar(50)] * 6, h=5, factors=on_sd)
+    assert lab.ret == 0                                              # an ex-date on s_D is already in P_D
+    on_sf = [act.Factor(SYM, act.SUBDIVISION, s[5], 1, 2, act.APPLIED)]
+    lab, _ = label([bar(100)] * 5 + [bar(50)], h=5, factors=on_sf)
+    assert (lab.state, lab.ret) == ("resolved", D("0"))              # an ex-date on s_F, traded at F, is divided out
+    policy = tg.TargetPolicy(grace_sessions=3)
+    back_at_end = [bar(100), None, None, None, bar(101), bar(101)]
+    assert label(back_at_end, h=5, policy=policy)[0].state == "resolved"     # back on the grace window's last session
+    gapped_and_gone = [bar(100), None, None, None, None, None, None]
+    assert label(gapped_and_gone, h=5, gaps={0: 1}, policy=policy)[0].state == "terminated"
+    conflicting_and_missing = [bar(100), bar(101, quality="conflicting")] + [bar(102)] * 3 + [bar(unknown=True)]
+    assert label(conflicting_and_missing, h=5)[0].state == "unresolvable_missing_price"
+    one_stale = [bar(100)] * 5 + [bar()]
+    lab, _ = label(one_stale, h=5)
+    assert (lab.state, lab.stale_sessions) == ("resolved_carried", 1)
+    fall, _ = label([bar(100), bar(90)], h=1)
+    assert fall.volatility == num.q(abs(num.ln(D("0.9"))))         # abs_ret_1 of a fall is positive
+    sb, refs, sessions = build([bar(100), bar(), bar(110)])
+    moved = tg.ReferenceRow(SYM, sessions[1], D("100"), sessions[1])    # same price, other source session
+    assert tg.label(moved, 1, sb, refs, session_instants={}).reference_revised
+    lab, _ = label([bar(unknown=True), bar(101)], h=5)
+    assert lab.state == "unresolvable_missing_price"                 # Minor 13 before pending
+    missing_f, _ = label([bar(100)] * 5 + [bar(unknown=True)], h=5)
+    assert missing_f.volatility_state == "unresolvable_missing_price" and missing_f.volatility is None
+
+
+def test_l15_a_conflicting_close_carried_from_before_d_and_the_builds_own_view_of_p_d():
+    sb, refs, sessions = build([bar(100, quality="conflicting"), bar(), bar()])
+    lab = tg.label(row(refs, sessions[1]), 1, sb, refs, session_instants={})
+    assert lab.state == "unresolvable_quality"                       # P_F carried from that bar (future source)
+    sb, refs, sessions = build([bar(100), bar(), bar(110)])
+    stored = tg.ReferenceRow(SYM, sessions[1], D("100"), sessions[0])
+    inst = {sessions[0]: at(100), sessions[1]: at(1), sessions[2]: at(2)}
+    lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+    assert (lab.state, lab.resolved_at) == ("resolved", at(100))    # the build's own P_D evidence is an input
