@@ -32,3 +32,26 @@ An error of mine caught during this step: the first version of the null-series g
 sample mean, which made the observed mean exactly zero and the test unable to reject (0 of 200); the check passed
 because it was one-sided. Fixed: the generator has expected mean zero, and MLK-8's check is two-sided as the design
 says.
+
+---
+
+## M5-3: folds and slices
+
+**Status: implemented and tested (2026-11-14); audit pending.**
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_protocol/folds.py` | `Calendar` (session arithmetic), `Fold` (training, validation, `resolved_late`, unused with reasons), `Slices` (fit, select, calibrate, conformal, with purge and embargo at each boundary), `walk_forward` (expanding folds), `FitScope` (MLK-3) | §5.2, §5.3 (revision 5) |
+| `tests/test_m53_unit.py` | 5 tests: MLK-1 (in a session-index era, a datetime era and across two eras; expanding folds never validate a row twice), refusals of malformed folds and slices, MLK-2 (a date memoriser: chance under the protocol in all 40 histories, skill without the purge), MLK-3 | §13 |
+
+Choices made inside the design's words, for the audit:
+- The inner slices use the outer split's purge and embargo literally: a select, calibrate or conformal row has
+  T at least `embargo` sessions after the slice's lower boundary and at most g sessions before its upper one, and
+  R_h at or before the upper one. Rows between are unused.
+- A row with no R_h (pending) is never a training or validation row and is counted as `pending`.
+- `resolved_late` rows exist only when a label resolves after V_end although its T is g sessions before it (a late
+  corporate action or confirmation): the purge already covers the grace period.
+
+Mutation check (6 mutants: no purge, late rows fitted, training by T, slices without purge or R bound, no embargo,
+an open fit scope): all killed. Three of my first test expectations were wrong (no late row without a late
+confirmation; a memoriser that used non-overlapping labels; reused keys) and were corrected before commit.

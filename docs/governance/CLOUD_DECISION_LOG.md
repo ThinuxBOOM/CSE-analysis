@@ -505,3 +505,9 @@ The evaluation library `worker/evaluation_metrics/` (metrics, `scoring.1`, the g
 `tests/test_m51_unit.py` (8 tests) and recorded in `docs/PHASE5_ML_IMPLEMENTATION.md`. MLK-8's simulation measured the
 gate test at 7.5% single and 8% family-wise at a nominal 5%: inside the acceptance region for 200 trials, but mildly
 oversized under strong dependence, recorded for MLK-23. Accepted when an audit reports no Blocker (C-0037).
+
+## C-0046: Phase 5 implementation, step M5-3 ([delegated], 2026-11-14)
+
+Folds and slices (`worker/ml_protocol/folds.py`) with `tests/test_m53_unit.py` (MLK-1 to MLK-3), recorded in
+`docs/PHASE5_ML_IMPLEMENTATION.md`. Done before M5-2 because it is pure and depends on nothing; M5-2 (the dataset
+builder) needs Phase 3's store (MF-7). Accepted when an audit reports no Blocker (C-0037).
