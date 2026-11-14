@@ -572,3 +572,11 @@ Audit 6 confirmed the conservative `resolved_at` and the volatility on F's basis
 family: for a revised reference row, bars between the stored row's s_D and the build's own last close could decide the
 state without being covered. Fixed as the auditor prescribed, with the contract for withdrawn statements widened to
 every statement of the security. MF-6 waits for a re-audit.
+
+## C-0053: Phase 3 MF-7a, migration 0019 kept pending ([delegated], 2026-11-14)
+
+Migration 0019 (the market-feature tables) is written and tested, and kept in `supabase/migrations_pending/` rather
+than in the migration chain, so that no frozen guard needs a change on this branch; moving it into the chain becomes
+part of the owner's merge decision (P3-R6), with the change-control entries design §13.3 names. Tests pass locally on
+PostgreSQL 16 run as an unprivileged user; CI's PostgreSQL 17 job is the authority. Accepted when an audit reports no
+Blocker.

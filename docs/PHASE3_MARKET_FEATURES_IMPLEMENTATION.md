@@ -508,3 +508,27 @@ were verified (hand-computed with a split inside the horizon and a bonus after F
 | M-a | Major | The `extra_instants` contract named only withdrawals with an ex-date in (s_D, F] | **Fixed.** Every withdrawn or superseded statement of the security, confirmations included, whatever its date |
 | M-b | Major (tests) | The unexplained-move window at the row's s_D; the volatility's `unresolvable_quality` | **Fixed.** `test_l21` |
 | — | Minor | No-price factors out of the adjustment set (now tested); the confirmation filter; carried items of audit 5 | Partly fixed; the rest carried |
+
+---
+
+## MF-7a: migration 0019 (pending)
+
+**Status: implemented and tested (2026-11-14); audit pending.**
+
+| File | Content |
+|---|---|
+| `supabase/migrations_pending/0019_market_feature_foundation.sql` | The 15 tables of design §13.1 (plus `mf_history_security_complete` and `mf_history_quarantine` for §5.4's revision-6 rule), guards, append-only triggers on every table for every role, grants |
+| `tests/test_mf7_migration_postgres.py` | 5 tests on a throwaway cluster: applies on top of 0001 to 0018; both append-only triggers on every table, and UPDATE, DELETE and TRUNCATE refused for the owner on tables holding rows; owner-only tables refuse the worker; the configuration's hash and the `validated` rule; the worker's calendar copies only; reader read-only |
+| `tests/test_mf7_migration_static.py` | The pending file is outside the chain and meets every migration's guards |
+
+**Why "pending".** Design §13.3 names three frozen guards that state the migration range as ending at 0018. Putting
+0019 into `supabase/migrations/` on this branch would need a change-control edit to each, and a re-staging. Kept in
+`supabase/migrations_pending/`, it changes no frozen file; moving it into the chain is part of the owner's merge
+decision (P3-R6). The tests apply it explicitly after the chain.
+
+Choices for the audit: `company_id` is `uuid` (as `companies.id`); a configuration's `status` must equal its JSON's
+`eligibility_policy_status`; the worker may insert a `declared_closed` row only as a `trading_calendar:` copy (the
+calendar-sync rule); move flags may be `not_evaluable` (MF-3's state).
+
+**Verified here:** on PostgreSQL 16 as an unprivileged user (the container has no PostgreSQL 17): 5 passed. The
+authority is CI's PostgreSQL 17 job.
