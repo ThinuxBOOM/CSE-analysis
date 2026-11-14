@@ -311,7 +311,7 @@ no factor: the revision 1 error again, for imported history.
 | Batch's `no_trade_convention` | Rule |
 |---|---|
 | `volume_zero` | `traded` = volume > 0, or trade count > 0 where the batch has one (either is enough). On a row with `traded = false` the close is not a price: `px_close` is null and the printed value is kept as `printed_close_no_trade` |
-| `row_absent` | A row exists only for traded days: every row is `traded = true`. A security with rows before and after a session but none on it has a no-trade bar there, provided the batch declares itself complete **for that security** over the range (`security_complete`); otherwise the bar is `missing`. **Revision 6: the universe of an imported date** under `row_absent` is the securities with a row in the batch on that date **plus** those for which the batch is `security_complete` over a range containing the date (they did not trade). Without `security_complete` a security without a row is not a member that day: its absence is not evidence that it left (Phase 5 counts such labels apart, `era_absence`). A (security, date) the import quarantined is excluded from `security_complete` and is `missing`, never a no-trade bar |
+| `row_absent` | A row exists only for traded days: every row is `traded = true`. A security with rows before and after a session but none on it has a no-trade bar there, provided the batch declares itself complete **for that security** over the range (`security_complete`); otherwise the bar is `missing`. **Revision 6: the universe of an imported date** under `row_absent` is the securities with a row in the batch on that date **plus** those for which the batch is `security_complete` over a range containing the date (they did not trade). Without `security_complete` a security without a row is not a member that day: its absence is not evidence that it left (Phase 5 counts such labels apart, `era_absence`). A (security, date) the import quarantined is excluded from `security_complete` and is `missing`, never a no-trade bar. **Admission (C-0062):** a stored range is read only up to the security's last admitted row; a range never extends membership with a row the query has not admitted |
 | `unknown` | The batch is admitted to `CURRENT` only |
 
 `mf_history_bars` requires, per row: the security's symbol, the date, the close, and the volume (unless the
@@ -875,6 +875,14 @@ history exists a year later, and walk-forward ML needs several years. The option
   `values_as_of` = the archive commit's date; provenance = repository, commit, file, sheet, row and SHA-256. Splits
   are entered as corporate-action evidence with `available_at` = the announcement date, or the effective date where
   none is given (later than the truth, so never a leak). Bonus and rights issues wait for P3-R2.
+  **Amended after the MF-7b audit (C-0062):** `security_complete` is declared only from 2001; the 1991-2000 exports
+  lost rows against their own stated counts (validation F3), so an absent row there is unknown, not a no-trade day.
+  `calendar_complete` is one observation per year whose dates **equal** the index workbook's (2010 has one date the
+  index lacks and is not declared). 1990s rows are stored verbatim under their classless code, with an identity link
+  to `CODE.N0000` where the code later has N alone (F4; effective from the first N row, available from the end of
+  2002). A security a workbook prints as two series (F10) is quarantined for that whole workbook. Rows dated before
+  1991 are not admitted. A split is entered only where the raw close falls by its ratio across the effective date (the
+  F1 test); the others are left out with their reason.
 - **Recommendation to the owner (revision 5, kept for the record).** Decide P3-R1 early, because it determines when Phase 5 can produce anything real,
   and require a raw price basis and delisted securities from whatever source is chosen. Option B is the only one that
   also reduces the G-1 risk rather than adding to it.

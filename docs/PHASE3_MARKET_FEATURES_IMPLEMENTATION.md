@@ -590,7 +590,8 @@ seeds 1 to 5, 30 000 labels), 0 leaks.
 
 ## MF-7b: the TradeIQ import
 
-**Status: implemented and tested (2026-11-14); audit pending.**
+**Status: implemented and tested (2026-11-14); rejected by its first audit (two Blockers), fixed (C-0062); re-audit
+pending. The record below is the first version; the fixes follow the MF-7c section.**
 
 | File | Content |
 |---|---|
@@ -655,6 +656,51 @@ entered action** across the 25 years, mostly in thinly traded, low-priced lines.
 `unexplained_move_in_horizon` and stay out of training (`scoring.1`). The threshold is a configuration value to be
 calibrated on data before any declared test period (§17, Phase 5 §5.4).
 
+**Annotation (audit Major 8):** this run predates the MF-7b fixes. It used one `security_complete` range per security
+across 2001-2025, not one per workbook, and calendar observations built from row dates, not from the import's index
+match. Its numbers are indicative only; they are to be re-run through `plan()`'s per-batch declarations.
+
 An error of mine in the first real run: the import calendar was not passed, so every public holiday was an unknown
 date and every window looked broken (all multi-session features `missing`); with the per-year calendar the results
 above follow.
+
+---
+
+## Audit of MF-7b and MF-7c (first part): fresh-context agent
+
+At `f5592b2`. Guard logs empty. **MF-7b: REJECT** (two Blockers). **MF-7c first part: ACCEPT** (no Blocker; Majors 6
+and 7 to be done before the loader).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | Days a security traded stored as no-trade days: `security_complete` declared for the 1991-2000 batches although their exports lost rows (F3); rejected L1 rows (e.g. HAYL 1995-02-10, F14) not quarantined; 1990 rows admitted | **Fixed.** No `security_complete` through 2000; rejected L1 rows carry their code and date (`run_validation`) and are quarantined; rows before 1991 are not admitted. `test_t2`, `test_t3`, `test_t5` |
+| B-2 | Blocker | A second series under the N symbol stored on the days only it printed (F10: OSEA 2004, MLL 2003, PCH 2015) | **Fixed.** A security a workbook prints with two closes on any day is quarantined for that whole workbook (15 securities, 2 770 rows). `test_t4` |
+| 1 | Major | Calendar completeness lost for 1992, 1993 and 2001 (computed over a batch's years together) | **Fixed.** One observation per year whose dates equal the index's (stricter than before: 2010 has a date the index lacks and is not declared). `test_t6` |
+| 2 | Major | 1990s codes renamed to `CODE.N0000` with no declaration | **Fixed.** Rows verbatim under the classless code; 219 identity links to `CODE.N0000` (effective from its first row, available from the end of 2002). `test_t1` |
+| 3 | Major | F1's split exceptions written as statements | **Fixed.** A split is written only if the raw close falls by its ratio (the F1 test); 8 left out with their reason (4 other moves, one of them SEMB 2010 whose rows are now quarantined; 1 no drop; 3 no price series). `test_t7`, `test_t8` |
+| 4 | Major | Untested: survivorship boundary, the X exclusion and 2001-2002 limit of the mapping, split `available_at` | **Tested.** `test_t1`, `test_t3`, `test_t7` |
+| 5 | Major | `write()` not tested as one transaction | **Tested.** A failure after every batch leaves all seven tables empty. `test_t10` |
+| 6 | Major | `security_complete` ranges not clipped at admission (look-ahead) | **Fixed** in `history_bars.bar_on` and stated in §5.4. `test_h1` |
+| 7 | Major | Untested: C1 lookback, C6 `adj_ref`, C7 statement admission, C8 eligibility at D\* | **Tested.** `test_s2` to `test_s5`; each mutant (lookback 120 and 125, `adj_ref = px_ref`, statements admitted at H, eligibility from D\*−1) fails exactly its test |
+| 8 | Major | The real-snapshot record used inputs that do not follow §14 | **Annotated** in the MF-7c record; to be re-run |
+| — | Minors | `available_at` at end of day (later than §4.1, cannot leak); C10, C11 untested; snapshot rows lack §13.1 fields; rows for long-dead securities; dead `setdefault` | Dead code removed; the rest **carried** to the writer step |
+
+**Real plan after the fixes** (offline, `scripts/research/tradeiq/run_import_plan.py`; counts only): 33 batches;
+1 417 230 bars; 13 rows before 1991 not admitted; 2 770 rows of 15 two-series securities and 1 138 rejected rows
+quarantined (67 rejected rows have no readable code and date); 25 batches with `security_complete` (2001 on);
+calendar complete 1992-2009 and 2011-2025; 219 links, 37 codes unlinked; 230 statements (130 splits, 100
+reconstructed), 8 splits left out. Rerunning `run_validation` reproduced every count in the committed summary.
+
+The loader contract the audit set (one row per security and date across batches, agreeing rows merged, volume
+conflicts, `terms_json` decoding, `imported_inputs` in `KNOWN`) is carried to the loader below and its audit.
+
+## MF-7c (second part): the database load and write
+
+**Status: implemented and tested (2026-11-14); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/market_feature_store/store.py` | `load()`: imports, bars, quarantine, `security_complete`, calendar observations (with each batch's dates) and statements in one read-only REPEATABLE READ transaction, rows admitted by the query; two batches disagreeing on a close are quarantined. `write()`: the snapshot, its rows (canonical features, `row_hash`), factors and move flags in one transaction as the worker |
+| `worker/market_feature_store/history_bars.py` | A complete range is read only up to the security's last admitted row (Major 6) |
+| `tests/test_mf7_store_postgres.py` | Load, build and write round trip in a throwaway cluster |
+

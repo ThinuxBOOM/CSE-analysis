@@ -39,16 +39,16 @@ U, B occur.
 
 | # | Finding | Size | Disposition |
 |---|---|---|---|
-| F1 | **Prices are raw.** Split test: 131 of 138 splits drop by the ratio; 1 shows no drop; 3 other moves; 3 symbols in the split list match no price series | 138 splits | `price_basis = raw`. The 7 exceptions are checked by hand at import |
+| F1 | **Prices are raw.** Split test: 131 of 138 splits drop by the ratio; 1 shows no drop; 3 other moves; 3 symbols in the split list match no price series | 138 splits | `price_basis = raw`. At import a split is entered only where the raw close falls by its ratio (8 of 138 left out with their reason: 4 other moves, 1 no drop, 3 no price series; C-0062) |
 | F2 | **Trading calendar matches the index exactly from 1992**, year by year | 34 years | The index workbook is the import's calendar evidence (`import_calendar_complete` per year) |
 | F3 | **1990s exports lose rows.** Each export states "N rows selected"; the files hold fewer: 1991-93 −436, 1994 −13, 1995 −9 (besides one unreadable row), 1996 −11, 1997 −8, 2000 −1; 1999 exact; 1998 has no footer | 478 rows | Those days are unknown, not no-trade. Survivorship for 1991-2000: `unknown` |
-| F4 | **1990s prices have no share class** (`ABAN`, not `ABAN.N0000`). Of 256 codes, 219 later exist only as N, 5 as N and X, 32 do not appear in 2001-02 | 182,470 records | Linked to N only where the code later has N alone; the other 37 codes stay unlinked. An identity observation per link (Phase 3 §8.1) |
+| F4 | **1990s prices have no share class** (`ABAN`, not `ABAN.N0000`). Of 256 codes, 219 later exist only as N, 5 as N and X, 32 do not appear in 2001-02 | 182,470 records | Rows stored verbatim under the classless code. Linked to N only where the code later has N alone (219 identity links); the other 37 codes stay unlinked (C-0062) |
 | F5 | **Zero prices in 1991-1997** (meaning undocumented) | 3,975 | Not a price: flagged `zero_price`, never used as a close |
 | F6 | **2023 CSV: prices of 1,000 or more were split at the thousands comma**, shifting the row | 1,137 rows (1.8% of 2023) | Quarantined; the pieces cannot be rejoined without guessing. Those days are unknown for those securities |
 | F7 | **2016 has no "open" column**; positions shift | whole year | Fixed: columns read by name |
 | F8 | **2010 and 2012: numbers overflowed into the next cell** in the printed report | 32 + 5 rows | Repaired exactly (split is unambiguous); flagged `repaired_overflow` |
 | F9 | **Traded, no price printed** (shares and turnover present, prices blank) | 74 rows | Phase 3 row 2: traded, price unknown (`no_price_printed`) |
-| F10 | **Same security printed in two blocks in one year with different prices** (2003 to 2015; e.g. a second block that is probably another share class labelled N) | 765 security-days | Quarantined (both), until resolved by continuity with the neighbouring years |
+| F10 | **Same security printed in two blocks in one year with different prices** (2003 to 2015; e.g. a second block that is probably another share class labelled N) | 765 security-days | Quarantined: every row of that security in that workbook (15 securities, 2 770 rows; C-0062), until resolved by continuity with the neighbouring years |
 | F11 | **CSE's close is carried when too little trades** (from 2015): the close equals the previous close although the security traded; 99.9% of closes outside the day's high-low are this | 53,507 rows | A property of CSE's official close, also present in our own capture (MFB-5). **Design note for Phase 3**: such a day's return is zero by CSE's definition |
 | F12 | **2009's first block has no company line** | 53 rows | Rejected (identity unknown) |
 | F13 | Duplicates across overlapping files (2001/2002, the separate SAMP sheet, the 2001 side table) agree | 5,178 keys agree, 1 disagrees | One copy kept; the one disagreement is a 1995 zero price (F5) |
@@ -139,6 +139,6 @@ unentered: Phase 3's detector flags its price move, and Phase 5 keeps those labe
 
 - Dividends and scrip dividends: not examined.
 - Survivorship from 2001 rests on the daily files alone (no de-listing list exists).
-- Resolving F10 by continuity, and the 7 split exceptions (F1), by hand.
+- Resolving F10 by continuity, and the 8 splits left out at import (F1), by hand.
 - A cross-check against the project's own captured days: none exist in this sandbox.
 - No other data family (indices beyond the calendar, market statistics, GICS sectors, foreign holding) is validated.

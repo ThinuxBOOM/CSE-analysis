@@ -650,3 +650,14 @@ The pure core of the snapshot step is implemented and tested, and a full snapsho
 2025-12-31 was built in the container (692 securities, 5 958 sessions, about 85 s). The provisional detector threshold
 (25%) leaves 5 593 moves without an entered action over 25 years; calibrating it is flagged for the owner and for
 Phase 5. The database loader, writer, `verify` and CLI remain. Accepted when an audit reports no Blocker.
+
+## C-0062: the MF-7b audit and its fixes ([delegated], 2026-11-14)
+
+The audit rejected MF-7b with two Blockers and accepted the first part of MF-7c. Both Blockers are fixed by the
+conservative option: no `security_complete` for the 1991-2000 batches (their exports lost rows), rejected 1990s rows
+quarantined by code and date, nothing before 1991 admitted, and a security a workbook prints as two series
+quarantined for that whole workbook. The Majors are fixed or tested: calendar completeness per year (equal to the
+index), 1990s rows verbatim with identity links, splits written only where raw prices confirm them (8 of 138 left
+out), and the snapshot's range clipping and four guards tested against mutants. The database loader and writer are
+added. MF-7b waits for a re-audit; nothing was loaded anywhere permanent.
+

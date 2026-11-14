@@ -68,6 +68,14 @@ def parse_all(root, out_csv):
                                 sym = ""
                             d0 = dp.to_date(b.cells[4])
                             day = d0.isoformat() if d0 else ""
+                        elif lay == "L1" and len(b.cells) > 1:     # e.g. [34740, 'HAYL', '194..75'] (F14)
+                            try:
+                                d0 = dp.to_date(b.cells[0])
+                            except (ValueError, OverflowError):
+                                d0 = None
+                            code = b.cells[1].strip().upper()
+                            if d0 and re.fullmatch(r"[A-Z0-9&]+", code):
+                                sym, day = code, d0.isoformat()
                         wr.writerow([name, sheet, b.source_row, b.reason, sym, day])
                     stated = None
                     for b in bad:          # SQL*Plus footer of the 1990s exports: "<n> rows selected."
@@ -85,21 +93,24 @@ def parse_all(root, out_csv):
     return files
 
 
-def split_test(splits_xls, recs):
-    """Does the close drop by the split ratio across each listed split's effective date? (raw versus adjusted)"""
-    def dmy(v):
-        d = dp.to_date(v)
-        if d:
-            return d
-        m = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})", dp.text(v))
-        return date(int(m[3]), int(m[2]), int(m[1])) if m else None
+def _dmy(v):
+    d = dp.to_date(v)
+    if d:
+        return d
+    m = re.fullmatch(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})", dp.text(v))
+    return date(int(m[3]), int(m[2]), int(m[1])) if m else None
 
-    def norm(s):
-        s = dp.text(s).upper().replace(" ", "")
-        m = re.fullmatch(r"([A-Z0-9&]+)[.-]([A-Z])-?(\d{0,4})", s)
-        if m:
-            return f"{m[1]}.{m[2]}{int(m[3] or 0):04d}"
-        return f"{s}.N0000" if re.fullmatch(r"[A-Z0-9&]+", s) else None
+
+def _norm(s):
+    s = dp.text(s).upper().replace(" ", "")
+    m = re.fullmatch(r"([A-Z0-9&]+)[.-]([A-Z])-?(\d{0,4})", s)
+    if m:
+        return f"{m[1]}.{m[2]}{int(m[3] or 0):04d}"
+    return f"{s}.N0000" if re.fullmatch(r"[A-Z0-9&]+", s) else None
+
+
+def read_splits(splits_xls):
+    """[(symbol, old, new, effective date, announcement date or None, statement id)] from the split workbook."""
     splits = []
     for sheet, rows in dp.read_sheets(splits_xls):
         h = next((i for i, r in enumerate(rows) if any("OLD PROPORTION" in dp.text(c).upper() for c in r)), None)
@@ -109,15 +120,22 @@ def split_test(splits_xls, recs):
         col = lambda *n: next((i for i, c in enumerate(cols) if any(x in c for x in n)), None)  # noqa: E731
         cs = col("SECURITY") if col("SECURITY") is not None else col("COMPANY ID")
         co, cn, ce, ca = col("OLD PROPORTION"), col("NEW PROPORTION"), col("EFFECTIVE"), col("ANNOUNCE")
-        for r in rows[h + 1:]:
+        for i, r in enumerate(rows[h + 1:], start=h + 1):
             r = list(r) + [None] * 10
             try:
                 old, new = dp.number(r[co]), dp.number(r[cn])
             except ValueError:
                 continue
-            sym, eff = norm(r[cs]), dmy(r[ce])
+            sym, eff = _norm(r[cs]), _dmy(r[ce])
             if sym and eff and old and new:
-                splits.append((sym, old, new, eff, ca is not None and dp.to_date(r[ca]) is not None))
+                splits.append((sym, old, new, eff, dp.to_date(r[ca]) if ca is not None else None,
+                               f"tiq:split:{sheet}:{i}"))
+    return splits
+
+
+def split_test(splits_xls, recs):
+    """Does the close drop by the split ratio across each listed split's effective date? (raw versus adjusted)"""
+    splits = [(sym, old, new, eff, ann is not None) for sym, old, new, eff, ann, _sid in read_splits(splits_xls)]
     series = collections.defaultdict(list)
     for r in recs:
         if r["close"] is not None:
