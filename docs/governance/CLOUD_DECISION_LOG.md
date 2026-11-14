@@ -430,3 +430,14 @@ Applied to the state at C-0034:
   six findings and C-0036, and is accepted on its next audit if that reports no Blocker.
 - **Milestone 10 design:** revision 2 still needs its audit (revision 1's audit found a Blocker).
 - **Phases 6 and 7:** still need a first audit.
+
+## C-0038: TradeIQ daily prices, first validation ([delegated], 2026-11-14)
+
+The cloud session fetched `TradeIQ-CSE/cse-dataset` at `7903c39` from GitHub (no CSE request) and validated its 33
+original daily share-price workbooks with its own parser, against the archive's index calendar and split list.
+Result, `docs/research/TRADEIQ_VALIDATION.md`: **usable for 1992 to 2025 with bounded defects** that the import must
+quarantine or flag (17 findings). Prices are raw; the calendar matches the index exactly from 1992; delisted
+securities are present. Notable: the 1990s exports lost 479 rows against their own stated counts; 1.8% of 2023's rows
+are corrupted by split thousands separators and are quarantined; CSE's official close is carried on thinly traded
+days from 2015 (a design note for Phase 3). Corporate-action and listing files are not yet validated. No data file is
+committed; the summary is counts only.

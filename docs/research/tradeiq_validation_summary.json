@@ -1,0 +1,1086 @@
+{
+ "close_to_close_moves_over": {
+  "0.25": 7309,
+  "0.5": 1418,
+  "1": 179
+ },
+ "dates_not_index_sessions": {
+  "dates": 1,
+  "records": 194
+ },
+ "duplicates": {
+  "across_files_agree": 4748,
+  "across_files_disagree": 1,
+  "within_one_sheet_agree": 430,
+  "within_one_sheet_disagree": 765
+ },
+ "files": [
+  {
+   "bytes": 2691584,
+   "file": "1991-1993 data.xls",
+   "sha256": "5ef6bc2dc1564059580ee432eb2fb168dc27f5524f6498673c22bf641dfe1ca8",
+   "sheets": [
+    {
+     "first": "1991-08-27",
+     "flags": {},
+     "last": "2001-04-19",
+     "layout": "L1",
+     "records": 2282,
+     "rejected": {},
+     "rows": 2283,
+     "sheet": "Sheet1",
+     "stated_rows": null
+    },
+    {
+     "first": "1990-01-12",
+     "flags": {
+      "zero_price": 1190
+     },
+     "last": "1993-12-31",
+     "layout": "L1",
+     "records": 36162,
+     "rejected": {},
+     "rows": 40658,
+     "sheet": "9093",
+     "stated_rows": 36598
+    }
+   ]
+  },
+  {
+   "bytes": 1674240,
+   "file": "1994 data.xls",
+   "sha256": "8a565229f86106b60cb6d7b4fbb5a607d365793110400bc9b060db03288542b0",
+   "sheets": [
+    {
+     "first": "1994-01-03",
+     "flags": {
+      "zero_price": 699
+     },
+     "last": "1994-12-30",
+     "layout": "L1",
+     "records": 23724,
+     "rejected": {},
+     "rows": 26658,
+     "sheet": "94",
+     "stated_rows": 23737
+    }
+   ]
+  },
+  {
+   "bytes": 1383424,
+   "file": "1995 data.xls",
+   "sha256": "0dbbf764482bb7846b3f7a6e4a87b47a7bb56f502046718f4a4fccd5e557a375",
+   "sheets": [
+    {
+     "first": "1995-01-02",
+     "flags": {
+      "zero_price": 946
+     },
+     "last": "1995-12-29",
+     "layout": "L1",
+     "records": 19691,
+     "rejected": {
+      "unreadable_row": 1
+     },
+     "rows": 21927,
+     "sheet": "1995",
+     "stated_rows": 19701
+    }
+   ]
+  },
+  {
+   "bytes": 1157120,
+   "file": "1996 data.xls",
+   "sha256": "1ae3d8edccd6e8dc85cdd803829960d5268804dd93e927d2bd43fffffd03d0ea",
+   "sheets": [
+    {
+     "first": "1996-01-02",
+     "flags": {
+      "zero_price": 836
+     },
+     "last": "1996-12-31",
+     "layout": "L1",
+     "records": 16542,
+     "rejected": {},
+     "rows": 18360,
+     "sheet": "1996",
+     "stated_rows": 16553
+    }
+   ]
+  },
+  {
+   "bytes": 1534464,
+   "file": "1997 data.xls",
+   "sha256": "e0a888a63a97e8581deed42e0762dc9c850ef0d3d67c152b28b8e0de61fb11ed",
+   "sheets": [
+    {
+     "first": "1997-01-02",
+     "flags": {
+      "zero_price": 304
+     },
+     "last": "1997-12-31",
+     "layout": "L1",
+     "records": 21953,
+     "rejected": {},
+     "rows": 24354,
+     "sheet": "1997",
+     "stated_rows": 21961
+    }
+   ]
+  },
+  {
+   "bytes": 1466368,
+   "file": "1998 data.xls",
+   "sha256": "9c256a374a16498050c71f08029eb8f814fcf096d88093b8d39370ec8e27d891",
+   "sheets": [
+    {
+     "first": "1998-01-02",
+     "flags": {},
+     "last": "1998-12-31",
+     "layout": "L1",
+     "records": 21508,
+     "rejected": {},
+     "rows": 22957,
+     "sheet": "1998",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 1485312,
+   "file": "1999 data.xls",
+   "sha256": "77a68320e39e69555cb9359ab3e8bbb9725c9a098b8fa42a60c496639a42c829",
+   "sheets": [
+    {
+     "first": "1999-01-04",
+     "flags": {},
+     "last": "1999-12-30",
+     "layout": "L1",
+     "records": 21354,
+     "rejected": {},
+     "rows": 23505,
+     "sheet": "1999",
+     "stated_rows": 21354
+    }
+   ]
+  },
+  {
+   "bytes": 1337856,
+   "file": "2000 data.xls",
+   "sha256": "a6ee64a3390ecdf1085722e195f94cac6251e7a422054f295ec15df35069bce3",
+   "sheets": [
+    {
+     "first": "2000-01-03",
+     "flags": {},
+     "last": "2000-12-29",
+     "layout": "L1",
+     "records": 19254,
+     "rejected": {},
+     "rows": 21200,
+     "sheet": "2000 data",
+     "stated_rows": 19255
+    }
+   ]
+  },
+  {
+   "bytes": 1595392,
+   "file": "2001 data.xls",
+   "sha256": "990a298750b00376e7187a8821a0a6c390312e89b0453976fd7bc5fc66fba7b6",
+   "sheets": [
+    {
+     "first": "2001-01-02",
+     "flags": {},
+     "last": "2002-02-11",
+     "layout": "L2",
+     "records": 21670,
+     "rejected": {},
+     "rows": 21393,
+     "sheet": "Cloprc",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 3151360,
+   "file": "2002 data.xls",
+   "sha256": "d6d21ec083db929308a2522a0e4a65e100b5cf76cc193da45676712ce459708a",
+   "sheets": [
+    {
+     "first": "2002-01-02",
+     "flags": {},
+     "last": "2002-12-31",
+     "layout": "L3",
+     "records": 26159,
+     "rejected": {},
+     "rows": 31527,
+     "sheet": "hi-all",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 3127808,
+   "file": "2003 data.xls",
+   "sha256": "d29d201d21737e09a993add644b5c60bf71469c3b1b34e18df9b5ba3fdbce8bd",
+   "sheets": [
+    {
+     "first": "2003-01-02",
+     "flags": {
+      "no_price_printed": 3
+     },
+     "last": "2003-12-31",
+     "layout": "L3",
+     "records": 29308,
+     "rejected": {},
+     "rows": 31318,
+     "sheet": "hi-low-a",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 3383808,
+   "file": "2004 data.xls",
+   "sha256": "a3d60fdfce5a18ff6f932398f50407f53db85d8cfcb8935f261a2401ef7fd19d",
+   "sheets": [
+    {
+     "first": "2004-01-02",
+     "flags": {
+      "no_price_printed": 7
+     },
+     "last": "2004-12-31",
+     "layout": "L3",
+     "records": 32762,
+     "rejected": {},
+     "rows": 33959,
+     "sheet": "HIGHLOW_ALL_COMP",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 3945984,
+   "file": "2005 data.xls",
+   "sha256": "8154def55bcf06372b8d541b0b5aa619ffecdac8e8054164eb7603ebe3b7822e",
+   "sheets": [
+    {
+     "first": "2005-01-03",
+     "flags": {},
+     "last": "2005-12-30",
+     "layout": "L3",
+     "records": 38449,
+     "rejected": {},
+     "rows": 39658,
+     "sheet": "hl-all-year",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 4692480,
+   "file": "2006 Data.xls",
+   "sha256": "e8beae81d2c11cf6ee4351222543a8408d11888b6a5b64c749703e1baaeee5a9",
+   "sheets": [
+    {
+     "first": "2006-01-02",
+     "flags": {
+      "no_price_printed": 14
+     },
+     "last": "2006-12-29",
+     "layout": "L3",
+     "records": 37814,
+     "rejected": {},
+     "rows": 46969,
+     "sheet": "hi-low-2006",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 4621824,
+   "file": "2007 Data.xls",
+   "sha256": "5d7a40df55198917a8be26ec6795fa327e99ba547b61545e5f21a5065fbecbd2",
+   "sheets": [
+    {
+     "first": "2007-01-02",
+     "flags": {
+      "no_price_printed": 5
+     },
+     "last": "2007-12-31",
+     "layout": "L3",
+     "records": 37186,
+     "rejected": {},
+     "rows": 46193,
+     "sheet": "hl-daily jan-Dec07",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 4824064,
+   "file": "2008 Data.xls",
+   "sha256": "f2d1a73294775959dbcfcd8b5e0a49f42900cb9fab1fb400e976a7b000540841",
+   "sheets": [
+    {
+     "first": "2008-01-02",
+     "flags": {
+      "no_price_printed": 11
+     },
+     "last": "2008-12-31",
+     "layout": "L3",
+     "records": 39018,
+     "rejected": {},
+     "rows": 48325,
+     "sheet": "HL-ALL-08 - Daily",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 5036544,
+   "file": "2009 Data.xls",
+   "sha256": "e026373c7549854e9bdb5c0acf3071d2c8de74e8019f00e326253535b96af89d",
+   "sheets": [
+    {
+     "first": "2009-01-02",
+     "flags": {
+      "no_price_printed": 11
+     },
+     "last": "2009-12-30",
+     "layout": "L3",
+     "records": 40664,
+     "rejected": {
+      "row_before_any_company_line": 53
+     },
+     "rows": 50352,
+     "sheet": "HL-DAILY2",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 4959232,
+   "file": "2010 Data.xls",
+   "sha256": "a77958d9db58b3bd83297f17235ea760ea5089082a326024f9931e86844ff136",
+   "sheets": [
+    {
+     "first": "2010-01-04",
+     "flags": {
+      "no_price_printed": 6,
+      "repaired_overflow": 32
+     },
+     "last": "2010-12-31",
+     "layout": "L3",
+     "records": 48541,
+     "rejected": {},
+     "rows": 50345,
+     "sheet": "hi-low-all-daily",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 6210048,
+   "file": "2011 Data.xls",
+   "sha256": "9dbd61f4ad63e616826a54f81e2bb3d83ac5bc5c90474bc828c21486086103c4",
+   "sheets": [
+    {
+     "first": "2011-01-03",
+     "flags": {
+      "no_price_printed": 6
+     },
+     "last": "2011-12-30",
+     "layout": "L3",
+     "records": 57605,
+     "rejected": {},
+     "rows": 59531,
+     "sheet": "hl",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 6738432,
+   "file": "2012 Data.xls",
+   "sha256": "853b6d03a6eafa1fbd5a558fd62cfbf1db36735e9d4fce1fbe9d935a26f392f3",
+   "sheets": [
+    {
+     "first": "2012-01-02",
+     "flags": {
+      "no_price_printed": 3,
+      "repaired_overflow": 5
+     },
+     "last": "2012-12-31",
+     "layout": "L3",
+     "records": 61223,
+     "rejected": {},
+     "rows": 62536,
+     "sheet": "Sheet1",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet2",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet3",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 6751744,
+   "file": "2013 Data.xls",
+   "sha256": "03807192f846c4fb166df8e063b02190a27547c1f2220f388a0c761ce3434019",
+   "sheets": [
+    {
+     "first": "2013-01-02",
+     "flags": {
+      "no_price_printed": 2
+     },
+     "last": "2013-12-31",
+     "layout": "L3",
+     "records": 61155,
+     "rejected": {},
+     "rows": 61996,
+     "sheet": "Sheet1",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet2",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet3",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 7040000,
+   "file": "2014 Data.xls",
+   "sha256": "a0d2260200e0998e79c109e532b955838ecfad1cd2bcd83a6f65df93a74d94a9",
+   "sheets": [
+    {
+     "first": "2014-01-02",
+     "flags": {
+      "no_price_printed": 6
+     },
+     "last": "2014-12-31",
+     "layout": "L3",
+     "records": 62969,
+     "rejected": {},
+     "rows": 64340,
+     "sheet": "Sheet1",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 6528000,
+   "file": "2015 Data.xls",
+   "sha256": "04924c6474f477acdae607c282cd6e16337bfcf6c2130059beb144638812e06d",
+   "sheets": [
+    {
+     "first": "2015-01-02",
+     "flags": {},
+     "last": "2015-12-31",
+     "layout": "L3",
+     "records": 58392,
+     "rejected": {},
+     "rows": 60029,
+     "sheet": "Sheet1",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet2",
+     "stated_rows": null
+    },
+    {
+     "first": null,
+     "flags": {},
+     "last": null,
+     "layout": "empty",
+     "records": 0,
+     "rejected": {},
+     "rows": 0,
+     "sheet": "Sheet3",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 7625728,
+   "file": "2016 Data.xls",
+   "sha256": "f2024fbd6f95ebfaf995b9b5ae1dde578ad2ea45bc033c5127bbdfcde49a064d",
+   "sheets": [
+    {
+     "first": "2016-01-04",
+     "flags": {},
+     "last": "2016-12-30",
+     "layout": "L4",
+     "records": 54849,
+     "rejected": {},
+     "rows": 55161,
+     "sheet": "HIGHLOW_ALL_COMP-01JAN2016-31DE",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 8237056,
+   "file": "2017 Data.xls",
+   "sha256": "7c27d189a9db76a1b8f2ccfd104f184131de91faff03c86a516bd58272b96139",
+   "sheets": [
+    {
+     "first": "2017-01-02",
+     "flags": {},
+     "last": "2017-12-29",
+     "layout": "L4",
+     "records": 56252,
+     "rejected": {},
+     "rows": 56566,
+     "sheet": "2017",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 9764864,
+   "file": "2018 Data.xls",
+   "sha256": "3f0ab2d591fb5296f5ef30a02b0b0f2543cf153a1f3ecc779e5a16c13c5c7c36",
+   "sheets": [
+    {
+     "first": "2018-01-02",
+     "flags": {},
+     "last": "2018-12-31",
+     "layout": "L4",
+     "records": 53921,
+     "rejected": {},
+     "rows": 53926,
+     "sheet": "2018 ",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 9599488,
+   "file": "2019 Data.xls",
+   "sha256": "f7fa80f177ed6d1399f0fb42f18c67c25c154a56a39576f8fafdbebe0ed7e90b",
+   "sheets": [
+    {
+     "first": "2019-01-02",
+     "flags": {},
+     "last": "2019-12-31",
+     "layout": "L4",
+     "records": 52946,
+     "rejected": {},
+     "rows": 52950,
+     "sheet": "2019",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 9281536,
+   "file": "2020 Data.xls",
+   "sha256": "4e5be148cc087c9ad0c644a632c44cfad3dad6bb28440de4b6612847261881be",
+   "sheets": [
+    {
+     "first": "2020-01-02",
+     "flags": {},
+     "last": "2020-12-31",
+     "layout": "L4",
+     "records": 50925,
+     "rejected": {},
+     "rows": 50929,
+     "sheet": "Hign_low_01-Jan-2020_to_31-de",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 11556864,
+   "file": "2021 Data.xls",
+   "sha256": "27b4fe74bc9ab910057bcbbd9bc1f2a5103c73f6dcccea4b39d70180379ce4a0",
+   "sheets": [
+    {
+     "first": "2021-01-04",
+     "flags": {},
+     "last": "2021-03-31",
+     "layout": "L4",
+     "records": 15123,
+     "rejected": {},
+     "rows": 15128,
+     "sheet": "Daily Share Price Q1",
+     "stated_rows": null
+    },
+    {
+     "first": "2021-04-01",
+     "flags": {},
+     "last": "2021-06-30",
+     "layout": "L4",
+     "records": 14316,
+     "rejected": {},
+     "rows": 14321,
+     "sheet": "Daily Share Price Q2",
+     "stated_rows": null
+    },
+    {
+     "first": "2021-07-01",
+     "flags": {},
+     "last": "2021-09-30",
+     "layout": "L4",
+     "records": 16817,
+     "rejected": {},
+     "rows": 16821,
+     "sheet": "Daily Share Prices Q3",
+     "stated_rows": null
+    },
+    {
+     "first": "2021-10-01",
+     "flags": {},
+     "last": "2021-12-31",
+     "layout": "L4",
+     "records": 16915,
+     "rejected": {},
+     "rows": 16920,
+     "sheet": "Daily Share Prices Q4",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 10585088,
+   "file": "2022 Data.xls",
+   "sha256": "6ee2c45ee8f97c37895fee0ca185c6d000f854b310fedd2445b9255d99c6944b",
+   "sheets": [
+    {
+     "first": "2022-01-03",
+     "flags": {},
+     "last": "2022-03-31",
+     "layout": "L4",
+     "records": 16187,
+     "rejected": {},
+     "rows": 16192,
+     "sheet": "Daily Share Prices Q1",
+     "stated_rows": null
+    },
+    {
+     "first": "2022-04-01",
+     "flags": {},
+     "last": "2022-06-30",
+     "layout": "L4",
+     "records": 12279,
+     "rejected": {},
+     "rows": 12284,
+     "sheet": "Daily Share Prices Q2",
+     "stated_rows": null
+    },
+    {
+     "first": "2022-07-01",
+     "flags": {},
+     "last": "2022-09-30",
+     "layout": "L4",
+     "records": 17097,
+     "rejected": {},
+     "rows": 17103,
+     "sheet": "Daily Share Prices Q3",
+     "stated_rows": null
+    },
+    {
+     "first": "2022-10-03",
+     "flags": {},
+     "last": "2022-12-30",
+     "layout": "L4",
+     "records": 15530,
+     "rejected": {},
+     "rows": 15536,
+     "sheet": "Daily Share Prices Q4",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 5192312,
+   "file": "2023 Data.csv",
+   "sha256": "05fb8099d1178b347469f54c832005ce80ca1f32e06a2dd102fa1f8afa6d14e1",
+   "sheets": [
+    {
+     "first": "2023-01-02",
+     "flags": {},
+     "last": "2023-12-29",
+     "layout": "L4",
+     "records": 61364,
+     "rejected": {
+      "row_wider_than_header": 1137
+     },
+     "rows": 62504,
+     "sheet": "csv",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 11532800,
+   "file": "2024 Data.xls",
+   "sha256": "c186208fab44c85d364b104d1402229d590ada16213c3f0218940eb00060f44e",
+   "sheets": [
+    {
+     "first": "2024-01-02",
+     "flags": {},
+     "last": "2024-12-31",
+     "layout": "L4",
+     "records": 63332,
+     "rejected": {},
+     "rows": 63336,
+     "sheet": "2024_Q4",
+     "stated_rows": null
+    }
+   ]
+  },
+  {
+   "bytes": 4957089,
+   "file": "2025 Data.xlsx",
+   "sha256": "6155f7c1b14583a0c3bfcce97f314cf738e4ed969dad57abf59ee9bbbbe2b6ae",
+   "sheets": [
+    {
+     "first": "2025-01-02",
+     "flags": {},
+     "last": "2025-12-31",
+     "layout": "L4",
+     "records": 67541,
+     "rejected": {},
+     "rows": 67849,
+     "sheet": "HighLow",
+     "stated_rows": null
+    }
+   ]
+  }
+ ],
+ "index_calendar": {
+  "first": "1985-01-02",
+  "last": "2025-12-31",
+  "sessions": 9772,
+  "sha256": "e6da2060a60eb47a12b7706ea303f039326c73b1442e1719e0cc2205d3f01575"
+ },
+ "index_sessions_without_any_price": {
+  "by_year": {
+   "1991": 119
+  },
+  "count": 119,
+  "examples": [
+   "1991-05-29",
+   "1991-04-05",
+   "1991-04-02",
+   "1991-03-21",
+   "1991-05-17",
+   "1991-06-20",
+   "1991-08-01",
+   "1991-01-11",
+   "1991-05-08",
+   "1991-02-21",
+   "1991-04-22",
+   "1991-06-03",
+   "1991-06-06",
+   "1991-01-04",
+   "1991-07-22",
+   "1991-02-13",
+   "1991-04-24",
+   "1991-03-01",
+   "1991-03-18",
+   "1991-02-20"
+  ]
+ },
+ "invariants": {
+  "close_outside_high_low": 53507,
+  "no_price_printed": 4049,
+  "open_outside_high_low": 16033,
+  "turnover_per_share_outside_range": 288
+ },
+ "outside_file_years": {
+  "1991-1993 data.xls [9093]": 13,
+  "1991-1993 data.xls [Sheet1]": 1717,
+  "2001 data.xls [Cloprc]": 2660
+ },
+ "per_year": {
+  "1990": {
+   "dates": 11,
+   "index_sessions": 238,
+   "records": 13,
+   "symbols": 13
+  },
+  "1991": {
+   "dates": 120,
+   "index_sessions": 239,
+   "records": 4329,
+   "symbols": 163
+  },
+  "1992": {
+   "dates": 242,
+   "index_sessions": 242,
+   "records": 12968,
+   "symbols": 176
+  },
+  "1993": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 19417,
+   "symbols": 187
+  },
+  "1994": {
+   "dates": 234,
+   "index_sessions": 234,
+   "records": 23958,
+   "symbols": 203
+  },
+  "1995": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 19931,
+   "symbols": 216
+  },
+  "1996": {
+   "dates": 242,
+   "index_sessions": 242,
+   "records": 16782,
+   "symbols": 214
+  },
+  "1997": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 22192,
+   "symbols": 223
+  },
+  "1998": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 21747,
+   "symbols": 221
+  },
+  "1999": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 21591,
+   "symbols": 221
+  },
+  "2000": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 19481,
+   "symbols": 220
+  },
+  "2001": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 19071,
+   "symbols": 239
+  },
+  "2002": {
+   "dates": 238,
+   "index_sessions": 238,
+   "records": 28819,
+   "symbols": 270
+  },
+  "2003": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 29308,
+   "symbols": 286
+  },
+  "2004": {
+   "dates": 239,
+   "index_sessions": 239,
+   "records": 32762,
+   "symbols": 298
+  },
+  "2005": {
+   "dates": 238,
+   "index_sessions": 238,
+   "records": 38449,
+   "symbols": 302
+  },
+  "2006": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 37814,
+   "symbols": 265
+  },
+  "2007": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 37186,
+   "symbols": 267
+  },
+  "2008": {
+   "dates": 238,
+   "index_sessions": 238,
+   "records": 39018,
+   "symbols": 252
+  },
+  "2009": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 40664,
+   "symbols": 258
+  },
+  "2010": {
+   "dates": 238,
+   "index_sessions": 237,
+   "records": 48541,
+   "symbols": 299
+  },
+  "2011": {
+   "dates": 239,
+   "index_sessions": 239,
+   "records": 57605,
+   "symbols": 322
+  },
+  "2012": {
+   "dates": 242,
+   "index_sessions": 242,
+   "records": 61223,
+   "symbols": 326
+  },
+  "2013": {
+   "dates": 242,
+   "index_sessions": 242,
+   "records": 61155,
+   "symbols": 315
+  },
+  "2014": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 62969,
+   "symbols": 323
+  },
+  "2015": {
+   "dates": 239,
+   "index_sessions": 239,
+   "records": 58392,
+   "symbols": 320
+  },
+  "2016": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 54849,
+   "symbols": 308
+  },
+  "2017": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 56252,
+   "symbols": 318
+  },
+  "2018": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 53921,
+   "symbols": 317
+  },
+  "2019": {
+   "dates": 241,
+   "index_sessions": 241,
+   "records": 52946,
+   "symbols": 315
+  },
+  "2020": {
+   "dates": 209,
+   "index_sessions": 209,
+   "records": 50925,
+   "symbols": 300
+  },
+  "2021": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 63171,
+   "symbols": 316
+  },
+  "2022": {
+   "dates": 231,
+   "index_sessions": 231,
+   "records": 61093,
+   "symbols": 323
+  },
+  "2023": {
+   "dates": 242,
+   "index_sessions": 242,
+   "records": 61364,
+   "symbols": 300
+  },
+  "2024": {
+   "dates": 240,
+   "index_sessions": 240,
+   "records": 63332,
+   "symbols": 321
+  },
+  "2025": {
+   "dates": 238,
+   "index_sessions": 238,
+   "records": 67541,
+   "symbols": 305
+  }
+ },
+ "records": 1420779,
+ "records_by_class": {
+  "B": 173,
+  "D": 2580,
+  "N": 1145491,
+  "P": 2141,
+  "R": 1892,
+  "U": 2330,
+  "W": 11452,
+  "X": 72250,
+  "unknown": 182470
+ },
+ "securities": {
+  "first_seen_after_1991": 776,
+  "last_seen_before_2025": 640,
+  "total": 945
+ },
+ "split_test": {
+  "drop_matches_ratio_raw": 131,
+  "no_drop": 1,
+  "no_price_series_for_symbol": 3,
+  "other_move": 3,
+  "splits": 138,
+  "with_announcement_date": 30,
+  "without_announcement_date": 108
+ },
+ "weekend_records": 0
+}
