@@ -346,3 +346,23 @@ def test_l21_revised_row_details_unlabelled_window_and_volatility_quality():    
     div = [act.Factor(SYM, act.CASH_DIVIDEND, s[2], 1, 1, act.NO_PRICE_FACTOR, (), ("dv",))]
     lab, _ = label([bar(100)] * 6, h=5, factors=div)
     assert lab.factor_statement_ids == ()                            # a no-price factor is not in the adjustment set
+
+
+def test_l22_each_part_of_the_revised_row_rule_alone():                                             # B-T8
+    # a move that starts before the stored row's s_D (it straddles s_D): only the move rule reaches its first bar
+    sb, refs, sessions = build([bar(100), bar(unknown=True), bar(50), bar(50), bar(50)])
+    move = [act.Move(SYM, sessions[0], sessions[2], act.UNEXPLAINED, F(-1, 2))]
+    sb = sr.Series(sb.symbol, sb.sequence, sb.points, sb.bars, sb.factors, tuple(move))
+    stored = tg.ReferenceRow(SYM, sessions[3], D("50"), sessions[1])
+    inst = {x: at(300) for x in sessions}
+    inst[sessions[0]] = at(500)
+    lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+    assert (lab.state, lab.resolved_at) == ("unexplained_move_in_horizon", at(500))
+    # an action inside the stretch the stored row reads: only the row's s_D rule reaches the bars behind its factor
+    sb, refs, sessions = build([bar(100), bar(100), bar(48), bar(48), bar(48)],
+                               factors=[act.Factor(SYM, act.RIGHTS, days(5)[2], 24, 25, act.APPLIED, (), ("rt",))])
+    stored = tg.ReferenceRow(SYM, sessions[3], D("50"), sessions[0])
+    inst = {x: at(300) for x in sessions}
+    inst[sessions[1]] = at(500)
+    lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+    assert lab.resolved_at == at(500)

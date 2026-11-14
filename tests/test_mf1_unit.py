@@ -290,7 +290,7 @@ def test_g1_the_frozen_reconcile_is_unchanged_and_is_the_one_mf_calls():
 
 def test_g2_the_package_is_pure_no_database_network_clock_or_forbidden_source():
     import re
-    allowed = {"dataclasses", "datetime", "decimal", "typing", "hashlib", "json", "fractions", "re"}
+    allowed = {"dataclasses", "datetime", "decimal", "typing", "hashlib", "json", "fractions", "re", "bisect"}
     forbidden_words = ("psycopg2", "requests", "urllib", "socket", "time.time", "open(", "importlib", "__import__",
                        "subprocess", "os.environ")
     forbidden_tables = ("daily_market_data", "daily_index_data", "trading_calendar", "corporate_actions",

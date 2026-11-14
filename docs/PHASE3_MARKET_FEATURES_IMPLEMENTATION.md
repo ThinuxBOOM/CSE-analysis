@@ -504,7 +504,7 @@ were verified (hand-computed with a split inside the horizon and a bonus after F
 
 | # | Severity | Finding | Disposition |
 |---|---|---|---|
-| B-T8 | **Blocker** | For a revised reference row, bars between the stored row's s_D and the build's last close at or before D could decide an unexplained move outside `resolved_at` | **Fixed.** The range also starts at the stored row's s_D and at the start of every move that ends after it. `test_l20`; both parts killed by mutants |
+| B-T8 | **Blocker** | For a revised reference row, bars between the stored row's s_D and the build's last close at or before D could decide an unexplained move outside `resolved_at` | **Fixed.** The range also starts at the stored row's s_D and at the start of every move that ends after it. `test_l20`, and `test_l22` for each part alone (each part's removal is killed) |
 | M-a | Major | The `extra_instants` contract named only withdrawals with an ex-date in (s_D, F] | **Fixed.** Every withdrawn or superseded statement of the security, confirmations included, whatever its date |
 | M-b | Major (tests) | The unexplained-move window at the row's s_D; the volatility's `unresolvable_quality` | **Fixed.** `test_l21` |
 | — | Minor | No-price factors out of the adjustment set (now tested); the confirmation filter; carried items of audit 5 | Partly fixed; the rest carried |
