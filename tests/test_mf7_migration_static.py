@@ -17,3 +17,9 @@ def test_s1_pending_not_in_the_chain_and_meets_the_migration_guards():
     code = "\n".join(line.split("--")[0] for line in sql.splitlines())          # without comments
     assert "security definer" not in code and "create role" not in code
     assert sql.count("execute function f5_reject_mutation()") >= 2       # the append-only loop
+
+
+def test_s2_no_column_holds_a_raw_response():
+    sql = open(PENDING, encoding="utf-8").read().lower()
+    assert not re.search(r"^\s*\w*(raw_response|raw_payload|payload|response_body|body)\w*\s+(text|jsonb?|varchar)",
+                         sql, re.M)

@@ -236,6 +236,7 @@ create table mf_snapshot_rows (
   features_json text not null,                         -- canonical JSON: value, state and reasons per feature
   px_ref numeric,
   ref_session date,
+  ref_source_quality text,                             -- quality of the bar that printed px_ref (labels read it)
   stale_sessions integer,
   adj_ref numeric,
   dstar_observation_ids text not null default '[]',
@@ -244,7 +245,9 @@ create table mf_snapshot_rows (
   primary key (snapshot_id, symbol),
   constraint chk_mfr_hex check (security_id ~ '^[0-9a-f]{64}$' and window_digest ~ '^[0-9a-f]{64}$'
     and row_hash ~ '^[0-9a-f]{64}$'),
-  constraint chk_mfr_json check (features_json ~ '^[ -~]+$')
+  constraint chk_mfr_json check (features_json ~ '^[ -~]+$'),
+  constraint chk_mfr_srcq check (ref_source_quality is null
+    or ref_source_quality in ('fresh', 'stale', 'partial', 'missing', 'conflicting'))
 );
 
 -- =============================================================================
@@ -299,11 +302,13 @@ begin
 end;
 $$;
 
+-- An allow-list: only the owner path (cse_migrator -> SET LOCAL ROLE cse_owner) records owner evidence, whatever
+-- grants exist; every other login, the reader login cse_verifier included, is refused.
 create function mf_owner_only_guard() returns trigger
 language plpgsql as $$
 begin
-  if session_user in ('cse_worker', 'cse_backup', 'cse_reader') then
-    raise exception 'MF: % is owner evidence; % may not record it', tg_table_name, session_user
+  if current_user <> 'cse_owner' then
+    raise exception 'MF: % is owner evidence; % (as %) may not record it', tg_table_name, session_user, current_user
       using errcode = 'insufficient_privilege';
   end if;
   return new;
@@ -315,15 +320,19 @@ $$;
 create function mf_calendar_guard() returns trigger
 language plpgsql as $$
 begin
-  if session_user in ('cse_backup', 'cse_reader') then
-    raise exception 'MF: % may not record calendar evidence', session_user using errcode = 'insufficient_privilege';
+  if current_user = 'cse_owner' then
+    if left(new.source_reference, 17) = 'trading_calendar:' then
+      raise exception 'MF: the trading_calendar: prefix marks the worker''s calendar-sync copies only'
+        using errcode = 'check_violation';
+    end if;
+    return new;
   end if;
-  if session_user = 'cse_worker' and (new.kind <> 'declared_closed'
-      or new.source_reference not like 'trading_calendar:%') then
-    raise exception 'MF: the worker records only calendar-sync copies of trading_calendar'
-      using errcode = 'insufficient_privilege';
+  if current_user = 'cse_worker' and new.kind = 'declared_closed'
+      and left(new.source_reference, 17) = 'trading_calendar:' then
+    return new;
   end if;
-  return new;
+  raise exception 'MF: % (as %) may not record this calendar evidence', session_user, current_user
+    using errcode = 'insufficient_privilege';
 end;
 $$;
 

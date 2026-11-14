@@ -513,7 +513,7 @@ were verified (hand-computed with a split inside the horizon and a bonus after F
 
 ## MF-7a: migration 0019 (pending)
 
-**Status: implemented and tested (2026-11-14); audit pending.**
+**Status: ACCEPTED on the branch (C-0057: audit reported no Blocker; its three Majors fixed).**
 
 | File | Content |
 |---|---|
@@ -549,3 +549,19 @@ or value is covered by `resolved_at`: 0 leaks for plain rows, 1 to 4 per 4 000 f
 | M-c | Major (tests) | The walk from D untested | **Moot:** removed as subsumed |
 | M-d | Major (tests) | `unexplained_move_in_horizon` before `resolved_carried` untested | **Fixed.** `test_l23` |
 | — | Minor | An event dated exactly D; confirmations in the stored adjustment set; `session_instants` should name membership facts | **Carried** to MF-7, where the caller fills these |
+
+
+---
+
+## Audit of MF-7a (migration 0019): fresh-context agent
+
+Audited at `bde044a`. Verdict: **ACCEPT** (no Blocker). Every table append-only for every login with rows present
+(including ON CONFLICT DO UPDATE); grants exactly as designed; owner-only evidence not insertable by other logins under
+the designed grants; applies on the chain; nothing reads the pending folder but its tests. 25 SQL mutants, 11 killed.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| Ma-1 | Major | `mf_snapshot_rows` could not hold the quality of the bar that printed `px_ref`, which MF-6 reads | **Fixed.** `ref_source_quality` column with its check |
+| Ma-2 | Major | Guards named NOLOGIN `cse_reader`, not the reader login `cse_verifier` | **Fixed** by an allow-list: owner evidence only as `cse_owner`; calendar copies only as `cse_worker` with the `trading_calendar:` prefix, which the owner may not use; prefix tested with `left()`, not `like` (mi-3) |
+| Ma-3 | Major (tests) | Guards, grants and several constraints untested | **Fixed.** `test_x6` (exact grants by aclexplode), `test_x7` (every login but the owner refused under a mistaken grant; each owner-only table carries the guard), `test_x8` (a bad row per constraint), `test_s2` (no raw-response column). The guard and PUBLIC-grant mutants are now killed |
+| mi-1 to mi-9 | Minor | A free-text validation report id; non-canonical JSON; spoofable defaults; looser constraints (factor kind, signs, JSON validity, empty symbols); no FK from labels to snapshot rows; the move-flag mapping; history import gaps; DISABLE TRIGGER by the owner (shared since 0007) | **Carried** to MF-7b and MF-7c, where the writer and the import define them |

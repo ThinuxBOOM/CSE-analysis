@@ -183,3 +183,103 @@ def test_x5_calendar_copies_by_the_worker_only_and_snapshots_by_the_worker(clust
         assert cur.fetchone()[0] == 1
     assert refused(r, "insert into mf_target_builds (mode, configuration_id, target_definition_version, code_version) "
                       "values ('KNOWN',%s,'targets.1','mf.1')", (cid,)) is not None
+
+
+# ------------------------------------------------------------------- added after the MF-7a audit (C-0057)
+
+def su(cluster, db):
+    c = fs.conn(cluster, db, user="postgres", autocommit=True)
+    return c
+
+
+DESIGN_GRANTS = {("cse_worker", "SELECT"): set(TABLES), ("cse_reader", "SELECT"): set(TABLES),
+                 ("cse_worker", "INSERT"): {"mf_configurations", "mf_calendar_observations", "mf_snapshots",
+                                            "mf_snapshot_factors", "mf_snapshot_move_flags", "mf_snapshot_rows",
+                                            "mf_target_builds", "mf_target_rows"}}
+
+
+def test_x6_grants_are_exactly_the_designs(cluster):
+    db = fs.fresh_db(cluster)
+    c = su(cluster, db)
+    with c.cursor() as cur:
+        cur.execute("select c.relname, coalesce(r.rolname, 'PUBLIC'), a.privilege_type from pg_class c "
+                    "cross join lateral aclexplode(c.relacl) a left join pg_roles r on r.oid = a.grantee "
+                    "where c.relname like 'mf\\_%' and c.relkind = 'r' and coalesce(r.rolname, '') <> 'cse_owner'")
+        got = {}
+        for rel, role, priv in cur.fetchall():
+            got.setdefault((role, priv), set()).add(rel)
+    assert got == DESIGN_GRANTS
+
+
+def test_x7_guards_refuse_every_login_but_the_owner_even_under_a_mistaken_grant(cluster):
+    db = fs.fresh_db(cluster)
+    s = su(cluster, db)
+    with s.cursor() as cur:
+        for t in OWNER_ONLY + ["mf_calendar_observations"]:
+            cur.execute(f"grant insert on {t} to cse_worker, cse_backup, cse_reader")
+        cur.execute("grant usage on all sequences in schema public to cse_worker, cse_backup, cse_reader")
+    inserts = {
+        "mf_identity_observations": "insert into mf_identity_observations (kind, symbol, effective_date, available_at, "
+                                    "source_reference) values ('symbol_reused','A.N0000','2020-01-01',now(),'n')",
+        "mf_corporate_action_observations": "insert into mf_corporate_action_observations (statement_id, symbol, kind, "
+                                            "ex_date, terms_json, available_at, source_reference) values "
+                                            "('x1','A.N0000','bonus','2020-01-01','{}',now(),'n')",
+        "mf_history_imports": "insert into mf_history_imports (source_label, source_sha256, source_origin, "
+                              "terms_reference, price_basis, survivorship, no_trade_convention, values_as_of) values "
+                              "('w', repeat('a', 64), 'o', 't', 'raw', 'complete', 'row_absent', '2026-10-19')",
+        "mf_calendar_observations": "insert into mf_calendar_observations (kind, date_from, date_to, available_at, "
+                                    "source_reference) values ('declared_closed','2024-01-15','2024-01-15',now(),'owner')",
+    }
+    for login in ("cse_worker", "cse_backup", "cse_verifier"):
+        c = fs.conn(cluster, db, user=login)
+        for t, sql in inserts.items():
+            assert refused(c, sql) is not None, (login, t)
+        c.rollback()
+        c.close()
+    o = owner(cluster, db)
+    assert refused(o, "insert into mf_calendar_observations (kind, date_from, date_to, available_at, source_reference) "
+                      "values ('declared_closed','2024-01-15','2024-01-15',now(),'trading_calendar:2024-01-15')") \
+        is not None                                         # the copy prefix is the worker's alone
+    o.rollback()
+    with s.cursor() as cur:                                 # every owner-only table carries the guard
+        cur.execute("select c.relname from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_proc p "
+                    "on p.oid = t.tgfoid where p.proname = 'mf_owner_only_guard'")
+        assert {r[0] for r in cur.fetchall()} == set(OWNER_ONLY)
+
+
+def test_x8_each_check_constraint_refuses_a_bad_row(cluster):
+    db = fs.fresh_db(cluster)
+    o = owner(cluster, db)
+    cid, js, st, _ = config_row()
+    with o.cursor() as cur:
+        cur.execute("insert into mf_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (cid, js, st))
+        cur.execute("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, "
+                    "input_digest, adjustment_set_hash, row_count) values ('KNOWN','point_in_time',now(),'2024-01-12',"
+                    "%s,'mf.1',%s,%s,0) returning snapshot_id", (cid, "c" * 64, "d" * 64))
+        sid = cur.fetchone()[0]
+        cur.execute("insert into mf_target_builds (mode, cutoff, configuration_id, target_definition_version, "
+                    "code_version) values ('KNOWN', now(), %s, 'targets.1', 'mf.1') returning build_id", (cid,))
+        bid = cur.fetchone()[0]
+    bad = [
+        ("mf_target_rows resolved", "insert into mf_target_rows (build_id, reference_snapshot_id, symbol, horizon, state, "
+         "values_json, resolved_at, row_hash) values (%s,%s,'A.N0000',5,'pending','{}',now(),%s)", (bid, sid, "e" * 64)),
+        ("mf_target_rows horizon", "insert into mf_target_rows (build_id, reference_snapshot_id, symbol, horizon, state, "
+         "values_json, resolved_at, row_hash) values (%s,%s,'A.N0000',3,'resolved','{}',now(),%s)", (bid, sid, "e" * 64)),
+        ("mf_snapshot_rows hex", "insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, "
+         "features_json, window_digest, row_hash) values (%s,'nothex','A.N0000','eligible','{}',%s,%s)",
+         (sid, "a" * 64, "b" * 64)),
+        ("mf_snapshot_rows quality", "insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, "
+         "features_json, window_digest, row_hash, ref_source_quality) values (%s,%s,'A.N0000','eligible','{}',%s,%s,'ok')",
+         (sid, "f" * 64, "a" * 64, "b" * 64)),
+        ("mf_history_imports basis", "insert into mf_history_imports (source_label, source_sha256, source_origin, "
+         "terms_reference, price_basis, survivorship, no_trade_convention, values_as_of) values ('w', repeat('a', 64), "
+         "'o', 't', 'smoothed', 'complete', 'row_absent', '2026-10-19')", ()),
+        ("mf_snapshot_factors status", "insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, "
+         "denominator, status, statement_ids) values (%s,'A.N0000','bonus','2020-01-01',1,2,'guessed','[]')", (sid,)),
+        ("mf_calendar_observations closed", "insert into mf_calendar_observations (kind, date_from, date_to, "
+         "source_reference) values ('declared_closed','2024-01-15','2024-01-16','notice')", ()),
+    ]
+    for name, sql, args in bad:
+        assert refused(o, sql, args) is not None, name
+    o.rollback()

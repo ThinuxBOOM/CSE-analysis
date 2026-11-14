@@ -614,3 +614,10 @@ at any tolerance from 3% to 15%; at the 7% used it dated 91 and declined 44. On 
 ex-dates (50 bonus of 189, 50 rights of 397); the rest stay unentered and are flagged by the detector. Results and
 the tolerance table: `docs/research/TRADEIQ_VALIDATION.md` §6. Loading them into `mf_corporate_action_observations`
 is part of MF-7's import. Not yet audited (C-0037).
+
+## C-0057: MF-7a accepted; its Majors fixed ([delegated], 2026-11-14)
+
+The audit of migration 0019 reported no Blocker, so MF-7a is accepted (C-0037). Its three Majors are fixed in the
+pending file (a column for the reference close's source quality; guards as an allow-list, which also covers the
+reader login `cse_verifier`; tests of grants, guards and constraints). The Minors are carried to the writer and the
+import (MF-7b, MF-7c).
