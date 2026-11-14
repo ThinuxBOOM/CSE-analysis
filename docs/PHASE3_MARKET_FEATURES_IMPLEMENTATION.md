@@ -337,7 +337,24 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: draft. Written, imports cleanly, NOT TESTED, NOT AUDITED. Do not build on it before its tests exist.**
+**Status: implemented and tested (2026-11-14); audit pending.** The draft of the checkpoint (C-0034) is unchanged;
+`tests/test_mf6_unit.py` now covers it (10 tests).
+
+### Tests added 2026-11-14
+
+| Design test | Covered by | Part covered |
+|---|---|---|
+| Every state and the precedence | `test_l1` to `test_l8` | resolved, pending, resolved_carried, terminated (identity event; leaving the universe, with and without the grace period; coming back), unexplained_move_in_horizon, unresolvable_quality, unresolvable_missing_price, unknown_session_in_horizon; quality before an unexplained move; an unknown session before both |
+| ML-19 (label part) | `test_l4` | A split inside the horizon with no trade on the ex-date is divided out (51 / ½ / 100 − 1 = 0.02); with no trade since, the cum price is compared with itself |
+| ML-21 | `test_l5` | Before the confirmation: provisional return, `unexplained_move_in_horizon`; after it: `resolved`, the same return, a later `resolved_at`; `disagreements` reports the two builds |
+| Minor 1, 13, 16 | `test_l9`, `test_l6`, `test_l3` | The volatility's own state keeps a computable return; a missing reference price resolves at once; `resolved_carried` needs a price at F |
+| `abs_ret_1`, `realised_vol_5` | `test_l1`, `test_l9` | Worked by hand |
+| `reference_revised` | `test_l9` | The label uses the stored row's close, and flags the difference |
+| Import graph | `test_l10` | The feature path never imports `targets` |
+
+Mutation check (scratch copy, 12 mutants): 11 killed. The survivor removes the volatility's `spans_unknown` and
+`spans_gap` test; it is equivalent, because an unknown price inside the horizon already leaves a null return there and
+a gap is caught first as `unknown_session_in_horizon`.
 
 `worker/market_features/targets.py` was written just before the checkpoint (C-0034) and is committed so that the
 work is not lost. It has no test file. What it contains, against design §11:

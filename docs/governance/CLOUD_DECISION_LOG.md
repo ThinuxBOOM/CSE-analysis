@@ -459,3 +459,10 @@ give allotment dates rather than ex-dates, and a third of their ratios were turn
 de-listing list exists.** Until P3-R2 is decided among the three options in §5 (hand entry, a recorded ex-date
 reconstruction outside MF, or splits only), the import loads splits only and Phase 3's detector marks the other
 actions. P3-R2 stays the owner's decision.
+
+## C-0041: Phase 3 implementation, step MF-6 tested ([delegated], 2026-11-14)
+
+The MF-6 draft (`worker/market_features/targets.py`, C-0034) now has `tests/test_mf6_unit.py` (10 tests): every label
+state and the precedence, ML-19's and ML-21's label parts, Minor points 1, 13 and 16, and the import graph. No change
+to the module was needed. 11 of 12 mutants are killed; the survivor is equivalent. Accepted when an audit reports no
+Blocker (C-0037).
