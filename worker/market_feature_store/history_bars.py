@@ -62,7 +62,10 @@ def bar_on(symbol, imp: Imported, session: date) -> Optional[FeatureBar]:
         return from_row(symbol, imp.rows[session])
     if session in imp.quarantined:
         return _bar(symbol, 5, None, None, True, "missing", ("quarantined",))
-    if any(lo <= session <= hi for lo, hi in imp.complete):
+    last_row = max(imp.rows) if imp.rows else None
+    # a complete range never reaches past the security's last admitted row: the stored range may end at a row the
+    # query has not admitted, and reading it would extend membership with evidence from after T (audit, Major 6)
+    if last_row is not None and session <= last_row and any(lo <= session <= hi for lo, hi in imp.complete):
         return _bar(symbol, 3, False, None, False, "stale", ("no_row_security_complete",), shares=Decimal(0),
                     trades=Decimal(0), turnover=Decimal(0))
     return None
