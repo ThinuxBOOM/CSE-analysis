@@ -565,3 +565,10 @@ member's return stays out of m_u (code audit 2, m6); CSE's carried close; four c
 and the label rules of C-0047 and C-0050. The two code changes it needs (`low_liquidity`, the market member rule) are
 made and tested in MF-4 and MF-5. Not re-audited, as a clarifying revision of an accepted design (as C-0027 and
 C-0044); the next code audit of MF-7 reads it.
+
+## C-0052: code audit 6 (MF-6) and its fix ([delegated], 2026-11-14)
+
+Audit 6 confirmed the conservative `resolved_at` and the volatility on F's basis, and found one Blocker of the same
+family: for a revised reference row, bars between the stored row's s_D and the build's own last close could decide the
+state without being covered. Fixed as the auditor prescribed, with the contract for withdrawn statements widened to
+every statement of the security. MF-6 waits for a re-audit.

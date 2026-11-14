@@ -15,6 +15,7 @@ everything after D:
 Every label has exactly one state. Precedence: pending; terminated; unknown_session_in_horizon;
 unresolvable_missing_price; unresolvable_quality; unexplained_move_in_horizon; resolved_carried; resolved.
 """
+import bisect
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -92,10 +93,10 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     session_instants   {session: the latest admission instant, under the build's mode, of that session's finality
                         and of this security's bar on it}
     statement_instants {statement_id: its admission instant under the build's mode}
-    extra_instants     admission instants of any calendar or identity evidence the build rests on, AND of every
-                        corporate-action statement of the security that no longer appears in `series.factors`
-                        because it was withdrawn or superseded, with the withdrawing or superseding statement, when
-                        its ex-date or session pair lies in (s_D, F] (audit 4: a withdrawal changes the label too)
+    extra_instants     admission instants of any calendar or identity evidence the build rests on, AND of EVERY
+                        statement of the security (corporate action or `no_action_confirmed`) that no longer
+                        applies because it was withdrawn or superseded, with the withdrawing or superseding
+                        statement, whatever its ex-date or session pair (audits 4 and 6: the conservative rule)
     """
     if horizon not in HORIZONS:
         raise ValueError(f"horizon must be one of {HORIZONS}")
@@ -130,6 +131,12 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     lo.append(k)
     if own is not None and own.ref_session in sessions:
         lo.append(sessions.index(own.ref_session))
+    # the stored row's own s_D, and the start of every move that can reach the horizon: a revised row reads bars
+    # back to its own s_D (audit 6, B-T8)
+    if row.ref_session is not None:
+        lo.append(bisect.bisect_left(sessions, row.ref_session))
+        lo.extend(bisect.bisect_left(sessions, m.session_from) for m in series.moves
+                  if m.session_to > row.ref_session)
     hi = [d]
     all_ids = tuple(sorted({i for x in series.factors for i in x.statement_ids}
                            | {m.statement_id for m in series.moves if m.statement_id}))

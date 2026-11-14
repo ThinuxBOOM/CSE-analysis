@@ -314,3 +314,35 @@ def test_l19_contract_and_event_details():                                      
     assert label(no_trade_conflict_at_f, h=5)[0].state == "unresolvable_quality"                     # M5
     one, _ = label([bar(100), bar(90)], h=1)
     assert one.volatility_state == "resolved"
+
+
+# ------------------------------------------------------------------- added after audit 6 (C-0052)
+
+def test_l20_a_revised_row_reads_back_to_its_own_s_d():                                               # B-T8
+    sb, refs, sessions = build([bar(100), bar(50), bar(100), bar(100), bar(100)])
+    moves = [act.Move(SYM, sessions[0], sessions[1], act.UNEXPLAINED, F(-1, 2)),
+             act.Move(SYM, sessions[1], sessions[2], act.UNEXPLAINED, F(1))]
+    sb = sr.Series(sb.symbol, sb.sequence, sb.points, sb.bars, sb.factors, tuple(moves))
+    stored = tg.ReferenceRow(SYM, sessions[3], D("100"), sessions[0])
+    inst = {x: at(300) for x in sessions}
+    inst[sessions[1]] = at(500)
+    lab = tg.label(stored, 1, sb, refs, session_instants=inst)
+    assert (lab.state, lab.resolved_at) == ("unexplained_move_in_horizon", at(500))
+    assert lab.reference_revised
+
+
+def test_l21_revised_row_details_unlabelled_window_and_volatility_quality():                         # M-b
+    sb, refs, sessions = build([bar(100), bar(50), bar(50), bar(50)])
+    move = [act.Move(SYM, sessions[0], sessions[1], act.UNEXPLAINED, F(-1, 2))]
+    sb = sr.Series(sb.symbol, sb.sequence, sb.points, sb.bars, sb.factors, tuple(move))
+    stored = tg.ReferenceRow(SYM, sessions[2], D("100"), sessions[0])        # s_D before the move, D after it
+    lab = tg.label(stored, 1, sb, refs, session_instants={})
+    assert lab.state == "unexplained_move_in_horizon"                # the window starts at the row's s_D
+    s = days(7)
+    bad = [act.Factor(SYM, act.RIGHTS, s[2], None, None, act.UNRESOLVED)]
+    sb, refs, sessions = build([bar(100)] * 7, factors=bad)
+    v, state = tg._volatility(sb, refs, 0, 5, 5)
+    assert (v, state) == (None, "unresolvable_quality")              # an unresolved factor crossed, not a missing price
+    div = [act.Factor(SYM, act.CASH_DIVIDEND, s[2], 1, 1, act.NO_PRICE_FACTOR, (), ("dv",))]
+    lab, _ = label([bar(100)] * 6, h=5, factors=div)
+    assert lab.factor_statement_ids == ()                            # a no-price factor is not in the adjustment set

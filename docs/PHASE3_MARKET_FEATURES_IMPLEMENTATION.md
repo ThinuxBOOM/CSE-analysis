@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 5 found three further Blockers (B-T5 to B-T7), all in `resolved_at`; `resolved_at` is now conservative by construction; a re-audit is required before acceptance (C-0050).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: audit 6 found one further Blocker (B-T8, `resolved_at` for revised rows), fixed; a re-audit is required before acceptance (C-0052).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -493,3 +493,18 @@ and confirmed moves whatever its ex-date, and over `extra_instants`. A later `re
 discovery script that sends real requests to CSE (68 attempts in the auditor's run, all refused in-process by the
 guard). CI passes explicit file lists and never collected it. A root `pytest.ini` now sets `testpaths = tests`; a bare
 `pytest` from the root collects only `tests/` and logs zero CSE attempts.
+
+
+---
+
+## Code audit 6 (MF-6 re-audit): fresh-context agent
+
+Audited at `6d7479b`. Verdict: **REJECT**, one Blocker. The conservative `resolved_at` and the volatility on F's basis
+were verified (hand-computed with a split inside the horizon and a bonus after F).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-T8 | **Blocker** | For a revised reference row, bars between the stored row's s_D and the build's last close at or before D could decide an unexplained move outside `resolved_at` | **Fixed.** The range also starts at the stored row's s_D and at the start of every move that ends after it. `test_l20`; both parts killed by mutants |
+| M-a | Major | The `extra_instants` contract named only withdrawals with an ex-date in (s_D, F] | **Fixed.** Every withdrawn or superseded statement of the security, confirmations included, whatever its date |
+| M-b | Major (tests) | The unexplained-move window at the row's s_D; the volatility's `unresolvable_quality` | **Fixed.** `test_l21` |
+| — | Minor | No-price factors out of the adjustment set (now tested); the confirmation filter; carried items of audit 5 | Partly fixed; the rest carried |
