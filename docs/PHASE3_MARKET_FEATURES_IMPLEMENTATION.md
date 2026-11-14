@@ -337,7 +337,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
 
-**Status: audit 8 found no look-ahead (about 90 000 fuzzed perturbations over every input kind) and one wrong value (B-T10), now fixed; a re-audit is required before acceptance (C-0058).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
+**Status: ACCEPTED on the branch (C-0060: audit 9 reported no Blocker; an independent oracle agreed on every state and value over 313 000 cases).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
 
 ### Tests added 2026-11-14
@@ -608,3 +608,23 @@ Choices for the audit: the batch is the source workbook; `security_complete` per
 last row in the workbook (quarantined pairs override it); a split's `available_at` is the end of its announcement day,
 else of its effective day; a split with a non-whole ratio is left out (one case); the 1990s mapping requires the code to
 appear in 2001-2002 with ordinary voting shares only.
+
+
+---
+
+## Code audit 9 (MF-6 values, independent oracle): fresh-context agent
+
+Audited at `6dee28e`. Verdict: **ACCEPT** (no Blocker). The auditor wrote an independent implementation of §11 from
+the design alone and compared it with `label()` on 313 000 random cases (plain and revised rows, every factor kind,
+absences, gaps, conflicting bars, moves, h up to 21): **no wrong state, return, direction, volatility, stale_sessions
+or P_F**. The disagreements were three design readings (now stated in §11) and rounding of `abs_ret_1` at 1e-11.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| 1 | Major (tests) | An identity event dated exactly D | **Decided and tested:** it terminates the label (the security has no future from D). `test_l27` |
+| 2 | Major (tests) | Confirmations in the stored adjustment set | **Decided and tested:** they belong there. `test_l27` |
+| 3, 4 | Minor (design) | `left_session` when an event and a run-out absence both apply; chronological absences against "pending first" | **Stated** in §11 (revision 6, C-0060) |
+| 5 | Minor | `abs_ret_1` from the rounded return | **Fixed:** from the exact return |
+| 6 | Minor | A conflicting close between the row's s_D and D reaches the label only through detector moves | **Carried** |
+
+MF-6 took nine audits; the record above (audits 3 to 9) lists every Blocker and its fix.

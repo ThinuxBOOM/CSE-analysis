@@ -724,7 +724,11 @@ use. An absence already running at D is examined like one that starts inside the
 label is `unresolvable_quality`, evidence `reference_not_in_build` (C-0058). The caller passes in `extra_instants` the
 latest admission instant of all the build's calendar evidence and identity evidence, and of every withdrawn or
 superseded statement of the security. A label whose reference close is undefined resolves at once to
-`unresolvable_missing_price`, ahead of `pending` and `terminated` (Minor 13 of §19).
+`unresolvable_missing_price`, ahead of `pending` and `terminated` (Minor 13 of §19). Further (audit 9, C-0060): an identity event dated D itself
+terminates the label; when an identity event and an absence that has run out its grace period both apply, the event
+decides `left_session`; absences are examined in order, so an earlier absence that terminated decides even while a
+later one's grace period runs; a `no_action_confirmed` statement whose move overlaps (s_D, s_F] is part of the stored
+adjustment set.
 
 Each label stores **`resolved_at`**: the latest admission instant, under the build's mode, over **every** input it
 used, namely the target session's finality (or the terminating evidence), each bar in the horizon, each

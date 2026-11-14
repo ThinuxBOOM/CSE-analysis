@@ -188,7 +188,8 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         left = None
 
     # ---- terminated: an identity event inside the horizon, or it left the universe and did not come back
-    events = [x for x in series.factors if x.kind in TERMINATING_KINDS and row.session < x.ex_date <= sessions[f]]
+    # an event dated D itself counts: the security has no future from D (audit 9, C-0060)
+    events = [x for x in series.factors if x.kind in TERMINATING_KINDS and row.session <= x.ex_date <= sessions[f]]
     if events:
         e = min(events, key=lambda x: x.ex_date)
         before = [i for i in range(d, f + 1) if sessions[i] < e.ex_date]
@@ -239,13 +240,15 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
     product = Fraction(1)
     for x in used:
         product *= x.value
-    ret = numeric.q(numeric.to_decimal(Fraction(future.px_ref) / product / Fraction(row.px_ref) - 1))
+    exact = Fraction(future.px_ref) / product / Fraction(row.px_ref) - 1
+    ret = numeric.q(numeric.to_decimal(exact))
     direction = "rise" if ret > 0 else ("fall" if ret < 0 else "flat")
     confirmations = tuple(m.statement_id for m in series.moves if m.statement_id
                           and m.session_from < hi_s and m.session_to > lo_s)
     ids = tuple(sorted(set(ids + confirmations)))
     if horizon == 1:                                              # abs_ret_1: |ln(1 + return)|, never a deviation
-        volatility, vol_state = numeric.q(abs(numeric.ln(CTX.add(Decimal(1), ret)))) if ret > -1 else None, None
+        # from the unquantized return (audit 9): |ln(1 + r)| = |ln(P_F / (P_D x product))|
+        volatility, vol_state = (numeric.q(abs(numeric.ln(numeric.to_decimal(exact + 1)))) if exact > -1 else None), None
     more = dict(ret=ret, direction=direction, factor_statement_ids=ids, volatility=volatility)
     if actions.unlabelled(series.moves, lo_s, hi_s):
         return done(UNEXPLAINED_MOVE, f, ids, provisional=True, volatility_state=vol_state or UNEXPLAINED_MOVE, **more)

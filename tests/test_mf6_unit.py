@@ -432,3 +432,14 @@ def test_l26_a_factor_between_s_d_and_d_applies_to_the_carried_cum_price():     
     split = [act.Factor(SYM, act.SUBDIVISION, s[1], 1, 2, act.APPLIED, (), ("sp",))]
     lab, _ = label([bar(100), bar(), bar(), bar(50)], d_index=2, h=1, factors=split)
     assert (lab.state, lab.ret) == ("resolved", D("0"))              # P_D = 100 printed on s0, cum; F prints 50 ex
+
+
+# ------------------------------------------------------------------- added after audit 9 (C-0060)
+
+def test_l27_an_event_dated_d_terminates_and_confirmations_are_in_the_adjustment_set():
+    s = days(3)
+    on_d = [act.Factor(SYM, act.DELISTING, s[0], 1, 1, act.NO_PRICE_FACTOR, (), ("dl",))]
+    assert label([bar(100), bar(101)], h=1, factors=on_d)[0].state == "terminated"
+    confirmed = [act.Move(SYM, s[0], s[1], act.CONFIRMED, F(-1, 2), "nac")]
+    lab, _ = label([bar(100), bar(50)], h=1, moves=confirmed)
+    assert (lab.state, lab.factor_statement_ids) == ("resolved", ("nac",))

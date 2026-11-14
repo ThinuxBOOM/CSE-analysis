@@ -636,3 +636,10 @@ The import of the validated TradeIQ archive into migration 0019's tables is impl
 into a local throwaway database succeeded (1 404 336 bars, 238 corporate-action statements, 1 902 quarantined pairs).
 It is an owner-run step through the owner path; no production database exists and nothing was loaded anywhere
 permanent. Accepted when an audit reports no Blocker.
+
+## C-0060: MF-6 accepted ([delegated], 2026-11-14)
+
+Audit 9 reported **no Blocker** in MF-6: an independent oracle agreed with `label()` on every state and value over
+313 000 cases, and audit 8's fuzzing had found no look-ahead. MF-6 is accepted (C-0037). Its two Majors are settled
+and tested (an identity event dated D terminates the label; confirmations belong in the adjustment set); the design
+wording is clarified; `abs_ret_1` uses the exact return. All of MF-1 to MF-6 and MF-7a are now accepted on the branch.
