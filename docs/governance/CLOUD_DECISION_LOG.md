@@ -587,3 +587,22 @@ Audit 7 found one more Blocker of the `resolved_at` family (revised rows whose s
 The lower bound is now general (walk back to the last printed close before the earliest covered session, to a fixed
 point), and the auditor's fuzzer, which tests the property directly, reports 0 leaks in about 12 000 labels and is kept
 as `tests/test_mf6_fuzz.py`. MF-6 waits for a re-audit.
+
+## C-0055: P3-R2 decided: bonus and rights ex-dates reconstructed from the archive by a strict rule (owner decision, 2026-11-14)
+
+The owner chose option 2 of `docs/research/TRADEIQ_VALIDATION.md` §5: the ex-dates of TradeIQ's bonus and rights
+issues are **reconstructed** from the archive's own daily prices by a strict, recorded rule, run **outside MF** as a
+research step that produces corporate-action evidence rows marked as reconstructed. MF itself still never infers an
+action from a price move; it reads the evidence like any other. The rule (implemented and tested in
+`scripts/research/tradeiq/ca_reconstruct.py`):
+- only an event whose company name matches exactly one ordinary voting security and whose ratio is readable (including
+  Excel's conversion of "1:4" into a time of day) is considered; both readings of the ratio are tried;
+- within a fixed window around the allotment date, **exactly one** session must show a close-to-close fall matching the
+  event's own expected factor within the tolerance; zero or several matches leave the event unentered, for the
+  detector to flag;
+- the reconstructed ex-date is evidence with `available_at` = the announcement date where the archive gives one, else
+  the reconstructed ex-date itself (never earlier than the truth), and the method, the matched reading, the observed
+  and expected factors and the source row are kept with it;
+- before use, the rule is measured on the share splits, whose effective dates are known (hidden from the rule), and
+  the accuracy is reported.
+Phase 3's design records it as the source of evidence for these two kinds (P3-R2), in its next revision.
