@@ -1,6 +1,7 @@
 # Phase 6: news and sentiment (design)
 
-**Status: DESIGN, revision 2 (2026-11-15). Not implemented. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 2 (2026-11-15). ACCEPTED [delegated] (C-0071): its re-audit found no Blocker. Not
+implemented; the re-audit's Majors (§16) are fixed before NS-1.** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no contact with any news
 source, no CSE contact and no change to `main`.
 
@@ -112,8 +113,13 @@ redirect; this one does the same, and more:
 - **CSE hosts are refused unconditionally**, whatever a configuration or governance record says: `cse.lk` and every
   subdomain, and every host CSE's own pages are served from (the list is a constant of the transport, shared with
   the static guards). News pages that link CSE announcement PDFs are recorded with the link as text, never fetched;
+- **no fetch on our behalf (re-audit N1):** a URL whose path or query contains a CSE host (in any encoding the
+  transport decodes) is refused, and `allowed_hosts` may not name a fetch-on-behalf service (archive "save" endpoints,
+  translation proxies, URL relays) unless the owner decides so in the governance record; archive batches (§9) are
+  local files supplied by the owner, never fetched by the importer;
 - tests (NS-1): a CSE URL is refused before any socket opens; a redirect to a CSE host is refused; a URL outside the
-  allow-list is refused; a redirect to another allowed host of the source is a second recorded attempt.
+  allow-list is refused; a URL carrying a CSE host in its path or query is refused; a redirect to another allowed host
+  of the source is a second recorded attempt.
 
 CSE's own announcements, if the owner wants them as a source, are CSE contact and fall under G-1 and its extension
 decisions, not under this phase's delegation (P6-R1); they would need their own design on P2's transport.
@@ -500,3 +506,20 @@ One Blocker, twelve Majors, twelve Minors. Revision 2's answers:
 | M11 | Requirements without named tests | §10's requirement-to-test map |
 | M12 | Processor versions over history vs Phase 5's one configuration | §8.1: one NS configuration per window; `full_text` needed for long ML histories |
 | Minors 1-12 | Quality order; `max_age_sessions` ≥ 21; ingestion runs and fetch events; NL-6 naming; availability lag; NL-10 wording; LLM processor scope; CSE-derived news content; feature registry; pending migration; "reads nothing from Route 1"; Route 2 independence | Answered in §8, §7, §11, §9, §10, §5.5, §12, §1 |
+
+### Audit 2 (revision 2; fresh-context agent, 2026-11-15): ACCEPT
+
+No Blocker; B1 and the twelve Majors of audit 1 confirmed resolved. Seven new Majors, to be fixed before NS-1
+(C-0037):
+
+| # | Finding | Disposition |
+|---|---|---|
+| N1 | A third party could fetch from CSE on our behalf (relays, archive "save" endpoints); archive acquisition not local-only | **Fixed** in §4.1 |
+| N2 | A later alias end and a withdrawal have no admission clocks | Carried: define both as observation rows with their own two clocks (a withdrawal's `available_at` = the confirming re-fetch's `observed_at`); NL tests |
+| N3 | Stored-result admission conflicts with re-processed history in `KNOWN`; an admitted article with no result undefined | Carried: a pure processor may be recomputed at query time from inputs admitted at T; the own-clock rule applies to stored results used as they are; define the no-result case |
+| N4 | Days before a source existed look like "no news" | Carried: no run row after a source's start is "not run"; the active sources recorded on every snapshot; a `not_collected` state before coverage; §8.1 pairing labels or refuses such rows |
+| N5 | Raw body hashes make spurious revisions; a revision resets age | Carried: hash the normalised extracted text; every version inherits the article's first availability for age |
+| N6 | Withdrawals rarely detected under the re-fetch schedule | Carried: a confirming re-fetch after a first 404; the detection window stated in §14 |
+| N7 | The decay formula undefined for a story's relevance and event type | Carried: define the story's ρ and the half-life rule, with vectors |
+| Minors 1-14 | Quality order (Phase 3's: untrusted, conflicting, missing, unlabelled, partial, stale, fresh); MF's security identity among permitted inputs; NL-11 to NL-13 placement; "no real host" wording; earlier-T pairing; grouping window; unknown dates; automatic aliases; `onward_disclosure` values; Phase 7's boundary for titles; one `allowed_hosts`; keyed sources as a v1 limit; converse under `metadata_only`; withdrawn text retention | Carried, fixed with the Majors |
+

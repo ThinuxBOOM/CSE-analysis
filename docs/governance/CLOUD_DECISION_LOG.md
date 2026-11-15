@@ -728,3 +728,11 @@ own identity), gives each driver step a closed command list, makes network attac
 scope, checks the Windows clock, detaches on a VPN, states numeric disk floors, and lists the restore checkpoints as
 blocking milestone 12. A re-audit is pending; nothing is built.
 
+## C-0071: Phase 6 design accepted ([delegated], 2026-11-15)
+
+The re-audit of Phase 6's revision 2 found no Blocker: the news transport can no longer reach CSE, and the first
+audit's Majors are resolved. Phase 6 is accepted (C-0037). Seven new Majors are recorded in its §16; the most
+important, a third party fetching from CSE on our behalf, is fixed at once (URLs carrying a CSE host refused,
+fetch-on-behalf services barred, archives local files only). The others are fixed before NS-1. Nothing is
+implemented and no source is chosen.
+
