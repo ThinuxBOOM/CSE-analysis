@@ -72,3 +72,20 @@ Choices for the audit:
   stored.
 - `eps_ttm_approx` uses F7P-2 or F7P-3 only, never F7P-1 (a printed annual EPS is `eps_latest_fy`).
 
+## Audit of F7-1 and F7-2: fresh-context agent
+
+At `a1780c0`. Guard log empty. 56 mutants, 38 killed. **REJECT** (one Blocker).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B1 | Blocker | In `KNOWN`, a document held but not yet public (F8 state `none`) shaped the scope, currency, n, the unlabelled-only rule and `scope_changed` (five channels reproduced through F8) | **Fixed.** Only facts F8 shows (single_source, corroborated, conflicting) shape the panel; design §4.3 clarified (C-0073). `test_b1` (each channel through F8, with its converse); each reverted channel fails it |
+| M1 | Major | The fact key dropped the maturity | **Fixed** before the audit's report (F7-3 part 1) |
+| M2 | Major | §5.1's exactness was false for the 28th | **Fixed:** days up to the 27th or month-ends, design and code; `test_m2` checks every date of 2000-2032 |
+| M3 | Major | TTM `fresh` with a conflicting input in one path | **Fixed:** an applicable path with a conflicting or untrusted input makes the TTM take that state; design §5.2 (C-0073). `test_m3` |
+| M4 | Major | Growth ignored the state order across its inputs | **Fixed.** `test_m4` |
+| M5 | Major | Interval rules untested | **Tested:** subtraction bounds, magnitude bounds, a straddling interval, the cash identity within an interval. `test_m5` |
+| M6 | Major | Leakage tests short of §12's AVAILABLE construction and converses | **Tested:** two evidence sets under one fixed H for FL-1, FL-2, FL-4; FL-3 before and after; FL-19's converse. `test_m6` |
+| M7 | Major | Rules surviving mutation | **Tested:** `purchase_of_ppe` and `dividends_paid` magnitudes, n by currency, `has_discontinued` by scope, the table by scope, a zero base, the cash identity at E−6, `printed_nil`, `growth_cum` with n = 6, the link's highest id. `test_m7` |
+| — | Minors | Printed sign not recorded; a straddling magnitude interval; a conflicting TTM kept numeric paths only; the cash identity's inputs and exactness | **Fixed** (`sign_rule:magnitude:<concept>:printed_<sign>`; [0, max]; every path kept; all three totals' ef_keys; `no_exact_period_match`) |
+| — | Minors | `paths_disagree` and `anchor_absent` not in §6.4's lists; FL-15 shown on `signed()` only; the AVAILABLE configuration check cannot fire on a real F8 result (it always carries the resolved id) | **Carried** to the store step, where "passed explicitly" is enforced by the stored panel row |
+

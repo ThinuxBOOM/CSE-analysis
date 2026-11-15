@@ -744,3 +744,11 @@ form of the cleanliness checks, the orchestrator's Docker access and a review li
 interval and fail-closed rules, a workable Windows clock rule, and restore testing before the first data-growing
 arming) are recorded in its §12 and fixed before LP-1 is built. Milestone 10 itself remains the owner's acceptance.
 
+## C-0073: the F7-1 and F7-2 audit and its fixes; three design clarifications ([delegated], 2026-11-15)
+
+The audit rejected F7-1 and F7-2 on one look-ahead: in `KNOWN`, a filing the system held but that was not yet
+public still shaped the panel's scope, currency, period length and flags. Fixed: only facts F8 shows shape the panel.
+Three clarifications of the accepted Phase 4 design follow from the audit, each the conservative reading: §4.3's
+"in any state" means the states F8 shows; §5.1's exact dates are up to the 27th (not the 28th); a conflicting input
+in any applicable TTM path makes the TTM conflicting. The Majors are fixed and tested. Re-audit pending.
+

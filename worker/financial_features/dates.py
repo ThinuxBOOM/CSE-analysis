@@ -16,5 +16,7 @@ def months_before(end, k):
 
 
 def exact_rule_ok(end):
-    """E-k is exact for month-ends and for days up to the 28th; other period ends get no_exact_period_match."""
-    return end.day <= 28 or end.day == monthrange(end.year, end.month)[1]
+    """E-k chains exactly ((E-n)-12 = (E-12)-n) for month-ends and for days up to the 27th; other period ends get
+    no_exact_period_match. The 28th fails: 2001-05-28 - 3 months is 2001-02-27 (audit M2; the design's "28th" was
+    wrong)."""
+    return end.day <= 27 or end.day == monthrange(end.year, end.month)[1]

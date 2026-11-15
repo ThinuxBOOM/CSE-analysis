@@ -170,6 +170,9 @@ Facts of different scopes are different facts and are never mixed in one formula
   `single_source`, `corroborated` or `conflicting`, in any scope and currency. A fact F8 reports as `none` does not
   count: in `KNOWN` that includes a document the system holds but that is not yet public, which must not move the
   anchor forward. It is defined before the scope, so the two are not circular.
+- **Only facts F8 shows shape the panel** (C-0073): "in any state" below means `single_source`, `corroborated` or
+  `conflicting`. A fact F8 reports as `none` (in `KNOWN`, a document held but not yet public) counts for no choice of
+  this section: not the newest period, the scope, the unlabelled-only rule, the currency, n or `scope_changed`.
 - **Scope policy `f7.scope.1`:** among the scopes that have an anchor-concept fact (in any state) at the newest
   period, take the first of `group`, `bank`, `company`. `unlabelled` is taken only when it is the **only** scope the
   issuer has at T. Statements without Group and Company columns are typical of single-entity issuers, and excluding
@@ -259,9 +262,9 @@ E−k, "k months before period end E", is `_add_months(E + 1 day, −k) − 1 da
 A month-end maps to a month-end and the 25th to the 25th. A rule applies only when a fact exists with **exactly** the
 required period end. Reporters whose year-end moves by a day or two (52/53-week years) will not match and get
 `missing`, reason `no_exact_period_match`; how common that is on CSE is an open question (§15). The rule is exact for
-month-ends and for days up to the 28th. For a period end on the 29th or 30th that is not a month-end, shifting by
-six months twice does not always equal shifting by twelve, which F7P-2 needs; such period ends also get
-`no_exact_period_match`.
+month-ends and for days up to the **27th** (C-0073: the 28th fails, for example 2001-05-28 − 3 months is 2001-02-27).
+For any other period end, shifting by six months twice does not always equal shifting by twelve, which F7P-2 needs;
+such period ends also get `no_exact_period_match`.
 
 ### 5.2 Rules
 
@@ -286,6 +289,8 @@ With D_n(E) the duration fact of n months ending on E, and I(E) an instant fact:
   adding and subtracting its inputs' intervals. They agree if those intervals overlap; then the lowest-numbered rule's
   value is used, marked `corroborated_paths`. (F6 never moves a representative into its interval, so comparing
   representatives against interval widths could call two consistent paths conflicting.) Otherwise the value is `conflicting` and every path is kept (P4-D8).
+- **A conflicting or untrusted input in any applicable path** (one whose facts all exist) makes the TTM take that
+  state, even when another path is clean: F7 never picks a side by using the other path (§4.2; C-0073).
 - **Per-share values are not summed across periods without care.** §6.3.
 - Uncertainty: a sum's interval is the sum of its inputs' intervals, recorded. It is not propagated through ratios in
   v1 (P4-D5); the inputs' intervals are recorded instead.

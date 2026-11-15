@@ -56,7 +56,7 @@ def test_t5_paths_that_disagree_are_conflicting():
     q = [rev(date(2024, 6, 30), 3, "310"), rev(date(2024, 3, 31), 3, "300"), rev(date(2023, 12, 31), 3, "290"),
          rev(date(2023, 9, 30), 3, "280"), rev(date(2024, 3, 31), 12, "1500"), rev(date(2023, 6, 30), 3, "280")]
     t = pr.ttm(P(*q), "revenue", date(2024, 6, 30))
-    assert (t.state, t.reason, len(t.paths)) == (pn.CONFLICTING, "paths_disagree", 2)
+    assert (t.state, t.reason, sum(p.number for p in t.paths)) == (pn.CONFLICTING, "paths_disagree", 2)
 
 
 def test_t6_missing_and_non_month_end():

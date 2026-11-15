@@ -38,6 +38,7 @@ RECORDED_AVAILABILITY_FLAGS = ("availability_sources_disagree", "availability_ev
                                "last_modified_after_upload")
 RECORDED_ANNOTATIONS = ("restated_comparative_present", "internal_conflict", "sign_only_difference")
 PIPELINES = ("live", "point_in_time")
+SHOWN = ("single_source", "corroborated", "conflicting")
 
 
 @dataclass(frozen=True)
@@ -167,15 +168,17 @@ def panel(result, pipeline):
                 information_cutoff=result.information_cutoff, knowledge_horizon=result.knowledge_horizon,
                 f8_configuration_id=result.f8_configuration_id, f8_result_hash=result.result_hash,
                 counts=tuple(sorted(counts.items())))
-    anchors = _anchor_facts(facts)
-    # §4.3: the newest period counts only facts F8 shows (a held but not yet public document is `none`: FL-19)
-    shown = [f for f in anchors if f.state in ("single_source", "corroborated", "conflicting")]
+    # §4.3: only facts F8 shows count for the newest period, the scope, the currency, n and scope_changed. A fact F8
+    # reports as `none` (in KNOWN, a document the system holds but that is not yet public) never shapes the panel
+    # (FL-4, FL-19; audit B1)
+    shown_facts = [f for f in facts if f.state in SHOWN]
+    shown = _anchor_facts(shown_facts)
     if not shown:
         return Panel(state=ANCHOR_ABSENT, **base)
     newest = max(f.identity.period_end for f in shown)
-    at_newest = [f for f in anchors if f.identity.period_end == newest]
+    at_newest = [f for f in shown if f.identity.period_end == newest]
     scopes = {f.identity.scope for f in at_newest}
-    all_scopes = {f.identity.scope for f in facts}
+    all_scopes = {f.identity.scope for f in shown_facts}
     scope = next((s for s in SCOPE_ORDER if s in scopes), None)
     flags = set()
     if scope is None:
@@ -208,11 +211,11 @@ def panel(result, pipeline):
         return Panel(state=state, flags=tuple(sorted(flags)), **out, **base)
     # scope_changed (§4.3): the chosen scope has no anchor fact twelve months before, while another scope has one
     prior = months_before(newest, 12)
-    prior_scopes = {f.identity.scope for f in anchors if f.identity.period_end == prior}
+    prior_scopes = {f.identity.scope for f in shown if f.identity.period_end == prior}
     if prior_scopes and scope not in prior_scopes:
         flags.add("scope_changed")
     if any(f.identity.operations == "discontinued" and f.identity.period_end == newest
-           and f.identity.scope == scope for f in facts):
+           and f.identity.scope == scope for f in shown_facts):
         flags.add("has_discontinued")
     return Panel(state=OK, flags=tuple(sorted(flags)), **out, **base)
 

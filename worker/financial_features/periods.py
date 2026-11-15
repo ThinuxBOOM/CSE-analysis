@@ -46,11 +46,13 @@ def _get(panel, concept, end, months, maturity="not_applicable"):
     if u.nil:
         return Derived(MISSING, reason="printed_nil", inputs=(u.ef_key,))
     v, rule = signed(concept, u.value)
-    lo, hi = signed(concept, u.low)[0], signed(concept, u.high)[0]
-    if rule == "magnitude" and lo is not None and hi is not None and lo > hi:
-        lo, hi = hi, lo
+    lo, hi = u.low, u.high
+    if rule == "magnitude" and lo is not None and hi is not None:
+        # the magnitude of an interval: [0, max] if it straddles zero, else the reflected bounds (audit minor)
+        lo, hi = (Decimal(0), max(-lo, hi)) if lo < 0 < hi else tuple(sorted((abs(lo), abs(hi))))
+    printed = "negative" if u.value < 0 else "positive" if u.value > 0 else "zero"
     return (v, lo if lo is not None else v, hi if hi is not None else v, u.ef_key,
-            (f"sign_rule:{rule}:{concept}",) if rule == "magnitude" else ())
+            (f"sign_rule:magnitude:{concept}:printed_{printed}",) if rule == "magnitude" else ())
 
 
 def _combine(rule, parts, signs):
@@ -79,6 +81,15 @@ def ttm(panel, concept, end):
                                              _get(panel, concept, e_12, n)], [1, 1, -1]))
     paths.append(_combine("F7P-3", [_get(panel, concept, months_before(end, k), 3) for k in (0, 3, 6, 9)],
                           [1, 1, 1, 1]))
+    # a path applies when all its facts exist. If an applicable path has a conflicting or untrusted input, the TTM
+    # takes that state: F7 never picks a side by using another path instead (§4.2; audit M3)
+    applicable = [p for p in paths if p.number or p.reason != "no_exact_period_match"]
+    blocked = [p for p in applicable if p.state in (UNTRUSTED, CONFLICTING)]
+    if blocked:
+        state = next(s for s in NULL_ORDER if any(p.state == s for p in blocked))
+        first = next(p for p in blocked if p.state == state)
+        return Derived(state, reason=first.reason, inputs=tuple(i for p in blocked for i in p.inputs),
+                       paths=tuple(paths))
     ok = [p for p in paths if p.number]
     if not ok:
         state = next((s for s in NULL_ORDER if any(p.state == s and p.inputs for p in paths)), MISSING)
@@ -87,7 +98,7 @@ def ttm(panel, concept, end):
     lo, hi = max(p.low for p in ok), min(p.high for p in ok)
     best = ok[0]
     if len(ok) > 1 and lo > hi:
-        return Derived(CONFLICTING, reason="paths_disagree", paths=tuple(ok))
+        return Derived(CONFLICTING, reason="paths_disagree", paths=tuple(paths))
     flags = best.flags + (("corroborated_paths",) if len(ok) > 1 else ())
     return Derived(FRESH, best.value, best.low, best.high, best.rule, best.inputs, paths=tuple(ok), flags=flags)
 
@@ -104,10 +115,11 @@ def avg_instant(panel, concept, end):
 
 
 def _growth(rule, cur, base):
-    if not cur.number:
-        return Derived(cur.state, rule=rule, reason=cur.reason, inputs=cur.inputs)
-    if not base.number:
-        return Derived(base.state, rule=rule, reason=base.reason, inputs=base.inputs)
+    nulls = [x for x in (cur, base) if not x.number]
+    if nulls:                                       # Phase 3 §10.4's order across both inputs (audit M4)
+        state = next(s for s in NULL_ORDER if any(x.state == s for x in nulls))
+        first = next(x for x in nulls if x.state == state)
+        return Derived(state, rule=rule, reason=first.reason, inputs=cur.inputs + base.inputs)
     if base.value <= 0:
         return Derived(MISSING, rule=rule, reason="base_not_positive", inputs=cur.inputs + base.inputs)
     return Derived(FRESH, cur.value / base.value - 1, rule=rule, inputs=cur.inputs + base.inputs,
@@ -143,6 +155,9 @@ def cashflow_confirmed(panel, end, months):
     """f7.cashflow_sign.1: the three totals for (E, n) are used only when operating + investing + financing equals the
     change in cash_at_end_of_period from E-n to E, within the facts' intervals. Returns {concept: Derived}; an
     unconfirmed total is missing with reason sign_unconfirmed."""
+    if not exact_rule_ok(end):
+        return {c: Derived(MISSING, rule=CASHFLOW_SIGN_POLICY, reason="no_exact_period_match")
+                for c in CASHFLOW_TOTALS}
     parts = {c: _get(panel, c, end, months) for c in CASHFLOW_TOTALS}
     opening = _get(panel, "cash_at_end_of_period", months_before(end, months), None)
     closing = _get(panel, "cash_at_end_of_period", end, None)
@@ -154,7 +169,7 @@ def cashflow_confirmed(panel, end, months):
         if isinstance(p, Derived):
             out[c] = p
         elif confirmed:
-            out[c] = Derived(FRESH, p[0], p[1], p[2], CASHFLOW_SIGN_POLICY, (p[3],) + change.inputs,
+            out[c] = Derived(FRESH, p[0], p[1], p[2], CASHFLOW_SIGN_POLICY, total.inputs + change.inputs,
                              flags=("sign_confirmed",))
         else:
             out[c] = Derived(MISSING, rule=CASHFLOW_SIGN_POLICY, reason="sign_unconfirmed", inputs=(p[3],))
