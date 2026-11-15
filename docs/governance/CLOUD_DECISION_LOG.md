@@ -702,3 +702,20 @@ correction, zero-price rows), or that clips a security's range, was in no label'
 conservatively: a date's evidence is carried by the next session, and a clipped range takes the security's later
 quarantines. Contract tests for each case, in both modes, fail on the old code and pass now. Third re-audit pending.
 
+## C-0068: Phase 7 design accepted; revision 2 ([delegated], 2026-11-15)
+
+The first audit of the Phase 7 design (the AI analyst, Route 2) found no Blocker, so revision 1 is accepted (C-0037).
+Its eight Majors are answered in revision 2 before any implementation: provider-side tools are forbidden and checked;
+the first real call is split into an owner approval for validation calls and another for production; inputs are
+pinned by id, hash and mode, with `CURRENT` refused; the exact input sent is hashed and kept; sending CSE-derived data
+to a hosted provider is a G-1 extension for the owner; budgets fail closed and are the owner's; a `local` endpoint is
+checked; calibration has its own registry, outside Route 1's. New owner decisions: P7-R2a, P7-R2b, P7-R6, P7-R7.
+
+## C-0069: Phase 6 design rejected; revision 2 ([delegated], 2026-11-15)
+
+The first audit of the Phase 6 design (news and sentiment) found one Blocker: nothing in the news transport stopped
+it reaching CSE. Revision 2 pins each source's hosts, never follows a redirect automatically and refuses CSE hosts
+unconditionally, with tests; it also answers the twelve Majors (the Phase 5 consumer contract, the age clock, dated
+aliases, results admitted by their own clock, revisions and withdrawals, a true deduplication key, and new owner
+decisions P6-R6 to P6-R8). No NS feature may enter ML until Phase 5 adopts the contract. A re-audit is pending.
+

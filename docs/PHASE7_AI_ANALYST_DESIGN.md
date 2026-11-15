@@ -1,8 +1,9 @@
 # Phase 7: the AI analyst, Route 2 (design)
 
-**Status: DESIGN, revision 1 (2026-11-11). Not implemented. Not accepted. Not audited yet.** Written by the cloud
-session on the branch `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no
-call to any AI provider, no key, no CSE contact and no change to `main`.
+**Status: DESIGN, revision 2 (2026-11-15). Revision 1 ACCEPTED [delegated] (C-0068): its audit found no Blocker;
+revision 2 answers its eight Majors, which had to be fixed before implementation. Not implemented.** Written by the
+cloud session on the branch `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It
+authorizes no call to any AI provider, no key, no CSE contact and no change to `main`.
 
 **Governing records:** Master Architecture (MA) §2, §4, §11, §16 (including the provider boundary and the capability
 contract), §17, §18, §21 to §23, §26, §38, §55 (Phase 7), §56 to §59, §68; `docs/governance/G-1_CSE_DATA_USE.md`;
@@ -90,17 +91,25 @@ For a security at cutoff T, one canonical JSON document, the **complete** input 
 | `warnings` | Every quality state worse than `fresh`, eligibility results, incident flags | All |
 
 - **Every item has an `evidence_id`** unique within the pack. Grounding (§7.3) is checked against these ids.
-- **The pack hash** (SHA-256 of the canonical JSON) is MA §17's "input hash". The source row hashes are MA §17's
-  "input record IDs".
-- **One T.** Every section comes from the layers' results at the same cutoff, under point-in-time guards. A pack is
-  never assembled from "latest" values.
+- **Two pack hashes (revision 2, M4).** The canonical pack's hash, and the hash of the pack **after disclosure**
+  (§4.1), which is what is sent: the post-disclosure hash is MA §17's "input hash". The run also stores the input
+  record **ids and hashes** of the source rows (Minor 5), the adapter's code version, and the hash of the rendered
+  request as sent (its bytes are stored with any key redacted), so the exact input is recorded (MA §38).
+- **One T, pinned (revision 2, M3).** Every section comes from the layers' stored results at the same cutoff. Each
+  section records the result it came from by **id, hash, mode and label** (an MF snapshot id and `snapshot_hash`, F7
+  and DE output ids, the Route 1 prediction id, an NS snapshot id), and the run records MA §11's cutoffs per family
+  (market, financial, news, sentiment). A **live run** uses only `KNOWN` or `KNOWN_RECORDED` results, pinned by id and
+  hash; a `CURRENT` result is refused (Phase 3 §4.2's guard; RT-20). A **simulated historical run** may use
+  `AVAILABLE` results; it is then labelled `reconstructed`, and Route 1's `reconstructed_evidence` flag is carried. A
+  pack is never assembled from "latest" values.
 - **Selection is by a versioned pack policy**, not by the analyst: which features go in, in what order, with what
   precision. The same inputs always give the same bytes.
 - **Size is checked, never truncated.** The pack's size is measured against the configuration's validated context
   limit. A pack that does not fit is a failed run (`input_too_large`); the capability contract forbids silent
   truncation.
 - **Route 1 is shown to the analyst** (MA §16 lists it as an input, and §18 asks the analyst to explain why it
-  differs). The consequence is stated in §10: Route 2 is then not statistically independent of Route 1, so an
+  differs). If Phase 6's sentiment also reaches Route 1 (Phase 6 §8.1), the `independent` pack also excludes the
+  `news` sentiment features, keeping only titles and story metadata where allowed. The consequence is stated in §10: Route 2 is then not statistically independent of Route 1, so an
   `independent` variant of the pack without the `route1` and `engines` sections is defined as a second pack policy
   for comparison.
 
@@ -111,13 +120,19 @@ given class of destination:
 
 | Class | Destination | Default policy (`disclosure.1`) |
 |---|---|---|
-| `local` | A model running on the owner's own hardware | Everything in the pack |
+| `local` | A model running on the owner's own hardware | Everything in the pack. **Enforced, not declared (revision 2, M8):** the adapter refuses a `local` configuration whose endpoint is not a loopback or private address; a local model still needs P7-R2's approval and a declared knowledge cut-off K |
 | `hosted` | A third party's API | **Derived values only:** returns, ratios, ranks, scores, counts, states. No price levels, volumes, turnover, market capitalisation or any verbatim CSE field. Financial figures from issuers' own published statements are sent as ratios and growth rates, not as amounts. News: titles and derived scores only, and only for sources whose governance record allows it. The security is identified by ticker and name |
 
 - The policy is applied by code and its version and result (what was removed) are recorded with the run.
-- Whether `disclosure.1` for `hosted` is acceptable under G-1, and what a given provider's terms mean for the data
-  sent (retention, use for training), is the owner's decision **per provider configuration** (P7-R1). Until it is
-  recorded for a configuration, the adapter refuses to send to it.
+- **Sending any CSE-derived data to a hosted third party is outside G-1's accepted scope** (G-1 §3: "private, local
+  analysis"), which says such use "must be reviewed first" (revision 2, M5). P7-R1 is therefore recorded as a **G-1
+  extension** (like E1), naming the provider, its terms (retention, use for training; some unpaid tiers use submitted
+  content), and the disclosure policy, not only as a column of the configuration row. Until that extension exists for
+  a configuration, the adapter refuses to send to it. **What has been sent to a provider is beyond the reach of G-1
+  §6's purge**; the extension states that.
+- **News is sent only where the source allows it (revision 2, M6):** Phase 6's governance record and `ns_sources`
+  now carry `onward_disclosure` (default `none`, Phase 6 revision 2 §4.1); the disclosure policy reads it, and a
+  source without an explicit allowance contributes only derived counts.
 - Identifying the security at all tells the provider what the owner is analysing. That is inherent in asking; it is
   stated here so that the decision is made knowingly.
 
@@ -162,6 +177,12 @@ complete(request, configuration, limits) -> RawResult
 - **Gemini is the initial hosted adapter** (MA §55 Phase 7), and a `local` adapter for a model served on the owner's
   own machine is specified beside it, because it is the one destination class that needs no disclosure decision.
 - The adapter does no retry by itself. Retry is the core's policy (§6.3), so that every attempt is recorded.
+- **Provider-side tools are forbidden (revision 2, M1).** A configuration must declare every provider-side tool off:
+  web search, URL fetching, retrieval, grounding services, code execution, file access. The adapter refuses a
+  configuration that enables or does not declare one, sends requests that disable them where the provider allows, and
+  fails the run (`tool_use_reported`) if a response carries tool, citation or grounding metadata. Otherwise the pack
+  would no longer be the complete input, a simulated run could read post-T information while labelled `clean`, and
+  the provider could fetch pages (cse.lk included) on the owner's behalf. Capability validation checks it (RT-21).
 
 ### 6.2 Configurations and the capability contract
 
@@ -181,7 +202,11 @@ MA §16's contract point by point:
 | Precise failure reporting | Scripted and observed failures map to the outcomes of §6.1 |
 
 - Statuses and transitions follow Phase 5's registry: `candidate`, `validated`, `production` (a new version on
-  promotion), `retired`, `rejected`. Approval of a configuration is the owner's (P7-R2), through the owner path.
+  promotion), `suspended`, `retired`, `rejected` (Minor 1: `suspended` is a status; leaving it needs a **new
+  configuration version** and its own validation, MA §16). **Approval is in two owner steps (revision 2, M2):**
+  P7-R2a allows a `candidate` to make **validation calls** (real, owner-authorised provider calls, even with synthetic
+  packs) within a stated budget; P7-R2b approves a validated configuration for production. Both through the owner
+  path.
 - **Explicit selection.** A run names the one configuration designated for its purpose at T. An unregistered,
   unvalidated or ineligible configuration is refused.
 - **Model drift.** A hosted model can change behind an unchanged name. Every run records the identifier the provider
@@ -195,9 +220,13 @@ MA §16's contract point by point:
   `timeout`, `network_error` and `server_error`, after a back-off), each recorded before it is sent. A `malformed`,
   `refused` or `truncated` response is never retried: asking again until the answer validates is a way of repairing
   by sampling.
-- Per-configuration budgets (requests and cost per day, per month) are checked before sending. An exhausted budget
-  is `blocked_by_policy`, a failed run.
-- Usage and cost are recorded per attempt where the provider gives them (MA §17).
+- Per-configuration budgets (requests and cost per day, per month, and per simulated-history run) are checked before
+  sending. **A configuration without a budget is refused (revision 2, M7)**; an exhausted budget is
+  `blocked_by_policy`, a failed run. The budget values are the owner's (P7-R6).
+- Cost is computed from the reported usage times an owner-recorded price per unit; a response without usage counts
+  at the configuration's maximum output. Requests are sent one at a time with a minimum spacing per configuration;
+  a `rate_limited` response backs off (RT-17, RT-22).
+- Usage and cost are recorded per attempt (MA §17).
 
 ### 6.4 The analyst evaluation set
 
@@ -222,8 +251,8 @@ A JSON document, per horizon h ∈ {1, 5, 10, 21}:
 
 | Field | Type | Notes |
 |---|---|---|
-| `state` | `predicted` or `insufficient_evidence` | The analyst may decline a horizon |
-| `p_rise`, `p_flat`, `p_fall` | Numbers in [0, 1] summing to 1 | Phase 5's three classes |
+| `state` | `predicted` or `insufficient_evidence` | The analyst may decline a horizon. Mapped to MA §22's forecast states: `predicted` is a forecast; `insufficient_evidence` is MA §22's "no forecast: insufficient evidence" (Minor 3) |
+| `p_rise`, `p_flat`, `p_fall` | Numbers in [0, 1] summing to 1 | Phase 5's three classes, under the versioned label definition the specification carries (Phase 3's `targets.1`: `flat` is a return of exactly 0), so both routes and the labels mean the same event (Minor 3) |
 | `direction` | `rise`, `flat`, `fall` | Must equal the most probable class |
 | `expected_return` | Number | Bounded by a schema range |
 | `return_low`, `return_high` | Numbers | With `low ≤ expected ≤ high` |
@@ -246,7 +275,10 @@ A parsed response becomes a prediction only if all of these hold; otherwise the 
 - every cited `evidence_id` exists in the pack that was sent;
 - every `reasoning` statement cites at least one id;
 - numbers quoted inside reasoning text that match the pattern of a pack value are checked against the pack to the
-  pack's precision; a number attributed to an evidence id that does not hold it is `ungrounded_number`;
+  pack's precision; a number attributed to an evidence id that does not hold it is `ungrounded_number`. Rules
+  (Minor 4): only digit forms are checked (numbers in words are not); the response's own output fields (its
+  probabilities and returns) may be quoted; a quoted value matches if it equals the pack value rounded to any
+  precision coarser than the pack's;
 - probabilities, direction and interval are mutually consistent (§7.1);
 - `differs_from_route1` is present exactly when required;
 - no field contains instructions-like content addressed to the system (a simple, versioned screen; a hit is
@@ -265,9 +297,10 @@ MA §21: the analyst "must not invent a statistically meaningful confidence scor
 model's stated probability is not a calibrated probability.
 
 - The stored Route 2 prediction carries the analyst's numbers **labelled `as_stated`**.
-- A **calibration map per provider configuration and horizon** can be fitted later on real outcomes, as a registered
-  model under Phase 5's protocol (kind `calibrated_analyst`). Only then does Route 2 also carry `calibrated`
-  probabilities, with the calibration version.
+- A **calibration map per provider configuration and horizon** can be fitted later on real outcomes, in **R2's own
+  registry** (`r2_calibrations`), using Phase 5's fitting and evaluation protocol but not its `ml_models` registry
+  (revision 2, M8): an analyst-derived model must never be eligible as a Route 1 component. Only then does Route 2
+  also carry `calibrated` probabilities, with the calibration version.
 - Until such a map exists and is validated, Phase 8 shows Route 2's probabilities as the analyst's stated view, not
   as measured confidence, and Phase 9 scores them as stated.
 
@@ -284,14 +317,16 @@ model's stated probability is not a calibrated probability.
 | `r2_provider_configurations` | §6.2: adapter, model identifier, parameters, limits, disclosure class and policy, status, the owner's disclosure approval reference |
 | `r2_capability_validations` | Per (configuration, specification version): each contract point, its measurement and threshold, the evaluation set version |
 | `r2_designations` | Owner-only: which configuration and specification serve which purpose from when |
-| `r2_runs` | One per (security, T, purpose): configuration, specification, pack policy, disclosure policy and what it removed, input record hashes, **input hash**, the fallback policy applied (always `none` in v1), label class, contamination label (§9) |
+| `r2_runs` | One per (security, T, purpose, pack policy, configuration) (Minor 2): specification, disclosure policy and what it removed, each section's result id, hash, mode and label, MA §11's per-family cutoffs, input record ids and hashes, both pack hashes (the post-disclosure one is the **input hash**), the rendered-request hash, the adapter code version, the fallback policy applied (always `none` in v1), label class, contamination label (§9). A failed run is final; a new run for the same key is a new attempt row of a new run with a `retry_of` reference, never an overwrite |
 | `r2_attempts` | Per attempt, written before sending and completed by an event: times sent and received, outcome, model identifier as reported, usage and cost, **response hash** |
-| `r2_responses` | The raw response as base64 text, content-addressed and checked (P2's representation), size-capped |
+| `r2_responses` | The raw response as base64 text, content-addressed and checked (P2's representation), size-capped: an oversize response is a failed run (`response_too_large`), never stored truncated (Minor 6) |
+| `r2_calibrations` | §7.4's calibration maps (R2's own registry) |
 | `r2_predictions` | The parsed output per horizon, `as_stated`; **parsed-output hash**; the validation result of each check |
 | `r2_failures` | A failed run's reason and the evidence for it |
 
 - That is every field of MA §17. **No key, token or credential is in any table.** The migration defines no
-  credential-like column name, which the existing guard already scans every migration for.
+  credential-like column name. The credential guard scans `supabase/migrations/`; 0023 waits in
+  `supabase/migrations_pending/` (C-0053), so the guard is extended to scan that directory too (Minor 7).
 - **Secrets are server configuration**: a root-readable file under `/etc/cse/credentials/`, referenced by path in
   `/etc/cse/analyst.env`, in P1's manner for the off-site credentials, and redacted from every log line and error by
   the same redaction module P1 uses.
@@ -300,7 +335,8 @@ model's stated probability is not a calibrated probability.
   recomputation.
 - Packages: `worker/analyst/` (pure: pack assembly, disclosure, specification rendering, parsing, grounding),
   `worker/analyst_providers/` (adapters; the only network code), `worker/analyst_store/` (loader, writer, preflight,
-  `verify`).
+  `verify`). A static test asserts that `worker/analyst` and `worker/analyst_store` import no network module, as
+  `tests/test_rf4_unit.py` does for its packages (Minor 8).
 
 **Frozen contracts affected:** none modified. `tests/test_ai_provider_boundary.py` gains the adapter package in its
 list, as it prescribes. The range-stating guards of Phase 3 §13.3 apply to 0023.
@@ -311,7 +347,8 @@ list, as it prescribes. The range-stating guards of Phase 3 §13.3 apply to 0023
 
 - **Live:** the pack is assembled at T from point-in-time results; the run records when the request was sent and the
   response received. The prediction's effective time is the response's receipt, not T: a forecast is not "made" until
-  the analyst has answered.
+  the analyst has answered. A response received later than the purpose's deadline (a configuration value, by
+  default before the next session's open) makes the run a **late** run, evaluated as a simulated one (Minor 10).
 - **Replay of a stored run** returns the stored response and prediction. A provider is not asked again: its answer
   today need not be its answer then (MA §38). Stored results are immutable.
 - **A simulated historical run** (the laboratory running Route 2 for a past T) gets a **contamination label** from
@@ -368,6 +405,11 @@ All with the `fake` adapter; no provider, no key, no network.
 | RT-17 | Budget | An exhausted budget blocks before sending |
 | RT-18 | Registry | UPDATE, DELETE, TRUNCATE and illegal transitions for every role are refused |
 | RT-19 | Isolation | No other layer's package imports `worker/analyst*`; R2 writes only its own tables |
+| RT-20 | Pinned inputs | A live pack refuses a `CURRENT` (or unpinned) result; each section's id, hash, mode and label are recorded |
+| RT-21 | Tools off | A configuration enabling or not declaring a provider-side tool is refused; a response carrying tool or grounding metadata fails the run |
+| RT-22 | Spacing and rate limits | One request at a time, the minimum spacing kept; a configuration without a budget refused; cost from usage times the recorded price |
+| RT-23 | `local` enforced | A `local` configuration with a non-loopback, non-private endpoint is refused |
+| RT-24 | No network outside adapters | `worker/analyst` and `worker/analyst_store` import no network module |
 
 ---
 
@@ -380,7 +422,7 @@ All with the `fake` adapter; no provider, no key, no network.
 | P7-D1 | One adapter package; the guard's list is extended to name it | MA §16 rule 2; the guard prescribes exactly this |
 | P7-D2 | A response is valid or a failed run; no repair, no re-ask on `malformed` | MA §16's contract: never repaired by guessing |
 | P7-D3 | No fallback policy in v1 | MA §16 rule 4 permits fallback only under a later, explicit policy |
-| P7-D4 | Default disclosure for hosted providers is derived values only | The narrowest reading of G-1 control 7 that still lets the route work; the owner may widen or forbid |
+| P7-D4 | Default disclosure for hosted providers is derived values only | A technical default that limits what leaves the machine; it is not a reading of G-1 (sending anything is a G-1 extension, P7-R1); the owner may widen or forbid |
 | P7-D5 | Route 2's probabilities are stored `as_stated`; calibration is a later registered model | MA §21 |
 | P7-D6 | Simulated historical runs carry a contamination label from the model's knowledge cut-off | MA §38, §62: a model that knows the outcome is not a backtest |
 | P7-D7 | Two pack policies: with Route 1 (default, per MA §16) and `independent` | To measure how much agreement is induced |
@@ -391,11 +433,14 @@ All with the `fake` adapter; no provider, no key, no network.
 
 | ID | Decision | Needed before |
 |---|---|---|
-| P7-R1 | Per provider configuration: whether derived CSE data may be sent to it under G-1, and acceptance of the provider's terms (retention, training use, cost) | Any call to a hosted provider |
-| P7-R2 | Which provider configurations are approved, each with its capability validation | Any production run |
+| P7-R1 | Per provider configuration: a **G-1 extension** allowing derived CSE data to be sent to it, with acceptance of the provider's terms (retention, training use, cost) and the statement that sent data is beyond G-1 §6's purge (revision 2, M5) | Any call to a hosted provider |
+| P7-R2a | Allowing a `candidate` configuration to make validation calls, with a budget (revision 2, M2) | The first real call |
+| P7-R2b | Approving a validated configuration for production | Any production run |
 | P7-R3 | Supplying and placing the provider key (server configuration only) | Any call to a hosted provider |
 | P7-R4 | Any fallback policy | If ever wanted |
 | P7-R5 | The merge into `main` and the re-staging | Production use |
+| P7-R6 | Budgets and prices per configuration: per day, per month, per simulated-history run (revision 2, M7) | Any real call |
+| P7-R7 | Whether a local model is wanted at all, and on which machine | A `local` configuration |
 
 ---
 
@@ -409,7 +454,7 @@ All with the `fake` adapter; no provider, no key, no network.
 | R2-4 | Output schema, strict parser, grounding and consistency checks | RT-5 to RT-7 |
 | R2-5 | Migration 0023, store, preflight, `verify`; secrets handling | PostgreSQL 17 in CI; RT-13, RT-15, RT-18, RT-19 |
 | R2-6 | The evaluation set and capability validation, run against `fake` | The validation record is produced end to end |
-| R2-7 | The `local` and Gemini adapters, written against their published interfaces and tested only with recorded-shape fakes; the guard's list updated | RT-14. **No call is made.** The first real call is the owner's step after P7-R1 to P7-R3 |
+| R2-7 | The `local` and Gemini adapters, written against their published interfaces and tested only with fakes **written by hand from the published documentation, never recorded from a live call** (Minor 9); the guard's list updated, and its planted-test comment updated with it | RT-14, RT-21, RT-23. **No call is made.** The first real call is a validation call, the owner's step after P7-R1, P7-R2a, P7-R3 and P7-R6 |
 
 R2-1 needs the lower layers' row formats (Phases 3 to 6). R2-2 to R2-4 need nothing else and can proceed on the pack
 schema alone.
@@ -448,4 +493,18 @@ schema alone.
 
 ## 16. Audit record
 
-*(Filled in by the audit under C-0005.)*
+### Audit 1 (revision 1; fresh-context agent, 2026-11-15): ACCEPT
+
+No Blocker; eight Majors and eleven Minors, which C-0037 requires fixed before implementation. Revision 2's answers:
+
+| # | Finding | Answer |
+|---|---|---|
+| M1 | Provider-side tools not forbidden | §6.1: tools off, declared, refused if enabled, run failed on tool metadata; RT-21 |
+| M2 | Who authorises the first real call was circular | §6.2: P7-R2a (validation calls with a budget) and P7-R2b (production) |
+| M3 | Point-in-time pinning under-specified | §4: per-section id, hash, mode, label; MA §11 cutoffs; live runs `KNOWN`/`KNOWN_RECORDED` only; `CURRENT` refused; RT-20 |
+| M4 | The exact input not fully recorded | §4: pre- and post-disclosure hashes, rendered-request hash and bytes, adapter version |
+| M5 | G-1 framing too narrow | §4.1 and P7-R1: a G-1 extension per provider; sent data beyond the purge; P7-D4 a technical default |
+| M6 | Disclosure relied on a missing field | Phase 6 revision 2's `onward_disclosure` (default `none`) |
+| M7 | Budgets failed open, not reserved | §6.3: no budget means refused; cost from usage times price; spacing; P7-R6; RT-22 |
+| M8 | `local` declared not enforced; calibration in Phase 5's registry | §4.1: endpoint check, RT-23; §7.4: R2's own `r2_calibrations` |
+| Minors 1-11 | `suspended`; run key and retries; state mapping and label definition; `ungrounded_number` rules; record ids; response size; pending-migration scan; network-import test; hand-written fakes; late-run deadline; LLM sentiment scope | §6.2, §8, §7.1, §7.3, §4, §8, §8, RT-24, R2-7, §9; Phase 6 revision 2 §5.5 |
