@@ -753,3 +753,19 @@ Choices for the audit:
   build admits.
 - `CURRENT` results are never stored.
 
+**Real run** (2026-11-15, throwaway PostgreSQL 16 in the container, deleted afterwards; TradeIQ through
+`import-tradeiq`'s code path): import 45 s; two `AVAILABLE` snapshots (D\* 2025-06-30 and 2025-12-31; 941 and 945
+rows) about 200 s each; a target build labelling the first at the second, 3 764 labels in 215 s (1 129 resolved,
+27 resolved carried, 15 unexplained move, 32 missing price, 2 561 terminated); `verify` with full replay of both
+snapshots: **ok, no problem**, 392 s. Eligibility at 2025-12-31: 263 eligible, 553 not applicable, 88 low activity,
+24 low liquidity, 12 insufficient history, 4 price unknown, 1 stale. Peak memory 7.6 GB.
+
+Two findings from the run, fixed: `bar_on` recomputed the last row on every call (quadratic; now once per security),
+and snapshots kept every series in memory (now only for a target build; the first attempt was killed at 13.8 GB).
+
+**Limit carried (for the owner and the audit):** a snapshot holds a row for every security that ever had an
+admitted row, including the long-dead and the classless 1990s codes. They are `not_applicable` or ineligible, and
+their labels are `terminated` (about 640 of 941 securities at mid-2025), but they cost time and memory: every build
+walks every security over every session since 1991. A build restricted to securities with a row within a window
+before D\* would be much cheaper; it changes stored rows, so it is a design change for a later step.
+

@@ -670,3 +670,11 @@ admitted evidence; a row dated after T's day is never admitted, in `KNOWN` too; 
 (a new column in pending migration 0019); a quarantine from any batch wins over another batch's row. New tests
 catch each of the 16 loader and writer mutants the audit and I tried, and the three import mutants that had survived.
 
+## C-0064: Phase 3 MF-7c third part, the commands ([delegated], 2026-11-15)
+
+The remaining MF-7 pieces are implemented and tested: the content-addressed configuration, `calendar-sync`,
+`preflight`, `verify` (with replay of settled snapshots), `explain`, `KNOWN_RECORDED`, the target-build writer, the
+command line, `ops/bin/cse-features` and its runbook. A full real-data run in a throwaway database (import, two
+snapshots, a target build, `verify`) succeeded, and `verify` found no problem. Nothing was loaded anywhere
+permanent; migration 0019 stays pending. Accepted when an audit reports no Blocker.
+
