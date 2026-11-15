@@ -24,10 +24,21 @@ def build(conn, query, cfg):
     return build_all(conn, query, cfg)[:3]
 
 
+def refuse_future(conn, query):
+    """A stored result's T and H are never after the database's now: it would not be reproducible."""
+    with conn.cursor() as cur:
+        cur.execute("select now()")
+        now = cur.fetchone()[0]
+    conn.rollback()
+    if (query.cutoff is not None and query.cutoff > now) or (query.horizon is not None and query.horizon > now):
+        raise configuration_.ConfigurationError("a cutoff or horizon in the future is not a stored result")
+
+
 def snapshot(conn, query, configuration_id, code_version=VERSION):
     """Build and store one snapshot. Returns (snapshot_id, snapshot)."""
     if query.mode not in (KNOWN, AVAILABLE):
         raise configuration_.ConfigurationError("a CURRENT result is never stored (research only)")
+    refuse_future(conn, query)
     with conn.cursor() as cur:
         cfg = configuration_.load(cur, configuration_id)
     conn.rollback()

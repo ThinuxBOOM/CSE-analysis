@@ -725,7 +725,8 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 ## MF-7c (third part): the commands
 
 **Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers, fixed, C-0065) and by
-its re-audit (one Blocker, fixed, C-0066); second re-audit pending.** MF-7's remaining pieces (design §13.2): the
+its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067); third re-audit
+pending.** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 
@@ -802,4 +803,17 @@ At `87b60e2`. Guard logs empty. B1-B3 and the hash, disagreement and horizon Maj
 | M-b | Major | `recorded_at`, `created_by`, `pending_sessions` and `company_id` (snapshots), `recorded_at` and `created_by` (target builds) outside the hashes | **Fixed.** Read inside the writing transaction (`now()`, `session_user`, which the column defaults take) and bound into `snapshot_hash` and `build_hash`. `test_p3` (19 tamper cases) |
 | — | Minors | `conn` unbound in an error path; an instant without a time zone exited 1 | **Fixed** (a usage error, exit 2) |
 | — | Minors | `--designated` at H in AVAILABLE (the design's ML-15 says "at T"); `admissible_reference` stricter than necessary for an AVAILABLE reference in a KNOWN build; `verify --sample` compares disagreements within the sample; `pending_sessions` never written; a live snapshot's configuration JSON not re-hashed | **Carried** (the first is the stated choice: the knowledge instant) |
+
+## Second re-audit of MF-7c third part: fresh-context agent
+
+At `8fe248c`. Guard logs empty. N-B1's fix holds (1 981 labels over 57 builds of a broad scenario, 0 differences);
+62 of 62 column tampers caught. **REJECT** (one Blocker).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | Evidence that **removes** something was in no `resolved_at`: a late quarantine, disagreeing correction or zero-price row that makes a date stop being a session (a), and a late quarantine of a security's last row that clips its range so later bars become an absence (b) | **Fixed.** (a) Every date's instants (rows of every security, zero-price rows included, and quarantines) are carried by the next session, so a label reading across a removed date covers them. (b) A bar absent because its range is clipped takes the instants of the security's quarantines dated after it. `tests/test_mf7_ops_contract_postgres.py` (r1-r4, both modes): 5 of its 12 cases fail on the pre-fix code; the two fix mutants are killed |
+| M-1 | Major | The merge's and the disagreement quarantine's instants (`max`) untested | **Tested:** `test_r5` (a late batch fills or disagrees on one close); both `min` mutants killed |
+| M-2 | Major | KNOWN_RECORDED's tie-break at the same T untested | **Tested:** `test_p5` |
+| — | Minor | `jobs.snapshot` and `targets_store.build` accepted a future cutoff or horizon outside the CLI | **Fixed:** refused against the database's `now()`. `test_p2` |
+| — | Minors | Designations and configurations outside every hash (a tampered designation `recorded_at` would change selection unseen); on real-data shapes `resolved_at` equals the build's T (the audited calendar-whole rule); identity evidence not loaded (unused); earlier Minors | **Carried**; the designation hash for the owner's review with `main` |
 

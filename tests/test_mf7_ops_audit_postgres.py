@@ -141,6 +141,11 @@ def test_p2_an_available_horizon_in_the_future_and_errors_exit_5(cluster):      
                 user="cse_migrator") == 5
     with pytest.raises(configuration.ConfigurationError):
         jobs.snapshot(worker(cluster, db), Query("CURRENT", None, now(cluster, db)), cid)
+    later = datetime.now(UTC) + timedelta(days=1)
+    with pytest.raises(configuration.ConfigurationError):
+        jobs.snapshot(worker(cluster, db), Query(KNOWN, later), cid)               # refused below the CLI too
+    with pytest.raises(configuration.ConfigurationError):
+        targets_store.build(worker(cluster, db), Query(AVAILABLE, hb.available_at(DAYS[-1]), later), cid, [1])
 
 
 CHANGES = [("mf_snapshots", "d_star = d_star - 1"), ("mf_snapshots", "code_version = 'x'"),
@@ -226,6 +231,9 @@ def test_p5_known_recorded_filters_mode_and_configuration(cluster):             
     jobs.snapshot(worker(cluster, db), Query(KNOWN, t_late), c1)                    # earlier T, written later
     with worker(cluster, db).cursor() as cur:
         assert selection.known_recorded(cur, now(cluster, db))[0] == k3          # T first, then recorded_at
+    k4, _ = jobs.snapshot(worker(cluster, db), Query(KNOWN, t_b), c1)               # the same T, written later
+    with worker(cluster, db).cursor() as cur:
+        assert selection.known_recorded(cur, now(cluster, db))[0] == k4          # same T: the latest written
 
 
 @pg

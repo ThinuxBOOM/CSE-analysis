@@ -10,7 +10,8 @@ Admission instants (for `resolved_at`, conservative by construction): an importe
 Colombo day in AVAILABLE, and at the later of its batch's recorded_at and that instant in KNOWN (`store.row_instant`).
 A batch enters with its first admitted row; its quarantines, ranges and calendar row never take an earlier instant
 than that (re-audit N-B1).
-  - session finality: the latest instant of any admitted row on that date;
+  - session finality: the latest instant of any admitted row or quarantine dated after the previous session up to
+    this one (a date that stopped being a session binds the next one);
   - the security's own bar: its row's instant; a quarantine's instant; a no-trade bar (a `security_complete` range,
     clipped at the last admitted row) rests on the security's NEXT admitted row, so it takes that row's instant;
   - statements: their admission instant; every withdrawn or superseding statement of the security, and the one it
@@ -62,18 +63,38 @@ def build_hash(header, rows, written=None):
                                       "rows": sorted([a, b, c, d] for a, b, c, d in rows)}))
 
 
-def _finality(imported):
-    out = {}
+def _finality(imported, sessions):
+    """{session: the latest instant of any admitted evidence dated in (previous session, session]}: every row of every
+    security (zero-price rows included) and every quarantine. A session is final because of some of it, and a date
+    between two sessions is not a session because of the rest (a quarantine, a disagreeing correction, a zero-price
+    row that removed it: re-audit 2, B-1(a)), so the next session carries that date's instants: a label that reads
+    across the date covers them."""
+    by_date = {}
     for imp in imported.values():
         for d, r in imp.rows.items():
             if r.get("instant") is not None:
-                out[d] = max(out.get(d, r["instant"]), r["instant"])
+                by_date[d] = max(by_date.get(d, r["instant"]), r["instant"])
+        for d, i in imp.quarantine_instants.items():
+            if i is not None:
+                by_date[d] = max(by_date.get(d, i), i)
+    out, dates = {}, sorted(by_date)
+    k = 0
+    for i, s in enumerate(sessions):
+        prev = sessions[i - 1] if i else None
+        vals = []
+        while k < len(dates) and dates[k] <= s:
+            if prev is None or dates[k] > prev:
+                vals.append(by_date[dates[k]])
+            k += 1
+        if vals:
+            out[s] = max(vals)
     return out
 
 
 def session_instants(symbol, imported, sessions, finality, query):
     imp = imported[symbol]
     dates = sorted(imp.rows)
+    q_dates = sorted(imp.quarantine_instants)
     out = {}
     for s in sessions:
         own = None
@@ -84,10 +105,17 @@ def session_instants(symbol, imported, sessions, finality, query):
         else:
             k = bisect.bisect_right(dates, s)
             ranges = [rec for lo, hi, rec in imp.complete_recorded if lo <= s <= hi]
-            if k < len(dates) and any(lo <= s <= hi for lo, hi in imp.complete):
+            in_range = any(lo <= s <= hi for lo, hi in imp.complete)
+            if k < len(dates) and in_range:
                 # the row that closes the clipped range AND every batch whose range makes the bar (audit B1), each
                 # at its batch's admission instant (re-audit N-B1), and never before the end of the day itself
                 own = max([imp.rows[dates[k]].get("instant"), hb.available_at(s)] + ranges)
+            elif in_range:
+                # no bar because the range is clipped at the last admitted row: a quarantine of a later row is what
+                # clipped it (re-audit 2, B-1(b))
+                later = [imp.quarantine_instants[d] for d in q_dates[bisect.bisect_right(q_dates, s):]
+                         if imp.quarantine_instants[d] is not None]
+                own = max(later) if later else None
         vals = [x for x in (finality.get(s), own) if x is not None]
         if vals:
             out[s] = max(vals)
@@ -150,7 +178,7 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
     build admits that stored reference snapshot}; the stored P_D, s_D and quality are inputs of every label."""
     ref_instants = ref_instants or {}
     sessions = snap.sequence.sessions
-    finality = _finality(imported)
+    finality = _finality(imported, sessions)
     stmt = statement_instants(query, statements)
     cal = calendar_instant(query, cal_obs, snap.d_star)
     out, skipped = [], {}
@@ -175,6 +203,7 @@ def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VE
     """Label the reference snapshots at this target build and store it. Returns a report."""
     if query.mode not in (KNOWN, AVAILABLE):
         raise configuration_.ConfigurationError("a CURRENT target build is never stored")
+    jobs.refuse_future(conn, query)
     with conn.cursor() as cur:
         cfg = configuration_.load(cur, configuration_id)
         refs, ref_instants = {}, {}

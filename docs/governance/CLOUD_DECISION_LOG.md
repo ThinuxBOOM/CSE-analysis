@@ -695,3 +695,10 @@ batch-derived instant precedes the batch's first admitted row, and a KNOWN row's
 its day. The hashes now also bind each result's recorded_at, writer and remaining columns. Contract tests rebuild
 every label at its own resolved_at and require the same result. Second re-audit pending.
 
+## C-0067: the MF-7c third part second re-audit and its fix ([delegated], 2026-11-15)
+
+The second re-audit found one more look-ahead: evidence that removes a session (a late quarantine, a disagreeing
+correction, zero-price rows), or that clips a security's range, was in no label's `resolved_at`. Fixed
+conservatively: a date's evidence is carried by the next session, and a clipped range takes the security's later
+quarantines. Contract tests for each case, in both modes, fail on the old code and pass now. Third re-audit pending.
+
