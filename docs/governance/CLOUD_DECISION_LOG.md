@@ -719,3 +719,12 @@ unconditionally, with tests; it also answers the twelve Majors (the Phase 5 cons
 aliases, results admitted by their own clock, revisions and withdrawals, a true deduplication key, and new owner
 decisions P6-R6 to P6-R8). No NS feature may enter ML until Phase 5 adopts the contract. A re-audit is pending.
 
+## C-0070: milestone 10 design revision 2 rejected; revision 3 ([delegated], 2026-11-15)
+
+The audit of the local production design's revision 2 found one Blocker: the driver's command allowlist included
+arming and CSE-contacting commands and would have recorded the owner's name on them with no owner record. Revision 3
+removes every owner-path, arming and CSE-contacting command from the driver (the owner runs them himself, under his
+own identity), gives each driver step a closed command list, makes network attachments expire and enforces their
+scope, checks the Windows clock, detaches on a VPN, states numeric disk floors, and lists the restore checkpoints as
+blocking milestone 12. A re-audit is pending; nothing is built.
+

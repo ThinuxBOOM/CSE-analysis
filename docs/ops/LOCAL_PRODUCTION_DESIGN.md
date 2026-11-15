@@ -1,11 +1,17 @@
 # Milestone 10: the local production environment (design)
 
-**Status: DESIGN, revision 2 (2026-11-12). Not built. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 3 (2026-11-15). Not built. Not accepted.** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no build, no deployment,
 no arming, no capture and no CSE contact. Everything in it that runs, runs on the owner's workstation and waits for
 it.
 
-*Revision 2 replaces revision 1 (commit `1acfb15`), which its audit failed with one Blocker and seventeen Major
+*Revision 3 answers the audit of revision 2 (§12), which failed it on one Blocker: the driver's `exec` allowlist
+included arming and CSE-contacting commands and recorded the owner's name on them with no owner record checked. The
+driver now never runs an owner-path, arming or CSE-contacting command at all (§5); its in-container commands are a
+closed list per step; network attachments expire and their scope is enforced; the host clock, a VPN and the disk
+floors have mechanisms; the restore and isolated-restore checkpoints are listed as uncovered, blocking milestone 12.*
+
+*Revision 2 replaced revision 1 (commit `1acfb15`), which its audit failed with one Blocker and seventeen Major
 findings (§12). The Blocker: revision 1 called the container "rebuildable by re-provisioning", but in a new container
 the frozen provisioning script would try to create a cluster over the existing production data directory and abort.
 PostgreSQL's configuration directory is now on its own volume so that path is never reached (§3.3). Other main
@@ -114,13 +120,18 @@ the cluster is listed and the create branch is never reached.
 - **A hard rule of the driver:** before any provisioning step it checks that either both PostgreSQL volumes are empty
   (a first provision) or both hold the cluster. One populated and the other empty is refused. `pg_createcluster` is
   never to run against a populated production data directory.
+- **"Empty" and "holds the cluster" are defined by files** (revision 3), since Docker copies the image's cluster-less
+  `/etc/postgresql` and `/var/lib/postgresql` into a new named volume: the data volume holds the cluster when
+  `17/main/PG_VERSION` exists in it, the configuration volume when `17/main/postgresql.conf` exists in it; a volume is
+  empty when neither file exists. LP-1's stub tests cover the refusal both ways (data without configuration,
+  configuration without data) and both allowed cases.
 
 **Lost when the container is removed** (kept across stop and start):
 
 | Lost | Consequence | Restored by |
 |---|---|---|
 | Operating-system users and groups | File ownership on the volumes is by number. The same image and step order reproduce the same numbers; a different image may not | Provisioning; LPC-9 compares uids and gids with the owners of the volumes' files before anything starts |
-| systemd unit files and enablement under `/etc/systemd/system` | No timers | Provisioning's `units` steps |
+| systemd unit files and enablement under `/etc/systemd/system` | No timers | Provisioning's `units` steps, except staging's R1-gate drop-in and the journal size limit, which the frozen steps do not install: the recreate re-runs the driver's `r1-gate` step **before** `provision.sh units` and `r1-timer-off` **after** it (that step re-enables the restore-check timer with `--now`), and `journald-limit` |
 | Timer stamps under `/var/lib/systemd/timers` | `Persistent=true` catch-up of the dump, restore-check and status timers is forgotten once | The recreate procedure runs a dump by hand |
 | `/var/lib/cse-scheduler` (P3's state directory and its capture-finished marker) | None that matters: the state of record is in PostgreSQL | Provisioning |
 | The dedicated temporary root, `/tmp/cse-backfill` inside the backfill unit's private `/tmp` | None: it is temporary by design, and the runbook forbids making it persistent. Its free space is the container layer's (LPC-10) | — |
@@ -131,8 +142,10 @@ the cluster is listed and the create branch is never reached.
 **Kept, because it is in PostgreSQL or on a volume:** every arming decision, the backup ledger, the migration ledger,
 the contact e-mail, any credentials file under `/etc/cse`.
 
-**The recreate procedure** (owner-authorized each time; rehearsed in LP-2; the driver never removes the production
-container outside it):
+**The recreate procedure** (owner-authorized each time by a **recreate authorization** validated like the network
+authorization of §5: type, id, container name and image id, the owner's words, a decision time, an expiry within 24
+hours, single use, recorded in the append-only log; LP-1 tests refusal without one; rehearsed in LP-2; the driver
+never removes the production container outside it):
 
 1. The owner disarms P3 and Phase 2, or records that they are disarmed. A recreated container would otherwise come up
    **armed**, because arming lives in the database and provisioning enables the timers at once.
@@ -159,8 +172,10 @@ ops/provision/provision_backfill.sh   preflight migrate dirs units verify
 - Staging's R1 gate is installed **exactly as at staging** and stays closed unless the owner decides otherwise
   (LP-R7): P1's weekly restore check does not run by itself.
 - The contact e-mail stays empty after provisioning. Every CSE-contacting command refuses without it.
-- Commands that record an operator read `SUDO_USER`. Run through `docker exec` as root they would record "root" on
-  every owner decision, so the driver passes the owner's name in that variable for owner-path commands (LD-11).
+- Commands that record an operator read `SUDO_USER`. **The driver runs no command that records an owner decision**
+  (§5, revision 3). The owner runs those himself in an interactive `docker exec` shell, setting
+  `SUDO_USER="<owner> via docker exec"` himself, so a decision is never recorded in the owner's name by anyone else
+  (LD-11).
 
 ---
 
@@ -185,12 +200,35 @@ ops/provision/provision_backfill.sh   preflight migrate dirs units verify
 the smoke tests cannot reach CSE (MA §54: "no test accidentally contacts CSE").
 
 **`net-attach`** connects the container to `cse-prod-egress`, an ordinary user-defined bridge. It refuses without a
-**network authorization**, a file the owner writes, validated like staging's restore authorization
+**network authorization**, a file written by the orchestrator after the owner's explicit yes (as staging's restore
+authorization is) and checked by the owner, validated like staging's restore authorization
 (`docs/ops/STAGING.md` §11): its type and id; its scope (`market` for P2 and P3, `phase2` for discovery and
 documents); the container name and image id; the decision it rests on (HB-X2(b) for `market`; HB-X2(a) as well for
 `phase2`); the owner's words; a decision time and an expiry at most 24 hours later; single use, recorded in an
 append-only log. The driver decides nothing; it refuses to attach without the record. `net-detach` needs no
 authorization.
+
+**An attachment lives no longer than its authorization, and its scope is enforced (revision 3, M2).**
+- `tick` runs `net-detach` when the authorization's expiry passes, and after any container restart; the next
+  attachment needs a new record. The owner sets the expiry (at most 24 hours), so a capture day needs one record.
+- While attached under a `market` authorization, `tick` reads (read-only) whether HB-6 is armed; if it is and no
+  valid `phase2` authorization exists, it detaches at once and alerts. A `phase2` authorization is therefore required
+  before any HB-6 arming reaches CSE.
+
+**Driver steps and their in-container commands (revision 3, M1)** (exact command lines in the driver, asserted by
+LP-1's tests; anything else is refused):
+
+| Step | In-container commands |
+|---|---|
+| `provision` | The three provisioning scripts with the step lists of §3.4 |
+| `r1-gate`, `r1-timer-off` | Installing staging's R1-gate drop-in; `systemctl disable --now` of the restore-check timer |
+| `journald-limit` | Writing the journal size limit file; `systemctl restart systemd-journald` |
+| `filter-install` | Writing and enabling the filter unit (only if LP-R4 keeps it) |
+| `checks` | The read-only commands of LPC-1 to LPC-12 (catalogue queries, `--version`, `status` and `verify` subcommands, `systemctl is-enabled`/`is-active`) |
+| `probes` | Staging's write-and-refuse probes, **only** in the rehearsal (label `production-local-rehearsal`) |
+| `dump` | `cse-ops backup dump` (the recreate's hand dump), nothing else of `cse-ops` |
+| `backup-copy` (also run by `tick`) | Reading (`tar` to stdout) the dump set and new spool files named in the backup ledger |
+| `status` | The read-only `status` subcommands of every wrapper |
 
 **Inbound.** No port is published (LD-3).
 
@@ -200,8 +238,13 @@ transports, and `curl` is installed. The controls are these:
 
 - nothing ungoverned is installed as a unit, a timer or an operator wrapper: the only scheduled entry points are P3's
   and HB-6's, which go through the governed transports and refuse unless armed;
-- the driver's `exec` step runs only an allowlist of commands (the frozen wrappers under `ops/bin` and the read-only
-  checks), and a unit test asserts it has no other way to run a command in the container;
+- **the driver never runs an owner-path, arming or CSE-contacting command (revision 3, Blocker B1).** Its
+  in-container commands are a **closed list per driver step** (the table below); a unit test asserts that each step
+  runs exactly its list and that the driver has no other way to run a command in the container. In particular the
+  driver never runs: any `arm`, `disarm`, `acknowledge-block`, `resolve-hold` or `designate` subcommand; `cse-capture
+  capture`, `resume` or `reprocess` (P2's manual capture needs no arming, only the contact e-mail and a route);
+  `cse-ops restore_check` or `offsite` (round the R1 gate); any F1 to F5 tool or the Stage E client. LP-1 has a refusal
+  test for each. The owner runs every one of these himself (§3.4);
 - beyond that, root inside the container is governed by procedure, as root on a server would be.
 
 **The outbound filter, its cost, and the owner's choice (LP-R4).** The runbook asks for outbound access "to CSE's API
@@ -223,7 +266,12 @@ and CDN only". On a server that is a firewall rule. Here the equivalent is a pac
 
 **The host's own network.** A VPN or a Docker Desktop proxy on the workstation would change the path requests take.
 The transports ignore proxy settings, but a system-wide VPN is below them. G-1 control 6 forbids proxies and IP
-rotation, so `tick` (§6.3) records whether a VPN adapter is up and alerts if one is while armed.
+rotation, and G-1 §4 says a design that cannot meet a control must not be deployed, so **detection enforces
+(revision 3, M4)**: `tick` treats a VPN as up when `Get-VpnConnection` reports any connection `Connected`, or any
+up network adapter's type or description is a tunnel (TAP, TUN, WireGuard, WAN Miniport, or the vendor list kept in
+the driver), or the host's default route goes through such an adapter. While the container is attached, `tick` then
+runs `net-detach` at once and alerts; `net-attach` refuses while one is up. LP-1 tests detection with stubbed
+command output.
 
 **No ad hoc contact from the host.** The driver has no command that fetches anything from CSE, and its unit tests
 assert that no CSE hostname appears in it outside the filter's rule set and comments.
@@ -248,8 +296,16 @@ assert that no CSE hostname appears in it outside the filter's rule set and comm
   until the host drive is full, and a full host drive under a virtual disk can corrupt the database and the dumps
   together. Stopping a backup timer is an owner decision, not a driver action.
 - **So the owner decides, before the first arming that grows data** (the P3 arming for small daily growth; the HB-S3
-  pilot at the latest for real growth): a retention policy, or more room, or both (LP-R1). HB-Q9 asks the same
-  question before HB-S4; on this workstation it cannot wait that long.
+  pilot at the latest for real growth) (LP-R1, revision 3, M5): **more room**, or **a P1 change control** permitting
+  local dump pruning (P1 §6 says nothing is deleted and dumps are read-only once written, and G-1 §6 protects backup
+  immutability, so pruning local dumps is not a harness decision); the off-drive **copies** of §6.2 may have a
+  retention rule without a P1 change. HB-Q9 asks the same question before HB-S4; on this workstation it cannot wait.
+- **The drive that matters** is the one holding Docker's virtual disk (C: by default), recorded at LP-2; D: matters
+  only if the virtual disk is moved there.
+- **Floors and headroom (revision 3, M5):** the driver refuses its own steps when the drive holding the virtual disk
+  has less than max(20 GiB, 3 × the latest dump's size) free, or the virtual disk itself less than HB-6's 20 GiB, or
+  the temporary root less than the runbook's 464 MB. Headroom in days = free space on that drive ÷ (dumps per day ×
+  the latest dump's size + the daily growth measured at LP-2); `status` reports it, and `tick` alerts below 14 days.
 
 ### 6.2 Backups without an off-site copy, on one virtual disk
 
@@ -262,14 +318,16 @@ The owner accepted having no off-site backup locally. Separately, the dumps shar
 - **Encryption is required, or the owner records a deviation.** The copy holds raw CSE responses. G-1 control 8 names
   "encrypted backups" as where they may live outside the database and the spool. The target must therefore be an
   encrypted volume (BitLocker on that drive), or the owner records in G-1 that plaintext local copies are accepted
-  (LP-R2). The directory is excluded from every cloud-sync client. The copies need their own retention rule (LP-R1).
+  (LP-R2). The directory is excluded from every cloud-sync client, and `tick` checks it (no known sync client's configuration
+  names the copy directory or the virtual disk's directory). The copies need their own retention rule (LP-R1).
 - **Recovery from a copy is not designed here.** Restoring into production is P1 §8 B, which needs the owner's
   authorization and, for the verification before it, the isolated-restore procedure, which is audited with
   conditions and not approved (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`). Until that route exists, the copies
   are insurance that cannot yet be claimed on (§11).
 - P1's off-site units report `not_configured`, which is never a success. So P1's backup status is **permanently in
-  alert** in LP. `status` therefore shows alerts against a stated expected baseline (exactly the off-site ones), so
-  that a new alert is not hidden among the expected ones.
+  alert** in LP. `status` therefore shows alerts against a stated expected baseline, defined as **patterns** (the
+  off-site `not_configured` lines, and "`<N>` local dump(s) not yet off-site" for any N), so that a new alert is not
+  hidden among the expected ones.
 
 ### 6.3 Being on, signed in, awake and on time
 
@@ -285,9 +343,15 @@ The owner accepted having no off-site backup locally. Separately, the dumps shar
   the session is missed; if it says yes while the virtual machine's clock lags, the gate passes wrongly.
   - LPC-5 therefore requires the flag to be `yes` **inside the container** and the container's time to agree with
     the host's within 2 seconds, and LPC-4 does not tolerate a clock failure (staging's probe did).
+  - **The host clock itself (revision 3, M3):** LPC-5 and `tick` also require Windows to be time-synchronised:
+    `w32tm /query /status` reports a source other than `Local CMOS Clock` or `Free-running System Clock`, a leap
+    indicator other than 3 (not synchronised), and a last successful sync within 24 hours. Otherwise the check fails
+    and `tick` alerts; a wrong host clock no longer passes both other checks.
   - Sleep and resume are rehearsed in LP-2, to see what the flag and the clock actually do on this machine.
   - The container cannot set the clock. The remedy for drift is on the host (restarting Docker Desktop
-    resynchronises the virtual machine and restarts the container), and it is the owner's action.
+    resynchronises the virtual machine and restarts the container), and it is the owner's action. A Docker Desktop
+    restart restarts **every** container on the host, staging's included (the reason staging skipped OD-16); the LP-2
+    authorization names this.
 - **`tick`, a host-side scheduled task**, does only harness work: the clock check; the disk guard; `backup-copy`;
   whether the container is running and its timers active; whether a VPN is up; a status line. It never starts a
   capture. When something is wrong it writes an alert file and exits non-zero. **Who is told, and how, is the
@@ -323,9 +387,9 @@ workstation that simply ends there.
 | LD-8 | Outbound restriction is a packet filter inside the container with one extra capability, or none (LP-R4) | §5 |
 | LD-9 | The host is a workstation that sleeps, restarts and needs a signed-in user. Ends at milestone 14 | Missed sessions are possible (§6.3) |
 | LD-10 | Every service and verification runs inside the one container, so peer authentication never crosses a container boundary | Same as the target in effect |
-| LD-11 | Operator identity comes from a variable the driver sets, not from `sudo` | §3.4 |
+| LD-11 | Operator identity of owner decisions comes from `SUDO_USER` set by the owner himself in an interactive `docker exec` shell ("<owner> via docker exec"), not from `sudo`; the driver records no owner decision | §3.4, §5 |
 | LD-12 | Windows, Docker Desktop and WSL update the kernel and engine under the accepted environment | `tick` records their versions; a change is reported |
-| LD-13 | Harness additions around the product: the driver, `tick`, a journal size limit, the filter unit if kept | §1 |
+| LD-13 | Harness additions around the product: the driver, `tick`, a journal size limit, staging's R1-gate drop-in and the restore-check timer's disabling, the filter unit if kept | §1, §3.3 |
 
 Staging's D-07 (the off-site test destination), D-09 (simulated downtime) and D-11 (no designation) do not apply.
 D-08 (the R1 gate) applies unchanged unless LP-R7 lifts it.
@@ -340,15 +404,15 @@ rehearsal. Each writes a record to `D:\cse-prod\checks\`.
 | ID | Check | Passes when |
 |---|---|---|
 | LPC-1 | Identity | The running image id equals the saved image's; the revision label is the accepted commit; the package manifest equals `packages.lock`; the application tree equals the commit's tree, allowing only the six bytecode files of staging finding F-1 |
-| LPC-2 | Clean | The migration ledger is 0001 to 0018 with 0006 unused and verifies. **The CSE-data tables are empty:** market capture runs, responses and observations; filings, classifications, candidates, F4, F6 and F8 tables; the backfill work items, attempts and outcomes; issuers. Expected to hold rows already: the migration ledger, the backup ledger, and the scheduler's and runner's wake-up tables (disarmed wake-ups write a row). No armed decision exists; the contact e-mail is empty |
+| LPC-2 | Clean | The migration ledger is exactly the accepted commit's chain (0001 to 0018 with 0006 unused for `main`'s build; pending migrations such as 0019 on `integration/cloud` are not applied in LP until the owner merges them) and verifies. **The CSE-data tables are empty:** market capture runs, responses and observations; filings, classifications, candidates, F4, F6 and F8 tables; the backfill work items, attempts and outcomes; issuers. Expected to hold rows already, by name: `schema_migrations` (the ledger), the backup ledger, `system_config` (0001's seed), `financial_concepts` (0008's seed), `backfill_item_transitions` (0016's seed), and the scheduler's and runner's wake-up tables (disarmed wake-ups write a row). No armed decision exists; the contact e-mail is empty |
 | LPC-3 | Roles and append-only | In the real environment, by catalogue only: every append-only trigger present and enabled, every privilege as designed. In the rehearsal, staging's write-and-refuse probes as well |
 | LPC-4 | Preflights | P1's verifier with no clock tolerance; the migration runner; the R-F4 preflight by both routes, clean; P3, HB-6 and F6.4 preflights. The R-F4 full `verify` on an empty database is recorded as **vacuous**: it shows the check runs as `cse_verifier`, not that any data verifies (staging's rule that an empty database is not a pass is why this is not called one) |
-| LPC-5 | Clock | Inside the container the synchronisation flag is `yes`; container and host times agree within 2 s |
+| LPC-5 | Clock | Inside the container the synchronisation flag is `yes`; container and host times agree within 2 s; Windows is time-synchronised (§6.3's `w32tm` conditions) |
 | LPC-6 | Units | Every frozen unit installed and enabled as provisioned; a disarmed wake-up of P3 and of HB-6 does nothing and contacts nobody; the R1 gate is closed |
 | LPC-7 | Backups | A dump runs and verifies; the backup ledger records it; off-site is `not_configured`; `backup-copy` produces a verified copy on the other drive; no leftover throwaway cluster under `restore-scratch` |
-| LPC-8 | Isolation | `docker inspect`: only the internal network, no published port, no bind mount, no Docker socket, exactly the approved capabilities, exactly the six LP volumes. After `net-attach`: the internal and the egress network and nothing else |
+| LPC-8 | Isolation | `docker inspect`: only the internal network, no published port, no bind mount, no Docker socket, exactly the approved capabilities, exactly the six LP volumes. After `net-attach`: the internal and the egress network and nothing else. Before `net-attach`, an actual probe: a TCP connection from inside the container to a non-CSE public address fails (no route) |
 | LPC-9 | Recreate | Before: the uids and gids of the service users equal the owners of the volumes' files. After: the same system identifier, an identical ledger, identical row digests |
-| LPC-10 | Disk | The host drives and the virtual disk above their floors; the temporary root's free space and mode; the headroom estimate recorded |
+| LPC-10 | Disk | §6.1's floors: the drive holding the virtual disk, the virtual disk (20 GiB), the temporary root (464 MB) and its mode; the headroom in days recorded |
 | LPC-11 | No test data | No synthetic marker anywhere; no staging volume or evidence path referenced |
 | LPC-12 | Outbound | With the egress network attached and nothing armed: DNS resolves. If the filter is kept, a connection to an address outside the allowed set is rejected at once. No request is sent to CSE by this check |
 
@@ -358,7 +422,8 @@ authorization of §5); request budget confirmed (the owner's arming arguments, c
 LP-5); tests proven offline (staging's ST-25); no test contacts CSE (no route out). **The evidence the first capture
 must produce** (request discipline, archive integrity, session and date correctness, observation completeness,
 canonicalisation state, backup state, auditability) is collected at LP-5 from P2's own run report, `verify-archive`
-and the backup ledger, as one record for the owner.
+and the backup ledger, as one record for the owner. The record is checked before it is written to `D:\cse-prod`: it
+must contain no CSE response body or excerpt (only counts, hashes, statuses and times) and no contact e-mail.
 
 ---
 
@@ -372,7 +437,7 @@ Each step needs the workstation and the owner's authorization; LP-1 can be prepa
 | LP-2 | **Rehearsal** on throwaway objects (`cse-prod-reh-*`, hostname `cse-prod-reh`, label `production-local-rehearsal`): create, provision, LPC-1 to LPC-11 with the write probes; **the recreate procedure on a copy**; stop and start; kill and start; an aged timer stamp; a Docker Desktop restart (staging's OD-16, never run); host sleep and resume with the clock check; `net-attach` to a second **internal** bridge with a local stub, LPC-12, the filter's behaviour, and a restart with the network attached; memory and log growth measured. Then the rehearsal objects are removed | Every check recorded. The owner has the evidence for LP-R4 and LP-R7 |
 | LP-3 | **Provision the real environment**, no route out; the image saved first | LPC-1 to LPC-4, LPC-6, LPC-8, LPC-10 |
 | LP-4 | **Smoke tests**: LPC-1 to LPC-11 on the real environment; `tick` installed | The owner's acceptance of milestone 10 |
-| LP-5 | *(milestone 11)* The network authorization; the contact e-mail; `net-attach`; LPC-12; the HB-P1 chain by the owner's arming; the first-capture evidence record | — |
+| LP-5 | *(milestone 11)* The network authorization; the contact e-mail; `net-attach`; LPC-12; the HB-P1 chain: **the first capture is a P3-armed capture, armed by the owner himself** in an interactive shell (not a manual P2 run, and never by the driver); the first-capture evidence record | — |
 | LP-6 | *(milestones 11 to 13)* Operation under the owner's arming decisions, supervised through `status` | — |
 
 LP-5 and LP-6 are named so the order is clear. This design does not authorize them.
@@ -391,20 +456,20 @@ LP-5 and LP-6 are named so the order is clear. This design does not authorize th
 | LP-D4 | A verified copy of each successful dump and of the new spool entries to another physical drive | Compensates for the shared virtual disk; changes nothing in P1 |
 | LP-D5 | Withdrawn. The weekly restore check is the owner's decision (LP-R7); the R1 gate stays closed | The owner has kept every restore under explicit authorization, and P1's restore check has never run in a host container on this platform |
 | LP-D6 | The container starts on a bridge with no route out; outbound only through `net-attach` with a network authorization | Smoke tests cannot contact CSE by construction |
-| LP-D7 | The LP driver lives outside the deployed tree and runs only an allowlist of commands in the container | Harness code must not change the deployed build or become a way round the governed transports |
+| LP-D7 | The LP driver lives outside the deployed tree, runs only the closed command list of each of its steps (§5), and never runs an owner-path, arming or CSE-contacting command | Harness code must not change the deployed build, become a way round the governed transports, or decide anything in the owner's name |
 | LP-D8 | Write probes run only in the rehearsal; the real environment is checked read-only | A harness must not write to the production database |
 
 ### Reserved for the owner
 
 | ID | Decision | Needed before |
 |---|---|---|
-| LP-R1 | Disk: a local dump retention policy and a retention rule for the copies, or more room (with HB-Q9) | The first arming that grows data; LP-3 if possible |
+| LP-R1 | Disk: more room, or a P1 change control permitting local dump pruning; a retention rule for the off-drive copies (with HB-Q9) | The first arming that grows data; LP-3 if possible |
 | LP-R2 | Which physical drive receives the copies; that it is encrypted, or a recorded acceptance in G-1 of plaintext local copies | LP-3 |
 | LP-R3 | Keeping the workstation on, signed in and awake through capture windows; the update policies; who is alerted and how | The first capture |
 | LP-R4 | The outbound filter: keep it and accept the missed-session risk, or run without it as a recorded difference | LP-5, on LP-2's evidence |
 | LP-R5 | Authorization of each of LP-2, LP-3 and LP-4, of any recreate, and acceptance of milestone 10 | Each step |
 | LP-R6 | Everything that permits CSE contact: HB-X2(a) and (b), the contact e-mail, each network authorization, every arming | Milestone 11 |
-| LP-R7 | Whether P1's weekly restore check runs in LP (lifting the R1 gate), after staging's ST-30 has shown it working | Any time after ST-30 |
+| LP-R7 | Whether P1's weekly restore check runs in LP (lifting the R1 gate), after staging's ST-30 has shown it working; if not, the owner's recorded acceptance of the gap against MA §49 | Before the HB-S3 pilot (milestone 12) (revision 3, M6) |
 
 ---
 
@@ -417,6 +482,12 @@ LP-5 and LP-6 are named so the order is clear. This design does not authorize th
   rehearsed before the pilot's exit (milestone 12).**
 - **Recovery from a backup copy** (§6.2), which waits for the isolated-restore procedure's approval and a production
   form of it.
+- **The Phase 2 backup checkpoints (revision 3, M6).** `docs/ops/PHASE2_BACKFILL.md` §6 and `docs/R_F4_DESIGN.md`
+  §10 rows 12 and 13 need restore-check runs and an isolated restored copy at the pilot checkpoint and before every
+  HB-S4 arming, and C-0019 needs a production form of the isolated-restore procedure for findings 6 to 8. Neither is
+  designed here. **They block milestone 12**, with LP-R7.
+- Until the new-build procedure (first bullet) is designed, **LP stays on the saved image**: no build change of any
+  kind once data exists (it could be needed in milestone 11, not only at the pilot's exit).
 - **Milestone 14**, the move to the server.
 - The runbook §6 change (REG-B27) and Phase C of staging (ST-30, ST-31), which come first.
 
@@ -464,4 +535,20 @@ Docker's network connect behaviour and name resolution after it; `iptables` with
 this kernel; the synchronisation flag and clock drift after sleep; where Docker's virtual disk is on the owner's
 machine. Each is something LP-2 measures.
 
-Revision 2 is to be audited again before LP-1 is built.
+**Revision 2: audited 2026-11-15 (cloud, fresh-context agent; C-0005). Verdict: REJECT**, one Blocker, seven Major,
+eleven Minor. Revision 1's findings were confirmed resolved except 11 (whose replacement created B1 and M1) and 14
+(see M5). Dispositions in revision 3:
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B1 | Blocker | The driver could arm, capture and decide in the owner's name with no owner record | **Fixed.** The driver never runs owner-path, arming or CSE-contacting commands; the owner runs them himself with his own identity; refusal tests (§3.4, §5, LP-D7, LD-11) |
+| M1 | Major | The in-container actions contradicted the allowlist claim | **Fixed.** A closed command list per step, asserted by LP-1 (§5) |
+| M2 | Major | Attachment lifetime and scope without a mechanism | **Fixed.** `tick` detaches at expiry and on restart; HB-6 armed without a `phase2` authorization detaches (§5) |
+| M3 | Major | The clock gate stopped at Windows | **Fixed.** `w32tm` conditions in LPC-5 and `tick` (§6.3) |
+| M4 | Major | G-1 control 6 only alerted | **Fixed.** Defined detection; `tick` detaches; `net-attach` refuses (§5) |
+| M5 | Major | Disk: LP-R1 not implementable; floors unstated; wrong drive | **Fixed.** LP-R1 is more room or a P1 change control; numeric floors and headroom; the virtual disk's drive (§6.1, LPC-10) |
+| M6 | Major | Restore testing and Phase 2 backup checkpoints missing | **Fixed.** §11 lists them as blocking milestone 12; LP-R7 needed before the pilot |
+| M7 | Major | No refusal test for both-or-neither; no recreate authorization | **Fixed.** LP-1 tests; a recreate authorization (§3.3) |
+| — | Minors | "Empty" volume; the "Lost" table and R1 drop-ins; alert baseline; LPC-8 probe; 464 MB; LPC-2 tables; hard-coded migrations; Docker Desktop restarts; new-build stance; who writes the authorization; evidence content and sync exclusion | **Fixed** in §3.3, §6.2, LPC-2, LPC-5, LPC-8, LPC-10, §6.3, §11, §5, §8 |
+
+Revision 3 is to be audited again before LP-1 is built.
