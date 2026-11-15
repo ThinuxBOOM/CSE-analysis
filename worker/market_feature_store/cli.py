@@ -145,19 +145,28 @@ def status(conn):
 
 
 def _query(args, conn):
+    """The query and its configuration. --designated reads the designation in force at the query's own knowledge
+    instant (T in KNOWN, H in AVAILABLE; ML-15), never today's."""
     with conn.cursor() as cur:
         cur.execute("select now()")
         now = cur.fetchone()[0]
-        cid = args.configuration or selection.designated(cur, now)
     conn.rollback()
-    if cid is None:
-        raise configuration.ConfigurationError("no designated configuration")
     if args.mode == KNOWN and args.horizon is not None:
         raise configuration.ConfigurationError("KNOWN has no knowledge horizon")
-    if args.mode == KNOWN and args.cutoff > now:
-        raise configuration.ConfigurationError("a KNOWN cutoff in the future would not be point-in-time")
-    horizon = args.horizon if args.mode == KNOWN or args.horizon else now
-    return Query(args.mode, args.cutoff, None if args.mode == KNOWN else horizon), cid
+    if args.cutoff > now:
+        raise configuration.ConfigurationError("a cutoff in the future is not a stored point-in-time result")
+    horizon = None if args.mode == KNOWN else (args.horizon or now)
+    if horizon is not None and horizon > now:
+        raise configuration.ConfigurationError("a knowledge horizon in the future is not reproducible")
+    q = Query(args.mode, args.cutoff, horizon)
+    cid = args.configuration
+    if cid is None:
+        with conn.cursor() as cur:
+            cid = selection.designated(cur, q.cutoff if q.mode == KNOWN else q.horizon)
+        conn.rollback()
+        if cid is None:
+            raise configuration.ConfigurationError("no configuration was designated at the query's knowledge instant")
+    return q, cid
 
 
 def _configuration(args):
@@ -178,6 +187,10 @@ def run(args, connect):
     except psycopg2.OperationalError as exc:
         _print({"state": "unavailable", "error": str(exc).strip()[:300]})
         return EXIT_DATABASE_UNAVAILABLE
+    except psycopg2.Error as exc:                      # a constraint or guard refused it: nothing was written
+        conn.rollback()
+        _print({"state": "refused", "reason": f"{type(exc).__name__}: {str(exc).strip()[:300]}"})
+        return EXIT_REFUSED
     try:
         if args.command == "designate":
             _print({"state": "designated", "id": designate(conn, args.configuration, args.note,
@@ -235,6 +248,10 @@ def run(args, connect):
     except psycopg2.OperationalError as exc:
         _print({"state": "unavailable", "error": str(exc).strip()[:300]})
         return EXIT_DATABASE_UNAVAILABLE
+    except psycopg2.Error as exc:                      # a constraint or guard refused it: nothing was written
+        conn.rollback()
+        _print({"state": "refused", "reason": f"{type(exc).__name__}: {str(exc).strip()[:300]}"})
+        return EXIT_REFUSED
     finally:
         conn.close()
     return EXIT_REFUSED

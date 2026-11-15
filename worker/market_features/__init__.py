@@ -12,4 +12,4 @@ Nothing here reads daily_market_data, trading_calendar, corporate_actions, symbo
 MF's sources are the append-only raw layer and run ledger (design section 3). tests/test_mf1_unit.py checks the
 package's imports.
 """
-VERSION = "mf.1"
+VERSION = "mf.2"

@@ -211,7 +211,7 @@ def test_o8_target_build_labels_and_verify(cluster):
     cid = registered(cluster, db)
     h = now(cluster, db)
     ref, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[25]), h), cid)    # D = day 25
-    tb = Query(AVAILABLE, hb.available_at(DAYS[-1]), h)
+    tb = Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db))       # H after the reference was written
     rep = targets_store.build(worker(cluster, db), tb, cid, [ref])
     assert rep["labels"] == 16 and rep["not_labelled"] == {}
     rows = sql(cluster, db, "select symbol, horizon, state, values_json, resolved_at from mf_target_rows "

@@ -188,6 +188,7 @@ create table mf_snapshots (
   adjustment_set_hash text not null,
   row_count integer not null,
   imported_inputs boolean not null default false,   -- section 4.2: an imported batch was read
+  snapshot_hash text not null,                         -- SHA-256 binding this header, its rows, factors, move flags
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
   constraint chk_mfn_mode check ((mode, result_label) in (('KNOWN', 'point_in_time'), ('AVAILABLE', 'reconstructed'),
@@ -195,7 +196,8 @@ create table mf_snapshots (
   constraint chk_mfn_t check ((mode = 'CURRENT') or cutoff is not null),
   constraint chk_mfn_h check ((mode = 'KNOWN') = (knowledge_horizon is null)
     and (knowledge_horizon is null or cutoff is null or knowledge_horizon >= cutoff)),
-  constraint chk_mfn_hex check (input_digest ~ '^[0-9a-f]{64}$' and adjustment_set_hash ~ '^[0-9a-f]{64}$'),
+  constraint chk_mfn_hex check (input_digest ~ '^[0-9a-f]{64}$' and adjustment_set_hash ~ '^[0-9a-f]{64}$'
+    and snapshot_hash ~ '^[0-9a-f]{64}$'),
   constraint chk_mfn_rows check (row_count >= 0)
 );
 
@@ -262,8 +264,10 @@ create table mf_target_builds (
   configuration_id text not null references mf_configurations(configuration_id),
   target_definition_version text not null,
   code_version text not null,
+  build_hash text not null,                            -- SHA-256 binding this header and its rows
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
+  constraint chk_mft_hex check (build_hash ~ '^[0-9a-f]{64}$'),
   constraint chk_mft_mode check (mode in ('KNOWN', 'AVAILABLE', 'CURRENT'))
 );
 

@@ -678,3 +678,12 @@ command line, `ops/bin/cse-features` and its runbook. A full real-data run in a 
 snapshots, a target build, `verify`) succeeded, and `verify` found no problem. Nothing was loaded anywhere
 permanent; migration 0019 stays pending. Accepted when an audit reports no Blocker.
 
+## C-0065: the MF-7c third part audit and its fixes ([delegated], 2026-11-15)
+
+The audit rejected the commands with three look-aheads, each fixed by the conservative option: a no-trade bar's
+`resolved_at` now covers the batch whose range makes it; a target build refuses a reference snapshot outside its own
+information set and counts the reference's admission instant; `--designated` reads the designation in force at the
+query's knowledge instant. Its Majors are fixed: header hashes for snapshots and target builds (two new columns in
+pending migration 0019), disagreeing builds reported, a future horizon refused, and tests that kill each targeted
+mutant. Re-audit pending.
+

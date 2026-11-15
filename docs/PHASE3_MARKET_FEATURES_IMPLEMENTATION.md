@@ -724,7 +724,8 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 
 ## MF-7c (third part): the commands
 
-**Status: implemented and tested (2026-11-15); audit pending.** MF-7's remaining pieces (design §13.2): the
+**Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers), fixed (C-0065);
+re-audit pending.** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 
@@ -768,4 +769,23 @@ admitted row, including the long-dead and the classless 1990s codes. They are `n
 their labels are `terminated` (about 640 of 941 securities at mid-2025), but they cost time and memory: every build
 walks every security over every session since 1991. A build restricted to securities with a row within a window
 before D\* would be much cheaper; it changes stored rows, so it is a design change for a later step.
+
+## Audit of MF-7c third part: fresh-context agent
+
+At `e76c493`. Guard logs empty. **REJECT** (three Blockers, all look-aheads, each reproduced on PostgreSQL).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B1 | Blocker | A no-trade bar's instant was the next row's only; the batch whose `security_complete` range makes the bar was in no instant, so with a second batch a label resolved before its evidence existed | **Fixed.** Each range carries its batch's `recorded_at` (`Imported.complete_recorded`); a no-trade bar takes the latest of the closing row and every range containing the day (in `AVAILABLE`, at the end of that day). `test_a1` |
+| B2 | Blocker | A target build accepted any reference snapshot, whose stored P_D, s_D and quality are label inputs | **Fixed.** `admissible_reference`: in `KNOWN` a `KNOWN` snapshot written by T; in `AVAILABLE` T_ref ≤ T, written by H, H_ref ≤ H; else refused. Its admission instant enters `extra_instants`. `test_a3`, `test_a5` |
+| B3 | Blocker | `--designated` used today's designation, not the one in force at T (ML-15) | **Fixed.** Resolved at T (`KNOWN`) or H (`AVAILABLE`); refused when none was in force. `test_p1` |
+| M1 | Major | 33 of 51 mutants survived (target instants, verify checks, selection filters, preflight) | **Tested:** `tests/test_mf7_ops_audit_postgres.py`; 17 targeted mutants, all killed |
+| M2 | Major | No hash bound a live snapshot's header and move flags, or a target build's header | **Fixed.** `snapshot_hash` (header, row hashes, factors, move flags) and `build_hash` (header, rows), new columns of pending 0019, checked by `verify`. `test_p3` (8 tamper cases) |
+| M3 | Major | Disagreeing target builds not reported (§11) | **Fixed.** `verify` reports settled labels on which two builds under one configuration disagree (`target_disagreements`), without failing either. `test_p4` |
+| M4 | Major | An `AVAILABLE` horizon in the future was accepted | **Fixed.** Refused, as is any cutoff in the future. `test_p2` |
+| — | Minor | Quarantine instant in `AVAILABLE` defaulted to the batch's `recorded_at` | **Fixed:** the end of the day |
+| — | Minor | An import range's calendar row admitted whatever its own `recorded_at` | **Fixed:** admitted only by T (`KNOWN`) or H. `test_p7` |
+| — | Minor | Database errors exited 1; `CURRENT` refused only by argparse | **Fixed:** exit 5; `jobs.snapshot` and `targets_store.build` refuse `CURRENT` |
+| — | Minor | `VERSION` unchanged since MF-1 | **Bumped** to `mf.2` |
+| — | Minors | The settled margin measured from the write, not the load (false alarms only); `eligibility_policy.version` not pinned (a label of the policy's own fields, which are all pinned by the round trip); unlabelled reference rows reported, not stored; a build not checked against its reference's configuration; no lock on `calendar-sync` (duplicate copies possible, harmless); drift fails `verify` until the owner acts; the 18:00 / end-of-day text conflict | **Carried** |
 

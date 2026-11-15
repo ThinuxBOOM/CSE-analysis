@@ -23,6 +23,7 @@ from decimal import Decimal
 
 from worker.market_features import VERSION, actions, targets
 from worker.market_features.canonical import canonical_json, sha256_hex
+from worker.market_features.modes import AVAILABLE, KNOWN
 
 from . import configuration as configuration_
 from . import history_bars as hb
@@ -48,6 +49,14 @@ def row_hash(reference_snapshot_id, symbol, horizon, state, values, resolved_at,
                                       adjustment_set]))
 
 
+def build_hash(header, rows):
+    """SHA-256 binding a target build's header and its rows (reference snapshot, symbol, horizon, row_hash)."""
+    mode, cutoff, horizon, cid, version, code = header
+    utc = lambda t: None if t is None else t.astimezone(timezone.utc).isoformat()  # noqa: E731
+    return sha256_hex(canonical_json({"header": [mode, utc(cutoff), utc(horizon), cid, version, code],
+                                      "rows": sorted([a, b, c, d] for a, b, c, d in rows)}))
+
+
 def _finality(imported):
     out = {}
     for imp in imported.values():
@@ -57,7 +66,7 @@ def _finality(imported):
     return out
 
 
-def session_instants(symbol, imported, sessions, finality):
+def session_instants(symbol, imported, sessions, finality, query):
     imp = imported[symbol]
     dates = sorted(imp.rows)
     out = {}
@@ -69,8 +78,11 @@ def session_instants(symbol, imported, sessions, finality):
             own = imp.rows[s].get("instant")
         else:
             k = bisect.bisect_right(dates, s)
+            ranges = [rec for lo, hi, rec in imp.complete_recorded if lo <= s <= hi]
             if k < len(dates) and any(lo <= s <= hi for lo, hi in imp.complete):
-                own = imp.rows[dates[k]].get("instant")          # the row that closes the clipped range
+                # the row that closes the clipped range AND every batch whose range makes the bar (audit B1)
+                own = max([imp.rows[dates[k]].get("instant")]
+                          + [store.admission_instant(query, rec, hb.available_at(s)) for rec in ranges])
         vals = [x for x in (finality.get(s), own) if x is not None]
         if vals:
             out[s] = max(vals)
@@ -101,6 +113,20 @@ def superseded_instants(symbol, statements, stmt_instants):
             and (s.supersedes or s.kind == actions.WITHDRAWN or s.statement_id in named)]
 
 
+def admissible_reference(query, mode, cutoff, horizon, recorded_at):
+    """The instant the build admits a stored reference snapshot, or why it may not (audit B2). The reference's own
+    information set must lie inside the build's: in KNOWN, a KNOWN snapshot written by T; in AVAILABLE, a KNOWN or
+    AVAILABLE snapshot with T_ref <= T, written by H, whose own horizon (if any) is not after H."""
+    if query.mode == KNOWN:
+        if mode != KNOWN or recorded_at > query.cutoff:
+            return None, "reference snapshot is not in a KNOWN build's information set (mode, or written after T)"
+        return recorded_at, None
+    if mode not in (KNOWN, AVAILABLE) or cutoff > query.cutoff or recorded_at > query.horizon or (
+            horizon is not None and horizon > query.horizon):
+        return None, "reference snapshot is not in this AVAILABLE build's information set (T, H or recorded_at)"
+    return store.admission_instant(query, recorded_at, cutoff), None
+
+
 def reference_rows(cur, snapshot_id):
     cur.execute("select d_star from mf_snapshots where snapshot_id = %s", (snapshot_id,))
     head = cur.fetchone()
@@ -112,8 +138,10 @@ def reference_rows(cur, snapshot_id):
             cur.fetchall()]
 
 
-def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy):
-    """[(reference snapshot id, Label)] and counts of rows not labelled."""
+def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy, ref_instants=None):
+    """[(reference snapshot id, Label)] and counts of rows not labelled. ref_instants: {snapshot id: the instant the
+    build admits that stored reference snapshot}; the stored P_D, s_D and quality are inputs of every label."""
+    ref_instants = ref_instants or {}
     sessions = snap.sequence.sessions
     finality = _finality(imported)
     stmt = statement_instants(query, statements)
@@ -126,8 +154,9 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy)
             if why:
                 skipped[why] = skipped.get(why, 0) + 4
                 continue
-            inst = session_instants(row.symbol, imported, sessions, finality)
-            extra = [x for x in [cal] + superseded_instants(row.symbol, statements, stmt) if x is not None]
+            inst = session_instants(row.symbol, imported, sessions, finality, query)
+            extra = [x for x in [cal, ref_instants.get(sid)] + superseded_instants(row.symbol, statements, stmt)
+                     if x is not None]
             for h in targets.HORIZONS:
                 out.append((sid, targets.label(row, h, snap.series[row.symbol], snap.references[row.symbol],
                                                session_instants=inst, statement_instants=stmt,
@@ -137,25 +166,42 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy)
 
 def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VERSION):
     """Label the reference snapshots at this target build and store it. Returns a report."""
+    if query.mode not in (KNOWN, AVAILABLE):
+        raise configuration_.ConfigurationError("a CURRENT target build is never stored")
     with conn.cursor() as cur:
         cfg = configuration_.load(cur, configuration_id)
-        refs = {sid: reference_rows(cur, sid) for sid in reference_snapshot_ids}
+        refs, ref_instants = {}, {}
+        for sid in reference_snapshot_ids:
+            cur.execute("select mode, cutoff, knowledge_horizon, recorded_at from mf_snapshots where snapshot_id = %s",
+                        (sid,))
+            head = cur.fetchone()
+            if head is None:
+                raise LookupError(f"no snapshot {sid}")
+            inst, why = admissible_reference(query, *head)
+            if why:
+                raise configuration_.ConfigurationError(f"snapshot {sid}: {why}")
+            refs[sid], ref_instants[sid] = reference_rows(cur, sid), inst
     conn.rollback()
     snap, imported, _ev, statements, cal_obs = jobs.build_all(conn, query, cfg, keep_series=True)
-    labelled, skipped = labels(snap, imported, statements, cal_obs, query, refs, cfg.target_policy)
+    labelled, skipped = labels(snap, imported, statements, cal_obs, query, refs, cfg.target_policy, ref_instants)
+    rows = []
+    for sid, lab in labelled:
+        vj = values_json(lab)
+        adj = canonical_json(sorted(lab.factor_statement_ids))
+        rows.append((sid, lab.symbol, lab.horizon, lab.state, vj, lab.resolved_at, adj,
+                     row_hash(sid, lab.symbol, lab.horizon, lab.state, vj, lab.resolved_at, adj)))
+    header = (query.mode, query.cutoff, query.horizon, configuration_id, targets.TARGET_DEFINITION_VERSION,
+              code_version)
+    bh = build_hash(header, [(r[0], r[1], r[2], r[7]) for r in rows])
     with conn.cursor() as cur:
         cur.execute("insert into mf_target_builds (mode, cutoff, knowledge_horizon, configuration_id, "
-                    "target_definition_version, code_version) values (%s,%s,%s,%s,%s,%s) returning build_id",
-                    (query.mode, query.cutoff, query.horizon, configuration_id, targets.TARGET_DEFINITION_VERSION,
-                     code_version))
+                    "target_definition_version, code_version, build_hash) values (%s,%s,%s,%s,%s,%s,%s) "
+                    "returning build_id", header + (bh,))
         bid = cur.fetchone()[0]
-        for sid, lab in labelled:
-            vj = values_json(lab)
-            adj = canonical_json(sorted(lab.factor_statement_ids))
+        for r in rows:
             cur.execute("insert into mf_target_rows (build_id, reference_snapshot_id, symbol, horizon, state, "
                         "values_json, resolved_at, adjustment_set, row_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (bid, sid, lab.symbol, lab.horizon, lab.state, vj, lab.resolved_at, adj,
-                         row_hash(sid, lab.symbol, lab.horizon, lab.state, vj, lab.resolved_at, adj)))
+                        (bid,) + r)
     conn.commit()
     states = {}
     for _sid, lab in labelled:

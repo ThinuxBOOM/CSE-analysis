@@ -11,11 +11,11 @@ Captured (P2) evidence is not read yet: no capture era exists in this build (MF-
 """
 import collections
 import json
-from datetime import date
+from datetime import date, timezone
 from decimal import Decimal
 
 from worker.market_features import actions, calendar
-from worker.market_features.modes import AVAILABLE
+from worker.market_features.modes import AVAILABLE, KNOWN
 from worker.market_features.canonical import canonical_json, sha256_hex
 
 from . import history_bars as hb
@@ -82,6 +82,7 @@ def load(conn, query):
         quarantined = collections.defaultdict(set)
         q_instants = {}
         complete = collections.defaultdict(list)
+        complete_recorded = collections.defaultdict(list)
         batch_dates = collections.defaultdict(set)
         admitted_imports = []
         for imp, recorded, cal_from, cal_to, sha in imports:
@@ -103,18 +104,21 @@ def load(conn, query):
             cur.execute("select symbol, trade_date from mf_history_quarantine where import_id = %s", (imp,))
             for sym, d in cur.fetchall():
                 quarantined[sym].add(d)
-                q_instants[(sym, d)] = max(q_instants.get((sym, d), recorded),
-                                           admission_instant(query, recorded, hb.available_at(d)))
+                inst = admission_instant(query, recorded, hb.available_at(d))
+                q_instants[(sym, d)] = max(q_instants.get((sym, d), inst), inst)
             cur.execute("select symbol, date_from, date_to from mf_history_security_complete where import_id = %s",
                         (imp,))
             for sym, lo, hi in cur.fetchall():
                 complete[sym].append((lo, hi))
+                complete_recorded[sym].append((lo, hi, recorded))
         cur.execute("select id, kind, date_from, date_to, available_at, source_reference, import_id, recorded_at "
                     "from mf_calendar_observations order by id")
         cal_obs, cal_ids = [], []
         for oid, kind, lo, hi, avail, ref, imp, recorded in cur.fetchall():
             if imp is not None and imp not in batch_dates:
                 continue                  # its batch is not admitted: its range must not close that batch's gaps
+            if imp is not None and recorded > (query.cutoff if query.mode == KNOWN else query.horizon):
+                continue                  # a range declared after the query's knowledge (audit of MF-7c 3rd part)
             if imp is None and not query.admits(recorded, avail):
                 continue
             cal_ids.append(oid)
@@ -134,7 +138,8 @@ def load(conn, query):
             rows[sym][d] = m
     imported = {sym: hb.Imported(rows=dict(r), complete=tuple(sorted(complete.get(sym, ()))),
                                  quarantined=frozenset(quarantined.get(sym, ())),
-                                 quarantine_instants={d: i for (s_, d), i in q_instants.items() if s_ == sym})
+                                 quarantine_instants={d: i for (s_, d), i in q_instants.items() if s_ == sym},
+                                 complete_recorded=tuple(sorted(complete_recorded.get(sym, ()))))
                 for sym, r in rows.items()}
     admitted_statements = sorted(s.statement_id for s in statements if query.admits(s.recorded_at, s.available_at))
     evidence = {"imports": admitted_imports, "statements": admitted_statements, "calendar": cal_ids}
@@ -180,38 +185,63 @@ def provenance(snap, imported, symbol):
     return dstar, sha256_hex(canonical_json(window)), window
 
 
+def _utc(t):
+    return None if t is None else t.astimezone(timezone.utc).isoformat()
+
+
+def _num(v):
+    return None if v is None else str(int(v)) if v == int(v) else str(v)
+
+
+def snapshot_hash(header, rows, factors, moves):
+    """SHA-256 binding a snapshot's header, its rows (by row_hash), factors and move flags (audit of MF-7c third
+    part, M2): a live snapshot, which is not replayed, still proves every stored column. header: (mode, label, cutoff,
+    horizon, d_star, configuration_id, code_version, input_digest, adjustment_set_hash, row_count, imported_inputs);
+    rows: [(symbol, row_hash)]; factors: [(symbol, kind, ex_date, numerator, denominator, status, flags,
+    statement_ids_json)]; moves: [(symbol, session_from, session_to, close_from, close_to, status)]."""
+    mode, label, cutoff, horizon, d_star, cid, code, digest, adj, n, imp = header
+    return sha256_hex(canonical_json({
+        "header": [mode, label, _utc(cutoff), _utc(horizon), _value(d_star), cid, code, digest, adj, n, bool(imp)],
+        "rows": sorted([s, h] for s, h in rows),
+        "factors": sorted([s, k, _value(d), _num(a), _num(b), st, fl, ids] for s, k, d, a, b, st, fl, ids in factors),
+        "moves": sorted([s, _value(f), _value(t), _value(cf), _value(ct), st] for s, f, t, cf, ct, st in moves)}))
+
+
 def write(conn, snap, query, *, configuration_id, code_version, evidence, imported):
     """One transaction as the worker. Returns the snapshot id."""
     input_digest_ = input_digest(query, evidence)
+    rows = []
+    for r in snap.rows:
+        dstar_ids, window_digest, _ids = provenance(snap, imported, r["symbol"])
+        dj = canonical_json(dstar_ids)
+        rows.append((r["security_id"], r["symbol"], r["eligibility"], row_payload(r), r["px_ref"], r["ref_session"],
+                     r["stale_sessions"], r["adj_ref"], r["ref_source_quality"], dj, window_digest,
+                     row_hash(r, dj, window_digest)))
+    factors = [(sym, f.kind, f.ex_date, f.numerator, f.denominator, f.status, "|".join(f.flags),
+                canonical_json(sorted(f.statement_ids))) for sym, fs in sorted(snap.factors.items()) for f in fs]
+    moves = []
+    for sym, ms in sorted(snap.moves.items()):
+        for m in ms:
+            src = imported[sym].rows                       # the two raw closes of the move (design §13.1)
+            moves.append((sym, m.session_from, m.session_to, src[m.session_from]["close"], src[m.session_to]["close"],
+                          MOVE_STATUS[m.state]))
+    header = (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
+              input_digest_, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"]))
+    h = snapshot_hash(header, [(r[1], r[11]) for r in rows], factors, moves)
     with conn.cursor() as cur:
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
-                    "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs) values "
-                    "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
-                    (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
-                     input_digest_, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"])))
+                    "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs, snapshot_hash) "
+                    "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id", header + (h,))
         sid = cur.fetchone()[0]
-        for r in snap.rows:
-            fj = row_payload(r)
-            dstar_ids, window_digest, _ids = provenance(snap, imported, r["symbol"])
-            dj = canonical_json(dstar_ids)
+        for r in rows:
             cur.execute("insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, features_json, "
                         "px_ref, ref_session, stale_sessions, adj_ref, ref_source_quality, dstar_observation_ids, "
-                        "window_digest, row_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (sid, r["security_id"], r["symbol"], r["eligibility"], fj, r["px_ref"], r["ref_session"],
-                         r["stale_sessions"], r["adj_ref"], r["ref_source_quality"], dj, window_digest,
-                         row_hash(r, dj, window_digest)))
-        for sym, fs in sorted(snap.factors.items()):
-            for f in fs:
-                cur.execute("insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, "
-                            "denominator, status, flags, statement_ids) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                            (sid, sym, f.kind, f.ex_date, f.numerator, f.denominator, f.status, "|".join(f.flags),
-                             canonical_json(sorted(f.statement_ids))))
-        for sym, ms in sorted(snap.moves.items()):
-            for m in ms:
-                rows = imported[sym].rows                  # the two raw closes of the move (design §13.1)
-                close_from, close_to = rows[m.session_from]["close"], rows[m.session_to]["close"]
-                cur.execute("insert into mf_snapshot_move_flags (snapshot_id, symbol, session_from, session_to, "
-                            "close_from, close_to, status) values (%s,%s,%s,%s,%s,%s,%s)",
-                            (sid, sym, m.session_from, m.session_to, close_from, close_to, MOVE_STATUS[m.state]))
+                        "window_digest, row_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (sid,) + r)
+        for f in factors:
+            cur.execute("insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, "
+                        "denominator, status, flags, statement_ids) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (sid,) + f)
+        for m in moves:
+            cur.execute("insert into mf_snapshot_move_flags (snapshot_id, symbol, session_from, session_to, "
+                        "close_from, close_to, status) values (%s,%s,%s,%s,%s,%s,%s)", (sid,) + m)
     conn.commit()
     return sid

@@ -96,8 +96,8 @@ def test_x2_every_table_is_append_only_for_every_role_the_owner_included(cluster
         cur.execute("insert into mf_corporate_action_observations (statement_id, symbol, kind, ex_date, terms_json, "
                     "available_at, source_reference) values ('s1','A.N0000','bonus','2020-01-01','{}',now(),'n')")
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, "
-                    "input_digest, adjustment_set_hash, row_count) values ('KNOWN','point_in_time',now(),'2024-01-12',"
-                    "%s,'mf.1',%s,%s,0)", (cid, "c" * 64, "d" * 64))
+                    "input_digest, adjustment_set_hash, row_count, snapshot_hash) values ('KNOWN','point_in_time',now(),'2024-01-12',"
+                    "%s,'mf.1',%s,%s,0,repeat('e',64))", (cid, "c" * 64, "d" * 64))
     for t, col in (("mf_configurations", "status"), ("mf_corporate_action_observations", "kind"),
                    ("mf_snapshots", "code_version")):
         assert refused(o, f"update {t} set {col} = {col}") is not None, t
@@ -170,19 +170,19 @@ def test_x5_calendar_copies_by_the_worker_only_and_snapshots_by_the_worker(clust
         cur.execute("insert into mf_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
                     (cid, js, st))
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, "
-                    "input_digest, adjustment_set_hash, row_count) values ('KNOWN','point_in_time',now(),'2024-01-12',"
-                    "%s,'mf.1',%s,%s,0) returning snapshot_id", (cid, "c" * 64, "d" * 64))
+                    "input_digest, adjustment_set_hash, row_count, snapshot_hash) values ('KNOWN','point_in_time',now(),'2024-01-12',"
+                    "%s,'mf.1',%s,%s,0,repeat('e',64)) returning snapshot_id", (cid, "c" * 64, "d" * 64))
     w.commit()
     assert refused(w, "insert into mf_snapshots (mode, result_label, cutoff, configuration_id, code_version, "
-                      "input_digest, adjustment_set_hash, row_count) values ('KNOWN','reconstructed',now(),%s,'mf.1',"
-                      "%s,%s,0)", (cid, "c" * 64, "d" * 64)) is not None   # the label must match the mode
+                      "input_digest, adjustment_set_hash, row_count, snapshot_hash) values ('KNOWN','reconstructed',now(),%s,'mf.1',"
+                      "%s,%s,0,repeat('e',64))", (cid, "c" * 64, "d" * 64)) is not None   # label must match mode
     w.rollback()
     r = reader(cluster, db)
     with r.cursor() as cur:
         cur.execute("select count(*) from mf_snapshots")
         assert cur.fetchone()[0] == 1
-    assert refused(r, "insert into mf_target_builds (mode, configuration_id, target_definition_version, code_version) "
-                      "values ('KNOWN',%s,'targets.1','mf.1')", (cid,)) is not None
+    assert refused(r, "insert into mf_target_builds (mode, configuration_id, target_definition_version, code_version, build_hash) "
+                      "values ('KNOWN',%s,'targets.1','mf.1',repeat('e',64))", (cid,)) is not None
 
 
 # ------------------------------------------------------------------- added after the MF-7a audit (C-0057)
@@ -255,11 +255,11 @@ def test_x8_each_check_constraint_refuses_a_bad_row(cluster):
         cur.execute("insert into mf_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
                     (cid, js, st))
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, "
-                    "input_digest, adjustment_set_hash, row_count) values ('KNOWN','point_in_time',now(),'2024-01-12',"
-                    "%s,'mf.1',%s,%s,0) returning snapshot_id", (cid, "c" * 64, "d" * 64))
+                    "input_digest, adjustment_set_hash, row_count, snapshot_hash) values ('KNOWN','point_in_time',now(),'2024-01-12',"
+                    "%s,'mf.1',%s,%s,0,repeat('e',64)) returning snapshot_id", (cid, "c" * 64, "d" * 64))
         sid = cur.fetchone()[0]
         cur.execute("insert into mf_target_builds (mode, cutoff, configuration_id, target_definition_version, "
-                    "code_version) values ('KNOWN', now(), %s, 'targets.1', 'mf.1') returning build_id", (cid,))
+                    "code_version, build_hash) values ('KNOWN', now(), %s, 'targets.1', 'mf.1', repeat('e',64)) returning build_id", (cid,))
         bid = cur.fetchone()[0]
     bad = [
         ("mf_target_rows resolved", "insert into mf_target_rows (build_id, reference_snapshot_id, symbol, horizon, state, "

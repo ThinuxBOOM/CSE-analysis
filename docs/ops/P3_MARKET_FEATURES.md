@@ -18,8 +18,8 @@ All through `sudo bash /opt/cse/app/ops/bin/cse-features <command>`. A JSON repo
 | `designate --configuration ID --note TEXT` | **owner** (cse-migrator → cse_owner) | `mf_designations` | **Owner decision:** the canonical configuration from now on. Consumers read the one in force at their instant (ML-15) |
 | `import-tradeiq --archive DIR --work DIR --summary JSON --reconstructed CSV` | **owner** | the import tables | **Owner step (C-0035):** the TradeIQ import in one transaction. The inputs are a local archive checkout and the validation outputs (`scripts/research/tradeiq/run_validation.py`, `run_ca_reconstruct.py`); needs `xlrd` |
 | `calendar-sync` | worker | `mf_calendar_observations` | Copies `trading_calendar`'s `closed` rows as `declared_closed` evidence, available from the sync instant. Idempotent |
-| `snapshot --mode KNOWN\|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID \| --designated)` | worker | the snapshot tables | One snapshot. `KNOWN` refuses a cutoff in the future; `AVAILABLE` takes H = now unless given |
-| `targets ... --reference SNAPSHOT_ID [...]` | worker | `mf_target_builds`, `mf_target_rows` | A target build: labels of the reference snapshots' rows at horizons 1, 5, 10, 21 |
+| `snapshot --mode KNOWN\|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID \| --designated)` | worker | the snapshot tables | One snapshot. A cutoff or horizon in the future is refused; `AVAILABLE` takes H = now unless given. `--designated` reads the designation in force at T (`KNOWN`) or H (`AVAILABLE`) |
+| `targets ... --reference SNAPSHOT_ID [...]` | worker | `mf_target_builds`, `mf_target_rows` | A target build: labels of the reference snapshots' rows at horizons 1, 5, 10, 21. A reference snapshot outside the build's information set is refused (in `KNOWN`: a `KNOWN` snapshot written by T; in `AVAILABLE`: T and H no later than the build's, written by H) |
 | `select --at ISO` | worker | nothing | `KNOWN_RECORDED`: the stored `KNOWN` snapshot under the configuration designated at that instant, written by then, with the latest T (ML-23) |
 | `explain --snapshot ID --symbol S` | worker | nothing | One stored row with its factors and move flags, and the `mf_history_bars` ids behind its D\* bar and windows, re-derived and checked against the stored ids and digest |
 | `verify [--sample N]` | worker | nothing | Re-proves what is stored (§3). Exit 5 on any problem |
@@ -38,6 +38,7 @@ There is no delete, reset or repair command. Every MF table is append-only for e
 
 ## 3. What `verify` proves
 
+- Every snapshot's `snapshot_hash` (its header, row hashes, factors and move flags), so a live snapshot is proved too.
 - Every snapshot row's `row_hash` (which covers its D\* bar ids and window digest) and `security_id`, and the row count.
 - `adjustment_set_hash` from the stored factor list.
 - **Replay** of a snapshot whose governing time (T in `KNOWN`, H in `AVAILABLE`) was settled when it was written,
@@ -45,7 +46,9 @@ There is no delete, reset or repair command. Every MF table is append-only for e
   from the evidence under its stored configuration and compared: D\*, input digest, adjustment set, rows, factors,
   move flags. A live snapshot (written within the margin) is proved from its stored rows only. Use `H` well before
   the build to make a snapshot replayable.
-- Every target row's `row_hash`.
+- Every target row's `row_hash` and every build's `build_hash`.
+- Disagreements: settled labels on which two target builds under one configuration disagree are listed
+  (`target_disagreements`) for the owner; they do not fail `verify` (a later build never replaces an earlier one).
 - Calendar drift: every `calendar-sync` copy whose `trading_calendar` row has since changed or reopened. A copy is
   never repaired; the owner decides what the change means.
 

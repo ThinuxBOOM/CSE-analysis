@@ -3,6 +3,7 @@ One snapshot under a stored configuration: load at (T, mode), build with the con
 command line and `verify` both build through `build()`, so a replay uses exactly the code path of the original.
 """
 from worker.market_features import VERSION
+from worker.market_features.modes import AVAILABLE, KNOWN
 
 from . import configuration as configuration_
 from . import snapshot as sn
@@ -25,6 +26,8 @@ def build(conn, query, cfg):
 
 def snapshot(conn, query, configuration_id, code_version=VERSION):
     """Build and store one snapshot. Returns (snapshot_id, snapshot)."""
+    if query.mode not in (KNOWN, AVAILABLE):
+        raise configuration_.ConfigurationError("a CURRENT result is never stored (research only)")
     with conn.cursor() as cur:
         cfg = configuration_.load(cur, configuration_id)
     conn.rollback()

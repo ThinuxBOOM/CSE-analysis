@@ -56,6 +56,7 @@ class Imported:
     complete: tuple = ()        # ((date_from, date_to), ...)
     quarantined: frozenset = frozenset()
     quarantine_instants: dict = field(default_factory=dict)   # date -> its admission instant (labels' resolved_at)
+    complete_recorded: tuple = ()   # ((date_from, date_to, the batch's recorded_at), ...): labels' resolved_at
 
     @property
     def last_row(self):
