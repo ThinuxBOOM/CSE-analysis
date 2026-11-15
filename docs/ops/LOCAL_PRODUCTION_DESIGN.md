@@ -1,7 +1,7 @@
 # Milestone 10: the local production environment (design)
 
-**Status: DESIGN, revision 3 (2026-11-15). ACCEPTED [delegated] for building LP-1 (C-0072): its audit found no
-Blocker; its five Majors (§12) are fixed before LP-1 is built. Not built. Milestone 10 itself is the owner's acceptance (LP-R5).** Written by the cloud session on the branch
+**Status: DESIGN, revision 4 (2026-11-15). Revision 3 ACCEPTED [delegated] for building LP-1 (C-0072); revision 4
+fixes its audit's five Majors and the Minors that touch them (§12). Not built. Milestone 10 itself is the owner's acceptance (LP-R5).** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no build, no deployment,
 no arming, no capture and no CSE contact. Everything in it that runs, runs on the owner's workstation and waits for
 it.
@@ -153,7 +153,11 @@ never removes the production container outside it):
 2. A fresh dump, verified, and copied out (§6.2).
 3. The outbound network is disconnected. The container is stopped and removed by its exact name.
 4. A new container from the same saved image, on the internal network and the same volumes. LPC-9's ownership check.
-5. Provisioning with the explicit step lists of §3.4. A dump by hand. LPC-1 to LPC-11.
+5. Provisioning with the explicit step lists of §3.4. A dump by hand. LPC-1, LPC-3 to LPC-10, and the **recreate
+   forms** of LPC-2 and LPC-11 (revision 4, MJ-1): the migration ledger identical to before; every arming decision's
+   **current** state disarmed (the history of arm and disarm rows is kept and expected); the contact e-mail allowed;
+   instead of empty tables, LPC-9's row digests identical to those taken at step 2; no synthetic marker. Rehearsed in
+   LP-2 on a copy holding data.
 6. Outbound access again only by a **new** owner record (§5), then re-arming by the owner.
 
 ### 3.4 Provisioning
@@ -212,9 +216,16 @@ authorization.
 **An attachment lives no longer than its authorization, and its scope is enforced (revision 3, M2).**
 - `tick` runs `net-detach` when the authorization's expiry passes, and after any container restart; the next
   attachment needs a new record. The owner sets the expiry (at most 24 hours), so a capture day needs one record.
-- While attached under a `market` authorization, `tick` reads (read-only) whether HB-6 is armed; if it is and no
-  valid `phase2` authorization exists, it detaches at once and alerts. A `phase2` authorization is therefore required
-  before any HB-6 arming reaches CSE.
+  A Docker Desktop restart (§6.3's drift remedy) therefore ends a capture day's attachment and needs a new record
+  mid-window: a stated cost.
+- **`net-attach` refuses a `market` attachment while HB-6 is armed** (revision 4, MJ-3) unless a valid `phase2`
+  authorization also exists. While attached under a `market` authorization, `tick` reads (read-only) whether HB-6 is
+  armed; if it is and no valid `phase2` authorization exists, it detaches at once and alerts.
+- **`tick`'s interval and failure:** while the container is attached, `tick` runs every minute, and also at logon and
+  on resume from sleep; otherwise every 15 minutes. It records each run; a gap of more than two intervals is itself an
+  alert. **Residual window:** between two runs (at most about a minute while attached), an HB-6 arming made under a
+  `market` attachment, or a VPN that has just come up, could reach CSE; that window is recorded in LD-8 and LD-9, and
+  LP-R3 includes "no VPN on the workstation".
 
 **Driver steps and their in-container commands (revision 3, M1)** (exact command lines in the driver, asserted by
 LP-1's tests; anything else is refused):
@@ -230,6 +241,14 @@ LP-1's tests; anything else is refused):
 | `dump` | `cse-ops backup dump` (the recreate's hand dump), nothing else of `cse-ops` |
 | `backup-copy` (also run by `tick`) | Reading (`tar` to stdout) the dump set and new spool files named in the backup ledger |
 | `status` | The read-only `status` subcommands of every wrapper |
+| `volume-check` | `test -e` of `17/main/PG_VERSION` and `17/main/postgresql.conf` on the two PostgreSQL volumes (§3.3) |
+| `tick` (in the container) | The clock flag, `systemctl is-active` of the timers, and the read-only HB-6 and P3 arming `status` |
+| `probes-net` | LPC-8's TCP probe and LPC-12's DNS and rejected-connection probes |
+
+The refusal tests are **derived**, not listed by hand: for each wrapper, every subcommand of its parser outside the
+step lists above is refused (so `sweep`, `run`, `retry`, `reprocess`, `declare-closed`, `requeue`, `resume`,
+`late-pass` and `import-tradeiq` are covered with the arming commands). LPC-6 observes the disarmed wake-ups'
+rows passively, and LPC-7's dump is the `dump` step.
 
 **Inbound.** No port is published (LD-3).
 
@@ -344,10 +363,13 @@ The owner accepted having no off-site backup locally. Separately, the dumps shar
   the session is missed; if it says yes while the virtual machine's clock lags, the gate passes wrongly.
   - LPC-5 therefore requires the flag to be `yes` **inside the container** and the container's time to agree with
     the host's within 2 seconds, and LPC-4 does not tolerate a clock failure (staging's probe did).
-  - **The host clock itself (revision 3, M3):** LPC-5 and `tick` also require Windows to be time-synchronised:
-    `w32tm /query /status` reports a source other than `Local CMOS Clock` or `Free-running System Clock`, a leap
-    indicator other than 3 (not synchronised), and a last successful sync within 24 hours. Otherwise the check fails
-    and `tick` alerts; a wrong host clock no longer passes both other checks.
+  - **The host clock itself (revision 3, M3; revision 4, MJ-4):** LPC-5 and `tick` also require Windows to be
+    time-synchronised, measured without parsing localized text and without elevation: the offset of the host clock
+    from a configured time server, read with `w32tm /stripchart /computer:<server> /samples:1 /dataonly` (its output
+    is a time and a numeric offset), must be within 2 seconds; and the time service's configured poll interval
+    (`SpecialPollInterval`, read from the registry) must be at most the value the owner sets under LP-R3 (verified at
+    LP-2). The "last successful sync within 24 hours" test of revision 3 is dropped: on a non-domain install the poll
+    interval can be a week, and it would fail routinely. Stub tests with recorded outputs cover both readings.
   - Sleep and resume are rehearsed in LP-2, to see what the flag and the clock actually do on this machine.
   - The container cannot set the clock. The remedy for drift is on the host (restarting Docker Desktop
     resynchronises the virtual machine and restarts the container), and it is the owner's action. A Docker Desktop
@@ -385,11 +407,12 @@ workstation that simply ends there.
 | LD-5 | Packages come with the accepted image, not from `provision.sh packages` (staging D-05) | Exactly what staging validated |
 | LD-6 | Free space is read from Docker's virtual disk; `fsync` reaches a virtual disk on NTFS; host power loss untested (staging D-06, D-10) | §6.1 |
 | LD-7 | No off-site backup (owner decision, accepted risk) | A lost workstation means redoing the backfill |
-| LD-8 | Outbound restriction is a packet filter inside the container with one extra capability, or none (LP-R4) | §5 |
+| LD-8 | Outbound restriction is a packet filter inside the container with one extra capability, or none (LP-R4); `tick`'s enforcement (expiry, scope, VPN) acts within its interval, leaving a window of about a minute while attached (revision 4, MJ-3) | §5 |
 | LD-9 | The host is a workstation that sleeps, restarts and needs a signed-in user. Ends at milestone 14 | Missed sessions are possible (§6.3) |
 | LD-10 | Every service and verification runs inside the one container, so peer authentication never crosses a container boundary | Same as the target in effect |
-| LD-11 | Operator identity of owner decisions comes from `SUDO_USER` set by the owner himself in an interactive `docker exec` shell ("<owner> via docker exec"), not from `sudo`; the driver records no owner decision | §3.4, §5 |
+| LD-11 | Operator identity of owner decisions comes from `SUDO_USER` set by the owner himself in an interactive `docker exec` shell ("<owner> via docker exec"), not from `sudo`. **A procedural control, not an enforced one** (revision 4, MJ-2): anyone with `docker exec` can type that string. It rests on C-0004 and on these: the orchestrator's tool permissions on the workstation exclude `docker exec`, `docker run` and `docker cp` against `cse-prod-*` objects except through the driver; the owner writes `capture.env` himself; and `status` and `tick` list, for the owner's review, every new owner-path row (arming, disarming, acknowledgement, hold resolution, designation) and every operator-kind capture run, with its recorded operator | §3.4, §5 |
 | LD-12 | Windows, Docker Desktop and WSL update the kernel and engine under the accepted environment | `tick` records their versions; a change is reported |
+| LD-14 | Restore testing is off in LP until LP-R7 (the R1 gate closed); MA §49's "restore testing" is not met meanwhile (revision 4, MJ-5) | LP-R7 is due before the first arming that grows data |
 | LD-13 | Harness additions around the product: the driver, `tick`, a journal size limit, staging's R1-gate drop-in and the restore-check timer's disabling, the filter unit if kept | §1, §3.3 |
 
 Staging's D-07 (the off-site test destination), D-09 (simulated downtime) and D-11 (no designation) do not apply.
@@ -466,11 +489,11 @@ LP-5 and LP-6 are named so the order is clear. This design does not authorize th
 |---|---|---|
 | LP-R1 | Disk: more room, or a P1 change control permitting local dump pruning; a retention rule for the off-drive copies (with HB-Q9) | The first arming that grows data; LP-3 if possible |
 | LP-R2 | Which physical drive receives the copies; that it is encrypted, or a recorded acceptance in G-1 of plaintext local copies | LP-3 |
-| LP-R3 | Keeping the workstation on, signed in and awake through capture windows; the update policies; who is alerted and how | The first capture |
+| LP-R3 | Keeping the workstation on, signed in and awake through capture windows; the update policies; who is alerted and how; **no VPN on the workstation**; the Windows time-service poll interval (revision 4, MJ-3, MJ-4) | The first capture; the poll interval verified at LP-2 |
 | LP-R4 | The outbound filter: keep it and accept the missed-session risk, or run without it as a recorded difference | LP-5, on LP-2's evidence |
 | LP-R5 | Authorization of each of LP-2, LP-3 and LP-4, of any recreate, and acceptance of milestone 10 | Each step |
 | LP-R6 | Everything that permits CSE contact: HB-X2(a) and (b), the contact e-mail, each network authorization, every arming | Milestone 11 |
-| LP-R7 | Whether P1's weekly restore check runs in LP (lifting the R1 gate), after staging's ST-30 has shown it working; if not, the owner's recorded acceptance of the gap against MA §49 | Before the HB-S3 pilot (milestone 12) (revision 3, M6) |
+| LP-R7 | Whether P1's weekly restore check runs in LP (lifting the R1 gate), after staging's ST-30 has shown it working; if not, the owner's recorded acceptance of the gap against MA §49 | **Before the first arming that grows data** (the same point as LP-R1; revision 4, MJ-5): P3 capture creates data that cannot be re-captured |
 
 ---
 
@@ -564,3 +587,11 @@ to be fixed before LP-1 is built:
 | MJ-4 | The Windows clock rule may fail routinely and needs elevation | The poll interval an owner setting (LP-R3) verified at LP-2; `tick` elevated or a registry/offset alternative; locale-independent parsing; stub tests |
 | MJ-5 | Restore testing off through milestone 11 with no recorded acceptance | LP-R7 due before the first arming that grows data; an LD row "restore testing off until LP-R7" |
 | — | Minors 1-14 (spool delta, missing closed-list commands, read-only wording, derived refusal tests, disk-floor exemptions, LP-R4 before LP-3, restart cost, rehearsal authorization, owner check record, Docker proxy detection, sync clients named, the 0019 wording, copy retention under G-1 §6, wording) | Fixed with the Majors |
+
+**Revision 4 (2026-11-15)** fixes MJ-1 (§3.3 step 5's recreate forms), MJ-2 (LD-11 as a procedural control with the
+orchestrator's permissions and the owner-path review list), MJ-3 (`net-attach`'s HB-6 refusal; `tick`'s interval,
+missed-run alert and residual window; no VPN under LP-R3), MJ-4 (the clock measured by offset and poll interval,
+without localized parsing or elevation) and MJ-5 (LP-R7 before the first arming that grows data; LD-14), and Minors
+2, 4, 3 and 7 (the closed lists, derived refusal tests, passive LPC-6 and LPC-7's step, the restart cost). The other
+Minors stay carried to LP-1. Revision 4 changes no accepted rule, so it needs no new audit to build LP-1; LP-1's own
+audit reviews it.
