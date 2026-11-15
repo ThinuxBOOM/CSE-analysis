@@ -48,9 +48,12 @@ class OwnerPathRequired(RuntimeError):
 
 
 def _instant(text):
-    t = datetime.fromisoformat(text)
+    try:
+        t = datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
     if t.tzinfo is None:
-        raise SystemExit(f"an instant needs a time zone: {text!r}")
+        raise argparse.ArgumentTypeError(f"an instant needs a time zone: {text!r}")
     return t
 
 
@@ -187,10 +190,6 @@ def run(args, connect):
     except psycopg2.OperationalError as exc:
         _print({"state": "unavailable", "error": str(exc).strip()[:300]})
         return EXIT_DATABASE_UNAVAILABLE
-    except psycopg2.Error as exc:                      # a constraint or guard refused it: nothing was written
-        conn.rollback()
-        _print({"state": "refused", "reason": f"{type(exc).__name__}: {str(exc).strip()[:300]}"})
-        return EXIT_REFUSED
     try:
         if args.command == "designate":
             _print({"state": "designated", "id": designate(conn, args.configuration, args.note,

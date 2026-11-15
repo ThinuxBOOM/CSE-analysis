@@ -724,8 +724,8 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 
 ## MF-7c (third part): the commands
 
-**Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers), fixed (C-0065);
-re-audit pending.** MF-7's remaining pieces (design §13.2): the
+**Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers, fixed, C-0065) and by
+its re-audit (one Blocker, fixed, C-0066); second re-audit pending.** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 
@@ -788,4 +788,18 @@ At `e76c493`. Guard logs empty. **REJECT** (three Blockers, all look-aheads, eac
 | — | Minor | Database errors exited 1; `CURRENT` refused only by argparse | **Fixed:** exit 5; `jobs.snapshot` and `targets_store.build` refuse `CURRENT` |
 | — | Minor | `VERSION` unchanged since MF-1 | **Bumped** to `mf.2` |
 | — | Minors | The settled margin measured from the write, not the load (false alarms only); `eligibility_policy.version` not pinned (a label of the policy's own fields, which are all pinned by the round trip); unlabelled reference rows reported, not stored; a build not checked against its reference's configuration; no lock on `calendar-sync` (duplicate copies possible, harmless); drift fails `verify` until the owner acts; the 18:00 / end-of-day text conflict | **Carried** |
+
+## Re-audit of MF-7c third part: fresh-context agent
+
+At `87b60e2`. Guard logs empty. B1-B3 and the hash, disagreement and horizon Majors confirmed fixed. **REJECT**
+(one Blocker). The auditor's contract test: every label rebuilt at T = its own `resolved_at` must come out the same;
+99 of 2 168 differed.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| N-B1 | Blocker | A batch's quarantines, ranges and calendar row enter only with the batch's first admitted row, but their instants ignored that (AVAILABLE: the quarantined day itself, opened by C-0065's Minor fix; KNOWN: `recorded_at`, while a row dated after T's day is refused) | **Fixed.** Every batch-derived instant is at least the batch's admission instant (its first admitted row's); a KNOWN row's instant is the later of `recorded_at` and the end of its day (`store.row_instant`). `test_a1`, `test_a6`, and the contract tests `test_p8` (AVAILABLE) and `test_p9` (KNOWN, four variants) |
+| M-a | Major | Untested `resolved_at` inputs and hash fields; KNOWN_RECORDED tie-break | **Tested.** The contract tests make each input the binding one in turn (calendar evidence enters every label whole, so each variant orders the evidence); targeted mutants: 20 of 21 killed. The survivor, the range calendar row's own date instant, is equivalent: the calendar admits each date of a range only from the end of that date |
+| M-b | Major | `recorded_at`, `created_by`, `pending_sessions` and `company_id` (snapshots), `recorded_at` and `created_by` (target builds) outside the hashes | **Fixed.** Read inside the writing transaction (`now()`, `session_user`, which the column defaults take) and bound into `snapshot_hash` and `build_hash`. `test_p3` (19 tamper cases) |
+| — | Minors | `conn` unbound in an error path; an instant without a time zone exited 1 | **Fixed** (a usage error, exit 2) |
+| — | Minors | `--designated` at H in AVAILABLE (the design's ML-15 says "at T"); `admissible_reference` stricter than necessary for an AVAILABLE reference in a KNOWN build; `verify --sample` compares disagreements within the sample; `pending_sessions` never written; a live snapshot's configuration JSON not re-hashed | **Carried** (the first is the stated choice: the knowledge instant) |
 

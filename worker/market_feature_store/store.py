@@ -11,8 +11,10 @@ Captured (P2) evidence is not read yet: no capture era exists in this build (MF-
 """
 import collections
 import json
-from datetime import date, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from decimal import Decimal
+from typing import Optional
 
 from worker.market_features import actions, calendar
 from worker.market_features.modes import AVAILABLE, KNOWN
@@ -55,6 +57,21 @@ def merge(candidates):
     return out
 
 
+def row_instant(query, recorded_at, d):
+    """The instant an imported row (or evidence dated d) enters the query: the end of its Colombo day in AVAILABLE;
+    in KNOWN the later of its batch's recorded_at and the end of its day, since a row dated after T's day is never
+    admitted (audit of MF-7c third part, re-audit N-B1)."""
+    end = hb.available_at(d)
+    return end if query.mode == AVAILABLE else max(recorded_at, end)
+
+
+@dataclass(frozen=True)
+class AdmittedCalendarObservation(calendar.CalendarObservation):
+    """A calendar observation with the instant the loader admitted it: for an import range, its batch's admission
+    instant (the batch enters with its first admitted row). Labels' resolved_at reads it."""
+    admitted_at: Optional[datetime] = None
+
+
 def admission_instant(query, recorded_at, available_at):
     """The instant a piece of evidence enters the query's information set: recorded_at in KNOWN and CURRENT,
     available_at in AVAILABLE (whose recorded_at <= H holds for everything admitted). Labels' resolved_at reads it."""
@@ -84,33 +101,37 @@ def load(conn, query):
         complete = collections.defaultdict(list)
         complete_recorded = collections.defaultdict(list)
         batch_dates = collections.defaultdict(set)
+        batch_instant = {}
         admitted_imports = []
         for imp, recorded, cal_from, cal_to, sha in imports:
             cur.execute("select symbol, trade_date, close, high, low, open_price, trades, shares, turnover, flags, id "
                         "from mf_history_bars where import_id = %s order by symbol, trade_date, id", (imp,))
-            n = 0
+            n, instants = 0, []
             for sym, d, close, high, low, opn, trades, shares, turnover, flags, bar_id in cur.fetchall():
                 if not _row_admitted(query, recorded, d):
                     continue
                 n += 1
+                instants.append(row_instant(query, recorded, d))
                 batch_dates[imp].add(d)
                 candidates[(sym, d)].append({"close": close, "high": high, "low": low, "open_price": opn,
                                              "trades": trades, "shares": shares, "turnover": turnover,
                                              "flags": flags, "ids": (bar_id,),
-                                             "instant": admission_instant(query, recorded, hb.available_at(d))})
+                                             "instant": instants[-1]})
             if not n:
                 continue
+            # the batch, and with it its quarantines, ranges and calendar row, enters with its first admitted row
+            batch_instant[imp] = min(instants)
             admitted_imports.append((imp, sha, n))
             cur.execute("select symbol, trade_date from mf_history_quarantine where import_id = %s", (imp,))
             for sym, d in cur.fetchall():
                 quarantined[sym].add(d)
-                inst = admission_instant(query, recorded, hb.available_at(d))
+                inst = max(row_instant(query, recorded, d), batch_instant[imp])
                 q_instants[(sym, d)] = max(q_instants.get((sym, d), inst), inst)
             cur.execute("select symbol, date_from, date_to from mf_history_security_complete where import_id = %s",
                         (imp,))
             for sym, lo, hi in cur.fetchall():
                 complete[sym].append((lo, hi))
-                complete_recorded[sym].append((lo, hi, recorded))
+                complete_recorded[sym].append((lo, hi, batch_instant[imp]))
         cur.execute("select id, kind, date_from, date_to, available_at, source_reference, import_id, recorded_at "
                     "from mf_calendar_observations order by id")
         cal_obs, cal_ids = [], []
@@ -122,8 +143,10 @@ def load(conn, query):
             if imp is None and not query.admits(recorded, avail):
                 continue
             cal_ids.append(oid)
-            cal_obs.append(calendar.CalendarObservation(kind, lo, hi, recorded, avail, ref,
-                                                        frozenset(batch_dates[imp]) if imp else frozenset()))
+            cal_obs.append(AdmittedCalendarObservation(
+                kind, lo, hi, recorded, avail, ref, frozenset(batch_dates[imp]) if imp else frozenset(),
+                admitted_at=max(batch_instant[imp], recorded if query.mode != AVAILABLE else batch_instant[imp])
+                if imp else None))
         cur.execute("select statement_id, symbol, kind, ex_date, terms_json, supersedes, available_at, "
                     "source_reference, recorded_at from mf_corporate_action_observations order by statement_id")
         statements = [_statement(r) for r in cur.fetchall()]
@@ -193,16 +216,18 @@ def _num(v):
     return None if v is None else str(int(v)) if v == int(v) else str(v)
 
 
-def snapshot_hash(header, rows, factors, moves):
+def snapshot_hash(header, rows, factors, moves, written=None):
     """SHA-256 binding a snapshot's header, its rows (by row_hash), factors and move flags (audit of MF-7c third
     part, M2): a live snapshot, which is not replayed, still proves every stored column. header: (mode, label, cutoff,
     horizon, d_star, configuration_id, code_version, input_digest, adjustment_set_hash, row_count, imported_inputs);
     rows: [(symbol, row_hash)]; factors: [(symbol, kind, ex_date, numerator, denominator, status, flags,
     statement_ids_json)]; moves: [(symbol, session_from, session_to, close_from, close_to, status)]."""
     mode, label, cutoff, horizon, d_star, cid, code, digest, adj, n, imp = header
+    recorded, by, pending = written or (None, None, "[]")
     return sha256_hex(canonical_json({
         "header": [mode, label, _utc(cutoff), _utc(horizon), _value(d_star), cid, code, digest, adj, n, bool(imp)],
-        "rows": sorted([s, h] for s, h in rows),
+        "written": [_utc(recorded), by, pending],          # recorded_at, created_by, pending_sessions (re-audit M-b)
+        "rows": sorted([s, h, _value(c)] for s, h, c in rows),         # symbol, row_hash, company_id
         "factors": sorted([s, k, _value(d), _num(a), _num(b), st, fl, ids] for s, k, d, a, b, st, fl, ids in factors),
         "moves": sorted([s, _value(f), _value(t), _value(cf), _value(ct), st] for s, f, t, cf, ct, st in moves)}))
 
@@ -227,8 +252,10 @@ def write(conn, snap, query, *, configuration_id, code_version, evidence, import
                           MOVE_STATUS[m.state]))
     header = (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
               input_digest_, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"]))
-    h = snapshot_hash(header, [(r[1], r[11]) for r in rows], factors, moves)
     with conn.cursor() as cur:
+        cur.execute("select now(), session_user")             # the column defaults of this transaction's inserts
+        recorded, by = cur.fetchone()
+        h = snapshot_hash(header, [(r[1], r[11], None) for r in rows], factors, moves, (recorded, by, "[]"))
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
                     "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs, snapshot_hash) "
                     "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id", header + (h,))

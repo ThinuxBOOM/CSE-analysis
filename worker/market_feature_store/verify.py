@@ -33,7 +33,7 @@ def _int(v):
 
 def _stored(cur, sid):
     cur.execute("select symbol, security_id, eligibility, features_json, px_ref, ref_session, stale_sessions, adj_ref, "
-                "ref_source_quality, dstar_observation_ids, window_digest, row_hash from mf_snapshot_rows where snapshot_id = %s order by symbol", (sid,))
+                "ref_source_quality, dstar_observation_ids, window_digest, row_hash, company_id from mf_snapshot_rows where snapshot_id = %s order by symbol", (sid,))
     rows = cur.fetchall()
     cur.execute("select symbol, kind, ex_date, numerator, denominator, status, flags, statement_ids "
                 "from mf_snapshot_factors where snapshot_id = %s order by symbol, ex_date, kind", (sid,))
@@ -55,7 +55,7 @@ def _factor_rows(factors):
 
 def snapshot_report(conn, header, margin=MARGIN):
     (sid, mode, cutoff, horizon, d_star, cid, digest, adj_hash, row_count, recorded, label, code, imp_inputs,
-     stored_hash) = header
+     stored_hash, created_by, pending) = header
     problems = []
     with conn.cursor() as cur:
         rows, factors, moves, raw_factors = _stored(cur, sid)
@@ -63,11 +63,12 @@ def snapshot_report(conn, header, margin=MARGIN):
         cfg_json = cur.fetchone()[0]
     conn.rollback()
     if store.snapshot_hash((mode, label, cutoff, horizon, d_star, cid, code, digest, adj_hash, row_count, imp_inputs),
-                           [(r[0], r[11]) for r in rows], raw_factors, moves) != stored_hash:
+                           [(r[0], r[11], r[12]) for r in rows], raw_factors, moves,
+                           (recorded, created_by, pending)) != stored_hash:
         problems.append("snapshot_hash does not match the stored header, rows, factors and move flags")
     if len(rows) != row_count:
         problems.append(f"row_count {row_count} but {len(rows)} rows stored")
-    for sym, sec, el, fj, px, rs, stale, adj, rsq, dj, wd, h in rows:
+    for sym, sec, el, fj, px, rs, stale, adj, rsq, dj, wd, h, _company in rows:
         if sec != canonical.security_id(sym):
             problems.append(f"{sym}: security_id is not the key of its symbol")
         if sha256_hex(canonical_json(store.row_body(sym, el, fj, px, rs, stale, adj, rsq, dj, wd))) != h:
@@ -118,8 +119,8 @@ def target_report(conn, build_id):
     problems, labels = [], {}
     with conn.cursor() as cur:
         cur.execute("select mode, cutoff, knowledge_horizon, configuration_id, target_definition_version, code_version, "
-                    "build_hash from mf_target_builds where build_id = %s", (build_id,))
-        *header, stored = cur.fetchone()
+                    "build_hash, recorded_at, created_by from mf_target_builds where build_id = %s", (build_id,))
+        *header, stored, recorded, created_by = cur.fetchone()
         cur.execute("select reference_snapshot_id, symbol, horizon, state, values_json, resolved_at, adjustment_set, "
                     "row_hash from mf_target_rows where build_id = %s", (build_id,))
         rows = cur.fetchall()
@@ -130,7 +131,8 @@ def target_report(conn, build_id):
         if state != "pending":
             v = json.loads(vj)
             labels[(ref, sym, h)] = (state, v.get("ret"), v.get("volatility"), v.get("volatility_state"))
-    if targets_store.build_hash(tuple(header), [(r[0], r[1], r[2], r[7]) for r in rows]) != stored:
+    if targets_store.build_hash(tuple(header), [(r[0], r[1], r[2], r[7]) for r in rows],
+                                (recorded, created_by)) != stored:
         problems.append("build_hash does not match the stored header and rows")
     return {"build_id": build_id, "configuration_id": header[3], "problems": problems}, labels
 
@@ -156,7 +158,7 @@ def verify(conn, sample=None, margin=MARGIN):
     with conn.cursor() as cur:
         cur.execute("select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, input_digest, "
                     "adjustment_set_hash, row_count, recorded_at, result_label, code_version, imported_inputs, "
-                    "snapshot_hash from mf_snapshots order by snapshot_id desc"
+                    "snapshot_hash, created_by, pending_sessions from mf_snapshots order by snapshot_id desc"
                     + (" limit %s" % int(sample) if sample else ""))
         headers = cur.fetchall()
         cur.execute("select build_id from mf_target_builds order by build_id desc"

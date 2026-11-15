@@ -6,8 +6,10 @@ A target build is a query (mode, T, H) under a configuration. It loads and build
 snapshot does, and labels every row of each reference snapshot at each horizon (1, 5, 10, 21) with `targets.label`.
 The label reads P_D and s_D from the STORED reference row (never recomputed), and the build's own view after D.
 
-Admission instants (for `resolved_at`, conservative by construction): an imported row enters at its batch's
-recorded_at in KNOWN and CURRENT and at the end of its own Colombo day in AVAILABLE (`store.admission_instant`).
+Admission instants (for `resolved_at`, conservative by construction): an imported row enters at the end of its own
+Colombo day in AVAILABLE, and at the later of its batch's recorded_at and that instant in KNOWN (`store.row_instant`).
+A batch enters with its first admitted row; its quarantines, ranges and calendar row never take an earlier instant
+than that (re-audit N-B1).
   - session finality: the latest instant of any admitted row on that date;
   - the security's own bar: its row's instant; a quarantine's instant; a no-trade bar (a `security_complete` range,
     clipped at the last admitted row) rests on the security's NEXT admitted row, so it takes that row's instant;
@@ -49,11 +51,14 @@ def row_hash(reference_snapshot_id, symbol, horizon, state, values, resolved_at,
                                       adjustment_set]))
 
 
-def build_hash(header, rows):
-    """SHA-256 binding a target build's header and its rows (reference snapshot, symbol, horizon, row_hash)."""
+def build_hash(header, rows, written=None):
+    """SHA-256 binding a target build's header, its recorded_at and created_by, and its rows (reference snapshot,
+    symbol, horizon, row_hash)."""
     mode, cutoff, horizon, cid, version, code = header
+    recorded, by = written or (None, None)
     utc = lambda t: None if t is None else t.astimezone(timezone.utc).isoformat()  # noqa: E731
     return sha256_hex(canonical_json({"header": [mode, utc(cutoff), utc(horizon), cid, version, code],
+                                      "written": [utc(recorded), by],
                                       "rows": sorted([a, b, c, d] for a, b, c, d in rows)}))
 
 
@@ -80,9 +85,9 @@ def session_instants(symbol, imported, sessions, finality, query):
             k = bisect.bisect_right(dates, s)
             ranges = [rec for lo, hi, rec in imp.complete_recorded if lo <= s <= hi]
             if k < len(dates) and any(lo <= s <= hi for lo, hi in imp.complete):
-                # the row that closes the clipped range AND every batch whose range makes the bar (audit B1)
-                own = max([imp.rows[dates[k]].get("instant")]
-                          + [store.admission_instant(query, rec, hb.available_at(s)) for rec in ranges])
+                # the row that closes the clipped range AND every batch whose range makes the bar (audit B1), each
+                # at its batch's admission instant (re-audit N-B1), and never before the end of the day itself
+                own = max([imp.rows[dates[k]].get("instant"), hb.available_at(s)] + ranges)
         vals = [x for x in (finality.get(s), own) if x is not None]
         if vals:
             out[s] = max(vals)
@@ -95,7 +100,9 @@ def calendar_instant(query, cal_obs, d_star):
         if o.kind == "import_calendar_complete":
             last = min(o.date_to, d_star)
             if last >= o.date_from:
-                vals.append(store.admission_instant(query, o.recorded_at, hb.available_at(last)))
+                vals.append(store.row_instant(query, o.recorded_at, last))
+                if getattr(o, "admitted_at", None) is not None:
+                    vals.append(o.admitted_at)                   # its batch's admission (re-audit N-B1)
         elif query.admits(o.recorded_at, o.available_at):
             vals.append(store.admission_instant(query, o.recorded_at, o.available_at))
     return max(vals) if vals else None
@@ -192,8 +199,9 @@ def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VE
                      row_hash(sid, lab.symbol, lab.horizon, lab.state, vj, lab.resolved_at, adj)))
     header = (query.mode, query.cutoff, query.horizon, configuration_id, targets.TARGET_DEFINITION_VERSION,
               code_version)
-    bh = build_hash(header, [(r[0], r[1], r[2], r[7]) for r in rows])
     with conn.cursor() as cur:
+        cur.execute("select now(), session_user")             # the column defaults of this transaction's inserts
+        bh = build_hash(header, [(r[0], r[1], r[2], r[7]) for r in rows], cur.fetchone())
         cur.execute("insert into mf_target_builds (mode, cutoff, knowledge_horizon, configuration_id, "
                     "target_definition_version, code_version, build_hash) values (%s,%s,%s,%s,%s,%s,%s) "
                     "returning build_id", header + (bh,))

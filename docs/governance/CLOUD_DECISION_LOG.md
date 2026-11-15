@@ -687,3 +687,11 @@ query's knowledge instant. Its Majors are fixed: header hashes for snapshots and
 pending migration 0019), disagreeing builds reported, a future horizon refused, and tests that kill each targeted
 mutant. Re-audit pending.
 
+## C-0066: the MF-7c third part re-audit and its fix ([delegated], 2026-11-15)
+
+The re-audit confirmed the first audit's fixes and found one more look-ahead: evidence a batch carries (quarantines,
+ranges, its calendar row) took instants earlier than the batch's own admission. Fixed by the conservative rule: no
+batch-derived instant precedes the batch's first admitted row, and a KNOWN row's instant is never before the end of
+its day. The hashes now also bind each result's recorded_at, writer and remaining columns. Contract tests rebuild
+every label at its own resolved_at and require the same result. Second re-audit pending.
+
