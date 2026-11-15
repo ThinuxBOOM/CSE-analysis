@@ -9,13 +9,13 @@ from . import snapshot as sn
 from . import store
 
 
-def build_all(conn, query, cfg):
+def build_all(conn, query, cfg, keep_series=False):
     """(snapshot, imported, evidence, statements, calendar observations) from one load."""
     imported, statements, cal_obs, evidence = store.load(conn, query)
     if not imported:
         raise configuration_.ConfigurationError("no admitted imported rows at this query")
     snap = sn.build(imported, statements, query, calendar_observations=cal_obs, threshold=cfg.detector_threshold,
-                    policy=cfg.policy, config=cfg.feature_config)
+                    policy=cfg.policy, config=cfg.feature_config, keep_series=keep_series)
     return snap, imported, evidence, statements, cal_obs
 
 

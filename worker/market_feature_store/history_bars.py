@@ -57,13 +57,23 @@ class Imported:
     quarantined: frozenset = frozenset()
     quarantine_instants: dict = field(default_factory=dict)   # date -> its admission instant (labels' resolved_at)
 
+    @property
+    def last_row(self):
+        """The security's last admitted row date (computed once; bar_on reads it for every session)."""
+        try:
+            return self.__dict__["_last_row"]
+        except KeyError:
+            v = max(self.rows) if self.rows else None
+            object.__setattr__(self, "_last_row", v)
+            return v
+
 
 def bar_on(symbol, imp: Imported, session: date) -> Optional[FeatureBar]:
     if session in imp.quarantined:          # a quarantine wins over a row another batch holds (C-0063)
         return _bar(symbol, 5, None, None, True, "missing", ("quarantined",))
     if session in imp.rows:
         return from_row(symbol, imp.rows[session])
-    last_row = max(imp.rows) if imp.rows else None
+    last_row = imp.last_row
     # a complete range never reaches past the security's last admitted row: the stored range may end at a row the
     # query has not admitted, and reading it would extend membership with evidence from after T (audit, Major 6)
     if last_row is not None and session <= last_row and any(lo <= session <= hi for lo, hi in imp.complete):

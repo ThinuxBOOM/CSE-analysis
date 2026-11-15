@@ -32,7 +32,7 @@ class Snapshot:
 
 
 def build(imported_by_symbol, statements, query, *, calendar_observations=(), threshold=Fraction(1, 4),
-          policy=universe.EligibilityPolicy(), config=features.FeatureConfig()):
+          policy=universe.EligibilityPolicy(), config=features.FeatureConfig(), keep_series=False):
     finals = hb.final_sessions(imported_by_symbol)
     seq = calendar.session_sequence(final_dates=finals, non_final_dates=[], query=query,
                                     calendar_observations=calendar_observations)
@@ -71,5 +71,7 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
                           "px_ref": ref.px_ref, "ref_session": ref.ref_session, "stale_sessions": ref.stale_sessions,
                           "adj_ref": adj_ref, "ref_source_quality": ref.source_quality})
     snap.adjustment_set_hash = actions.adjustment_set_hash(snap.factors)
-    snap.series, snap.references, snap.sequence = series_by, refs_by, seq
+    snap.sequence = seq
+    if keep_series:            # a target build reads them; a snapshot does not keep them (memory: every bar)
+        snap.series, snap.references = series_by, refs_by
     return snap

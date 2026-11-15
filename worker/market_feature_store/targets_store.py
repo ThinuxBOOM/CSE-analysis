@@ -141,7 +141,7 @@ def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VE
         cfg = configuration_.load(cur, configuration_id)
         refs = {sid: reference_rows(cur, sid) for sid in reference_snapshot_ids}
     conn.rollback()
-    snap, imported, _ev, statements, cal_obs = jobs.build_all(conn, query, cfg)
+    snap, imported, _ev, statements, cal_obs = jobs.build_all(conn, query, cfg, keep_series=True)
     labelled, skipped = labels(snap, imported, statements, cal_obs, query, refs, cfg.target_policy)
     with conn.cursor() as cur:
         cur.execute("insert into mf_target_builds (mode, cutoff, knowledge_horizon, configuration_id, "
