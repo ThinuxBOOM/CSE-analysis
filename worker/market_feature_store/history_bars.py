@@ -11,7 +11,7 @@ For a `row_absent` batch (the TradeIQ declaration):
   no row otherwise                     not a member that day (None)
 An imported date is a final session when an admitted raw-basis batch has a traded bar for it (§14).
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
@@ -55,6 +55,7 @@ class Imported:
     rows: dict                  # date -> row dict (one row per date; a date with several disagreeing rows is quarantined)
     complete: tuple = ()        # ((date_from, date_to), ...)
     quarantined: frozenset = frozenset()
+    quarantine_instants: dict = field(default_factory=dict)   # date -> its admission instant (labels' resolved_at)
 
 
 def bar_on(symbol, imp: Imported, session: date) -> Optional[FeatureBar]:

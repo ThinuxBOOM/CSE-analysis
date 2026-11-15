@@ -722,3 +722,34 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 | — | Minor | "One observation per year" against merged years | **Wording fixed** (§14, C-0062) |
 | — | Minors | The F12 rows (AAIC 2009) safe by evidence only; the SAMP sheet overlapping SAMP.N0000 in 2001 without links applied; the F1 filter reads prices after T (C-0062); per-row `window_digest`, `company_id`; one action available after its ex-date (later than the truth) | **Carried** |
 
+## MF-7c (third part): the commands
+
+**Status: implemented and tested (2026-11-15); audit pending.** MF-7's remaining pieces (design §13.2): the
+configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
+command line, the wrapper and the runbook.
+
+| File | Content |
+|---|---|
+| `worker/market_feature_store/configuration.py` | The content-addressed configuration: every build parameter and every rule version, as canonical JSON; `parse` refuses a configuration whose rule versions differ from this code's |
+| `worker/market_feature_store/jobs.py` | Load, build and write one snapshot under a stored configuration (the one path the CLI, `verify` and target builds use) |
+| `worker/market_feature_store/calendar_sync.py` | Copies `trading_calendar`'s closures, available from the sync instant (its `established_at` is mutable, recorded but not trusted); the drift check. The only MF code naming `trading_calendar` |
+| `worker/market_feature_store/preflight.py` | The worker role's privileges and every 0019 trigger, before each writing command |
+| `worker/market_feature_store/selection.py` | The designation in force at an instant (ML-15); `KNOWN_RECORDED` (ML-23) |
+| `worker/market_feature_store/verify.py` | Row hashes, the adjustment set, a replay of snapshots whose governing time was settled when written (F8's rule with a 15-minute margin), target row hashes, calendar drift (ML-13) |
+| `worker/market_feature_store/explain.py` | One row with its factors and moves; the bar ids behind its D\* bar and windows re-derived and checked |
+| `worker/market_feature_store/targets_store.py` | A target build: `targets.label` on every row of the reference snapshots, with admission instants derived mode by mode (module docstring) |
+| `worker/market_feature_store/store.py` | Rows now carry their bar ids and admission instants; `dstar_observation_ids` and a per-row `window_digest` are stored and covered by `row_hash` |
+| `worker/market_feature_store/cli.py`, `ops/bin/cse-features`, `docs/ops/P3_MARKET_FEATURES.md` | The command line (owner steps through cse-migrator), the wrapper and the runbook |
+| `tests/test_mf7_ops_postgres.py`, `tests/test_mf7_ops_static.py` | Each command end to end, the tamper checks, the role rules; the read and network rules, the wrapper |
+
+Choices for the audit:
+- A `calendar-sync` copy is available from the sync instant, never from `established_at` (later than the truth).
+- A snapshot is replayed only if its governing time lay 15 minutes or more before it was written; otherwise only its
+  stored rows are proved (F8: a live result is reproduced from its stored inputs).
+- `window_digest` covers the ids of every admitted row of the security at a session of the snapshot (every window
+  reads within them).
+- In a target build, a no-trade bar takes the instant of the security's next row (the row that closes the clipped
+  range); calendar evidence enters `extra_instants` whole (audit 8's rule), an import range at the latest date the
+  build admits.
+- `CURRENT` results are never stored.
+

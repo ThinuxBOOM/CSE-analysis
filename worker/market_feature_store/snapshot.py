@@ -26,6 +26,9 @@ class Snapshot:
     moves: dict = field(default_factory=dict)           # symbol -> [Move]
     adjustment_set_hash: str = ""
     market: dict = field(default_factory=dict)          # the market-wide features
+    series: dict = field(default_factory=dict, repr=False)       # symbol -> Series (not stored; target builds)
+    references: dict = field(default_factory=dict, repr=False)   # symbol -> {session: Reference} (not stored)
+    sequence: object = field(default=None, repr=False)           # the session sequence (not stored)
 
 
 def build(imported_by_symbol, statements, query, *, calendar_observations=(), threshold=Fraction(1, 4),
@@ -68,4 +71,5 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
                           "px_ref": ref.px_ref, "ref_session": ref.ref_session, "stale_sessions": ref.stale_sessions,
                           "adj_ref": adj_ref, "ref_source_quality": ref.source_quality})
     snap.adjustment_set_hash = actions.adjustment_set_hash(snap.factors)
+    snap.series, snap.references, snap.sequence = series_by, refs_by, seq
     return snap

@@ -15,6 +15,7 @@ from datetime import date
 from decimal import Decimal
 
 from worker.market_features import actions, calendar
+from worker.market_features.modes import AVAILABLE
 from worker.market_features.canonical import canonical_json, sha256_hex
 
 from . import history_bars as hb
@@ -49,7 +50,15 @@ def merge(candidates):
             return None
         out[f] = next(iter(vals), None)
     out["flags"] = "|".join(sorted({x for r in candidates for x in r["flags"].split("|") if x}))
+    out["ids"] = sorted(i for r in candidates for i in r.get("ids", ()))     # provenance: mf_history_bars ids
+    out["instant"] = max((r["instant"] for r in candidates if r.get("instant") is not None), default=None)
     return out
+
+
+def admission_instant(query, recorded_at, available_at):
+    """The instant a piece of evidence enters the query's information set: recorded_at in KNOWN and CURRENT,
+    available_at in AVAILABLE (whose recorded_at <= H holds for everything admitted). Labels' resolved_at reads it."""
+    return available_at if query.mode == AVAILABLE and available_at is not None else recorded_at
 
 
 def _row_admitted(query, recorded, d):
@@ -71,27 +80,31 @@ def load(conn, query):
         imports = cur.fetchall()
         candidates = collections.defaultdict(list)
         quarantined = collections.defaultdict(set)
+        q_instants = {}
         complete = collections.defaultdict(list)
         batch_dates = collections.defaultdict(set)
         admitted_imports = []
         for imp, recorded, cal_from, cal_to, sha in imports:
-            cur.execute("select symbol, trade_date, close, high, low, open_price, trades, shares, turnover, flags "
+            cur.execute("select symbol, trade_date, close, high, low, open_price, trades, shares, turnover, flags, id "
                         "from mf_history_bars where import_id = %s order by symbol, trade_date, id", (imp,))
             n = 0
-            for sym, d, close, high, low, opn, trades, shares, turnover, flags in cur.fetchall():
+            for sym, d, close, high, low, opn, trades, shares, turnover, flags, bar_id in cur.fetchall():
                 if not _row_admitted(query, recorded, d):
                     continue
                 n += 1
                 batch_dates[imp].add(d)
                 candidates[(sym, d)].append({"close": close, "high": high, "low": low, "open_price": opn,
                                              "trades": trades, "shares": shares, "turnover": turnover,
-                                             "flags": flags})
+                                             "flags": flags, "ids": (bar_id,),
+                                             "instant": admission_instant(query, recorded, hb.available_at(d))})
             if not n:
                 continue
             admitted_imports.append((imp, sha, n))
             cur.execute("select symbol, trade_date from mf_history_quarantine where import_id = %s", (imp,))
             for sym, d in cur.fetchall():
                 quarantined[sym].add(d)
+                q_instants[(sym, d)] = max(q_instants.get((sym, d), recorded),
+                                           admission_instant(query, recorded, hb.available_at(d)))
             cur.execute("select symbol, date_from, date_to from mf_history_security_complete where import_id = %s",
                         (imp,))
             for sym, lo, hi in cur.fetchall():
@@ -116,10 +129,12 @@ def load(conn, query):
         m = merge(cs)
         if m is None:                     # two rows disagree on a value: quarantined
             quarantined[sym].add(d)
+            q_instants[(sym, d)] = max(c["instant"] for c in cs)
         elif d not in quarantined[sym]:   # a quarantine of any admitted batch wins over a row (C-0063)
             rows[sym][d] = m
     imported = {sym: hb.Imported(rows=dict(r), complete=tuple(sorted(complete.get(sym, ()))),
-                                 quarantined=frozenset(quarantined.get(sym, ())))
+                                 quarantined=frozenset(quarantined.get(sym, ())),
+                                 quarantine_instants={d: i for (s_, d), i in q_instants.items() if s_ == sym})
                 for sym, r in rows.items()}
     admitted_statements = sorted(s.statement_id for s in statements if query.admits(s.recorded_at, s.available_at))
     evidence = {"imports": admitted_imports, "statements": admitted_statements, "calendar": cal_ids}
@@ -136,29 +151,55 @@ def row_payload(r):
     return canonical_json(feats)
 
 
+def input_digest(query, evidence):
+    return sha256_hex(canonical_json({"query": [query.mode, query.cutoff, query.horizon], "evidence": evidence}))
+
+
+def row_body(symbol, eligibility, features_json, px_ref, ref_session, stale_sessions, adj_ref, ref_source_quality,
+             dstar_observation_ids, window_digest):
+    return {"symbol": symbol, "eligibility": eligibility, "features": features_json, "px_ref": _value(px_ref),
+            "ref_session": _value(ref_session), "stale_sessions": stale_sessions, "adj_ref": _value(adj_ref),
+            "ref_source_quality": ref_source_quality, "dstar_observation_ids": dstar_observation_ids,
+            "window_digest": window_digest}
+
+
+def row_hash(r, dstar_observation_ids, window_digest):
+    """The stored row_hash of a snapshot row dict (as `snapshot.build` returns it) with its provenance columns."""
+    return sha256_hex(canonical_json(row_body(r["symbol"], r["eligibility"], row_payload(r), r["px_ref"],
+                                              r["ref_session"], r["stale_sessions"], r["adj_ref"],
+                                              r["ref_source_quality"], dstar_observation_ids, window_digest)))
+
+
+def provenance(snap, imported, symbol):
+    """(D* bar ids, window digest) of a snapshot row (§13.1): the mf_history_bars ids merged into the security's D*
+    bar, and a SHA-256 over the ids of every admitted row of the security at a session of the snapshot (every window
+    reads within them). `explain` re-derives the list and checks it against the digest."""
+    rows = imported[symbol].rows
+    dstar = list(rows.get(snap.d_star, {}).get("ids", ()))
+    window = sorted(i for s in snap.sessions if s in rows for i in rows[s].get("ids", ()))
+    return dstar, sha256_hex(canonical_json(window)), window
+
+
 def write(conn, snap, query, *, configuration_id, code_version, evidence, imported):
     """One transaction as the worker. Returns the snapshot id."""
-    input_digest = sha256_hex(canonical_json({"query": [query.mode, query.cutoff, query.horizon],
-                                              "evidence": evidence}))
+    input_digest_ = input_digest(query, evidence)
     with conn.cursor() as cur:
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
                     "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs) values "
                     "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
                     (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
-                     input_digest, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"])))
+                     input_digest_, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"])))
         sid = cur.fetchone()[0]
         for r in snap.rows:
             fj = row_payload(r)
-            body = {"symbol": r["symbol"], "eligibility": r["eligibility"], "features": fj,
-                    "px_ref": _value(r["px_ref"]), "ref_session": _value(r["ref_session"]),
-                    "stale_sessions": r["stale_sessions"], "adj_ref": _value(r["adj_ref"]),
-                    "ref_source_quality": r["ref_source_quality"]}
+            dstar_ids, window_digest, _ids = provenance(snap, imported, r["symbol"])
+            dj = canonical_json(dstar_ids)
             cur.execute("insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, features_json, "
-                        "px_ref, ref_session, stale_sessions, adj_ref, ref_source_quality, window_digest, row_hash) "
-                        "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        "px_ref, ref_session, stale_sessions, adj_ref, ref_source_quality, dstar_observation_ids, "
+                        "window_digest, row_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                         (sid, r["security_id"], r["symbol"], r["eligibility"], fj, r["px_ref"], r["ref_session"],
-                         r["stale_sessions"], r["adj_ref"], r["ref_source_quality"], input_digest,
-                         sha256_hex(canonical_json(body))))
+                         r["stale_sessions"], r["adj_ref"], r["ref_source_quality"], dj, window_digest,
+                         row_hash(r, dj, window_digest)))
         for sym, fs in sorted(snap.factors.items()):
             for f in fs:
                 cur.execute("insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, "

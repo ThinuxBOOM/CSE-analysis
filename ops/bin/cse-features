@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Run the MF market feature store command line (Phase 3, docs/PHASE3_MARKET_FEATURES_DESIGN.md section 13) with the
+# server configuration loaded. Never as root, never as postgres. No network, no CSE request: MF reads only what is
+# already in PostgreSQL, and the owner's TradeIQ import reads local files.
+#
+# Who runs what (all reached only through sudo, i.e. by root/the owner):
+#   every MF command                    OS cse-worker   -> PostgreSQL cse_worker (peer)
+#   designate, import-tradeiq (owner)   OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner - the owner
+#                                       path; the worker can never designate or import evidence itself
+#
+#   sudo bash /opt/cse/app/ops/bin/cse-features preflight
+#   sudo bash /opt/cse/app/ops/bin/cse-features calendar-sync
+#   sudo bash /opt/cse/app/ops/bin/cse-features snapshot --mode AVAILABLE --cutoff 2025-12-31T23:59:59+05:30 --designated
+#   sudo bash /opt/cse/app/ops/bin/cse-features verify --sample 3
+set -euo pipefail
+APP="${CSE_APP_DIR:-/opt/cse/app}"
+[[ $# -ge 1 ]] || { echo "usage: $0 <command> [args...]  (python -m worker.market_feature_store --help)" >&2; exit 2; }
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+user=cse-worker; role=cse_worker
+case "$1" in
+  designate|import-tradeiq) user=cse-migrator; role=cse_migrator ;;
+esac
+operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an owner decision
+exec runuser -u "$user" -- bash -c '
+  set -a
+  . /etc/cse/cse.env
+  set +a
+  export PYTHONPATH="$0" CSE_DB_USER="$1" CSE_OPERATOR="$2"
+  shift 2
+  cd /
+  exec python3 -m worker.market_feature_store "$@"' "$APP" "$role" "$operator" "$@"
