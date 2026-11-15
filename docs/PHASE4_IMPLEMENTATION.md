@@ -89,3 +89,16 @@ At `a1780c0`. Guard log empty. 56 mutants, 38 killed. **REJECT** (one Blocker).
 | — | Minors | Printed sign not recorded; a straddling magnitude interval; a conflicting TTM kept numeric paths only; the cash identity's inputs and exactness | **Fixed** (`sign_rule:magnitude:<concept>:printed_<sign>`; [0, max]; every path kept; all three totals' ef_keys; `no_exact_period_match`) |
 | — | Minors | `paths_disagree` and `anchor_absent` not in §6.4's lists; FL-15 shown on `signed()` only; the AVAILABLE configuration check cannot fire on a real F8 result (it always carries the resolved id) | **Carried** to the store step, where "passed explicitly" is enforced by the stored panel row |
 
+## F7-4: financial eligibility
+
+**Status: implemented and tested (2026-11-15); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/financial_features/eligibility.py` | §11's criteria under `financial_eligibility_policy.0` (provisional: 2 fiscal years, 270 days); every failed criterion kept, the result by §11's order; the measured years, age and the non-null growth and return features |
+| `tests/test_f7_eligibility_unit.py` | Each result, the 270-day boundary, a conflicting `total_equity` |
+
+Choices for the audit: a panel in `anchor_absent` is `no_panel`; "fiscal years with a usable 12-month anchor fact"
+counts distinct period ends of numeric 12-month `profit_for_period` facts in the chosen scope and currency; T's date
+is its UTC date.
+
