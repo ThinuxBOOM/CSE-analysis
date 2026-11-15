@@ -16,7 +16,7 @@ from typing import Optional
 from worker.financial_asof import AVAILABLE, KNOWN, KNOWN_RECORDED, Refused, require_live, require_point_in_time
 from worker.financial_asof.result import AMBIGUOUS, METADATA_TIE, NONE, NOT_YET_AVAILABLE
 
-from .periods import months_before
+from .dates import months_before
 
 SCOPE_POLICY, CURRENCY_POLICY, SIGN_POLICY, LINK_POLICY = "f7.scope.1", "f7.currency.1", "f7.sign.2", \
     "f7.security_link.1"

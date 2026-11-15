@@ -29,7 +29,8 @@ from worker.financial_truth.versions import IDENTITY_VERSION  # noqa: E402
 D = Decimal
 CONCEPT_KIND = {"profit_for_period": "duration", "revenue": "duration", "total_equity": "instant",
                 "total_assets": "instant", "cost_of_sales": "duration", "impairment_charges": "duration",
-                "finance_costs": "duration", "income_tax_expense": "duration"}
+                "finance_costs": "duration", "income_tax_expense": "duration", "cash_at_end_of_period": "instant",
+                "cash_and_cash_equivalents": "instant"}
 
 
 @dataclass(frozen=True)

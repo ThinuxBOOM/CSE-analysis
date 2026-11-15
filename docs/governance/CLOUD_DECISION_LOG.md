@@ -736,3 +736,11 @@ important, a third party fetching from CSE on our behalf, is fixed at once (URLs
 fetch-on-behalf services barred, archives local files only). The others are fixed before NS-1. Nothing is
 implemented and no source is chosen.
 
+## C-0072: milestone 10 design accepted for LP-1 ([delegated], 2026-11-15)
+
+The audit of the local production design's revision 3 found no Blocker: the driver can no longer arm, capture or
+decide anything in the owner's name. The design is accepted for building LP-1 (C-0037). Its five Majors (a recreate
+form of the cleanliness checks, the orchestrator's Docker access and a review list of owner-path rows, `tick`'s
+interval and fail-closed rules, a workable Windows clock rule, and restore testing before the first data-growing
+arming) are recorded in its §12 and fixed before LP-1 is built. Milestone 10 itself remains the owner's acceptance.
+

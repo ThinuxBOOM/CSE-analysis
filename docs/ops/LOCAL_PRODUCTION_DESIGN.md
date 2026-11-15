@@ -1,6 +1,7 @@
 # Milestone 10: the local production environment (design)
 
-**Status: DESIGN, revision 3 (2026-11-15). Not built. Not accepted.** Written by the cloud session on the branch
+**Status: DESIGN, revision 3 (2026-11-15). ACCEPTED [delegated] for building LP-1 (C-0072): its audit found no
+Blocker; its five Majors (§12) are fixed before LP-1 is built. Not built. Milestone 10 itself is the owner's acceptance (LP-R5).** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no build, no deployment,
 no arming, no capture and no CSE contact. Everything in it that runs, runs on the owner's workstation and waits for
 it.
@@ -551,4 +552,15 @@ eleven Minor. Revision 1's findings were confirmed resolved except 11 (whose rep
 | M7 | Major | No refusal test for both-or-neither; no recreate authorization | **Fixed.** LP-1 tests; a recreate authorization (§3.3) |
 | — | Minors | "Empty" volume; the "Lost" table and R1 drop-ins; alert baseline; LPC-8 probe; 464 MB; LPC-2 tables; hard-coded migrations; Docker Desktop restarts; new-build stance; who writes the authorization; evidence content and sync exclusion | **Fixed** in §3.3, §6.2, LPC-2, LPC-5, LPC-8, LPC-10, §6.3, §11, §5, §8 |
 
-Revision 3 is to be audited again before LP-1 is built.
+**Revision 3: audited 2026-11-15 (cloud, fresh-context agent). Verdict: ACCEPT**, no Blocker, five Major, about
+fourteen Minor. Revision 2's findings confirmed resolved (M2, M3, M4 partly; the remainder is MJ-3 and MJ-4). Carried,
+to be fixed before LP-1 is built:
+
+| # | Finding | To do |
+|---|---|---|
+| MJ-1 | A real recreate cannot pass LPC-2 and LPC-11 (they require empty tables and no e-mail) | A recreate form: current state disarmed, the e-mail allowed, LPC-9's digests instead of emptiness; rehearsed on a copy with data |
+| MJ-2 | Owner identity is self-declared; the orchestrator has Docker access | LD-11 reworded as a procedural control on C-0004; the orchestrator's tool permissions exclude `docker exec`/`run`/`cp` on `cse-prod-*` except through the driver; `status`/`tick` list every new owner-path row and operator capture for the owner's review; the owner writes `capture.env` |
+| MJ-3 | `tick`'s enforcement polls with no interval and fails open | `net-attach` refuses `market` while HB-6 is armed; `tick` every minute while attached and on wake and logon; an alert on its own missed run; the residual window in LD-8/LD-9; no VPN on the workstation (LP-R3) |
+| MJ-4 | The Windows clock rule may fail routinely and needs elevation | The poll interval an owner setting (LP-R3) verified at LP-2; `tick` elevated or a registry/offset alternative; locale-independent parsing; stub tests |
+| MJ-5 | Restore testing off through milestone 11 with no recorded acceptance | LP-R7 due before the first arming that grows data; an LD row "restore testing off until LP-R7" |
+| — | Minors 1-14 (spool delta, missing closed-list commands, read-only wording, derived refusal tests, disk-floor exemptions, LP-R4 before LP-3, restart cost, rehearsal authorization, owner check record, Docker proxy detection, sync clients named, the 0019 wording, copy retention under G-1 §6, wording) | Fixed with the Majors |

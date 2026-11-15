@@ -1,14 +1,161 @@
 """
-F7-2: dates for period arithmetic (Phase 4 design §5.1). Pure.
-
-E-k, "k months before period end E", is _add_months(E + 1 day, -k) - 1 day, with _add_months as F6.1 defines it
-(worker/financial_validation.py): the day after the period end is shifted by whole months and stepped back one day.
-A month-end maps to a month-end and the 25th to the 25th.
+F7-2: period arithmetic (Phase 4 design §5.2). Pure. Each derived value records its rule, the ef_keys used and their
+states; f7.sign.2 is applied per fact before any arithmetic; a rule applies only when facts exist with exactly the
+required period ends (dates.py, §5.1).
 """
-from datetime import timedelta
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Optional
 
-from worker.financial_validation import _add_months
+from .dates import exact_rule_ok, months_before  # noqa: F401  (re-exported)
+from .panel import CONFLICTING, FRESH, MISSING, UNTRUSTED, signed
+
+# ------------------------------------------------------------------------------------------------ F7-2 rules (§5.2)
 
 
-def months_before(end, k):
-    return _add_months(end + timedelta(days=1), -k) - timedelta(days=1)
+CASHFLOW_SIGN_POLICY = "f7.cashflow_sign.1"
+NULL_ORDER = (UNTRUSTED, CONFLICTING, MISSING)          # Phase 3 §10.4: the first null state that applies wins
+
+
+@dataclass(frozen=True)
+class Derived:
+    """A derived value: its state, value and interval, the rule, the ef_keys it used, the reason when null, the other
+    paths (for TTM), and flags (sign rule uses, corroborated_paths)."""
+    state: str
+    value: Optional[Decimal] = None
+    low: Optional[Decimal] = None
+    high: Optional[Decimal] = None
+    rule: Optional[str] = None
+    inputs: tuple = ()
+    reason: Optional[str] = None
+    paths: tuple = ()
+    flags: tuple = ()
+
+    @property
+    def number(self):
+        return self.state == FRESH and self.value is not None
+
+
+def _get(panel, concept, end, months):
+    """(value, low, high, ef_key, flags) for one fact, after f7.sign.2 per fact; or a null Derived."""
+    u = panel.fact(concept, end, months)
+    if u is None:
+        return Derived(MISSING, reason="no_exact_period_match")
+    if u.state != FRESH:
+        return Derived(u.state, reason=u.reason, inputs=(u.ef_key,))
+    if u.nil:
+        return Derived(MISSING, reason="printed_nil", inputs=(u.ef_key,))
+    v, rule = signed(concept, u.value)
+    lo, hi = signed(concept, u.low)[0], signed(concept, u.high)[0]
+    if rule == "magnitude" and lo is not None and hi is not None and lo > hi:
+        lo, hi = hi, lo
+    return (v, lo if lo is not None else v, hi if hi is not None else v, u.ef_key,
+            (f"sign_rule:{rule}:{concept}",) if rule == "magnitude" else ())
+
+
+def _combine(rule, parts, signs):
+    """sum(sign * part); null if any part is null (the first null state in NULL_ORDER wins)."""
+    nulls = [p for p in parts if isinstance(p, Derived)]
+    if nulls:
+        state = next(s for s in NULL_ORDER if any(p.state == s for p in nulls))
+        first = next(p for p in nulls if p.state == state)
+        return Derived(state, rule=rule, reason=first.reason, inputs=tuple(i for p in nulls for i in p.inputs))
+    v = sum((s * p[0] for s, p in zip(signs, parts)), Decimal(0))
+    lo = sum(((p[1] if s > 0 else p[2]) * s for s, p in zip(signs, parts)), Decimal(0))
+    hi = sum(((p[2] if s > 0 else p[1]) * s for s, p in zip(signs, parts)), Decimal(0))
+    return Derived(FRESH, v, lo, hi, rule, tuple(p[3] for p in parts), flags=tuple(f for p in parts for f in p[4]))
+
+
+def ttm(panel, concept, end):
+    """TTM(E) by every rule that applies (F7P-1, F7P-2 for n in 3, 6, 9, F7P-3). Paths agree when their intervals
+    overlap: the lowest-numbered rule's value is used, marked corroborated_paths (P4-D8). Otherwise conflicting, with
+    every path kept."""
+    if not exact_rule_ok(end):
+        return Derived(MISSING, reason="no_exact_period_match")
+    paths = [_combine("F7P-1", [_get(panel, concept, end, 12)], [1])]
+    for n in (3, 6, 9):
+        e_n, e_12 = months_before(end, n), months_before(end, 12)
+        paths.append(_combine(f"F7P-2:{n}", [_get(panel, concept, end, n), _get(panel, concept, e_n, 12),
+                                             _get(panel, concept, e_12, n)], [1, 1, -1]))
+    paths.append(_combine("F7P-3", [_get(panel, concept, months_before(end, k), 3) for k in (0, 3, 6, 9)],
+                          [1, 1, 1, 1]))
+    ok = [p for p in paths if p.number]
+    if not ok:
+        state = next((s for s in NULL_ORDER if any(p.state == s and p.inputs for p in paths)), MISSING)
+        first = next((p for p in paths if p.state == state and p.inputs), None)
+        return Derived(state, reason=first.reason if first else "no_exact_period_match", paths=tuple(paths))
+    lo, hi = max(p.low for p in ok), min(p.high for p in ok)
+    best = ok[0]
+    if len(ok) > 1 and lo > hi:
+        return Derived(CONFLICTING, reason="paths_disagree", paths=tuple(ok))
+    flags = best.flags + (("corroborated_paths",) if len(ok) > 1 else ())
+    return Derived(FRESH, best.value, best.low, best.high, best.rule, best.inputs, paths=tuple(ok), flags=flags)
+
+
+def avg_instant(panel, concept, end):
+    """F7P-5: (I(E) + I(E-12)) / 2."""
+    if not exact_rule_ok(end):
+        return Derived(MISSING, reason="no_exact_period_match")
+    d = _combine("F7P-5", [_get(panel, concept, end, None), _get(panel, concept, months_before(end, 12), None)],
+                 [1, 1])
+    if not d.number:
+        return d
+    return Derived(FRESH, d.value / 2, d.low / 2, d.high / 2, d.rule, d.inputs, flags=d.flags)
+
+
+def _growth(rule, cur, base):
+    if not cur.number:
+        return Derived(cur.state, rule=rule, reason=cur.reason, inputs=cur.inputs)
+    if not base.number:
+        return Derived(base.state, rule=rule, reason=base.reason, inputs=base.inputs)
+    if base.value <= 0:
+        return Derived(MISSING, rule=rule, reason="base_not_positive", inputs=cur.inputs + base.inputs)
+    return Derived(FRESH, cur.value / base.value - 1, rule=rule, inputs=cur.inputs + base.inputs,
+                   flags=cur.flags + base.flags)
+
+
+def growth_instant(panel, concept, end):
+    """F7P-8: I(E) / I(E-12) - 1, only when I(E-12) > 0."""
+    def one(e):
+        x = _get(panel, concept, e, None)
+        return x if isinstance(x, Derived) else Derived(FRESH, x[0], x[1], x[2], "fact", (x[3],), flags=x[4])
+    return _growth("F7P-8", one(end), one(months_before(end, 12)))
+
+
+def growth_ttm(panel, concept, end):
+    """F7P-6: TTM(E) / TTM(E-12) - 1, only when TTM(E-12) > 0."""
+    return _growth("F7P-6", ttm(panel, concept, end), ttm(panel, concept, months_before(end, 12)))
+
+
+def growth_cum(panel, concept, end, months):
+    """F7P-7: D_n(E) / D_n(E-12) - 1 for the anchor's own n."""
+    def one(e):
+        x = _get(panel, concept, e, months)
+        return x if isinstance(x, Derived) else Derived(FRESH, x[0], x[1], x[2], "fact", (x[3],), flags=x[4])
+    return _growth("F7P-7", one(end), one(months_before(end, 12)))
+
+
+CASHFLOW_TOTALS = ("net_cash_from_operating_activities", "net_cash_from_investing_activities",
+                   "net_cash_from_financing_activities")
+
+
+def cashflow_confirmed(panel, end, months):
+    """f7.cashflow_sign.1: the three totals for (E, n) are used only when operating + investing + financing equals the
+    change in cash_at_end_of_period from E-n to E, within the facts' intervals. Returns {concept: Derived}; an
+    unconfirmed total is missing with reason sign_unconfirmed."""
+    parts = {c: _get(panel, c, end, months) for c in CASHFLOW_TOTALS}
+    opening = _get(panel, "cash_at_end_of_period", months_before(end, months), None)
+    closing = _get(panel, "cash_at_end_of_period", end, None)
+    total = _combine("cashflow_sum", [parts[c] for c in CASHFLOW_TOTALS], [1, 1, 1])
+    change = _combine("cash_change", [closing, opening], [1, -1])
+    confirmed = total.number and change.number and total.low <= change.high and change.low <= total.high
+    out = {}
+    for c, p in parts.items():
+        if isinstance(p, Derived):
+            out[c] = p
+        elif confirmed:
+            out[c] = Derived(FRESH, p[0], p[1], p[2], CASHFLOW_SIGN_POLICY, (p[3],) + change.inputs,
+                             flags=("sign_confirmed",))
+        else:
+            out[c] = Derived(MISSING, rule=CASHFLOW_SIGN_POLICY, reason="sign_unconfirmed", inputs=(p[3],))
+    return out

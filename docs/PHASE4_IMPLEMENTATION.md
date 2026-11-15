@@ -19,3 +19,20 @@ Choices for the audit:
 - `scope_changed` compares the scopes of anchor facts at E−12 in any state, as §4.3 reads "has an anchor fact".
 - `has_discontinued` is set by any `discontinued` fact of the chosen scope at the anchor period.
 - Facts in other scopes or currencies are not in the panel's table at all, so no formula can mix them.
+
+## F7-2: period arithmetic
+
+**Status: implemented and tested (2026-11-15); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/financial_features/dates.py` | §5.1: E−k on F6.1's `_add_months`; exactness only for month-ends and days up to the 28th |
+| `worker/financial_features/periods.py` | F7P-1, F7P-2 (n = 3, 6, 9), F7P-3, F7P-5 to F7P-8; `f7.sign.2` per fact before arithmetic; intervals added through sums; disagreeing TTM paths `conflicting` with every path kept, agreeing ones `corroborated_paths`; `f7.cashflow_sign.1` |
+| `tests/test_f7_periods_unit.py` | Hand-computed cases: annual, half-year with a March year-end, nine-month with a December year-end, quarter-only, the 25th, a non-month-end after the 28th, disagreeing paths, a conflicting input, per-fact magnitude, growth and averages, `base_not_positive`, the cash-flow identity and FL-20 |
+
+Choices for the audit:
+- A missing input fact gives `missing`, reason `no_exact_period_match`; a printed nil gives `printed_nil`.
+- Paths "agree" when all their intervals have a common point (the intersection of every agreeing path's interval).
+- The cash-flow identity is checked for (E, n) against `cash_at_end_of_period` at E and E−n; a missing opening cash
+  leaves the totals unconfirmed.
+
