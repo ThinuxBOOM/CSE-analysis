@@ -56,3 +56,19 @@ Choices for the audit:
 - `cash_reconciles` is 1 or 0, flagged `information_only`.
 - `net_margin_chg` uses the bank margin for a `bank_finance` issuer.
 
+## F7-3 (part 2): EPS restatement and the valuation features
+
+**Status: implemented and tested (2026-11-15); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/financial_features/valuation.py` | `f7.eps_basis.1` (factors of share-basis kinds with date(A) < e ≤ D\*; untrusted for an ex-date between the period end and date(A), for straddling observations, for an unknown availability or an availability flag, for an open move firing after the period end, for no close since the document, for an unresolved factor; `partial` for `cum_price_stale`); `eps_latest_fy` (no stepping back; `fy_eps_too_old`; `earlier_period_than_anchor`); `eps_ttm_approx` (each component restated by its own A; F7P-2 or F7P-3 only; `sum_of_per_share`); `earnings_yield_eps`, `pe_eps` on `adj_ref` with price states and staleness; `issuer_market_value` and the market-value features, `untrusted` with `input_unverified` while `market_cap_reported` is provisional |
+| `worker/financial_features/panel.py` | `Usable` keeps F8's state, the period end and each visible observation's availability |
+| `tests/test_f7_valuation_unit.py` | FL-14, FL-16, FL-17, FL-18, FL-21 (a) to (d), FL-22, price states, staleness, negative EPS, `cum_price_stale`, unresolved factors, the market value |
+
+Choices for the audit:
+- A price older than MF's stale limit makes a valuation `missing`, reason `stale_price` (a code not in §6.4's list).
+- The market-value features are null (`untrusted` is a null state) while P4-D4 holds; their computed value is not
+  stored.
+- `eps_ttm_approx` uses F7P-2 or F7P-3 only, never F7P-1 (a printed annual EPS is `eps_latest_fy`).
+

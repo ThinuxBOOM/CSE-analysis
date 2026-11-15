@@ -21,7 +21,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from f8_factories import ISSUER, Doc, World, at  # noqa: E402,F401  (re-exported)
 from worker.financial_asof.query import AVAILABLE, KNOWN, LABELS, FactFilter  # noqa: E402,F401
-from worker.financial_asof.result import AsOfResult, Exclusion, FactView, seal  # noqa: E402
+from worker.financial_asof.result import (AsOfResult, AvailabilityView, Exclusion, FactView,  # noqa: E402
+                                         KnowledgeView, ObservationView, seal)
 from worker.financial_asof.versions import IMPLEMENTED  # noqa: E402
 from worker.financial_truth.identity import EconomicFactIdentity  # noqa: E402
 from worker.financial_truth.versions import IDENTITY_VERSION  # noqa: E402
@@ -42,7 +43,7 @@ class FakeF6:
 
 def fact(concept="profit_for_period", end=date(2024, 3, 31), months=12, *, value="100", state="single_source",
          scope="group", currency="LKR", operations="total_or_unstated", nil=False, flags=(), annotations=(),
-         counts=(), excluded=(), issuer=ISSUER, maturity="not_applicable"):
+         counts=(), excluded=(), issuer=ISSUER, maturity="not_applicable", available=(), avail_flags=()):
     kind = fc.BY_KEY[concept].period_kind
     ident = EconomicFactIdentity(IDENTITY_VERSION, issuer, concept, kind, end, months if kind == "duration" else None,
                                  scope, operations, maturity, currency)
@@ -50,8 +51,16 @@ def fact(concept="profit_for_period", end=date(2024, 3, 31), months=12, *, value
     v = D(value) if numeric else None
     return FactView(f"ef:{concept}:{end}:{months}:{scope}:{currency}:{operations}:{maturity}", ident, state,
                     "nil" if nil else ("numeric" if numeric else None), v, v, None, v, None,
-                    FakeF6(tuple(annotations)) if annotations else None, (), tuple(excluded), (), (), tuple(flags),
-                    tuple(counts))
+                    FakeF6(tuple(annotations)) if annotations else None, tuple(observation(a, avail_flags)
+                                                                               for a in available),
+                    tuple(excluded), (), (), tuple(flags), tuple(counts))
+
+
+def observation(available_at, flags=(), precision="instant"):
+    """A visible observation with the given availability instant (ISO text, or None for availability_unknown)."""
+    av = AvailabilityView("f8.availability.1", available_at, precision if available_at else None, (), tuple(flags))
+    kn = KnowledgeView("f8.knowledge.1", available_at or "2026-01-01T00:00:00+00:00", ())
+    return ObservationView("so", "h" * 64, "d" * 64, 1, "run", "vr", av, kn, ())
 
 
 def result(facts, *, mode=KNOWN, cutoff="2024-06-30T00:00:00+00:00", horizon=None, configuration="c" * 64,

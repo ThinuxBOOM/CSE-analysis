@@ -52,6 +52,9 @@ class Usable:
     nil: bool = False
     reason: Optional[str] = None
     recorded: tuple = ()                 # flags and annotations recorded beside the value
+    f8_state: Optional[str] = None       # F8's own state: single_source | corroborated | conflicting | none
+    availability: tuple = ()             # (available_at ISO or None, precision) per visible observation (§6.3)
+    period_end: Optional[date] = None
 
     @property
     def number(self):
@@ -67,7 +70,16 @@ def _availability_flags(fact):
 
 
 def usability(fact):
-    """§4.2's table, for one F8 FactView."""
+    """§4.2's table, for one F8 FactView (with F8's state, the period end and the visible observations' availability
+    kept for §6.3)."""
+    from dataclasses import replace
+    u = _usability(fact)
+    avail = tuple((o.availability.available_at, o.availability.precision) for o in fact.visible)
+    return replace(u, f8_state=fact.state, availability=avail,
+                   period_end=fact.identity.period_end if fact.identity is not None else None)
+
+
+def _usability(fact):
     flags = set(fact.flags)
     recorded = set()
     for f in (AMBIGUOUS, METADATA_TIE):
