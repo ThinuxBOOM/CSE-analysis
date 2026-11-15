@@ -36,9 +36,9 @@ class Derived:
         return self.state == FRESH and self.value is not None
 
 
-def _get(panel, concept, end, months):
+def _get(panel, concept, end, months, maturity="not_applicable"):
     """(value, low, high, ef_key, flags) for one fact, after f7.sign.2 per fact; or a null Derived."""
-    u = panel.fact(concept, end, months)
+    u = panel.fact(concept, end, months, maturity=maturity)
     if u is None:
         return Derived(MISSING, reason="no_exact_period_match")
     if u.state != FRESH:
@@ -159,3 +159,25 @@ def cashflow_confirmed(panel, end, months):
         else:
             out[c] = Derived(MISSING, rule=CASHFLOW_SIGN_POLICY, reason="sign_unconfirmed", inputs=(p[3],))
     return out
+
+
+def instant(panel, concept, end, maturity="not_applicable"):
+    """One instant fact as a Derived (f7.sign.2 applied)."""
+    x = _get(panel, concept, end, None, maturity)
+    return x if isinstance(x, Derived) else Derived(FRESH, x[0], x[1], x[2], "fact", (x[3],), flags=x[4])
+
+
+def duration(panel, concept, end, months):
+    """One duration fact as a Derived (f7.sign.2 applied)."""
+    x = _get(panel, concept, end, months)
+    return x if isinstance(x, Derived) else Derived(FRESH, x[0], x[1], x[2], "fact", (x[3],), flags=x[4])
+
+
+def total(rule, parts, signs):
+    """sum(sign * part) over Derived values (null if any is null; the first null state of NULL_ORDER wins)."""
+    raw = [p if not p.number else (p.value, p.low if p.low is not None else p.value,
+                                   p.high if p.high is not None else p.value, None, p.flags) for p in parts]
+    d = _combine(rule, raw, signs)
+    return Derived(d.state, d.value, d.low, d.high, rule, tuple(i for p in parts for i in p.inputs), d.reason,
+                   flags=tuple(f for p in parts for f in p.flags))
+

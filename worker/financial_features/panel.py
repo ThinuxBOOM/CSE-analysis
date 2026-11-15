@@ -21,6 +21,7 @@ from .dates import months_before
 SCOPE_POLICY, CURRENCY_POLICY, SIGN_POLICY, LINK_POLICY = "f7.scope.1", "f7.currency.1", "f7.sign.2", \
     "f7.security_link.1"
 ANCHOR_CONCEPT, ANCHOR_OPERATIONS = "profit_for_period", "total_or_unstated"
+NOT_APPLICABLE = "not_applicable"            # the maturity of every concept but the borrowings
 SCOPE_ORDER = ("group", "bank", "company")
 MAGNITUDE_CONCEPTS = frozenset({"cost_of_sales", "finance_costs", "interest_expense", "purchase_of_ppe",
                                 "dividends_paid"})
@@ -119,11 +120,11 @@ class Panel:
     anchor_period: Optional[date] = None
     anchor_months: Optional[int] = None
     flags: tuple = ()                    # scope_changed, has_discontinued, unlabelled_scope
-    facts: dict = field(default_factory=dict, repr=False)    # (concept, period_end, months, operations) -> Usable
+    facts: dict = field(default_factory=dict, repr=False)    # (concept, end, months, operations, maturity) -> Usable
     counts: tuple = ()                   # (fact state, number), over the whole result
 
-    def fact(self, concept, period_end, months=None, operations=ANCHOR_OPERATIONS):
-        return self.facts.get((concept, period_end, months, operations))
+    def fact(self, concept, period_end, months=None, operations=ANCHOR_OPERATIONS, maturity=NOT_APPLICABLE):
+        return self.facts.get((concept, period_end, months, operations, maturity))
 
 
 def _guard(result, pipeline):
@@ -186,10 +187,10 @@ def panel(result, pipeline):
     for f in facts:
         i = f.identity
         if i.scope == scope and i.currency == currency:
-            table[(i.concept_key, i.period_end, i.duration_months, i.operations)] = usability(f)
+            table[(i.concept_key, i.period_end, i.duration_months, i.operations, i.maturity)] = usability(f)
     out = dict(scope=scope, currency=currency, newest_period=newest, anchor_period=newest, anchor_months=months,
                facts=table)
-    anchor = table.get((ANCHOR_CONCEPT, newest, months, ANCHOR_OPERATIONS)) if months else None
+    anchor = table.get((ANCHOR_CONCEPT, newest, months, ANCHOR_OPERATIONS, NOT_APPLICABLE)) if months else None
     if anchor is None or not anchor.number:
         state = CRITICAL_CONFLICT if anchor is not None and anchor.state == CONFLICTING else ANCHOR_UNUSABLE
         return Panel(state=state, flags=tuple(sorted(flags)), **out, **base)

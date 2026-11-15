@@ -36,3 +36,23 @@ Choices for the audit:
 - The cash-flow identity is checked for (E, n) against `cash_at_end_of_period` at E and E−n; a missing opening cash
   leaves the totals unconfirmed.
 
+## F7-3 (part 1): the feature registry and the fundamental features
+
+**Status: implemented and tested (2026-11-15); audit pending. Part 2 (EPS restatement and the valuation join, §6.3)
+follows.**
+
+| File | Content |
+|---|---|
+| `worker/financial_features/features.py` | The registry (`f7.features.1`): 39 fundamental features of set v1 with family, industries and the positive-denominator rule; `f7.industry.1`; ratio rules (`denominator_zero`, `denominator_not_positive`); the year-on-year features null under `scope_changed`; net margins `partial` under `has_discontinued`; cash-flow features through `f7.cashflow_sign.1` |
+| `worker/financial_features/periods.py` | `instant`, `duration` and `total` helpers; a maturity argument for the borrowings |
+| `worker/financial_features/panel.py` | The panel's fact key now includes the maturity (current and non-current borrowings are separate facts) |
+| `tests/test_f7_features_unit.py` | A hand-computed vector for a general issuer and for a bank; negative equity and losses; zero denominators; both maturities required; scope change, discontinued operations, panel states; an unconfirmed cash-flow total |
+
+Choices for the audit:
+- A feature outside the issuer's industry group is `missing`, reason `not_applicable_industry` (a code not in §6.4's
+  list).
+- On a panel that is not `ok`, every feature takes the panel's condition: `conflicting` for `critical_conflict`,
+  otherwise `missing` with the panel state as reason.
+- `cash_reconciles` is 1 or 0, flagged `information_only`.
+- `net_margin_chg` uses the bank margin for a `bank_finance` issuer.
+

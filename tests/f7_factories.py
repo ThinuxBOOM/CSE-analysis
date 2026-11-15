@@ -25,6 +25,7 @@ from worker.financial_asof.result import AsOfResult, Exclusion, FactView, seal  
 from worker.financial_asof.versions import IMPLEMENTED  # noqa: E402
 from worker.financial_truth.identity import EconomicFactIdentity  # noqa: E402
 from worker.financial_truth.versions import IDENTITY_VERSION  # noqa: E402
+from worker import financial_concepts as fc  # noqa: E402
 
 D = Decimal
 CONCEPT_KIND = {"profit_for_period": "duration", "revenue": "duration", "total_equity": "instant",
@@ -41,13 +42,13 @@ class FakeF6:
 
 def fact(concept="profit_for_period", end=date(2024, 3, 31), months=12, *, value="100", state="single_source",
          scope="group", currency="LKR", operations="total_or_unstated", nil=False, flags=(), annotations=(),
-         counts=(), excluded=(), issuer=ISSUER):
-    kind = CONCEPT_KIND.get(concept, "duration")
+         counts=(), excluded=(), issuer=ISSUER, maturity="not_applicable"):
+    kind = fc.BY_KEY[concept].period_kind
     ident = EconomicFactIdentity(IDENTITY_VERSION, issuer, concept, kind, end, months if kind == "duration" else None,
-                                 scope, operations, "not_applicable", currency)
+                                 scope, operations, maturity, currency)
     numeric = state in ("single_source", "corroborated") and not nil and value is not None
     v = D(value) if numeric else None
-    return FactView(f"ef:{concept}:{end}:{months}:{scope}:{currency}:{operations}", ident, state,
+    return FactView(f"ef:{concept}:{end}:{months}:{scope}:{currency}:{operations}:{maturity}", ident, state,
                     "nil" if nil else ("numeric" if numeric else None), v, v, None, v, None,
                     FakeF6(tuple(annotations)) if annotations else None, (), tuple(excluded), (), (), tuple(flags),
                     tuple(counts))
@@ -73,8 +74,8 @@ def fin_doc(filing, n, values, *, end="2024-03-31", months=12, scope="group", cu
     """One document: `values` maps concept -> raw printed value, all for one period ending `end`. Duration concepts
     go into a profit-or-loss statement, instant concepts into a financial-position statement."""
     d = Doc(filing, doc=n, doc_type=doc_type, issuer=issuer)
-    income = {c: v for c, v in values.items() if CONCEPT_KIND.get(c, "duration") == "duration"}
-    position = {c: v for c, v in values.items() if CONCEPT_KIND.get(c) == "instant"}
+    income = {c: v for c, v in values.items() if fc.BY_KEY[c].period_kind == "duration"}
+    position = {c: v for c, v in values.items() if fc.BY_KEY[c].period_kind == "instant"}
     if income:
         st = d.statement("profit_or_loss", currency=currency)
         ci = d.column(st, end=end, months=months, scope=scope)
