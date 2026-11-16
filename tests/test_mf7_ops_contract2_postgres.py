@@ -97,3 +97,34 @@ def test_c7_a_calendar_range_of_a_batch_admitted_later(cluster):                
                          "where source_label = 'C'", (DAYS[28], DAYS[32]))])
     full = contract(cluster, db, AVAILABLE, cid, refs)
     assert "unknown_session_in_horizon" not in {lab.state for lab in full.values()}
+
+
+@pytest.mark.parametrize("mode", [KNOWN, AVAILABLE])
+@pytest.mark.parametrize("how", ["quarantine", "disagree"])
+def test_c8_a_security_that_comes_back_through_a_later_row(cluster, mode, how):                  # audit 4, E-1
+    db = fs.fresh_db(cluster)
+    cid, refs = base(cluster, db, FULL() + [(X, DAYS[i], 50 + i % 3) for i in range(13)], mode)
+    if how == "quarantine":
+        batch(cluster, db, "Q", [(SYMS[0], DAYS[20], px(0, 20))], quarantine=[(X, DAYS[i]) for i in range(13)])
+    else:
+        batch(cluster, db, "Q", [(SYMS[0], DAYS[20], px(0, 20))] + [(X, DAYS[i], 90) for i in range(13)])
+    batch(cluster, db, "N", [(X, DAYS[50], 60)])
+    contract(cluster, db, mode, cid, refs)
+
+
+def test_c9_a_quarantine_dated_on_ts_own_day_is_admitted(cluster):                                 # audit 4, M-2
+    from worker.market_feature_store import store
+    db = fs.fresh_db(cluster)
+    batch(cluster, db, "A", FULL(), [(s, DAYS[0], DAYS[-1]) for s in SYMS], quarantine=[(SYMS[1], DAYS[40])])
+    imp, _s, _c, _e = store.load(worker(cluster, db), Query(AVAILABLE, hb.available_at(DAYS[40]), now(cluster, db)))
+    assert DAYS[40] in imp[SYMS[1]].quarantined and DAYS[40] not in imp[SYMS[1]].rows
+
+
+def test_c10_a_security_without_rows_never_gets_a_snapshot_row(cluster):                          # audit 4, M-1
+    db = fs.fresh_db(cluster)
+    batch(cluster, db, "A", FULL() + [(X, DAYS[5], 50)], [(s, DAYS[0], DAYS[-1]) for s in SYMS])
+    batch(cluster, db, "Q", [(SYMS[0], DAYS[20], px(0, 20))], quarantine=[(X, DAYS[5])])
+    cid = configuration.register(worker(cluster, db), CFG)[1]
+    _sid, snap = jobs.snapshot(worker(cluster, db), Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db)),
+                               cid)
+    assert X not in {r["symbol"] for r in snap.rows} and len(snap.rows) == len(SYMS)

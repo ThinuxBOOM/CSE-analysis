@@ -192,8 +192,13 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
                 skipped[why] = skipped.get(why, 0) + 4
                 continue
             inst = session_instants(row.symbol, imported, sessions, finality, query)
-            extra = [x for x in [cal, ref_instants.get(sid)] + superseded_instants(row.symbol, statements, stmt)
-                     if x is not None]
+            # the security's presence in the build rests on its surviving rows: a security whose rows were all set
+            # aside and that came back through a later row exists only from that row's admission (audit 4, E-1). A
+            # row that survives at T survives at any earlier T' where it is admitted, so the earliest one suffices.
+            surviving = [r.get("instant") for r in imported[row.symbol].rows.values() if r.get("instant") is not None]
+            presence = min(surviving) if surviving else None
+            extra = [x for x in [cal, ref_instants.get(sid), presence]
+                     + superseded_instants(row.symbol, statements, stmt) if x is not None]
             for h in targets.HORIZONS:
                 out.append((sid, targets.label(row, h, snap.series[row.symbol], snap.references[row.symbol],
                                                session_instants=inst, statement_instants=stmt,

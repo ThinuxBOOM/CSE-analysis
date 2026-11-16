@@ -725,8 +725,8 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 ## MF-7c (third part): the commands
 
 **Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers, fixed, C-0065) and by
-its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067) and its third (three Blockers, fixed, C-0074);
-fourth re-audit pending.** MF-7's remaining pieces (design §13.2): the
+its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067) and its third (three Blockers, fixed, C-0074) and its fourth (one Blocker, fixed,
+C-0078); fifth re-audit pending.** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 
@@ -833,4 +833,21 @@ difference outside the shapes below. **REJECT** (three Blockers).
 | — | Minor | `resolved_at` is conservative: median lag 4 sessions without import-calendar ranges, 15 with them (the calendar-whole rule) | **Carried** for the owner (the audited conservative rule) |
 
 The new cases fail on `f08b200`'s code (7 of 13) and pass now.
+
+## Fourth re-audit of MF-7c third part: fresh-context agent
+
+At `ab40f9d`. Guard logs empty. An extended contract fuzzer: 1 489 scenarios on `ab40f9d` (45 964 labels re-checked)
+and 3 513 with the suggested fix (107 700 re-checked), adding lone securities, whole-security removal and comeback,
+cross-security supersessions and withdrawals, evidence dated after T, and references in the middle of events.
+**REJECT** (one Blocker). The three C-0074 fixes hold; the snapshot side is unchanged by row-less securities.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| E-1 | Blocker | A security whose rows were all set aside and that came back through a later row the label never reads: its labels exist at the build but not at their own `resolved_at` | **Fixed:** the earliest instant of the security's surviving rows enters `extra_instants` (its presence in the build). With it the fuzzer's 3 513 scenarios showed no difference and no `resolved_at` after T. `test_c8` (both modes, quarantine and disagreement) |
+| M-1 | Major | The snapshot's guard for row-less securities untested | **Tested:** `test_c10` |
+| M-2 | Major | The boundary of the after-T quarantine rule (`>` against `>=`) untested | **Tested:** `test_c9` (a quarantine dated T's own day is admitted) |
+| — | Minor | The CLI's `ValueError` refusal untested | **Tested** in `test_p2` |
+| — | Minors | A database whose only evidence is a row-less security raises a different refusal; `explain` on a row-less symbol (unreachable); `resolved_at` conservative | **Carried** |
+
+Each new guard, reverted, fails its test.
 

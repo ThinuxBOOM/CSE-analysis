@@ -141,6 +141,11 @@ def test_p2_an_available_horizon_in_the_future_and_errors_exit_5(cluster):      
                 user="cse_migrator") == 5
     with pytest.raises(configuration.ConfigurationError):
         jobs.snapshot(worker(cluster, db), Query("CURRENT", None, now(cluster, db)), cid)
+    # a ValueError from the evidence (a malformed stored statement) is a refusal, exit 5, not a traceback
+    from unittest import mock
+    with mock.patch.object(cli.jobs, "snapshot", side_effect=ValueError("malformed statement")):
+        assert _run(cluster, db, ["snapshot", "--mode", "AVAILABLE", "--cutoff", hb.available_at(DAYS[-1]).isoformat(),
+                                  "--configuration", cid]) == 5
     later = datetime.now(UTC) + timedelta(days=1)
     with pytest.raises(configuration.ConfigurationError):
         jobs.snapshot(worker(cluster, db), Query(KNOWN, later), cid)               # refused below the CLI too

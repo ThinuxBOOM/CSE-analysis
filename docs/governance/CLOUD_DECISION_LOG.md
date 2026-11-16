@@ -781,3 +781,10 @@ trailing EPS's restating step lost F8's marker that a fact was not yet public. F
 reproductions; the auditor's further 1 600 worlds on the fixed code showed no difference. A fifth, confirming audit
 is pending.
 
+## C-0078: the MF-7c third part fourth re-audit and its fix ([delegated], 2026-11-16)
+
+The fourth re-audit's larger fuzzer (about 5 000 scenarios) found one remaining case: a security whose rows were all
+set aside and that came back later could have labels at a build that did not exist at their own stamped time. Fixed
+by counting the security's presence in the build; with the fix the auditor's 3 513 scenarios showed no difference.
+The two untested guards are now tested. A fifth re-audit is pending.
+
