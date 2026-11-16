@@ -296,3 +296,146 @@ def test_b3_row_count_and_preflight_refusals(cluster):
     assert any("trg_f7p_stamp" in p for p in found)
     m = fs.conn(cluster, db, user="cse_migrator")
     assert preflight.problems(m)                                 # not the worker role
+
+
+# ------------------------------------------------------------------------------------------------ DE-4 re-audit
+
+
+def rehash(cluster, db, run_id, engine, member, edit):
+    """Rewrite one output's evidence with edit(evidence) and re-hash the output and its run, as a forger with DDL
+    would, so that only verify's citation checks can notice."""
+    from worker.feature_engine_store import codec
+    su = fs.conn(cluster, db, user="postgres")
+    with su.cursor() as cur:
+        cur.execute("select output_json from de_outputs where run_id = %s and engine_id = %s and member = %s",
+                    (run_id, engine, member))
+        js = json.loads(cur.fetchone()[0])
+        edit(js["evidence"])
+        new = codec.canonical(js)
+        for t in ("de_outputs", "de_runs"):
+            cur.execute(f"alter table {t} disable trigger user")
+        cur.execute("update de_outputs set output_json = %s, output_hash = %s where run_id = %s and engine_id = %s "
+                    "and member = %s", (new, codec.sha(new), run_id, engine, member))
+        cur.execute("select engine_id, member, output_hash from de_outputs where run_id = %s", (run_id,))
+        outs = [dict(zip(("engine_id", "member", "output_hash"), r)) for r in cur.fetchall()]
+        cur.execute(f"select {', '.join(codec.RUN_COLUMNS)} from de_runs where run_id = %s", (run_id,))
+        rec = dict(zip(codec.RUN_COLUMNS, cur.fetchone()))
+        cur.execute("update de_runs set run_hash = %s where run_id = %s", (codec.run_hash(rec, outs), run_id))
+        for t in ("de_outputs", "de_runs"):
+            cur.execute(f"alter table {t} enable trigger user")
+    su.commit()
+    su.close()
+
+
+def row_of(c, subject):
+    with c.cursor() as cur:
+        cur.execute("select r.row_hash, p.f8_result_hash from f7_feature_rows r join f7_panels p using (panel_id) "
+                    "where r.subject = %s", (subject,))
+        out = cur.fetchone()
+    c.rollback()
+    return out
+
+
+def test_r1_a_citation_of_another_subject_or_f8_result_is_noticed(cluster, monkeypatch):
+    db = fs.fresh_db(cluster)
+    c, _ = written(cluster, db, monkeypatch)
+    with c.cursor() as cur:
+        cur.execute("select run_id, issuer_id from de_outputs where engine_id = 'fund_leverage' and member = "
+                    "'S06.N0000'")
+        run_id, iss6 = cur.fetchone()
+        cur.execute("select issuer_id from de_outputs where engine_id = 'fund_leverage' and member = 'S05.N0000'")
+        iss5 = cur.fetchone()[0]
+    c.rollback()
+    h6, f6 = row_of(c, iss6)
+    rehash(cluster, db, run_id, "fund_leverage", "S05.N0000",          # N03: iss06's row, with iss06's F8 result
+           lambda ev: ev.update(f7_row_hash=h6, f8_result_hash=f6))
+    problems = verify.report(c)
+    assert any("cites the F7 row of" in p for p in problems), problems
+    assert not any("panel of the cited F8 result" in p for p in problems)
+    db = fs.fresh_db(cluster)
+    c, _ = written(cluster, db, monkeypatch)
+    with c.cursor() as cur:
+        cur.execute("select run_id from de_runs")
+        run_id = cur.fetchone()[0]
+        cur.execute("select issuer_id from de_outputs where engine_id = 'fund_leverage' and member = 'S06.N0000'")
+        iss6 = cur.fetchone()[0]
+    c.rollback()
+    _h6, f6 = row_of(c, iss6)
+    rehash(cluster, db, run_id, "fund_leverage", "S05.N0000",          # N04: the right row, another F8 result
+           lambda ev: ev.update(f8_result_hash=f6))
+    problems = verify.report(c)
+    assert any("panel of the cited F8 result" in p for p in problems) and \
+        not any("cites the F7 row of" in p for p in problems), problems
+    assert iss5 != iss6
+
+
+def test_r2_a_cited_row_moved_to_another_snapshot_is_noticed(cluster, monkeypatch):
+    from worker.feature_engine_store import codec
+    db = fs.fresh_db(cluster)
+    c, sid = written(cluster, db, monkeypatch)
+    su = fs.conn(cluster, db, user="postgres")
+    with su.cursor() as cur:                             # N05: a copy of the snapshot header, the S05 row moved to it
+        cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, "
+                    "configuration_id, code_version, input_digest, adjustment_set_hash, row_count, snapshot_hash) "
+                    "select mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, code_version, "
+                    "input_digest, adjustment_set_hash, 0, snapshot_hash from mf_snapshots where snapshot_id = %s "
+                    "returning snapshot_id", (sid,))
+        other = cur.fetchone()[0]
+        cur.execute("select r.id, p.panel_hash, " + ", ".join(f"r.{k}" for k in codec.ROW_COLUMNS) +
+                    " from f7_feature_rows r join f7_panels p using (panel_id) where r.subject = 'S05.N0000'")
+        row = cur.fetchone()
+        rec = dict(zip(codec.ROW_COLUMNS, row[2:]), snapshot_id=other)
+        new = codec.row_hash(row[1], rec)
+        cur.execute("alter table f7_feature_rows disable trigger user")
+        cur.execute("update f7_feature_rows set snapshot_id = %s, row_hash = %s where id = %s", (other, new, row[0]))
+        cur.execute("alter table f7_feature_rows enable trigger user")
+        cur.execute("select run_id from de_runs")
+        run_id = cur.fetchone()[0]
+    su.commit()
+    su.close()
+    rehash(cluster, db, run_id, "fund_valuation_eps", "S05.N0000", lambda ev: ev.update(f7_row_hash=new))
+    assert any("missing" in p for p in verify.report(c))
+
+
+def test_r3_a_configuration_whose_json_changed_is_noticed(cluster, monkeypatch):
+    db = fs.fresh_db(cluster)
+    c, _ = written(cluster, db, monkeypatch)
+    tamper(cluster, db, "f7_configurations", "update f7_configurations set configuration_json = "
+                                             "replace(configuration_json, '\"N_min\":10', '\"N_min\":3')")
+    assert any("id is not the hash" in p for p in verify.report(c))     # N06
+
+
+def test_r4_rows_and_runs_must_share_their_snapshots_t_and_h(cluster):
+    from test_de4_migration_postgres import refused
+    from worker.feature_engine_store import codec
+    db = fs.fresh_db(cluster)
+    sid, _ids = seed(cluster, db, mode="AVAILABLE")
+    w_ = fs.conn(cluster, db, user="cse_worker")
+    cid, js, st = codec.f7_configuration()
+    did, djs, dst = codec.de_configuration()
+    with w_.cursor() as cur:
+        cur.execute("insert into f7_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (cid, js, st))
+        cur.execute("insert into de_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (did, djs, dst))
+        panel = ("insert into f7_panels (issuer_id, mode, result_label, cutoff, knowledge_horizon, "
+                 "f7_configuration_id, f8_configuration_id, f8_result_hash, state, panel_hash) values ('I', "
+                 "'AVAILABLE', 'reconstructed', %s, %s, %s, 'f8', repeat('a',64), 'ok', repeat('b',64)) "
+                 "returning panel_id")
+        cur.execute(panel, (w.T, "2024-08-31T00:00:00+00:00", cid))   # H differs from the snapshot's
+        bad_h = cur.fetchone()[0]
+        cur.execute(panel, (w.T, "2024-07-31T00:00:00+00:00", cid))
+        good = cur.fetchone()[0]
+    w_.commit()
+    row = ("insert into f7_feature_rows (panel_id, snapshot_id, subject, level, label_class, fundamental_coverage, "
+           "features_json, eligibility_json, row_hash) values (%s, %s, 'X', 'issuer', 'reconstructed', "
+           "'captured_only', '{}', '{}', repeat('d',64))")
+    assert refused(w_, row, (bad_h, sid))                               # N08
+    assert refused(w_, row, (good, sid)) is None
+    run = ("insert into de_runs (mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, "
+           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, run_hash) values "
+           "('AVAILABLE', %s, '2024-07-31T00:00:00+00:00', %s, %s, %s, 'reconstructed', 'captured_only', '{}', "
+           "'{}', repeat('c',64))")
+    assert refused(w_, run, ("2024-06-29T00:00:00+00:00", sid, cid, did))   # N09: another T
+    assert refused(w_, run, (w.T, sid, cid, did)) is None
+    w_.rollback()

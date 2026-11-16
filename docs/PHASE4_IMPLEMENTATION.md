@@ -242,4 +242,15 @@ a real MF kind. Minors recorded, not changed (C-0081): a re-run of a snapshot is
 runs use the F8 configuration designated at H unless one is passed; the loader checks the MF row count but leaves
 re-proving the snapshot hash to MF's `verify`; link decisions are not checked for being settled at T (the same rule
 as F8's, applied with MF's margin, is a later change); `de_outputs.issuer_id` has no foreign key (text, like
-`f7_panels.issuer_id`). A re-audit is pending.
+`f7_panels.issuer_id`).
+
+## DE-4 re-audit (fresh-context agent, at 770c7b7): accepted
+
+No Blocker: DE-4 is accepted (C-0037, C-0083). 52 mutants of the first audit's fixes and guards; 38 killed. Its two
+Majors were test gaps on integrity defences, now closed in `tests/test_de4_jobs_postgres.py` (r1 to r4), each test
+failing on its mutant: `verify`'s subject check, its F8-result check, its own-snapshot filter and its configuration
+check, against a forger who re-hashes the output and the run; and the database refusing a feature row whose H
+differs from its panel's and a run whose T differs from its snapshot's. Two guard mutants (a run's or row's mode
+alone) are equivalent: the H constraints refuse the same rows. Minors carried: the real `loader.results` path is
+exercised only through stand-ins (the same-question check refuses a wrong H either way); the codec's label checks
+duplicate the database's; the writer's duplicate-subject refusal and the preflight's EXECUTE check are untested.

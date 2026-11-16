@@ -821,3 +821,8 @@ as a metadata tie was treated like a held, not-yet-public one, so it counted as 
 stopped blocking its trailing-twelve-month route. Fixed in one condition and tested in both modes. Its four Majors
 were rules without tests; each now has one. A sixth, confirming audit is pending.
 
+## C-0083: DE-4 accepted ([delegated], 2026-11-16)
+
+The DE-4 re-audit found no Blocker, so DE-4 is accepted. Its two Majors were checks with no test (four in `verify`,
+two in the database guards); each now has one that fails when the check is removed.
+
