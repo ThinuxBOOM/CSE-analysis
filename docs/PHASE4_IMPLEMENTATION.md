@@ -175,6 +175,19 @@ At `a8e52f1`. Guard log empty. A seeded differential search through F8 over 2 20
 | — | Minors | The internal `not_shown` marker reached feature flags; `earlier_period_than_anchor` was a flag only | **Fixed:** the marker stays internal (`test_n1`); the reason and the period end are recorded |
 | — | Minors | A held fact's existence shows in reasons and provenance in `KNOWN` (`not_yet_available`, as §4.2 requires; states and values never change); `Panel.counts` includes `none` facts, as F8's own hash does | **Recorded** as consistent with F8 and §4.2 |
 
+## Fifth F7 audit (fresh-context agent, at c461dc5)
+
+No look-ahead: a randomised search through real F8 (1 648 worlds per mode, nine families of planted held filings)
+found no difference in any state or value, and it catches every mutant the fourth search missed. One Blocker, a
+wrong state: `periods._get` treated a public fact F8 shows only as a `metadata_version_tie` (F8 state `none`, F7
+`untrusted`) as not shown, so it became `missing` and stopped blocking its TTM path (a regression from C-0076's
+fix). Fixed in one condition: only a fact that is not shown and not untrusted is absent. Tie exclusions come only
+from public runs, so this cannot reopen a look-ahead. Four Majors, rules no test protected: the `u.number` guard
+and the `(end, months)` key of the cash-flow confirmation, the anchor bound of `eps_latest_fy`, and `_Restated`
+keeping `partial`. All are now tested (`tests/test_f7_audit5_unit.py`); each test fails when its rule is reverted.
+Minors carried: F17 (the day-precision age in `annotate`) and F18 (`nim_proxy` limited to banks), equivalent
+mutants. A sixth, confirming audit is pending.
+
 ## DE-4: storage, the run job and the command line
 
 Pending migration `supabase/migrations_pending/0020_financial_features_and_engines.sql` (after 0019, outside the

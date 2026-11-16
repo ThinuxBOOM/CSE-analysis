@@ -41,9 +41,10 @@ def _get(panel, concept, end, months, maturity="not_applicable"):
     u = panel.fact(concept, end, months, maturity=maturity)
     if u is None:
         return Derived(MISSING, reason="no_exact_period_match")
-    if u.f8_state is not None and u.f8_state not in SHOWN:
+    if u.f8_state is not None and u.f8_state not in SHOWN and u.state != UNTRUSTED:
         # a fact F8 does not show (in KNOWN, a document held but not yet public) is as absent as one never filed:
-        # it makes no path applicable (third audit B-1; C-0073)
+        # it makes no path applicable (third audit B-1; C-0073). A public fact F8 shows only as a metadata tie is
+        # not absent: it is untrusted (§4.2) and blocks its path (fifth audit B-1; ties come only from public runs)
         return Derived(MISSING, reason=u.reason or "absent", inputs=(u.ef_key,), flags=("not_shown",))
     if u.state != FRESH:
         return Derived(u.state, reason=u.reason, inputs=(u.ef_key,))

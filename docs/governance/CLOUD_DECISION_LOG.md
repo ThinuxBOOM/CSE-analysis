@@ -814,3 +814,10 @@ records; AVAILABLE uses the F8 configuration designated at H by default; the loa
 MF's `verify`; link decisions are not checked for being settled; `de_outputs.issuer_id` has no foreign key. A
 re-audit is pending.
 
+## C-0082: the fifth F7 audit and its fix ([delegated], 2026-11-16)
+
+The fifth audit found no look-ahead in 1 648 worlds per mode. It found one wrong state: a public fact marked only
+as a metadata tie was treated like a held, not-yet-public one, so it counted as missing instead of untrusted and
+stopped blocking its trailing-twelve-month route. Fixed in one condition and tested in both modes. Its four Majors
+were rules without tests; each now has one. A sixth, confirming audit is pending.
+
