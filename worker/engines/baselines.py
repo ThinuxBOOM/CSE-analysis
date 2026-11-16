@@ -19,13 +19,14 @@ def base_no_change(h):
 
 
 def base_rate_252(features, h):
-    """From MF's hist_up_share_h, hist_flat_share_h, hist_down_share_h and hist_mean_ret_h (fresh values only)."""
+    """From MF's hist_up_share_h, hist_flat_share_h, hist_down_share_h and hist_mean_ret_h, admissible states only
+    (fresh, stale, partial); null where the feature is missing or in a null or unlabelled state."""
     keys = {"p_rise": f"hist_up_share_{h}", "p_flat": f"hist_flat_share_{h}", "p_fall": f"hist_down_share_{h}",
             "expected_return": f"hist_mean_ret_{h}"}
     vals = {}
     for f, k in keys.items():
         v = features.get(k)
-        if v is None or v.value is None or v.state == "missing":
+        if v is None or v.value is None or v.state not in ("fresh", "stale", "partial"):
             vals[f] = {"value": None, "reason": f"{k}_missing"}
         else:
             vals[f] = v.value

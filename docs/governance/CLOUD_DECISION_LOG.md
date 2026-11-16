@@ -767,3 +767,10 @@ rule that did not apply, valuation without a currency check, a one-day shift of 
 limit skipped for partial values, and an approximate trailing EPS built from the wrong rules). All are fixed, with
 the Majors, and each fix is caught by a test when reverted. A third F7 audit is pending.
 
+## C-0076: Phase 4 F7-4 and DE-1 to DE-3 accepted; the third F7 audit's fix ([delegated], 2026-11-16)
+
+The third F7 audit found no Blocker in financial eligibility (F7-4) or in the engines and baselines (DE-1 to DE-3),
+so both are accepted (C-0037); their Majors are fixed or tested, including the ranking universes and a known-rank
+test of every engine. It found one more look-ahead in F7-1 to F7-3: a filing held but not yet public could make a
+trailing-twelve-month route count. Fixed and tested through F8 in both modes. A fourth F7 audit is pending.
+

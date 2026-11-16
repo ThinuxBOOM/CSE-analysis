@@ -91,6 +91,9 @@ def restate(u, row):
     a, dates = availability_date(u)
     if a is None or any(f in u.recorded for f in pn.RECORDED_AVAILABILITY_FLAGS):
         return Derived(pn.UNTRUSTED, reason="eps_basis_ambiguous", inputs=(u.ef_key,))
+    if row.ref_session is not None and row.ref_session < a:
+        # no close since the document: untrusted for this reason whether or not an action is entered (FL-21 (d))
+        return Derived(pn.UNTRUSTED, reason="no_close_since_document", inputs=(u.ef_key,))
     share = [f for f in row.factors if f.kind in SHARE_BASIS_KINDS]
     # an ex-date between the earliest and latest availability of the fact's observations (FL-18), or between the
     # period end and date(A) (the printed figure may or may not reflect it): never guessed
@@ -102,8 +105,6 @@ def restate(u, row):
         if m.status == "open" and u.period_end < m.session_to <= row.d_star:
             why = "eps_basis_ambiguous" if m.session_to <= a else "unexplained_move_since_document"
             return Derived(pn.UNTRUSTED, reason=why, inputs=(u.ef_key,))
-    if row.ref_session is not None and row.ref_session < a:
-        return Derived(pn.UNTRUSTED, reason="no_close_since_document", inputs=(u.ef_key,))
     product, state, flags = Fraction(1), pn.FRESH, []
     for f in sorted(share, key=lambda x: x.ex_date):
         if not (a < f.ex_date <= row.d_star):

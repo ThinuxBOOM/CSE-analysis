@@ -144,3 +144,19 @@ finding confirmed fixed). **F7-3: REJECT** (five Blockers).
 
 Each Blocker fix and the main Majors were reverted as mutants: all ten are killed.
 
+## Third F7 audit, and first audit of F7-4 and DE-1 to DE-3 (fresh-context agent)
+
+At `f051ce0`. Guard log empty. 97 mutants, 71 killed. **F7-1 to F7-3: REJECT** (one Blocker). **F7-4: ACCEPT** and
+**DE-1 to DE-3: ACCEPT** (no Blocker; C-0037), with Majors, all now fixed or tested.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | In `KNOWN`, a held, not yet public document (F8 `none`) made a TTM path applicable, so a conflicting input in that path blocked a clean TTM (every TTM feature and `eps_ttm_approx`) | **Fixed:** a fact F8 does not show is as absent as one never filed for applicability (`not_shown`). `tests/test_f7_audit3_unit.py::test_b1` through F8 in both modes, with its converse; the reverted fix fails it |
+| 1 | Major | FL-21 (d) gave `eps_basis_ambiguous` with an entered action | **Fixed:** `no_close_since_document` is checked first. `test_v1` |
+| 2 | Major | B-6's interval scaling untested | **Tested.** `test_v2` |
+| 3 | Major | §7.2's universes not built | **Built:** `fundamental_universe` (financially eligible, a market-eligible linked line, the group; `not_applicable` otherwise), `valuation_eps_universe`, `market_universe`. `test_u1` (FL-13 with its converse) |
+| 4 | Major | DE-2's exit not met | **Tested:** every engine of set v1 on a known-rank universe, orientations and minima. `test_d1` |
+| — | Majors | Untested F7-3 rules (the `equity_to_assets` flag, bank margins `partial`, ex-dates at date(A) and at D\*, the SHOWN filter for `eps_latest_fy`, the stale boundary), F7-4 criteria (conflicting `total_assets`, usable, 12-month and total-operations years, partial and stale features, the order of results), DE (required versus minimum, the universe digest in `inputs_hash`, baseline fields) | **Tested:** `test_v3`, `test_f1`, `test_e1`, `test_d2` |
+| — | Minors | `net_margin_bank` passed `pos` as `bank` (correct by accident); `cash_reconciles` ignored the state order; `annotate`'s day-precision age; `base_rate_252` accepted unlabelled values | **Fixed** |
+| — | Minors | Edge cases (an out-of-the-money rights factor in the ambiguous window, `not_evaluable` moves, `stale_sessions` null), UTC dates for ages, `avg_instant`'s date limit, reason codes outside §6.4, the feature version on engine components, MA §4's extra baseline fields | **Carried** to DE-4 or recorded |
+

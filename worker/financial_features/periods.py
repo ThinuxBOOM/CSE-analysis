@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Optional
 
 from .dates import exact_rule_ok, months_before  # noqa: F401  (re-exported)
-from .panel import CONFLICTING, FRESH, MISSING, UNTRUSTED, signed
+from .panel import CONFLICTING, FRESH, MISSING, SHOWN, UNTRUSTED, signed
 
 # ------------------------------------------------------------------------------------------------ F7-2 rules (§5.2)
 
@@ -41,6 +41,10 @@ def _get(panel, concept, end, months, maturity="not_applicable"):
     u = panel.fact(concept, end, months, maturity=maturity)
     if u is None:
         return Derived(MISSING, reason="no_exact_period_match")
+    if u.f8_state is not None and u.f8_state not in SHOWN:
+        # a fact F8 does not show (in KNOWN, a document held but not yet public) is as absent as one never filed:
+        # it makes no path applicable (third audit B-1; C-0073)
+        return Derived(MISSING, reason=u.reason or "absent", inputs=(u.ef_key,), flags=("not_shown",))
     if u.state != FRESH:
         return Derived(u.state, reason=u.reason, inputs=(u.ef_key,))
     if u.nil:
@@ -73,7 +77,8 @@ def _combine(rule, parts, signs):
 def _absent(parts):
     """A path does not apply when one of its facts does not exist (re-audit B-1: decided per part, not from the
     combined state, which a conflicting part would make `conflicting`)."""
-    return any(isinstance(x, Derived) and x.state == MISSING and x.reason == "no_exact_period_match" for x in parts)
+    return any(isinstance(x, Derived) and x.state == MISSING
+               and (x.reason == "no_exact_period_match" or "not_shown" in x.flags) for x in parts)
 
 
 TTM_RULES = ("F7P-1", "F7P-2", "F7P-3")

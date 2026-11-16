@@ -60,7 +60,7 @@ def test_v4_fl17_rights_applied_cash_dividend_not():
 
 
 def test_v5_fl18_straddling_documents_and_unknown_availability():
-    two = eps(available=("2024-05-15T04:00:00+00:00", "2024-07-01T04:00:00+00:00"))
+    two = eps(available=("2024-05-15T04:00:00+00:00", "2024-06-10T04:00:00+00:00"))
     v = va.eps_features(P(two), row(factors=[split(date(2024, 6, 3))]))
     assert v["eps_latest_fy"].reason == "eps_basis_ambiguous"
     v = va.eps_features(P(eps(available=(None,))), row())

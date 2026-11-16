@@ -122,3 +122,38 @@ def fan_out(issuer_outputs, links):
     """§7.2: an issuer engine's output given to every equity line linked to the issuer at T. links: {security:
     issuer_id}. Returns {security: (issuer_id, output)}."""
     return {sec: (iss, issuer_outputs[iss]) for sec, iss in sorted(links.items()) if iss in issuer_outputs}
+
+
+# ------------------------------------------------------------------------------------------------ §7.2 universes
+
+def fundamental_universe(engine, issuers):
+    """§7.2: the issuers that are financially eligible at T, have at least one market-data-eligible equity line linked
+    at T, and belong to the engine's industry group; each counted once. issuers: {issuer_id: {"eligible": bool,
+    "group": str, "lines": [(security, market_eligible)]}}. Returns (members, not_applicable)."""
+    members, na = [], []
+    for iss, x in sorted(issuers.items()):
+        if engine.group not in ("all", "by_issuer_group") and x["group"] != engine.group:
+            na.append(iss)
+            continue
+        if x["eligible"] and any(me for _sec, me in x["lines"]):
+            members.append(iss)
+    return members, na
+
+
+def valuation_eps_universe(issuers):
+    """§7.2's exception: the market-data-eligible equity lines whose issuer is financially eligible, ranked within the
+    issuer's industry group, with no fan-out. Returns {group: [security]}."""
+    out = {}
+    for iss, x in sorted(issuers.items()):
+        if not x["eligible"]:
+            continue
+        for sec, me in x["lines"]:
+            if me:
+                out.setdefault(x["group"], []).append(sec)
+    return {g: sorted(v) for g, v in out.items()}
+
+
+def market_universe(lines):
+    """§7.2: market engines rank the equity lines that are market-data eligible at T. lines: {security: bool}."""
+    return sorted(sec for sec, me in lines.items() if me)
+

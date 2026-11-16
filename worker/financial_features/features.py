@@ -147,7 +147,11 @@ def _identity_gap(p, e, pos=False):
 def _cash_reconciles(p, e, pos=None):
     x, y = instant(p, "cash_at_end_of_period", e), instant(p, "cash_and_cash_equivalents", e)
     if not (x.number and y.number):
-        return Derived(x.state if not x.number else y.state, reason=x.reason or y.reason, inputs=x.inputs + y.inputs)
+        from .periods import NULL_ORDER
+        nulls = [z for z in (x, y) if not z.number]
+        state = next((st for st in NULL_ORDER if any(z.state == st for z in nulls)), nulls[0].state)
+        first = next(z for z in nulls if z.state == state)
+        return Derived(state, reason=first.reason, inputs=x.inputs + y.inputs)
     lo_x, hi_x = (x.value if x.low is None else x.low), (x.value if x.high is None else x.high)
     lo_y, hi_y = (y.value if y.low is None else y.low), (y.value if y.high is None else y.high)
     agree = lo_x <= hi_y and lo_y <= hi_x                  # an interval end of exactly 0 counts (re-audit M-b)
@@ -178,7 +182,7 @@ SPECS = [
     Spec("operating_margin", "margins", GENERAL, True,
          lambda p, e, pos: ratio(ttm(p, "operating_profit", e), ttm(p, "revenue", e), pos)),
     Spec("net_margin", "margins", GENERAL, True, lambda p, e, pos: _margin_at(p, e, False, pos)),
-    Spec("net_margin_bank", "margins", BANK, True, lambda p, e, pos: _margin_at(p, e, pos)),
+    Spec("net_margin_bank", "margins", BANK, True, lambda p, e, pos: _margin_at(p, e, True, pos)),
     Spec("net_margin_chg", "margins", "all", False, _net_margin_chg),
     Spec("nim_proxy", "margins", BANK, True,
          lambda p, e, pos: ratio(ttm(p, "net_interest_income", e), avg_instant(p, "total_assets", e), pos)),
@@ -268,10 +272,14 @@ def annotate(p, values, label_class=None):
         instants = []
         for k in v.inputs:
             u = by_key.get(k)
-            for a, _prec in (u.availability if u is not None else ()):
+            for a, prec in (u.availability if u is not None else ()):
                 if a is not None:
                     x = datetime.fromisoformat(a)
-                    instants.append(x if x.tzinfo else x.replace(tzinfo=timezone.utc))
+                    x = x if x.tzinfo else x.replace(tzinfo=timezone.utc)
+                    if prec == "day":            # stored as the next 00:00 Colombo: it counts as that day (§6.3)
+                        from datetime import timedelta
+                        x = x - timedelta(microseconds=1)
+                    instants.append(x)
         flags = v.flags + (("unlabelled_scope",) if "unlabelled_scope" in p.flags else ())
         out[fid] = replace(v, scope=p.scope, currency=p.currency, anchor_period=p.anchor_period,
                            f8_result_hash=p.f8_result_hash, label_class=label_class,
