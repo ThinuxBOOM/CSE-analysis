@@ -188,6 +188,19 @@ keeping `partial`. All are now tested (`tests/test_f7_audit5_unit.py`); each tes
 Minors carried: F17 (the day-precision age in `annotate`) and F18 (`nim_proxy` limited to banks), equivalent
 mutants. A sixth, confirming audit is pending.
 
+## Sixth F7 audit (fresh-context agent, at 770c7b7)
+
+The fifth audit's fix holds and its four Majors are now killed; no look-ahead in the fifth audit's 1 648 worlds per
+mode nor in 565 new tie-family worlds per mode. Two Blockers of the same class as the fifth audit's: a public fact
+F8 shows only as a metadata tie was still dropped where F7 filtered on F8's shown states, so `eps_latest_fy` stepped
+back past an untrusted newer year (§6.2) and the panel stepped over an untrusted newest anchor (§4.3; 55 of about
+450 ok panels per mode in the search). One Major: the other panel choices and the industry group used the same
+filter. Fixed with one rule in `panel.py` (`fact_counts` for F8 facts, `usable_counts` for panel values: F8 shows
+it, or it is a public tie) used by every former SHOWN filter; the design's §4.3 records the exception (C-0084).
+Tests: `tests/test_f7_audit6_unit.py` (the auditor's two reproductions through real F8 in both modes, the industry
+group, the scope, and a held document that still never counts); each fails when its rule is reverted. A seventh,
+confirming audit is pending.
+
 ## DE-4: storage, the run job and the command line
 
 Pending migration `supabase/migrations_pending/0020_financial_features_and_engines.sql` (after 0019, outside the

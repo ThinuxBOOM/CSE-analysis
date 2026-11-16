@@ -126,9 +126,10 @@ def restate(u, row):
 
 def eps_latest_fy_fact(p):
     """§6.2: the 12-month eps_basic at the latest period end at or before the anchor that has such a fact in state
-    single_source, corroborated or conflicting (never stepping back past an unusable one)."""
+    single_source, corroborated or conflicting, or untrusted by a public tie (never stepping back past an unusable one;
+    C-0084)."""
     ends = sorted({k[1] for k, u in p.facts.items() if k[0] == "eps_basic" and k[2] == 12 and k[1] <= p.anchor_period
-                   and k[3] == pn.ANCHOR_OPERATIONS and k[4] == pn.NOT_APPLICABLE and u.f8_state in pn.SHOWN})
+                   and k[3] == pn.ANCHOR_OPERATIONS and k[4] == pn.NOT_APPLICABLE and pn.usable_counts(u)})
     if not ends:
         return None, None
     end = ends[-1]
@@ -231,7 +232,7 @@ class _Restated:
         u = self.p.fact(concept, end, months, operations, maturity)
         if concept != "eps_basic" or u is None:
             return u
-        if u.f8_state is not None and u.f8_state not in pn.SHOWN:
+        if not pn.usable_counts(u):
             return u          # a fact F8 does not show stays not shown: it makes no path applicable (fourth audit B-1)
         d = restate(u, self.row)
         if d.state in (pn.FRESH, PARTIAL) and d.value is not None:

@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Optional
 
 from .dates import exact_rule_ok, months_before  # noqa: F401  (re-exported)
-from .panel import CONFLICTING, FRESH, MISSING, SHOWN, UNTRUSTED, signed
+from .panel import CONFLICTING, FRESH, MISSING, UNTRUSTED, signed, usable_counts
 
 # ------------------------------------------------------------------------------------------------ F7-2 rules (§5.2)
 
@@ -41,7 +41,7 @@ def _get(panel, concept, end, months, maturity="not_applicable"):
     u = panel.fact(concept, end, months, maturity=maturity)
     if u is None:
         return Derived(MISSING, reason="no_exact_period_match")
-    if u.f8_state is not None and u.f8_state not in SHOWN and u.state != UNTRUSTED:
+    if not usable_counts(u):
         # a fact F8 does not show (in KNOWN, a document held but not yet public) is as absent as one never filed:
         # it makes no path applicable (third audit B-1; C-0073). A public fact F8 shows only as a metadata tie is
         # not absent: it is untrusted (§4.2) and blocks its path (fifth audit B-1; ties come only from public runs)

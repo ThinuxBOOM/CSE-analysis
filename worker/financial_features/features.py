@@ -53,7 +53,7 @@ def industry(p):
     from worker import financial_concepts as fc
     for (concept, end, _m, _o, _mat), u in p.facts.items():
         # only facts F8 shows: a held, not yet public document never changes the group (re-audit B-2, FL-4)
-        if end == p.anchor_period and u.f8_state in pn.SHOWN and fc.BY_KEY.get(concept) is not None \
+        if end == p.anchor_period and pn.usable_counts(u) and fc.BY_KEY.get(concept) is not None \
                 and fc.BY_KEY[concept].industries == BANK:
             return BANK
     return GENERAL

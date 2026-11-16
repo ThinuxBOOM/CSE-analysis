@@ -826,3 +826,11 @@ were rules without tests; each now has one. A sixth, confirming audit is pending
 The DE-4 re-audit found no Blocker, so DE-4 is accepted. Its two Majors were checks with no test (four in `verify`,
 two in the database guards); each now has one that fails when the check is removed.
 
+## C-0084: the sixth F7 audit and its fix; a public tie counts ([delegated], 2026-11-16)
+
+The sixth audit confirmed the fifth's fix and found no look-ahead. It found two more places where a public fact
+marked only as a metadata tie was treated like a held, not-yet-public document: the latest annual EPS stepped back to
+an older year, and the panel stepped over an untrusted newest result. Design clarification of C-0073: such a fact
+counts, as untrusted, everywhere F7 decides what exists; a held document still never does. One shared rule now
+replaces every separate filter, with tests. A seventh, confirming audit is pending.
+

@@ -39,6 +39,20 @@ RECORDED_AVAILABILITY_FLAGS = ("availability_sources_disagree", "availability_ev
 RECORDED_ANNOTATIONS = ("restated_comparative_present", "internal_conflict", "sign_only_difference")
 PIPELINES = ("live", "point_in_time")
 SHOWN = ("single_source", "corroborated", "conflicting")
+TIE_FLAGS = (AMBIGUOUS, METADATA_TIE)
+
+
+def fact_counts(fact):
+    """Whether an F8 FactView counts for F7 (C-0073 as clarified by C-0084): F8 shows it, or it is a public fact F8
+    could not resolve (an unbroken metadata tie or an ambiguous supersession), which is untrusted (§4.2) and never
+    stepped over. Tie exclusions come only from runs public at the cutoff, so a held, not-yet-public document never
+    counts (FL-4, FL-19)."""
+    return fact.state in SHOWN or (fact.state == NONE and any(f in fact.flags for f in TIE_FLAGS))
+
+
+def usable_counts(u):
+    """fact_counts() for a panel Usable: F8 shows it, or F7 made it untrusted (a tie; _usability's first rule)."""
+    return u.f8_state is None or u.f8_state in SHOWN or u.state == UNTRUSTED
 
 
 @dataclass(frozen=True)
@@ -168,10 +182,10 @@ def panel(result, pipeline):
                 information_cutoff=result.information_cutoff, knowledge_horizon=result.knowledge_horizon,
                 f8_configuration_id=result.f8_configuration_id, f8_result_hash=result.result_hash,
                 counts=tuple(sorted(counts.items())))
-    # §4.3: only facts F8 shows count for the newest period, the scope, the currency, n and scope_changed. A fact F8
-    # reports as `none` (in KNOWN, a document the system holds but that is not yet public) never shapes the panel
-    # (FL-4, FL-19; audit B1)
-    shown_facts = [f for f in facts if f.state in SHOWN]
+    # §4.3: only facts that count shape the newest period, the scope, the currency, n and scope_changed. A fact F8
+    # reports as `none` because its document is held but not yet public never does (FL-4, FL-19; audit B1); a public
+    # tie-only fact does, as untrusted, so an untrusted newest anchor is never stepped over (sixth audit; C-0084)
+    shown_facts = [f for f in facts if fact_counts(f)]
     shown = _anchor_facts(shown_facts)
     if not shown:
         return Panel(state=ANCHOR_ABSENT, **base)
