@@ -856,3 +856,10 @@ One gap: an MF snapshot does not store its market-wide aggregates, so the market
 never a model input) is `undefined` for now. Like market cap (C-0079), storing them means changing pending migration
 0019 before the merge; that is left for the owner's merge review. The read-only loader is the next part.
 
+## C-0088: Phase 5 M5-2 part 2, the loader ([delegated], 2026-11-16)
+
+The dataset builder now reads its inputs from the stored Phase 3 and 4 tables, read-only, in one transaction:
+market snapshot rows, the engine run of each snapshot and the financial feature rows that run used, and the labels
+of one pinned target build. Survivorship comes from the import batches within reach of each snapshot's feature
+windows. Tested against a PostgreSQL world. M5-2 now goes to audit.
+

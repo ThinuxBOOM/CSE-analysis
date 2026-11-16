@@ -195,7 +195,8 @@ def version(manifest, rows, labels):
 
 
 def _worst(values, order):
-    return max(values, key=order.index) if values else order[0]
+    """The worst label of the rows; None for a dataset without rows (never a claim of `complete`)."""
+    return max(values, key=order.index) if values else None
 
 
 def _era(manifest, d):

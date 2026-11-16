@@ -37,7 +37,7 @@ says.
 
 ## M5-2: the dataset builder, manifest, version and strata (part 1: the pure builder)
 
-**Status: built; not yet audited.** Part 2, the read-only loader from the stored Phase 3 and 4 rows, follows.
+**Status: built (parts 1 and 2); audit pending.**
 
 | File | Content | Design |
 |---|---|---|
@@ -55,6 +55,20 @@ Choices made inside the design's words, for the audit:
   `undefined` below 252.
 - **Gap (C-0087):** an MF snapshot does not store its market aggregates (`mkt_ret_ew_21`), so the trend tag is
   `undefined` with reason `market_aggregate_not_stored` until it does. The builder already takes them when given.
+- A dataset without rows carries no label class, survivorship or coverage (None), never a claim of `complete`.
+
+**Part 2, the loader** (`worker/ml_dataset/loader.py`): one read-only, repeatable-read transaction over
+`mf_snapshots` and `mf_snapshot_rows`, `de_runs` and `de_outputs`, `f7_feature_rows`, `mf_target_rows` (the pinned
+build only) and, for survivorship, the import headers and bar dates. Choices: a snapshot's DE run is the latest under
+the manifest's F7 and DE configurations; a line's F7 features are exactly the rows the run's outputs cite (the
+issuer's and the line's own); its industry group comes from an issuer engine's universe when that engine applies;
+survivorship is `complete` for a snapshot that read no imported history, else the worst of the raw import batches
+admitted by its governing time that hold a bar in the 400 days before the session (the reach of the longest feature
+window). A snapshot without a matching DE run loads without F7 and DE inputs and is counted.
+`tests/test_m52_loader_postgres.py` (3 tests, on DE-4's PostgreSQL world plus two target builds): the dataset carries
+the run's F7 rows and 15 engine scores per line, the pinned build's labels only, label states as stored, and is the
+same twice; a run under other configurations is not used; survivorship from an in-reach import, not an older one; a
+snapshot past its session's cutoff rule is not used.
 
 Mutation check (14 mutants, among them liquidity over ineligible lines, a version without labels, non-admissible
 values kept, a second build, withheld labels built, a session's own median in its history, the cutoff rule off, the
