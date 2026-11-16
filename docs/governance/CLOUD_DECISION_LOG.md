@@ -841,3 +841,10 @@ With F7-4 (C-0076) and DE-1 to DE-4 (C-0076, C-0083), all of Phase 4 is now acce
 owner: a held later version of a filing with no retrieval time can make the public version's availability unknown
 (F8 rule A-5). It is outside F7, F8 is frozen, and the case is unrealistic; it is recorded, not changed.
 
+## C-0086: MF-7c third part accepted; Phase 3's code complete ([delegated], 2026-11-16)
+
+The fifth re-audit found no Blocker in 5 600 fuzzed scenarios, so the MF-7c commands are accepted, and with them
+every Phase 3 step (MF-1 to MF-7c). Its one Major was a missing test for a comeback through a row with no usable
+price; that test now exists and catches both faulty variants. Phase 5's dataset builder (M5-2) can now start.
+Migration 0019 stays pending until the owner's merge decision.
+

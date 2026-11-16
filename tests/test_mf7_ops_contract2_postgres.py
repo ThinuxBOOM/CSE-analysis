@@ -101,14 +101,22 @@ def test_c7_a_calendar_range_of_a_batch_admitted_later(cluster):                
 
 @pytest.mark.parametrize("mode", [KNOWN, AVAILABLE])
 @pytest.mark.parametrize("how", ["quarantine", "disagree"])
-def test_c8_a_security_that_comes_back_through_a_later_row(cluster, mode, how):                  # audit 4, E-1
+@pytest.mark.parametrize("back", ["close", "no_close", "zero"])
+def test_c8_a_security_that_comes_back_through_a_later_row(cluster, mode, how, back):          # audit 4, E-1
+    """The comeback row may have a close, no close, or a zero price: every surviving row counts for presence
+    (fifth re-audit MJ-1)."""
     db = fs.fresh_db(cluster)
     cid, refs = base(cluster, db, FULL() + [(X, DAYS[i], 50 + i % 3) for i in range(13)], mode)
     if how == "quarantine":
         batch(cluster, db, "Q", [(SYMS[0], DAYS[20], px(0, 20))], quarantine=[(X, DAYS[i]) for i in range(13)])
     else:
         batch(cluster, db, "Q", [(SYMS[0], DAYS[20], px(0, 20))] + [(X, DAYS[i], 90) for i in range(13)])
-    batch(cluster, db, "N", [(X, DAYS[50], 60)])
+    if back == "close":
+        batch(cluster, db, "N", [(X, DAYS[50], 60)])
+    elif back == "no_close":
+        batch(cluster, db, "N", [(X, DAYS[50], None)])
+    else:
+        batch(cluster, db, "N", [(SYMS[0], DAYS[50], px(0, 50))], zero=[(X, DAYS[50])])
     contract(cluster, db, mode, cid, refs)
 
 

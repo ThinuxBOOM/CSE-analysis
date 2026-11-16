@@ -851,3 +851,14 @@ cross-security supersessions and withdrawals, evidence dated after T, and refere
 
 Each new guard, reverted, fails its test.
 
+## Fifth re-audit of MF-7c third part: fresh-context agent (accepted)
+
+No Blocker: MF-7c third part is accepted (C-0037), and with it all of Phase 3's steps, MF-1 to MF-7c (C-0086). A
+larger fuzzer (5 600 scenarios, 215 876 labels rebuilt at their own `resolved_at`, with securities that lose every
+row and come back through one to three rows of any kind, late joiners and statements on them) found no difference
+and no `resolved_at` after T; with C-0078 reverted it finds the original fault. 800 scenarios gave identical snapshot
+hashes before and after the row-less change. Of 26 mutants, the survivors that change results were two (M17, M18):
+the presence rule counting only rows with a close, or skipping zero-price rows. Major MJ-1, a missing test, now
+closed: `test_c8` also comes back through a close-less and a zero-price row, and fails under both mutants. The
+carried Minors stand.
+
