@@ -5,7 +5,7 @@ Each step is accepted when a fresh-context audit reports no Blocker (C-0037). No
 
 ## F7-1: the fundamental panel as of T
 
-**Status: implemented and tested (2026-11-15); audit pending.**
+**Status: implemented and tested; see the audit sections below for its state.**
 
 | File | Content |
 |---|---|
@@ -23,7 +23,7 @@ Choices for the audit:
 
 ## F7-2: period arithmetic
 
-**Status: implemented and tested (2026-11-15); audit pending.**
+**Status: implemented and tested; see the audit sections below for its state.**
 
 | File | Content |
 |---|---|
@@ -59,7 +59,7 @@ Choices for the audit:
 
 ## F7-3 (part 2): EPS restatement and the valuation features
 
-**Status: implemented and tested (2026-11-15); audit pending.**
+**Status: implemented and tested; see the audit sections below for its state.**
 
 | File | Content |
 |---|---|
@@ -92,7 +92,7 @@ At `a1780c0`. Guard log empty. 56 mutants, 38 killed. **REJECT** (one Blocker).
 
 ## F7-4: financial eligibility
 
-**Status: implemented and tested (2026-11-15); audit pending.**
+**Status: implemented and tested; see the audit sections below for its state.**
 
 | File | Content |
 |---|---|
@@ -105,7 +105,7 @@ is its UTC date.
 
 ## DE-1 to DE-3: the engine contract, engine set v1 and the baselines
 
-**Status: implemented and tested (2026-11-16); audit pending.**
+**Status: accepted (C-0076).**
 
 | File | Content |
 |---|---|
@@ -151,7 +151,7 @@ At `f051ce0`. Guard log empty. 97 mutants, 71 killed. **F7-1 to F7-3: REJECT** (
 
 | # | Severity | Finding | Disposition |
 |---|---|---|---|
-| B-1 | Blocker | In `KNOWN`, a held, not yet public document (F8 `none`) made a TTM path applicable, so a conflicting input in that path blocked a clean TTM (every TTM feature and `eps_ttm_approx`) | **Fixed:** a fact F8 does not show is as absent as one never filed for applicability (`not_shown`). `tests/test_f7_audit3_unit.py::test_b1` through F8 in both modes, with its converse; the reverted fix fails it |
+| B-1 | Blocker | In `KNOWN`, a held, not yet public document (F8 `none`) made a TTM path applicable, so a conflicting input in that path blocked a clean TTM (every TTM feature; `eps_ttm_approx` was **not** covered by this fix, see the fourth audit) | **Fixed:** a fact F8 does not show is as absent as one never filed for applicability (`not_shown`). `tests/test_f7_audit3_unit.py::test_b1` through F8 in both modes, with its converse; the reverted fix fails it |
 | 1 | Major | FL-21 (d) gave `eps_basis_ambiguous` with an entered action | **Fixed:** `no_close_since_document` is checked first. `test_v1` |
 | 2 | Major | B-6's interval scaling untested | **Tested.** `test_v2` |
 | 3 | Major | §7.2's universes not built | **Built:** `fundamental_universe` (financially eligible, a market-eligible linked line, the group; `not_applicable` otherwise), `valuation_eps_universe`, `market_universe`. `test_u1` (FL-13 with its converse) |
@@ -159,4 +159,19 @@ At `f051ce0`. Guard log empty. 97 mutants, 71 killed. **F7-1 to F7-3: REJECT** (
 | — | Majors | Untested F7-3 rules (the `equity_to_assets` flag, bank margins `partial`, ex-dates at date(A) and at D\*, the SHOWN filter for `eps_latest_fy`, the stale boundary), F7-4 criteria (conflicting `total_assets`, usable, 12-month and total-operations years, partial and stale features, the order of results), DE (required versus minimum, the universe digest in `inputs_hash`, baseline fields) | **Tested:** `test_v3`, `test_f1`, `test_e1`, `test_d2` |
 | — | Minors | `net_margin_bank` passed `pos` as `bank` (correct by accident); `cash_reconciles` ignored the state order; `annotate`'s day-precision age; `base_rate_252` accepted unlabelled values | **Fixed** |
 | — | Minors | Edge cases (an out-of-the-money rights factor in the ambiguous window, `not_evaluable` moves, `stale_sessions` null), UTC dates for ages, `avg_instant`'s date limit, reason codes outside §6.4, the feature version on engine components, MA §4's extra baseline fields | **Carried** to DE-4 or recorded |
+
+## Fourth F7 audit (fresh-context agent)
+
+At `a8e52f1`. Guard log empty. A seeded differential search through F8 over 2 200 worlds (4 400 comparisons in
+`KNOWN` and `AVAILABLE`, 14 kinds of plant) and 83 mutants (70 killed). **F7-1 to F7-3: REJECT** (one Blocker).
+`AVAILABLE` showed no difference anywhere.
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | `eps_ttm_approx`'s restating wrapper dropped F8's state, so a held EPS fact made a path applicable in `KNOWN` | **Fixed:** a fact F8 does not show stays not shown through the wrapper. `tests/test_f7_audit4_unit.py` (both reproductions through F8, `AVAILABLE`, the converse); the reverted fix fails both. The auditor's 1 600 further worlds on the fixed code showed no state or value difference |
+| M-1 | Major | FL-21's move window untested at its bounds | **Tested.** `test_m1` |
+| M-2 | Major | The record said the third audit's fix covered `eps_ttm_approx` | **Corrected** above |
+| M-3 | Major | The `AVAILABLE` guard (H) untested | **Tested.** `test_m3` |
+| — | Minors | The internal `not_shown` marker reached feature flags; `earlier_period_than_anchor` was a flag only | **Fixed:** the marker stays internal (`test_n1`); the reason and the period end are recorded |
+| — | Minors | A held fact's existence shows in reasons and provenance in `KNOWN` (`not_yet_available`, as §4.2 requires; states and values never change); `Panel.counts` includes `none` facts, as F8's own hash does | **Recorded** as consistent with F8 and §4.2 |
 

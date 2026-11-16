@@ -186,8 +186,10 @@ def eps_features(p, row, max_stale=5):
     else:
         eps = restate(u, row)
         if end < p.anchor_period and eps.state in (pn.FRESH, PARTIAL):
-            eps = Derived(eps.state, eps.value, rule=eps.rule, inputs=eps.inputs, reason=eps.reason,
-                          flags=eps.flags + ("earlier_period_than_anchor",))
+            # §6.2: recorded with its period end and the reason earlier_period_than_anchor
+            eps = Derived(eps.state, eps.value, eps.low, eps.high, rule=eps.rule, inputs=eps.inputs,
+                          reason=eps.reason or "earlier_period_than_anchor",
+                          flags=eps.flags + ("earlier_period_than_anchor", f"period_end:{end.isoformat()}"))
     out["eps_latest_fy"] = _fv("eps_latest_fy", eps)
     out["eps_ttm_approx"] = _fv("eps_ttm_approx", eps_ttm_approx(p, row), "sum_of_per_share")
     price = _price(row)
@@ -229,6 +231,8 @@ class _Restated:
         u = self.p.fact(concept, end, months, operations, maturity)
         if concept != "eps_basic" or u is None:
             return u
+        if u.f8_state is not None and u.f8_state not in pn.SHOWN:
+            return u          # a fact F8 does not show stays not shown: it makes no path applicable (fourth audit B-1)
         d = restate(u, self.row)
         if d.state in (pn.FRESH, PARTIAL) and d.value is not None:
             self.partial = self.partial or d.state == PARTIAL

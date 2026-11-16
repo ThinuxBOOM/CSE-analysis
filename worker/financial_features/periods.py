@@ -221,5 +221,5 @@ def total(rule, parts, signs):
                                    p.high if p.high is not None else p.value, None, p.flags) for p in parts]
     d = _combine(rule, raw, signs)
     return Derived(d.state, d.value, d.low, d.high, rule, tuple(i for p in parts for i in p.inputs), d.reason,
-                   flags=tuple(f for p in parts for f in p.flags))
+                   flags=tuple(f for p in parts for f in p.flags if f != "not_shown"))   # internal marker only
 
