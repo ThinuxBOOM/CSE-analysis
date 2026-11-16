@@ -176,7 +176,7 @@ Facts of different scopes are different facts and are never mixed in one formula
   Exception (C-0084): a public fact F8 reports as `none` only because it could not resolve it (an unbroken
   `metadata_version_tie` or an `ambiguous_supersession`) does count. It is `untrusted` (§4.2), so an untrusted
   newest anchor gives `anchor_unusable` and is never stepped over; the same holds for the industry group (§7.2) and
-  for `eps_latest_fy` (§6.2). Those flags come only from runs public at the cutoff, so a held document never counts.
+  for `eps_latest_fy` (§6.2). Those flags come only from runs visible at the cutoff, so a held document never counts.
 - **Scope policy `f7.scope.1`:** among the scopes that have an anchor-concept fact (in any state) at the newest
   period, take the first of `group`, `bank`, `company`. `unlabelled` is taken only when it is the **only** scope the
   issuer has at T. Statements without Group and Company columns are typical of single-entity issuers, and excluding

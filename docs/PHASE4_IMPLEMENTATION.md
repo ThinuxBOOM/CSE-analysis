@@ -198,8 +198,20 @@ back past an untrusted newer year (§6.2) and the panel stepped over an untruste
 filter. Fixed with one rule in `panel.py` (`fact_counts` for F8 facts, `usable_counts` for panel values: F8 shows
 it, or it is a public tie) used by every former SHOWN filter; the design's §4.3 records the exception (C-0084).
 Tests: `tests/test_f7_audit6_unit.py` (the auditor's two reproductions through real F8 in both modes, the industry
-group, the scope, and a held document that still never counts); each fails when its rule is reverted. A seventh,
-confirming audit is pending.
+group, the scope, and a held document that still never counts); each fails when its rule is reverted.
+
+## Seventh F7 audit (fresh-context agent, at c507e5b): F7-1 to F7-3 accepted
+
+No Blocker and no Major: F7-1 to F7-3 are accepted (C-0037, C-0085). The sixth audit's fix holds in both modes
+through real F8; a new oracle (a tie changes trust, never what exists; 300 worlds per mode) found no difference.
+No look-ahead in 1 650 worlds per mode (nine families), 557 tie-family worlds, and 402 new worlds where a held
+document meets a tied public filing. No place in F7 reads F8's state or flags except through the rule. 119 mutants,
+106 killed; the survivors are equivalent on evidence F8 can produce, plus the carried F17 and F18. Minors: the
+rule's comment and §4.3 now say "visible" rather than "public", and note that `AMBIGUOUS` with state `none` does not
+occur with today's F8. Note for F8's owner (outside F7; F8 is frozen): under rule A-5, a held later version with
+no retrieval time, recorded before T under a public filing, takes the base role from the public version, so its
+availability becomes unknown (reproduction: the auditor's `heldtie.py`, family `later_unord`). The world is
+unrealistic (retrieved before T, published after T); it is recorded here, not changed.
 
 ## DE-4: storage, the run job and the command line
 

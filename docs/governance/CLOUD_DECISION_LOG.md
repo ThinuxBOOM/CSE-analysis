@@ -834,3 +834,10 @@ an older year, and the panel stepped over an untrusted newest result. Design cla
 counts, as untrusted, everywhere F7 decides what exists; a held document still never does. One shared rule now
 replaces every separate filter, with tests. A seventh, confirming audit is pending.
 
+## C-0085: F7-1 to F7-3 accepted ([delegated], 2026-11-16)
+
+The seventh F7 audit found no Blocker and no Major, so the panel, period arithmetic and features are accepted.
+With F7-4 (C-0076) and DE-1 to DE-4 (C-0076, C-0083), all of Phase 4 is now accepted. One note is left for F8's
+owner: a held later version of a filing with no retrieval time can make the public version's availability unknown
+(F8 rule A-5). It is outside F7, F8 is frozen, and the case is unrealistic; it is recorded, not changed.
+

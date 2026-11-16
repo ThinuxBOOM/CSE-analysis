@@ -45,8 +45,10 @@ TIE_FLAGS = (AMBIGUOUS, METADATA_TIE)
 def fact_counts(fact):
     """Whether an F8 FactView counts for F7 (C-0073 as clarified by C-0084): F8 shows it, or it is a public fact F8
     could not resolve (an unbroken metadata tie or an ambiguous supersession), which is untrusted (§4.2) and never
-    stepped over. Tie exclusions come only from runs public at the cutoff, so a held, not-yet-public document never
-    counts (FL-4, FL-19)."""
+    stepped over. Tie exclusions come only from runs visible at the cutoff (public ones, and in KNOWN versions whose
+    availability is unknown, which F7 already uses untied), never from a held, not-yet-public document (FL-4, FL-19;
+    seventh audit). With today's F8, AMBIGUOUS never comes with state none (an ambiguity drops nothing); it is kept
+    so that a future F8 that did so would be counted as untrusted, not dropped."""
     return fact.state in SHOWN or (fact.state == NONE and any(f in fact.flags for f in TIE_FLAGS))
 
 
