@@ -72,7 +72,7 @@ def test_x1_0019_applies_on_top_of_the_chain_and_the_ledger_records_it(cluster):
     with c.cursor() as cur:
         cur.execute("select version, filename from ops.schema_migrations order by version")
         rows = cur.fetchall()
-        assert rows[-1] == (19, "0019_market_feature_foundation.sql") and rows[-2][0] == 18
+        assert (19, "0019_market_feature_foundation.sql") in rows and rows[[r[0] for r in rows].index(19) - 1][0] == 18
         cur.execute("select count(*) from information_schema.tables where table_name like 'mf\\_%'")
         assert cur.fetchone()[0] == len(TABLES)
     assert not any(n.startswith("0019") for n in os.listdir(fs.MIGDIR))       # still pending, outside the chain
