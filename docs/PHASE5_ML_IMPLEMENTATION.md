@@ -35,6 +35,34 @@ says.
 
 ---
 
+## M5-2: the dataset builder, manifest, version and strata (part 1: the pure builder)
+
+**Status: built; not yet audited.** Part 2, the read-only loader from the stored Phase 3 and 4 rows, follows.
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_dataset/dataset.py` | `Manifest` (configurations, range, eras with mode and H, the pinned target build, cutoff rule, row filter, admissible states, withheld test periods, regime policy); `build()`: one snapshot per session by the cutoff rule, market-eligible lines only, MF, F7 and DE features with nulls that keep state and reason, labels apart from features from one target build, labels of withheld test periods not built, the worst label class, survivorship and coverage, a report that counts every exclusion; `version()` | §4.1 to §4.4, §5.4 |
+| `worker/ml_dataset/strata.py` | Liquidity terciles of `turnover_avg_21` in the same-T eligible universe (ties share a class); the trend tag from `mkt_ret_ew_21` against fixed bands; the volatility tag from the cross-sectional median of `vol_21` within its own earlier sessions; model-age strata; `RegimePolicy` (`regime.0`, provisional) | §4.1, §12.2, §5.6 |
+| `tests/test_m52_unit.py` | 14 tests: determinism and order-freedom; the version bound to every source and label hash; labels apart; the cutoff rule; exclusions counted; withheld labels; MLK-17; MLK-18; MLK-20 (nulls with their reasons, label states passed through, a label resolved by T refused, rows at T unchanged by later plants); the MLK-24 refusals of a dataset (two H values, `basis_not_raw`) and the era, mode and configuration refusals | §13 |
+
+Choices made inside the design's words, for the audit:
+- The cutoff rule's instant is a time of day in Colombo (default 23:59:59); among the snapshots of a session at or
+  before it, the latest T wins, ties by snapshot id.
+- A label whose `resolved_at` is not after its row's T is refused, not used: it would be a leak.
+- Features are named by family (`mf.`, `f7.`, `de.`); F7's financial eligibility is a categorical feature;
+  a line with no issuer link at T has `f7.eligibility` null with reason `issuer_link_absent` and no other F7 value.
+- The volatility tag's trailing distribution is the medians of the dataset's own earlier sessions (at most 1 260),
+  `undefined` below 252.
+- **Gap (C-0087):** an MF snapshot does not store its market aggregates (`mkt_ret_ew_21`), so the trend tag is
+  `undefined` with reason `market_aggregate_not_stored` until it does. The builder already takes them when given.
+
+Mutation check (14 mutants, among them liquidity over ineligible lines, a version without labels, non-admissible
+values kept, a second build, withheld labels built, a session's own median in its history, the cutoff rule off, the
+earliest snapshot chosen, the best label carried, a trend tag from a later session): all killed; three survived the
+first test set and were closed by `test_mlk17_strata_use_the_eligible_same_t_universe_and_only_earlier_sessions`.
+
+---
+
 ## M5-3: folds and slices
 
 **Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**

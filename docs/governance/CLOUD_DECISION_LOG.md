@@ -848,3 +848,11 @@ every Phase 3 step (MF-1 to MF-7c). Its one Major was a missing test for a comeb
 price; that test now exists and catches both faulty variants. Phase 5's dataset builder (M5-2) can now start.
 Migration 0019 stays pending until the owner's merge decision.
 
+## C-0087: Phase 5 M5-2 part 1, the dataset builder; market aggregates not stored ([delegated], 2026-11-16)
+
+The pure dataset builder is written and tested: one row per security and session, labels kept apart from one
+pinned target build, nulls that keep their reason, the worst label carried, and a version bound to every source.
+One gap: an MF snapshot does not store its market-wide aggregates, so the market trend tag (a reporting stratum,
+never a model input) is `undefined` for now. Like market cap (C-0079), storing them means changing pending migration
+0019 before the merge; that is left for the owner's merge review. The read-only loader is the next part.
+
