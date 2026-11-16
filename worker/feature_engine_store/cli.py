@@ -146,6 +146,10 @@ def run(args, connect):
         conn.rollback()
         _print({"state": "refused", "reason": f"{type(exc).__name__}: {str(exc).strip()[:300]}"})
         return EXIT_REFUSED
+    except Exception as exc:                           # noqa: BLE001  anything else: still a refusal, exit 5
+        conn.rollback()
+        _print({"state": "failed", "reason": f"{type(exc).__name__}: {str(exc).strip()[:300]}"})
+        return EXIT_REFUSED
     finally:
         conn.close()
     return EXIT_REFUSED

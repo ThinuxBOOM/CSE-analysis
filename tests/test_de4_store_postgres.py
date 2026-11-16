@@ -63,8 +63,10 @@ def batch(sid):
     e = rg.BY_ID["fund_leverage"]
     m = {f"I{i:02d}": {"equity_to_assets": sc.Value(D(i), "fresh")} for i in range(12)}
     outs = sc.score(e, m, group="general")
+    from dataclasses import replace
+    # every output cites the issuer's feature row, as assemble's fan-out does (verify checks the citation)
     run = writer.RunBatch("KNOWN", "2024-06-30T00:00:00+00:00", None, sid, "point_in_time",
-                          [(o, None) for o in outs.values()])
+                          [(replace(o, evidence={"f7_subject": p.issuer_id}), p.issuer_id) for o in outs.values()])
     return pb, run
 
 

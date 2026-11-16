@@ -71,7 +71,7 @@ def seed(cluster, db, mode="KNOWN", late=False):
                         "values (%s, %s, 'evidenced', 'shared_cse_sec_id', '{1}', '{1}', 't', repeat('f',64), %s)",
                         (comp, ids[fid], decided))
         cur.execute("insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, denominator, "
-                    "status, flags, statement_ids) values (%s, 'S03.N0000', 'split', '2024-05-01', 2, 1, 'applied', "
+                    "status, flags, statement_ids) values (%s, 'S03.N0000', 'subdivision', '2024-05-01', 2, 1, 'applied', "
                     "'', '[]')", (sid,))
         cur.execute("insert into mf_snapshot_move_flags (snapshot_id, symbol, session_from, session_to, close_from, "
                     "close_to, status) values (%s, 'S04.N0000', '2024-06-26', '2024-06-27', 10, 20, 'open')", (sid,))
@@ -177,3 +177,122 @@ def test_j5_cli_preflight_run_verify_and_owner_path(cluster, monkeypatch, capsys
     assert call(["status"], "cse_worker") == cli.EXIT_OK
     st = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert st["de_designations"] == 1 and st["de_runs"] == 1
+
+
+# ------------------------------------------------------------------------------------------------ first DE-4 audit
+
+
+def tamper(cluster, db, table, sql):
+    su = fs.conn(cluster, db, user="postgres")
+    with su.cursor() as cur:
+        cur.execute(f"alter table {table} disable trigger user")
+        cur.execute(sql)
+        cur.execute(f"alter table {table} enable trigger user")
+    su.commit()
+    su.close()
+
+
+def written(cluster, db, monkeypatch):
+    sid, ids = seed(cluster, db)
+    stand_in(monkeypatch, ids)
+    c = fs.conn(cluster, db, user="cse_worker")
+    jobs.run(c, sid)
+    assert verify.report(c) == []
+    return c, sid
+
+
+def test_b1_deleting_or_rewriting_a_feature_row_or_panel_is_noticed(cluster, monkeypatch):
+    from worker.feature_engine_store import codec
+    db = fs.fresh_db(cluster)                            # R1: one security's row deleted
+    c, _ = written(cluster, db, monkeypatch)
+    tamper(cluster, db, "f7_feature_rows", "delete from f7_feature_rows where subject = 'S03.N0000'")
+    assert any("missing" in p for p in verify.report(c))
+    db = fs.fresh_db(cluster)                            # R2: a panel and its rows deleted
+    c, _ = written(cluster, db, monkeypatch)
+    su = fs.conn(cluster, db, user="postgres")
+    with su.cursor() as cur:
+        cur.execute("alter table f7_feature_rows disable trigger user")
+        cur.execute("alter table f7_panels disable trigger user")
+        cur.execute("delete from f7_feature_rows where panel_id = 1")
+        cur.execute("delete from f7_panels where panel_id = 1")
+        cur.execute("alter table f7_feature_rows enable trigger user")
+        cur.execute("alter table f7_panels enable trigger user")
+    su.commit()
+    assert any("missing" in p for p in verify.report(c))
+    db = fs.fresh_db(cluster)                            # R3: features rewritten and the row re-hashed
+    c, _ = written(cluster, db, monkeypatch)
+    with c.cursor() as cur:
+        cur.execute("select r.id, p.panel_hash, " + ", ".join(f"r.{k}" for k in codec.ROW_COLUMNS) +
+                    " from f7_feature_rows r join f7_panels p using (panel_id) where r.subject = 'S03.N0000'")
+        row = cur.fetchone()
+    c.rollback()
+    rec = dict(zip(codec.ROW_COLUMNS, row[2:]), features_json="{}")
+    tamper(cluster, db, "f7_feature_rows", f"update f7_feature_rows set features_json = '{{}}', row_hash = "
+                                           f"'{codec.row_hash(row[1], rec)}' where id = {row[0]}")
+    problems = verify.report(c)
+    assert any("missing" in p for p in problems) and any("cited by no run" in p for p in problems)
+    db = fs.fresh_db(cluster)                            # an extra, uncited row
+    c, sid = written(cluster, db, monkeypatch)
+    tamper(cluster, db, "f7_feature_rows", "insert into f7_feature_rows (panel_id, snapshot_id, subject, level, "
+           "label_class, fundamental_coverage, features_json, eligibility_json, row_hash) select panel_id, "
+           "snapshot_id, 'EXTRA', level, label_class, fundamental_coverage, features_json, eligibility_json, "
+           "row_hash from f7_feature_rows where subject = 'S03.N0000'")
+    assert any("cited by no run" in p or "not unique" in p for p in verify.report(c))
+
+
+def test_b2_the_database_ties_rows_and_runs_to_their_snapshot_and_stamp(cluster):
+    db = fs.fresh_db(cluster)
+    sid, _ids = seed(cluster, db)
+    w_ = fs.conn(cluster, db, user="cse_worker")
+    from worker.feature_engine_store import codec
+    cid, js, st = codec.f7_configuration()
+    did, djs, dst = codec.de_configuration()
+    with w_.cursor() as cur:
+        cur.execute("insert into f7_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (cid, js, st))
+        cur.execute("insert into de_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (did, djs, dst))
+        cur.execute("insert into f7_panels (issuer_id, mode, result_label, cutoff, f7_configuration_id, "
+                    "f8_configuration_id, f8_result_hash, state, panel_hash) values ('I', 'KNOWN', 'known', %s, %s, "
+                    "'f8', repeat('a',64), 'ok', repeat('b',64)) returning panel_id", (w.T, cid))
+        pid = cur.fetchone()[0]
+    w_.commit()
+    from test_de4_migration_postgres import refused
+    run = ("insert into de_runs (mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, "
+           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, run_hash%s) "
+           "values (%%s, %%s, %%s, %%s, %%s, %%s, %%s, 'all', '{}', '{}', repeat('c',64)%s)")
+    base = run % ("", "")
+    assert refused(w_, base, ("AVAILABLE", "2030-01-01T00:00:00+00:00", "2030-02-01T00:00:00+00:00", sid, cid, did,
+                              "reconstructed"))                      # R5: not the snapshot's mode, T, H
+    assert refused(w_, base, ("KNOWN", w.T, None, sid, cid, did, "reconstructed"))    # label of another mode
+    assert refused(w_, run % (", created_by", ", 'cse_owner'"), ("KNOWN", w.T, None, sid, cid, did, "point_in_time"))
+    assert refused(w_, run % (", recorded_at", ", '2000-01-01'"), ("KNOWN", w.T, None, sid, cid, did,
+                                                                   "point_in_time"))     # R4: forged stamp
+    assert refused(w_, base, ("KNOWN", w.T, None, sid, cid, did, "point_in_time")) is None
+    row = ("insert into f7_feature_rows (panel_id, snapshot_id, subject, level, label_class, fundamental_coverage, "
+           "features_json, eligibility_json, row_hash) values (%s, %s, %s, 'issuer', %s, 'all', '{}', '{}', "
+           "repeat('d',64))")
+    assert refused(w_, row, (pid, None, "X", "point_in_time"))          # no NULL snapshot (duplicates)
+    assert refused(w_, row, (pid, sid, "X", "reconstructed"))           # label of another mode
+    assert refused(w_, row, (pid, sid, "X", "point_in_time")) is None
+    w_.rollback()
+
+
+def test_b3_row_count_and_preflight_refusals(cluster):
+    from worker.feature_engine_store import preflight
+    db = fs.fresh_db(cluster)
+    sid, _ids = seed(cluster, db)
+    tamper(cluster, db, "mf_snapshot_rows", f"delete from mf_snapshot_rows where snapshot_id = {sid} "
+                                            "and symbol = 'ZZZ.N0000'")
+    c = fs.conn(cluster, db, user="cse_worker")
+    with pytest.raises(loader.SnapshotRefused, match="row_count"):
+        jobs.run(c, sid)
+    assert preflight.problems(c) == []
+    su = fs.conn(cluster, db, user="postgres")
+    with su.cursor() as cur:
+        cur.execute("alter table f7_panels disable trigger trg_f7p_stamp")
+    su.commit()
+    found = preflight.problems(c)
+    assert any("trg_f7p_stamp" in p for p in found)
+    m = fs.conn(cluster, db, user="cse_migrator")
+    assert preflight.problems(m)                                 # not the worker role

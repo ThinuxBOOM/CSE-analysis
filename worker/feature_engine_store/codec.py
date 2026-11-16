@@ -12,7 +12,9 @@ from worker.engines import scoring as sc
 from worker.financial_features import eligibility as el
 from worker.financial_features import features as ft
 
-MODES = {"KNOWN": "known", "KNOWN_RECORDED": "known_recorded", "AVAILABLE": "reconstructed"}
+MODES = {"KNOWN": "known", "AVAILABLE": "reconstructed"}       # F8's label per mode (MF has no KNOWN_RECORDED)
+RUN_LABEL = {"KNOWN": "point_in_time", "AVAILABLE": "reconstructed"}
+COVERAGE = ("all", "captured_only")
 STATUSES = ("provisional", "validated")
 
 
@@ -108,20 +110,22 @@ def _norm(v):
     return v
 
 
-def feature_row(panel_rec, subject, level, values, eligibility, *, snapshot_id=None, link_decision_id=None,
-                mf_row_hash=None, label_class="point_in_time"):
+def feature_row(panel_rec, subject, level, values, eligibility, *, snapshot_id, link_decision_id=None,
+                mf_row_hash=None, label_class="point_in_time", fundamental_coverage="all"):
     """The f7_feature_rows columns of one subject. values: {feature_id: FeatureValue}; eligibility: an Eligibility
     (or a plain dict)."""
+    if fundamental_coverage not in COVERAGE:
+        raise ValueError(f"fundamental_coverage must be one of {COVERAGE}")
     rec = dict(subject=subject, level=level, snapshot_id=snapshot_id, link_decision_id=link_decision_id,
-               mf_row_hash=mf_row_hash, label_class=label_class,
+               mf_row_hash=mf_row_hash, label_class=label_class, fundamental_coverage=fundamental_coverage,
                features_json=canonical({k: values[k] for k in sorted(values)}),
                eligibility_json=canonical(eligibility))
     rec["row_hash"] = row_hash(panel_rec["panel_hash"], rec)
     return rec
 
 
-ROW_COLUMNS = ("subject", "level", "snapshot_id", "link_decision_id", "mf_row_hash", "label_class", "features_json",
-               "eligibility_json")
+ROW_COLUMNS = ("subject", "level", "snapshot_id", "link_decision_id", "mf_row_hash", "label_class",
+               "fundamental_coverage", "features_json", "eligibility_json")
 
 
 def row_hash(panel_hash_, rec):
@@ -140,16 +144,20 @@ def output_record(o, issuer_id=None):
 
 
 RUN_COLUMNS = ("mode", "cutoff", "knowledge_horizon", "snapshot_id", "f7_configuration_id", "de_configuration_id",
-               "label_class", "universes_json", "counts_json", "created_by", "recorded_at")
+               "label_class", "fundamental_coverage", "universes_json", "counts_json", "created_by", "recorded_at")
 
 
 def run_record(*, mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, de_configuration_id,
-               label_class, outputs, stamp):
+               label_class, outputs, stamp, fundamental_coverage="all"):
     """The de_runs columns, with run_hash binding every column and every output's (engine, member, hash)."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {tuple(MODES)}")
     if (mode == "AVAILABLE") != (knowledge_horizon is not None):
-        raise ValueError("AVAILABLE needs H; KNOWN and KNOWN_RECORDED have none")
+        raise ValueError("AVAILABLE needs H; KNOWN has none")
+    if label_class != RUN_LABEL[mode]:
+        raise ValueError(f"a {mode} run is labelled {RUN_LABEL[mode]}, not {label_class}")
+    if fundamental_coverage not in COVERAGE:
+        raise ValueError(f"fundamental_coverage must be one of {COVERAGE}")
     universes, counts = {}, {}
     for o in outputs:
         u = json.loads(o["output_json"])["universe"]
@@ -157,7 +165,8 @@ def run_record(*, mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration
         counts[o["state"]] = counts.get(o["state"], 0) + 1
     rec = dict(mode=mode, cutoff=cutoff, knowledge_horizon=knowledge_horizon, snapshot_id=snapshot_id,
                f7_configuration_id=f7_configuration_id, de_configuration_id=de_configuration_id,
-               label_class=label_class, universes_json=canonical(universes), counts_json=canonical(counts),
+               label_class=label_class, fundamental_coverage=fundamental_coverage,
+               universes_json=canonical(universes), counts_json=canonical(counts),
                recorded_at=stamp[0], created_by=stamp[1])
     rec["run_hash"] = run_hash(rec, outputs)
     return rec

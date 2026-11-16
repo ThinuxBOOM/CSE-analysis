@@ -201,4 +201,32 @@ Tests: `test_de4_migration_static`, `test_de4_migration_postgres` (guards, owner
 determinism), `test_de4_jobs_postgres` (real MF rows, factors, move flags and link decisions; F8 stood in; a
 decision after T unused; CURRENT refused; the CLI and the owner path), `test_de4_ops_static`.
 
-Not yet: storing the DE-3 baselines. Pending: a fresh-context audit of DE-4.
+Not yet: storing the DE-3 baselines.
+
+## First DE-4 audit (fresh-context agent, at e6ff57e)
+
+One Blocker, four Majors, minors; 14 of 21 mutants survived. All Blocker and Major findings are fixed:
+
+- **B-1** `verify` missed a deleted, replaced or re-hashed feature row or panel. Now every F7 row an output cites
+  must exist once in the run's snapshot, be the row of the output's subject, and come from the panel of the cited
+  F8 result; every feature row of a snapshot that has runs must be cited by one. The output hashes are bound into
+  `run_hash`, so the chain closes. Tests: the three reproductions and an extra uncited row.
+- **M-1** market components stored the state as the reason (MF stores `[state, reason]`): fixed, test corrected.
+- **M-2** nothing tied a run, panel or row to its snapshot's mode, T, H and label. Now `assemble` refuses an F8
+  result for another mode, T or H (so a result whose H F8 filled with its query time cannot be stored), and 0020's
+  guards `de_run_guard` and `f7_row_guard` refuse a run or row whose snapshot differs, or whose label is not the
+  mode's; `de_runs` pairs mode and label; `KNOWN_RECORDED` is gone from 0020 (MF has none).
+- **M-3** the §4.6 marker: `fundamental_coverage` (`all` | `captured_only`) on every feature row and run, hashed;
+  `captured_only` for AVAILABLE and for a snapshot that read imported history.
+- **M-4** tests now kill the surviving mutants: eligibility gating, per-line valuation, wrong-group
+  `not_applicable`, AVAILABLE links at H, labels per mode, `row_hash` bound to the panel hash, EPS evidence and
+  issuer id, the F8 question check, the row-count and preflight refusals, `_bind`'s refusal, time zones.
+
+Minors fixed: the stamp is the database's own (`f7_stamp_guard`: `now()` and `session_user`); `snapshot_id` is
+`not null`; `link_decision_id` references `issuer_securities`; `inputs_hash` covers the F8 result for
+`fund_valuation_eps` and the lines' MF rows for issuer engines; any unexpected error exits 5; the test factor kind is
+a real MF kind. Minors recorded, not changed (C-0081): a re-run of a snapshot is a new run, by design; AVAILABLE
+runs use the F8 configuration designated at H unless one is passed; the loader checks the MF row count but leaves
+re-proving the snapshot hash to MF's `verify`; link decisions are not checked for being settled at T (the same rule
+as F8's, applied with MF's margin, is a later change); `de_outputs.issuer_id` has no foreign key (text, like
+`f7_panels.issuer_id`). A re-audit is pending.

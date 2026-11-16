@@ -9,13 +9,15 @@ from ..market_capture import runs as p2runs
 WRITE_TABLES = ("f7_configurations", "de_configurations", "f7_panels", "f7_feature_rows", "de_runs", "de_outputs")
 READ_ONLY = ("f7_designations", "de_designations")
 NEVER = ("UPDATE", "DELETE", "TRUNCATE")
-GUARDS = {"f7_configurations": "trg_f7c_guard", "de_configurations": "trg_dec_guard",
-          "f7_designations": "trg_f7d_owner", "de_designations": "trg_ded_owner"}
-GUARD_FUNCTIONS = ("f7_configuration_guard()", "f7_owner_only_guard()")
+GUARDS = {"f7_configurations": ["trg_f7c_guard"], "de_configurations": ["trg_dec_guard"],
+          "f7_designations": ["trg_f7d_owner"], "de_designations": ["trg_ded_owner"], "f7_panels": ["trg_f7p_stamp"],
+          "f7_feature_rows": ["trg_f7r_guard"], "de_runs": ["trg_der_stamp", "trg_der_guard"]}
+GUARD_FUNCTIONS = ("f7_configuration_guard()", "f7_owner_only_guard()", "f7_stamp_guard()", "f7_row_guard()",
+                   "de_run_guard()")
 
 
 def triggers(table):
-    return ([GUARDS[table]] if table in GUARDS else []) + [f"trg_{table}_append_only", f"trg_{table}_no_truncate"]
+    return GUARDS.get(table, []) + [f"trg_{table}_append_only", f"trg_{table}_no_truncate"]
 
 
 def _one(conn, sql, args=()):

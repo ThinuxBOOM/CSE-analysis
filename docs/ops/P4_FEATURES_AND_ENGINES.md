@@ -37,3 +37,6 @@ There is no delete, reset or repair command: the tables are append-only for ever
   `earnings_yield_mcap`, ...) are `missing` with reason `incomplete_lines` and `fund_valuation_mcap` scores
   `insufficient_inputs` (C-0079). Even when stored, they would be `untrusted` while that input is provisional (P4-D4).
 - The reference baselines (DE-3) are computed but not yet stored by `run`.
+- A run of an AVAILABLE snapshot, or of one that read imported history, marks every row and the run
+  `fundamental_coverage: captured_only`: only captured securities can have an issuer link there (§4.6).
+- Running the same snapshot twice stores two runs; neither replaces the other.

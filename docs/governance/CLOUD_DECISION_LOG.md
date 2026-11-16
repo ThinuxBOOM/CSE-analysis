@@ -803,3 +803,14 @@ DE-4 therefore passes it as absent: the market-value features are `missing` (`in
 silence: `insufficient_inputs`, no score, no components, and the reason in its evidence (`issuer_link_absent`,
 `financially_ineligible:<result>`, `market_ineligible:<result>`, `no_industry_group`, `no_market_eligible_line`).
 A line in the wrong industry group keeps `not_applicable` (§7.4). So every run has one output per line and engine.
+
+## C-0081: the first DE-4 audit and its fix ([delegated], 2026-11-16)
+
+The audit found one Blocker: `verify` could not see a feature row or panel deleted or rewritten. Fixed: every row an
+engine output cites must exist and be the right row, and every row must be cited. Its four Majors are fixed: market
+reasons, a database tie between runs, rows and their snapshot's mode, T, H and label, the §4.6 coverage marker,
+and tests that now catch the surviving mutants. Five minors are recorded rather than changed: re-runs are separate
+records; AVAILABLE uses the F8 configuration designated at H by default; the loader leaves the MF snapshot hash to
+MF's `verify`; link decisions are not checked for being settled; `de_outputs.issuer_id` has no foreign key. A
+re-audit is pending.
+

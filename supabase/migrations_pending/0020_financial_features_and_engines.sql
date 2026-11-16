@@ -102,8 +102,7 @@ create table f7_panels (
   panel_hash text not null,                            -- SHA-256 binding every column above
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
-  constraint chk_f7p_mode check ((mode, result_label) in (('KNOWN', 'known'), ('KNOWN_RECORDED', 'known_recorded'),
-    ('AVAILABLE', 'reconstructed'))),
+  constraint chk_f7p_mode check ((mode, result_label) in (('KNOWN', 'known'), ('AVAILABLE', 'reconstructed'))),
   constraint chk_f7p_h check ((mode = 'AVAILABLE') = (knowledge_horizon is not null)),
   constraint chk_f7p_hex check (f8_result_hash ~ '^[0-9a-f]{64}$' and panel_hash ~ '^[0-9a-f]{64}$'),
   constraint chk_f7p_json check (counts_json ~ '^[ -~]+$')
@@ -112,18 +111,20 @@ create table f7_panels (
 create table f7_feature_rows (
   id bigint generated always as identity primary key,
   panel_id bigint not null references f7_panels(panel_id),
-  snapshot_id bigint references mf_snapshots(snapshot_id),     -- the MF snapshot of the same T (valuation join)
+  snapshot_id bigint not null references mf_snapshots(snapshot_id),   -- the MF snapshot of the same mode, T and H
   subject text not null,                               -- the issuer id (issuer level) or the security's symbol
   level text not null,
-  link_decision_id bigint,                             -- the issuer_securities decision at T (security level)
+  link_decision_id bigint references issuer_securities(id),   -- the decision at T, or H (security level)
   mf_row_hash text,                                    -- the MF snapshot row used for valuation
   label_class text not null,
+  fundamental_coverage text not null,                  -- captured_only over a reconstructed era (section 4.6)
   features_json text not null,                         -- canonical JSON: per value state, reason, rules, ef_keys
   eligibility_json text not null,                      -- financial eligibility with its measured values
   row_hash text not null,
   constraint uq_f7r unique (panel_id, snapshot_id, subject),
   constraint chk_f7r_level check (level in ('issuer', 'security')),
   constraint chk_f7r_label check (label_class in ('point_in_time', 'reconstructed')),
+  constraint chk_f7r_coverage check (fundamental_coverage in ('all', 'captured_only')),
   constraint chk_f7r_hex check (row_hash ~ '^[0-9a-f]{64}$' and (mf_row_hash is null or mf_row_hash ~ '^[0-9a-f]{64}$')),
   constraint chk_f7r_json check (features_json ~ '^[ -~]+$' and eligibility_json ~ '^[ -~]+$')
 );
@@ -140,14 +141,15 @@ create table de_runs (
   f7_configuration_id text not null references f7_configurations(configuration_id),
   de_configuration_id text not null references de_configurations(configuration_id),
   label_class text not null,
+  fundamental_coverage text not null,
   universes_json text not null,                        -- per engine and group: level, size, digest
   counts_json text not null,
   run_hash text not null,                              -- SHA-256 binding every column and every output's hash
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
-  constraint chk_der_mode check (mode in ('KNOWN', 'KNOWN_RECORDED', 'AVAILABLE')),
+  constraint chk_der_mode check ((mode, label_class) in (('KNOWN', 'point_in_time'), ('AVAILABLE', 'reconstructed'))),
   constraint chk_der_h check ((mode = 'AVAILABLE') = (knowledge_horizon is not null)),
-  constraint chk_der_label check (label_class in ('point_in_time', 'reconstructed')),
+  constraint chk_der_coverage check (fundamental_coverage in ('all', 'captured_only')),
   constraint chk_der_hex check (run_hash ~ '^[0-9a-f]{64}$'),
   constraint chk_der_json check (universes_json ~ '^[ -~]+$' and counts_json ~ '^[ -~]+$')
 );
@@ -185,6 +187,54 @@ begin
 end;
 $$;
 
+create function f7_stamp_guard() returns trigger
+language plpgsql as $$
+begin
+  -- the stamp bound into panel_hash / run_hash is the database's own (first DE-4 audit, minor): no forged writer
+  if new.recorded_at is distinct from now() or new.created_by is distinct from session_user then
+    raise exception '%: recorded_at and created_by must be now() and session_user', tg_table_name
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+create function f7_row_guard() returns trigger
+language plpgsql as $$
+declare
+  p record;
+  s record;
+begin
+  -- a feature row joins a panel and an MF snapshot of the same mode, T and H, with the mode's label (audit M-2)
+  select mode, cutoff, knowledge_horizon into p from f7_panels where panel_id = new.panel_id;
+  select mode, cutoff, knowledge_horizon into s from mf_snapshots where snapshot_id = new.snapshot_id;
+  if p.mode is distinct from s.mode or p.cutoff is distinct from s.cutoff
+     or p.knowledge_horizon is distinct from s.knowledge_horizon then
+    raise exception 'f7_feature_rows: the panel and the MF snapshot differ in mode, T or H'
+      using errcode = 'check_violation';
+  end if;
+  if new.label_class is distinct from (case p.mode when 'KNOWN' then 'point_in_time' else 'reconstructed' end) then
+    raise exception 'f7_feature_rows: label % does not match the mode %', new.label_class, p.mode
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+create function de_run_guard() returns trigger
+language plpgsql as $$
+declare
+  s record;
+begin
+  select mode, cutoff, knowledge_horizon into s from mf_snapshots where snapshot_id = new.snapshot_id;
+  if s.mode is distinct from new.mode or s.cutoff is distinct from new.cutoff
+     or s.knowledge_horizon is distinct from new.knowledge_horizon then
+    raise exception 'de_runs: the run and its MF snapshot differ in mode, T or H' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
 create function f7_owner_only_guard() returns trigger
 language plpgsql as $$
 begin
@@ -203,6 +253,10 @@ create trigger trg_f7c_guard before insert on f7_configurations for each row exe
 create trigger trg_dec_guard before insert on de_configurations for each row execute function f7_configuration_guard();
 create trigger trg_f7d_owner before insert on f7_designations for each row execute function f7_owner_only_guard();
 create trigger trg_ded_owner before insert on de_designations for each row execute function f7_owner_only_guard();
+create trigger trg_f7p_stamp before insert on f7_panels for each row execute function f7_stamp_guard();
+create trigger trg_der_stamp before insert on de_runs for each row execute function f7_stamp_guard();
+create trigger trg_f7r_guard before insert on f7_feature_rows for each row execute function f7_row_guard();
+create trigger trg_der_guard before insert on de_runs for each row execute function de_run_guard();
 
 do $$
 declare
@@ -222,7 +276,8 @@ end $$;
 -- =============================================================================
 -- Privileges: PUBLIC nothing (above); the worker's inserts; the reader's SELECT (above)
 -- =============================================================================
-revoke all on function f7_configuration_guard(), f7_owner_only_guard() from public;
+revoke all on function f7_configuration_guard(), f7_owner_only_guard(), f7_stamp_guard(), f7_row_guard(),
+  de_run_guard() from public;
 grant insert on f7_configurations, de_configurations, f7_panels, f7_feature_rows, de_runs, de_outputs to cse_worker;
 
 comment on table f7_feature_rows is 'Phase 4 F7: one row per (panel, MF snapshot, issuer or security) of financial features with their states, reasons and provenance; append-only.';

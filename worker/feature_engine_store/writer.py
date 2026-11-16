@@ -21,6 +21,7 @@ class RunBatch:
     snapshot_id: int
     label_class: str
     outputs: list                        # [(EngineOutput, issuer_id or None)]
+    fundamental_coverage: str = "all"
 
 
 def _bind(o, row_hashes):
@@ -80,7 +81,7 @@ def write(conn, *, f7_config, de_config=None, panels=(), run=None):
                 rr = codec.run_record(mode=run.mode, cutoff=run.cutoff, knowledge_horizon=run.knowledge_horizon,
                                       snapshot_id=run.snapshot_id, f7_configuration_id=f7_config[0],
                                       de_configuration_id=de_config[0], label_class=run.label_class, outputs=outs,
-                                      stamp=stamp)
+                                      stamp=stamp, fundamental_coverage=run.fundamental_coverage)
                 cols = list(codec.RUN_COLUMNS) + ["run_hash"]
                 cur.execute(f"insert into de_runs ({', '.join(cols)}) values ({', '.join(['%s'] * len(cols))}) "
                             "returning run_id", [rr[c] for c in cols])

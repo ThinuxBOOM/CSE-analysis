@@ -16,6 +16,7 @@ def run(conn, snapshot_id, *, f8_configuration_id=None, status="provisional"):
     res = loader.results(conn, issuers, mode=head["mode"], cutoff=head["cutoff"], horizon=head["horizon"],
                          f8_configuration_id=f8_configuration_id)
     a = assemble.assemble(mode=head["mode"], cutoff=head["cutoff"], horizon=head["horizon"],
-                          snapshot_id=snapshot_id, rows=rows, results=res, decisions=decisions)
+                          snapshot_id=snapshot_id, rows=rows, results=res, decisions=decisions,
+                          imported=head["imported"])
     return writer.write(conn, f7_config=codec.f7_configuration(status), de_config=codec.de_configuration(status),
                         panels=a.panels, run=a.run)
