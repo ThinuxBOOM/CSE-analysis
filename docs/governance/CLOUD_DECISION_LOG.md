@@ -759,3 +759,11 @@ every row was set aside lost its effect on the labels' timing; a statement namin
 not count that statement's timing; and a set-aside day after T could stamp a label after T. Each is fixed
 conservatively and tested; the tests fail on the old code. A fourth re-audit is pending.
 
+## C-0075: the second F7 audit and its fixes ([delegated], 2026-11-16)
+
+The second audit confirmed F7-1's first fixes and rejected F7-1/F7-2 and F7-3 on six Blockers: one look-ahead (a
+not-yet-public filing could change an issuer's industry group) and five wrong values or states (a TTM blocked by a
+rule that did not apply, valuation without a currency check, a one-day shift of date-only availability, a stale-price
+limit skipped for partial values, and an approximate trailing EPS built from the wrong rules). All are fixed, with
+the Majors, and each fix is caught by a test when reverted. A third F7 audit is pending.
+

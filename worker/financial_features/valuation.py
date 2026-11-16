@@ -66,6 +66,10 @@ def _colombo_date(text, precision):
     t = datetime.fromisoformat(text)
     if t.tzinfo is None:
         t = t.replace(tzinfo=timezone.utc)
+    if precision == "day":
+        # F8 stores a day-precision availability as the end of that Colombo day (the next 00:00 Colombo); it counts
+        # as that day (§6.3; re-audit B-4)
+        t = t - timedelta(microseconds=1)
     return t.astimezone(COLOMBO).date()
 
 
@@ -112,8 +116,10 @@ def restate(u, row):
         if "cum_price_stale" in f.flags:
             state = PARTIAL
             flags.append("cum_price_stale")
-    value = u.value * Decimal(product.numerator) / Decimal(product.denominator)
-    return Derived(state, value, rule=EPS_BASIS_POLICY, inputs=(u.ef_key,), reason="cum_price_stale"
+    k = Decimal(product.numerator) / Decimal(product.denominator)
+    value = u.value * k
+    lo, hi = (u.low * k if u.low is not None else value), (u.high * k if u.high is not None else value)
+    return Derived(state, value, lo, hi, rule=EPS_BASIS_POLICY, inputs=(u.ef_key,), reason="cum_price_stale"
                    if state == PARTIAL else None, flags=tuple(flags) + ("equal_earnings_per_line_assumed",))
 
 
@@ -121,7 +127,7 @@ def eps_latest_fy_fact(p):
     """§6.2: the 12-month eps_basic at the latest period end at or before the anchor that has such a fact in state
     single_source, corroborated or conflicting (never stepping back past an unusable one)."""
     ends = sorted({k[1] for k, u in p.facts.items() if k[0] == "eps_basic" and k[2] == 12 and k[1] <= p.anchor_period
-                   and u.f8_state in ("single_source", "corroborated", "conflicting")})
+                   and k[3] == pn.ANCHOR_OPERATIONS and k[4] == pn.NOT_APPLICABLE and u.f8_state in pn.SHOWN})
     if not ends:
         return None, None
     end = ends[-1]
@@ -137,7 +143,8 @@ def _price(row):
 
 
 def _staleness(d, row, max_stale):
-    if not d.number or row.stale_sessions is None or row.stale_sessions == 0:
+    # every state that carries a value is checked against the limit, partial included (re-audit B-5)
+    if d.value is None or d.state not in (pn.FRESH, PARTIAL, STALE) or not row.stale_sessions:
         return d
     if row.stale_sessions > max_stale:
         return Derived(pn.MISSING, reason="stale_price", inputs=d.inputs)
@@ -150,8 +157,25 @@ def _fv(fid, d, *flags):
                         tuple(x for x in (d.rule,) if x), d.inputs, tuple(dict.fromkeys(d.flags + flags)))
 
 
+EPS_FEATURES = ("eps_latest_fy", "eps_ttm_approx", "earnings_yield_eps", "pe_eps")
+
+
+def _guard(p, ids):
+    """Valuation needs an ok panel (re-audit M-d) in LKR, the price currency (§4.4; re-audit B-3)."""
+    from .features import PANEL_REASONS
+    if p.state != pn.OK:
+        st = pn.CONFLICTING if p.state == pn.CRITICAL_CONFLICT else pn.MISSING
+        return {f: FeatureValue(f, st, reason=PANEL_REASONS.get(p.state, p.state)) for f in ids}
+    if p.currency != "LKR":
+        return {f: FeatureValue(f, pn.MISSING, reason="currency_mismatch") for f in ids}
+    return None
+
+
 def eps_features(p, row, max_stale=5):
     """eps_latest_fy, eps_ttm_approx, earnings_yield_eps and pe_eps for one security (§6.2, §6.3)."""
+    blocked = _guard(p, EPS_FEATURES)
+    if blocked:
+        return blocked
     out = {}
     end, u = eps_latest_fy_fact(p)
     if end is None:
@@ -170,15 +194,17 @@ def eps_features(p, row, max_stale=5):
     if eps.state == PARTIAL:
         ey = _partial(ey, "cum_price_stale")
     out["earnings_yield_eps"] = _fv("earnings_yield_eps", _staleness(ey, row, max_stale))
-    if eps.number or eps.state == PARTIAL:
-        if eps.value <= 0:
-            pe = Derived(pn.MISSING, reason="denominator_not_positive", inputs=eps.inputs)
-        else:
-            pe = ratio(price, _as_fresh(eps), True)
-            if eps.state == PARTIAL:
-                pe = _partial(pe, "cum_price_stale")
+    eps_ok = eps.number or (eps.state == PARTIAL and eps.value is not None)
+    if not eps_ok or not price.number:
+        pe = ratio(eps if not eps_ok else _as_fresh(eps), price, True)      # the state order across both
+    elif eps.value == 0:
+        pe = Derived(pn.MISSING, reason="denominator_zero", inputs=eps.inputs)
+    elif eps.value < 0:
+        pe = Derived(pn.MISSING, reason="denominator_not_positive", inputs=eps.inputs)
     else:
-        pe = Derived(eps.state, reason=eps.reason, inputs=eps.inputs)
+        pe = ratio(price, _as_fresh(eps), True)
+        if eps.state == PARTIAL:
+            pe = _partial(pe, "cum_price_stale")
     out["pe_eps"] = _fv("pe_eps", _staleness(pe, row, max_stale))
     return out
 
@@ -192,29 +218,30 @@ def _partial(d, reason):
 
 
 class _Restated:
-    """The panel with every eps_basic fact restated by its own document's A (for eps_ttm_approx)."""
+    """The panel with every eps_basic fact restated by its own document's A (for eps_ttm_approx), intervals scaled by
+    the same factor (re-audit B-6). A partial component (cum_price_stale) is used and makes the result partial."""
 
     def __init__(self, p, row):
-        self.p, self.row = p, row
+        self.p, self.row, self.partial = p, row, False
 
     def fact(self, concept, end, months=None, operations=pn.ANCHOR_OPERATIONS, maturity=pn.NOT_APPLICABLE):
         u = self.p.fact(concept, end, months, operations, maturity)
         if concept != "eps_basic" or u is None:
             return u
         d = restate(u, self.row)
-        if d.state == pn.FRESH:
-            return pn.Usable(u.ef_key, pn.FRESH, d.value, d.value, d.value)
-        return pn.Usable(u.ef_key, d.state if d.state != PARTIAL else pn.UNTRUSTED, reason=d.reason)
+        if d.state in (pn.FRESH, PARTIAL) and d.value is not None:
+            self.partial = self.partial or d.state == PARTIAL
+            return pn.Usable(u.ef_key, pn.FRESH, d.value, d.low, d.high)
+        return pn.Usable(u.ef_key, d.state, reason=d.reason)
 
 
 def eps_ttm_approx(p, row):
-    """F7P-2 or F7P-3 of restated eps_basic (each component restated by its own A before adding)."""
-    d = ttm(_Restated(p, row), "eps_basic", p.anchor_period)
-    if d.number and d.rule == "F7P-1":
-        others = [x for x in d.paths if x.rule != "F7P-1"]
-        if not others:
-            return Derived(pn.MISSING, reason="no_exact_period_match", inputs=d.inputs)
-        d = others[0]
+    """F7P-2 or F7P-3 of restated eps_basic only (each component restated by its own A before adding); a printed
+    annual EPS is eps_latest_fy and is never an input here (re-audit B-6)."""
+    r = _Restated(p, row)
+    d = ttm(r, "eps_basic", p.anchor_period, rules=("F7P-2", "F7P-3"))
+    if d.number and r.partial:
+        d = Derived(PARTIAL, d.value, d.low, d.high, d.rule, d.inputs, "cum_price_stale", d.paths, d.flags)
     return d
 
 
@@ -231,6 +258,9 @@ def issuer_market_value(rows):
 
 def mcap_features(p, rows, cfo_ttm, fcf_ttm):
     """The market-value features (§6.3); untrusted (input_unverified) while market_cap_reported is provisional."""
+    blocked = _guard(p, MCAP_FEATURES)
+    if blocked:
+        return blocked
     mv = issuer_market_value(rows)
     out = {"issuer_market_value": _fv("issuer_market_value", mv)}
     e = p.anchor_period

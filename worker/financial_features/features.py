@@ -28,6 +28,14 @@ class FeatureValue:
     rules: tuple = ()
     inputs: tuple = ()                   # ef_keys
     flags: tuple = ()
+    # §6.1's provenance on every value (annotate()); the label class is set by the caller with MF's label
+    scope: Optional[str] = None
+    currency: Optional[str] = None
+    anchor_period: Optional[object] = None
+    f8_result_hash: Optional[str] = None
+    anchor_age_days: Optional[int] = None
+    availability_age_days: Optional[int] = None
+    label_class: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -43,8 +51,10 @@ def industry(p):
     """f7.industry.1: bank_finance if the panel has, at the anchor period in the chosen scope, a fact (in any state) of
     a concept whose industries is bank_finance; otherwise general."""
     from worker import financial_concepts as fc
-    for (concept, end, _m, _o, _mat) in p.facts:
-        if end == p.anchor_period and fc.BY_KEY.get(concept) is not None and fc.BY_KEY[concept].industries == BANK:
+    for (concept, end, _m, _o, _mat), u in p.facts.items():
+        # only facts F8 shows: a held, not yet public document never changes the group (re-audit B-2, FL-4)
+        if end == p.anchor_period and u.f8_state in pn.SHOWN and fc.BY_KEY.get(concept) is not None \
+                and fc.BY_KEY[concept].industries == BANK:
             return BANK
     return GENERAL
 
@@ -60,9 +70,12 @@ def _fv(fid, d, *more_flags):
 def ratio(num, den, positive):
     """num / den. A null input gives its state; a zero or nil denominator `missing`, reason denominator_zero; a
     non-positive one, where the registry requires a positive denominator, `missing`, reason denominator_not_positive."""
-    for x in (num, den):
-        if not x.number:
-            return Derived(x.state, reason=x.reason, inputs=num.inputs + den.inputs)
+    nulls = [x for x in (num, den) if not x.number]
+    if nulls:                                   # Phase 3 §10.4's order across both inputs (re-audit M-a)
+        from .periods import NULL_ORDER
+        state = next((st for st in NULL_ORDER if any(x.state == st for x in nulls)), nulls[0].state)
+        first = next(x for x in nulls if x.state == state)
+        return Derived(state, reason=first.reason, inputs=num.inputs + den.inputs)
     if den.value == 0:
         return Derived(pn.MISSING, reason="denominator_zero", inputs=num.inputs + den.inputs)
     if positive and den.value < 0:
@@ -103,39 +116,41 @@ def _cfo_ttm(p, e):
     return ttm(Confirmed(), "net_cash_from_operating_activities", e)
 
 
-def _margin_at(p, e, bank):
+def _margin_at(p, e, bank, pos=True):
     den = ttm(p, "gross_income" if bank else "revenue", e)
-    return ratio(ttm(p, "profit_for_period", e), den, True)
+    return ratio(ttm(p, "profit_for_period", e), den, pos)
 
 
-def _net_margin_chg(p, e):
+def _net_margin_chg(p, e, pos=None):
     bank = industry(p) == BANK
     now, before = _margin_at(p, e, bank), _margin_at(p, months_before(e, 12), bank)
     return total("net_margin_chg", [now, before], [1, -1])
 
 
-def _fcf(p, e):
+def _fcf(p, e, pos=None):
     return total("fcf_ttm", [_cfo_ttm(p, e), ttm(p, "purchase_of_ppe", e)], [1, -1])
 
 
-def _payout(p, e):
-    d = ratio(ttm(p, "dividends_paid", e), ttm(p, "profit_for_period", e), True)
+def _payout(p, e, pos=True):
+    d = ratio(ttm(p, "dividends_paid", e), ttm(p, "profit_for_period", e), pos)
     return d if not d.number else Derived(d.state, d.value, rule=d.rule, inputs=d.inputs,
                                           flags=d.flags + (("dividends_may_include_nci",) if p.scope == "group"
                                                            else ()))
 
 
-def _identity_gap(p, e):
+def _identity_gap(p, e, pos=False):
     a = instant(p, "total_assets", e)
     gap = total("identity_gap", [a, instant(p, "total_liabilities", e), instant(p, "total_equity", e)], [1, -1, -1])
-    return ratio(gap, a, True)
+    return ratio(gap, a, pos)
 
 
-def _cash_reconciles(p, e):
+def _cash_reconciles(p, e, pos=None):
     x, y = instant(p, "cash_at_end_of_period", e), instant(p, "cash_and_cash_equivalents", e)
     if not (x.number and y.number):
         return Derived(x.state if not x.number else y.state, reason=x.reason or y.reason, inputs=x.inputs + y.inputs)
-    agree = (x.low or x.value) <= (y.high or y.value) and (y.low or y.value) <= (x.high or x.value)
+    lo_x, hi_x = (x.value if x.low is None else x.low), (x.value if x.high is None else x.high)
+    lo_y, hi_y = (y.value if y.low is None else y.low), (y.value if y.high is None else y.high)
+    agree = lo_x <= hi_y and lo_y <= hi_x                  # an interval end of exactly 0 counts (re-audit M-b)
     return Derived(pn.FRESH, Decimal(1 if agree else 0), rule="cash_reconciles", inputs=x.inputs + y.inputs,
                    flags=("information_only",))
 
@@ -145,67 +160,67 @@ def _n(p):
 
 
 SPECS = [
-    Spec("rev_g_cum", "growth", GENERAL, False, lambda p, e: growth_cum(p, "revenue", e, _n(p))),
-    Spec("rev_g_ttm", "growth", GENERAL, False, lambda p, e: growth_ttm(p, "revenue", e)),
-    Spec("gross_income_g_cum", "growth", BANK, False, lambda p, e: growth_cum(p, "gross_income", e, _n(p))),
-    Spec("gross_income_g_ttm", "growth", BANK, False, lambda p, e: growth_ttm(p, "gross_income", e)),
-    Spec("nii_g_cum", "growth", BANK, False, lambda p, e: growth_cum(p, "net_interest_income", e, _n(p))),
-    Spec("profit_g_cum", "growth", "all", False, lambda p, e: growth_cum(p, "profit_for_period", e, _n(p))),
-    Spec("profit_g_ttm", "growth", "all", False, lambda p, e: growth_ttm(p, "profit_for_period", e)),
+    Spec("rev_g_cum", "growth", GENERAL, False, lambda p, e, pos: growth_cum(p, "revenue", e, _n(p))),
+    Spec("rev_g_ttm", "growth", GENERAL, False, lambda p, e, pos: growth_ttm(p, "revenue", e)),
+    Spec("gross_income_g_cum", "growth", BANK, False, lambda p, e, pos: growth_cum(p, "gross_income", e, _n(p))),
+    Spec("gross_income_g_ttm", "growth", BANK, False, lambda p, e, pos: growth_ttm(p, "gross_income", e)),
+    Spec("nii_g_cum", "growth", BANK, False, lambda p, e, pos: growth_cum(p, "net_interest_income", e, _n(p))),
+    Spec("profit_g_cum", "growth", "all", False, lambda p, e, pos: growth_cum(p, "profit_for_period", e, _n(p))),
+    Spec("profit_g_ttm", "growth", "all", False, lambda p, e, pos: growth_ttm(p, "profit_for_period", e)),
     Spec("profit_owners_g_ttm", "growth", "all", False,
-         lambda p, e: growth_ttm(p, "profit_attributable_to_owners", e)),
-    Spec("assets_g", "growth", "all", False, lambda p, e: growth_instant(p, "total_assets", e)),
-    Spec("equity_g", "growth", "all", False, lambda p, e: growth_instant(p, "total_equity", e)),
-    Spec("loans_g", "growth", BANK, False, lambda p, e: growth_instant(p, "loans_and_advances_to_customers", e)),
-    Spec("deposits_g", "growth", BANK, False, lambda p, e: growth_instant(p, "customer_deposits", e)),
+         lambda p, e, pos: growth_ttm(p, "profit_attributable_to_owners", e)),
+    Spec("assets_g", "growth", "all", False, lambda p, e, pos: growth_instant(p, "total_assets", e)),
+    Spec("equity_g", "growth", "all", False, lambda p, e, pos: growth_instant(p, "total_equity", e)),
+    Spec("loans_g", "growth", BANK, False, lambda p, e, pos: growth_instant(p, "loans_and_advances_to_customers", e)),
+    Spec("deposits_g", "growth", BANK, False, lambda p, e, pos: growth_instant(p, "customer_deposits", e)),
     Spec("gross_margin", "margins", GENERAL, True,
-         lambda p, e: ratio(ttm(p, "gross_profit", e), ttm(p, "revenue", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "gross_profit", e), ttm(p, "revenue", e), pos)),
     Spec("operating_margin", "margins", GENERAL, True,
-         lambda p, e: ratio(ttm(p, "operating_profit", e), ttm(p, "revenue", e), True)),
-    Spec("net_margin", "margins", GENERAL, True, lambda p, e: _margin_at(p, e, False)),
-    Spec("net_margin_bank", "margins", BANK, True, lambda p, e: _margin_at(p, e, True)),
+         lambda p, e, pos: ratio(ttm(p, "operating_profit", e), ttm(p, "revenue", e), pos)),
+    Spec("net_margin", "margins", GENERAL, True, lambda p, e, pos: _margin_at(p, e, False, pos)),
+    Spec("net_margin_bank", "margins", BANK, True, lambda p, e, pos: _margin_at(p, e, pos)),
     Spec("net_margin_chg", "margins", "all", False, _net_margin_chg),
     Spec("nim_proxy", "margins", BANK, True,
-         lambda p, e: ratio(ttm(p, "net_interest_income", e), avg_instant(p, "total_assets", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "net_interest_income", e), avg_instant(p, "total_assets", e), pos)),
     Spec("roe_end", "returns", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_for_period", e), instant(p, "total_equity", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_for_period", e), instant(p, "total_equity", e), pos)),
     Spec("roa_end", "returns", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_for_period", e), instant(p, "total_assets", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_for_period", e), instant(p, "total_assets", e), pos)),
     Spec("roe_avg", "returns", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_for_period", e), avg_instant(p, "total_equity", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_for_period", e), avg_instant(p, "total_equity", e), pos)),
     Spec("roa_avg", "returns", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_for_period", e), avg_instant(p, "total_assets", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_for_period", e), avg_instant(p, "total_assets", e), pos)),
     Spec("roe_owners_end", "returns", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_attributable_to_owners", e),
-                            instant(p, "equity_attributable_to_owners", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_attributable_to_owners", e),
+                            instant(p, "equity_attributable_to_owners", e), pos)),
     Spec("liabilities_to_equity", "leverage", "all", True,
-         lambda p, e: ratio(instant(p, "total_liabilities", e), instant(p, "total_equity", e), True)),
+         lambda p, e, pos: ratio(instant(p, "total_liabilities", e), instant(p, "total_equity", e), pos)),
     Spec("equity_to_assets", "leverage", "all", True,
-         lambda p, e: ratio(instant(p, "total_equity", e), instant(p, "total_assets", e), True)),
+         lambda p, e, pos: ratio(instant(p, "total_equity", e), instant(p, "total_assets", e), pos)),
     Spec("borrowings_to_equity", "leverage", GENERAL, True,
-         lambda p, e: ratio(_borrowings(p, e), instant(p, "total_equity", e), True)),
+         lambda p, e, pos: ratio(_borrowings(p, e), instant(p, "total_equity", e), pos)),
     Spec("interest_cover", "leverage", GENERAL, True,
-         lambda p, e: ratio(ttm(p, "operating_profit", e), ttm(p, "finance_costs", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "operating_profit", e), ttm(p, "finance_costs", e), pos)),
     Spec("loans_to_deposits", "leverage", BANK, True,
-         lambda p, e: ratio(instant(p, "loans_and_advances_to_customers", e), instant(p, "customer_deposits", e),
-                            True)),
-    Spec("cash_to_assets", "liquidity", "all", True,
-         lambda p, e: ratio(instant(p, "cash_and_cash_equivalents", e), instant(p, "total_assets", e), True)),
+         lambda p, e, pos: ratio(instant(p, "loans_and_advances_to_customers", e), instant(p, "customer_deposits", e),
+                                 pos)),
+    Spec("cash_to_assets", "liquidity", "all", False,
+         lambda p, e, pos: ratio(instant(p, "cash_and_cash_equivalents", e), instant(p, "total_assets", e), pos)),
     Spec("net_debt", "liquidity", GENERAL, False,
-         lambda p, e: total("net_debt", [_borrowings(p, e), instant(p, "cash_and_cash_equivalents", e)], [1, -1])),
+         lambda p, e, pos: total("net_debt", [_borrowings(p, e), instant(p, "cash_and_cash_equivalents", e)], [1, -1])),
     Spec("cfo_to_profit", "cash_flow", GENERAL, True,
-         lambda p, e: ratio(_cfo_ttm(p, e), ttm(p, "profit_for_period", e), True)),
+         lambda p, e, pos: ratio(_cfo_ttm(p, e), ttm(p, "profit_for_period", e), pos)),
     Spec("fcf_ttm", "cash_flow", GENERAL, False, _fcf),
-    Spec("fcf_margin", "cash_flow", GENERAL, True, lambda p, e: ratio(_fcf(p, e), ttm(p, "revenue", e), True)),
+    Spec("fcf_margin", "cash_flow", GENERAL, True, lambda p, e, pos: ratio(_fcf(p, e), ttm(p, "revenue", e), pos)),
     Spec("receivables_days", "working_capital", GENERAL, True,
-         lambda p, e: _scale(ratio(instant(p, "trade_and_other_receivables", e), ttm(p, "revenue", e), True), DAYS)),
+         lambda p, e, pos: _scale(ratio(instant(p, "trade_and_other_receivables", e), ttm(p, "revenue", e), pos), DAYS)),
     Spec("inventory_days", "working_capital", GENERAL, True,
-         lambda p, e: _scale(ratio(instant(p, "inventories", e), ttm(p, "cost_of_sales", e), True), DAYS)),
+         lambda p, e, pos: _scale(ratio(instant(p, "inventories", e), ttm(p, "cost_of_sales", e), pos), DAYS)),
     Spec("payout_ratio_cash", "dividends", "all", True, _payout),
     Spec("accounting_identity_gap", "data_checks", "all", False, _identity_gap),
     Spec("cash_reconciles", "data_checks", "all", False, _cash_reconciles),
     Spec("nci_share_of_profit", "data_checks", "all", True,
-         lambda p, e: ratio(ttm(p, "profit_attributable_to_nci", e), ttm(p, "profit_for_period", e), True)),
+         lambda p, e, pos: ratio(ttm(p, "profit_attributable_to_nci", e), ttm(p, "profit_for_period", e), pos)),
 ]
 BY_ID = {s.feature_id: s for s in SPECS}
 PANEL_REASONS = {pn.ANCHOR_ABSENT: "absent", pn.SCOPE_UNAVAILABLE: "scope_unavailable",
@@ -233,8 +248,36 @@ def compute(p):
         if s.feature_id in YOY and "scope_changed" in p.flags:
             out[s.feature_id] = FeatureValue(s.feature_id, pn.MISSING, reason="scope_changed")
             continue
-        v = _fv(s.feature_id, s.compute(p, p.anchor_period))
+        v = _fv(s.feature_id, s.compute(p, p.anchor_period, s.positive_denominator))
         if s.feature_id in DIVIDED_BY_REVENUE and "has_discontinued" in p.flags and v.state == pn.FRESH:
             v = FeatureValue(v.feature_id, "partial", v.value, "has_discontinued", v.rules, v.inputs, v.flags)
         out[s.feature_id] = v
     return out
+
+
+def annotate(p, values, label_class=None):
+    """§6.1 (re-audit M-e): every value carries the panel's scope (an unlabelled scope is flagged so on every value,
+    §4.3), currency, anchor period and F8 result_hash, the label class, and two ages: days from the anchor period's
+    end to T, and days from the newest contributing availability instant to T."""
+    from dataclasses import replace
+    from datetime import datetime, timezone
+    t = datetime.fromisoformat(p.information_cutoff) if p.information_cutoff else None
+    by_key = {u.ef_key: u for u in p.facts.values()}
+    out = {}
+    for fid, v in values.items():
+        instants = []
+        for k in v.inputs:
+            u = by_key.get(k)
+            for a, _prec in (u.availability if u is not None else ()):
+                if a is not None:
+                    x = datetime.fromisoformat(a)
+                    instants.append(x if x.tzinfo else x.replace(tzinfo=timezone.utc))
+        flags = v.flags + (("unlabelled_scope",) if "unlabelled_scope" in p.flags else ())
+        out[fid] = replace(v, scope=p.scope, currency=p.currency, anchor_period=p.anchor_period,
+                           f8_result_hash=p.f8_result_hash, label_class=label_class,
+                           anchor_age_days=None if t is None or p.anchor_period is None
+                           else (t.date() - p.anchor_period).days,
+                           availability_age_days=None if t is None or not instants else (t - max(instants)).days,
+                           flags=tuple(dict.fromkeys(flags)))
+    return out
+

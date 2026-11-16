@@ -47,6 +47,8 @@ def _get(panel, concept, end, months, maturity="not_applicable"):
         return Derived(MISSING, reason="printed_nil", inputs=(u.ef_key,))
     v, rule = signed(concept, u.value)
     lo, hi = u.low, u.high
+    if rule == "magnitude" and (lo is None) != (hi is None):
+        lo = hi = None                        # one bound only: no interval, the value stands for both
     if rule == "magnitude" and lo is not None and hi is not None:
         # the magnitude of an interval: [0, max] if it straddles zero, else the reflected bounds (audit minor)
         lo, hi = (Decimal(0), max(-lo, hi)) if lo < 0 < hi else tuple(sorted((abs(lo), abs(hi))))
@@ -68,33 +70,53 @@ def _combine(rule, parts, signs):
     return Derived(FRESH, v, lo, hi, rule, tuple(p[3] for p in parts), flags=tuple(f for p in parts for f in p[4]))
 
 
-def ttm(panel, concept, end):
-    """TTM(E) by every rule that applies (F7P-1, F7P-2 for n in 3, 6, 9, F7P-3). Paths agree when their intervals
-    overlap: the lowest-numbered rule's value is used, marked corroborated_paths (P4-D8). Otherwise conflicting, with
-    every path kept."""
+def _absent(parts):
+    """A path does not apply when one of its facts does not exist (re-audit B-1: decided per part, not from the
+    combined state, which a conflicting part would make `conflicting`)."""
+    return any(isinstance(x, Derived) and x.state == MISSING and x.reason == "no_exact_period_match" for x in parts)
+
+
+TTM_RULES = ("F7P-1", "F7P-2", "F7P-3")
+
+
+def ttm(panel, concept, end, rules=TTM_RULES):
+    """TTM(E) by every rule of `rules` that applies (F7P-1, F7P-2 for n in 3, 6, 9, F7P-3). Paths agree when their
+    intervals overlap: the lowest-numbered rule's value is used, marked corroborated_paths (P4-D8). Otherwise
+    conflicting, with every path kept. An applicable path (all its facts exist) with a conflicting or untrusted input
+    makes the TTM take that state: F7 never picks a side (§4.2, §5.2; C-0073)."""
     if not exact_rule_ok(end):
         return Derived(MISSING, reason="no_exact_period_match")
-    paths = [_combine("F7P-1", [_get(panel, concept, end, 12)], [1])]
-    for n in (3, 6, 9):
-        e_n, e_12 = months_before(end, n), months_before(end, 12)
-        paths.append(_combine(f"F7P-2:{n}", [_get(panel, concept, end, n), _get(panel, concept, e_n, 12),
-                                             _get(panel, concept, e_12, n)], [1, 1, -1]))
-    paths.append(_combine("F7P-3", [_get(panel, concept, months_before(end, k), 3) for k in (0, 3, 6, 9)],
-                          [1, 1, 1, 1]))
-    # a path applies when all its facts exist. If an applicable path has a conflicting or untrusted input, the TTM
-    # takes that state: F7 never picks a side by using another path instead (§4.2; audit M3)
-    applicable = [p for p in paths if p.number or p.reason != "no_exact_period_match"]
+    specs = []
+    if "F7P-1" in rules:
+        specs.append(("F7P-1", [_get(panel, concept, end, 12)], [1]))
+    if "F7P-2" in rules:
+        for n in (3, 6, 9):
+            e_n, e_12 = months_before(end, n), months_before(end, 12)
+            specs.append((f"F7P-2:{n}", [_get(panel, concept, end, n), _get(panel, concept, e_n, 12),
+                                         _get(panel, concept, e_12, n)], [1, 1, -1]))
+    if "F7P-3" in rules:
+        specs.append(("F7P-3", [_get(panel, concept, months_before(end, k), 3) for k in (0, 3, 6, 9)],
+                      [1, 1, 1, 1]))
+    paths, applicable = [], []
+    for rule, parts, signs in specs:
+        d = _combine(rule, parts, signs)
+        paths.append(d)
+        if not _absent(parts):
+            applicable.append(d)
     blocked = [p for p in applicable if p.state in (UNTRUSTED, CONFLICTING)]
     if blocked:
         state = next(s for s in NULL_ORDER if any(p.state == s for p in blocked))
         first = next(p for p in blocked if p.state == state)
         return Derived(state, reason=first.reason, inputs=tuple(i for p in blocked for i in p.inputs),
                        paths=tuple(paths))
-    ok = [p for p in paths if p.number]
+    ok = [p for p in applicable if p.number]
     if not ok:
-        state = next((s for s in NULL_ORDER if any(p.state == s and p.inputs for p in paths)), MISSING)
-        first = next((p for p in paths if p.state == state and p.inputs), None)
-        return Derived(state, reason=first.reason if first else "no_exact_period_match", paths=tuple(paths))
+        nulls = [p for p in applicable if not p.number]
+        if nulls:
+            state = next(s for s in NULL_ORDER if any(p.state == s for p in nulls))
+            first = next(p for p in nulls if p.state == state)
+            return Derived(state, reason=first.reason, paths=tuple(paths))
+        return Derived(MISSING, reason="no_exact_period_match", paths=tuple(paths))
     lo, hi = max(p.low for p in ok), min(p.high for p in ok)
     best = ok[0]
     if len(ok) > 1 and lo > hi:

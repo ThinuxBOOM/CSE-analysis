@@ -10,13 +10,14 @@ Each step is accepted when a fresh-context audit reports no Blocker (C-0037). No
 | File | Content |
 |---|---|
 | `worker/financial_features/panel.py` | §4.2's usability table per F8 fact; the guards per pipeline (`live`: `require_live`; `point_in_time`: `require_point_in_time`, and `AVAILABLE` must carry H and the F8 configuration id); the newest period (facts F8 shows only, so a held but not yet public document never moves it: FL-19); `f7.scope.1`, `f7.currency.1`, the anchor's duration n, the panel states (`ok`, `anchor_absent`, `scope_unavailable`, `currency_ambiguous`, `critical_conflict`, `anchor_unusable`) and flags (`scope_changed`, `has_discontinued`, `unlabelled_scope`); `f7.sign.2`; `f7.security_link.1` |
-| `worker/financial_features/periods.py` | §5.1's E−k on F6.1's `_add_months` |
+| `worker/financial_features/dates.py` | §5.1's E−k on F6.1's `_add_months` (moved from `periods.py`) |
 | `tests/f7_factories.py` | Built F8 FactViews and sealed results; multi-concept documents through F6.3 and F8's own World |
 | `tests/test_f7_panel_unit.py` | Every usability row, scope, currency, anchor and flag rule; FL-8, FL-11, FL-15; FL-1 to FL-5 and FL-19 through F8's selection on synthetic worlds, each with its converse |
 
 Choices for the audit:
 - A panel with no anchor fact shown by F8 has the state `anchor_absent` (the design names no state for it).
-- `scope_changed` compares the scopes of anchor facts at E−12 in any state, as §4.3 reads "has an anchor fact".
+- `scope_changed` compares the scopes of the anchor facts F8 shows at E−12 (C-0073: a `none` fact never shapes the
+  panel).
 - `has_discontinued` is set by any `discontinued` fact of the chosen scope at the anchor period.
 - Facts in other scopes or currencies are not in the panel's table at all, so no formula can mix them.
 
@@ -26,7 +27,7 @@ Choices for the audit:
 
 | File | Content |
 |---|---|
-| `worker/financial_features/dates.py` | §5.1: E−k on F6.1's `_add_months`; exactness only for month-ends and days up to the 28th |
+| `worker/financial_features/dates.py` | §5.1: E−k on F6.1's `_add_months`; exactness only for month-ends and days up to the 27th (C-0073) |
 | `worker/financial_features/periods.py` | F7P-1, F7P-2 (n = 3, 6, 9), F7P-3, F7P-5 to F7P-8; `f7.sign.2` per fact before arithmetic; intervals added through sums; disagreeing TTM paths `conflicting` with every path kept, agreeing ones `corroborated_paths`; `f7.cashflow_sign.1` |
 | `tests/test_f7_periods_unit.py` | Hand-computed cases: annual, half-year with a March year-end, nine-month with a December year-end, quarter-only, the 25th, a non-month-end after the 28th, disagreeing paths, a conflicting input, per-fact magnitude, growth and averages, `base_not_positive`, the cash-flow identity and FL-20 |
 
@@ -116,4 +117,30 @@ is its UTC date.
 Choices for the audit: a weight-0 component is reported but counts toward neither the mean nor `min_components`;
 the selection of each universe (eligibility, links, groups) is the caller's (the store step, DE-4), and scoring ranks
 exactly the members it is given.
+
+## Second F7 audit: F7-1/F7-2 re-audit and F7-3 first audit (fresh-context agent)
+
+At `ab685f7`. Guard log empty. 95 mutants, 67 killed. **F7-1 and F7-2: REJECT** (one Blocker; every first-audit
+finding confirmed fixed). **F7-3: REJECT** (five Blockers).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | A TTM path that does not apply (a fact absent) blocked the TTM when another of its inputs was conflicting | **Fixed:** applicability decided per part. `test_b1` |
+| B-2 | Blocker | Look-ahead: a held, not yet public document changed the industry group (`KNOWN`) | **Fixed:** shown facts only. `test_b2` through F8, with its converse |
+| B-3 | Blocker | Valuation never checked that the panel currency is LKR | **Fixed:** `currency_mismatch` for every valuation and market-value feature. `test_b3` |
+| B-4 | Blocker | A day-precision availability (stored as the next 00:00 Colombo) was read one day late | **Fixed:** that day. `test_b4` |
+| B-5 | Blocker | A `partial` value escaped the stale-price limit | **Fixed:** every value-carrying state is checked. `test_b5` |
+| B-6 | Blocker | `eps_ttm_approx` used F7P-1 (a conflicting or different annual EPS blocked it) and dropped intervals | **Fixed:** F7P-2 and F7P-3 only; intervals scaled by the factor product; a `cum_price_stale` component makes it `partial`. `test_b6` |
+| M-a | Major | Ratios and `pe_eps` took the first null input's state, not Phase 3's order | **Fixed.** `test_ma`; `pe_eps` with EPS 0 is `denominator_zero` |
+| M-b | Major | `cash_reconciles` treated an interval end of 0 as absent | **Fixed.** `test_mb` |
+| M-c | Major | `eps_latest_fy` chose a year among every operations value | **Fixed:** total operations only. `test_mc` |
+| M-d | Major | Valuation had no panel-state guard | **Fixed:** a non-ok panel nulls every valuation feature as `compute` does. `test_md` |
+| M-e | Major | Values lacked §6.1's provenance and ages | **Fixed:** `features.annotate` adds scope, currency, anchor, F8 hash, label class, both ages and `unlabelled_scope`. `test_me` |
+| M-f | Major | §14's exit cases incomplete | **Tested:** loss and negative cases for the remaining ratios, `net_margin_chg` by hand, `eps_ttm_approx`, the market-value features, FL-6, FL-12, FL-17 under a price-adjusting policy |
+| M-g | Major | Rules surviving mutation | **Tested:** `has_discontinued` from shown facts, the industry at the anchor only, untrusted inputs blocking, the reason boundary at date(A), mixed availability, the flags |
+| M-h | Major | Record mismatches | **Fixed** above |
+| M-i | Major | `Spec.positive_denominator` unused; flags inconsistent with §6.2 | **Fixed:** every ratio reads its flag from the registry; `accounting_identity_gap` and `cash_to_assets` follow §6.2's list (no positive requirement) |
+| — | Minors | One-bound magnitude intervals; a duration without months; the reason codes and flags not in §6.4; the straddle check redundant | Fixed where code; the rest **carried** |
+
+Each Blocker fix and the main Majors were reverted as mutants: all ten are killed.
 

@@ -196,7 +196,8 @@ def panel(result, pipeline):
     else:
         return Panel(state=CURRENCY_AMBIGUOUS, scope=scope, newest_period=newest, flags=tuple(sorted(flags)), **base)
     durations = [f.identity.duration_months for f in in_scope
-                 if f.identity.currency == currency and f.identity.duration_months <= 12]
+                 if f.identity.currency == currency and f.identity.duration_months is not None
+                 and f.identity.duration_months <= 12]
     months = max(durations) if durations else None
     table = {}
     for f in facts:
