@@ -788,3 +788,18 @@ set aside and that came back later could have labels at a build that did not exi
 by counting the security's presence in the build; with the fix the auditor's 3 513 scenarios showed no difference.
 The two untested guards are now tested. A fifth re-audit is pending.
 
+
+## C-0079: DE-4 reads no market cap from an MF snapshot ([delegated], 2026-11-16)
+
+An MF snapshot row does not store `market_cap_reported`, and the imported TradeIQ history has no market cap at all.
+DE-4 therefore passes it as absent: the market-value features are `missing` (`incomplete_lines`) and
+`fund_valuation_mcap` gives `insufficient_inputs`. Nothing is invented. Even with the value, those features stay
+`untrusted` while it is provisional (P4-D4), so no score is lost. Storing it in MF would change pending migration
+0019 and its hashes; that is left for a later change.
+
+## C-0080: DE-4 gives every line an output from every engine ([delegated], 2026-11-16)
+
+§7.2 says who is ranked, not what a line outside the ranking gets. DE-4 records an explicit output for it, never
+silence: `insufficient_inputs`, no score, no components, and the reason in its evidence (`issuer_link_absent`,
+`financially_ineligible:<result>`, `market_ineligible:<result>`, `no_industry_group`, `no_market_eligible_line`).
+A line in the wrong industry group keeps `not_applicable` (§7.4). So every run has one output per line and engine.

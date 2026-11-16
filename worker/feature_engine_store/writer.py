@@ -23,6 +23,19 @@ class RunBatch:
     outputs: list                        # [(EngineOutput, issuer_id or None)]
 
 
+def _bind(o, row_hashes):
+    """§7.4: an output's evidence names the F7 feature row it read, by the row_hash written in this batch."""
+    subject = o.evidence.get("f7_subject")
+    if subject is None:
+        return o
+    from dataclasses import replace
+    ev = {k: v for k, v in o.evidence.items() if k != "f7_subject"}
+    if subject not in row_hashes:
+        raise ValueError(f"an output cites the feature row of {subject}, which this batch does not write")
+    ev["f7_row_hash"] = row_hashes[subject]
+    return replace(o, evidence=ev)
+
+
 def _config(cur, table, cfg):
     cid, js, st = cfg
     cur.execute(f"insert into {table} (configuration_id, configuration_json, status) values (%s, %s, %s) "
@@ -45,6 +58,7 @@ def write(conn, *, f7_config, de_config=None, panels=(), run=None):
             if de_config is not None:
                 _config(cur, "de_configurations", de_config)
             out = {"panels": [], "rows": 0, "run_id": None, "run_hash": None}
+            row_hashes = {}
             for b in panels:
                 rec = codec.panel_record(b.panel, f7_config[0], stamp)
                 cols = list(codec.PANEL_COLUMNS) + ["panel_hash"]
@@ -58,8 +72,11 @@ def write(conn, *, f7_config, de_config=None, panels=(), run=None):
                     cur.execute(f"insert into f7_feature_rows ({', '.join(cols)}) values "
                                 f"({', '.join(['%s'] * len(cols))})", [pid] + [fr[c] for c in cols[1:]])
                     out["rows"] += 1
+                    if fr["subject"] in row_hashes:
+                        raise ValueError(f"two feature rows for {fr['subject']} in one batch")
+                    row_hashes[fr["subject"]] = fr["row_hash"]
             if run is not None:
-                outs = [codec.output_record(o, iss) for o, iss in run.outputs]
+                outs = [codec.output_record(_bind(o, row_hashes), iss) for o, iss in run.outputs]
                 rr = codec.run_record(mode=run.mode, cutoff=run.cutoff, knowledge_horizon=run.knowledge_horizon,
                                       snapshot_id=run.snapshot_id, f7_configuration_id=f7_config[0],
                                       de_configuration_id=de_config[0], label_class=run.label_class, outputs=outs,

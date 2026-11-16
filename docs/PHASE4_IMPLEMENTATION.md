@@ -175,3 +175,30 @@ At `a8e52f1`. Guard log empty. A seeded differential search through F8 over 2 20
 | — | Minors | The internal `not_shown` marker reached feature flags; `earlier_period_than_anchor` was a flag only | **Fixed:** the marker stays internal (`test_n1`); the reason and the period end are recorded |
 | — | Minors | A held fact's existence shows in reasons and provenance in `KNOWN` (`not_yet_available`, as §4.2 requires; states and values never change); `Panel.counts` includes `none` facts, as F8's own hash does | **Recorded** as consistent with F8 and §4.2 |
 
+## DE-4: storage, the run job and the command line
+
+Pending migration `supabase/migrations_pending/0020_financial_features_and_engines.sql` (after 0019, outside the
+chain until the owner's merge decision): the eight tables of design §10.1, append-only for every role, the worker's
+inserts, owner-only designations (guard plus grant), configuration ids that must be the SHA-256 of their JSON.
+
+`worker/feature_engine_store/`:
+
+- `codec`: canonical JSON; the F7 and DE configurations; `panel_hash`, `row_hash` (bound to its panel's hash),
+  `output_hash` and `run_hash` (bound to every output's hash). Panel and run hashes also bind `recorded_at` and
+  `created_by`, read by the writer in its own transaction (the MF pattern).
+- `assemble` (pure): links at T or H, panels, features, eligibility, per-line valuation, then every engine
+  (§7.2 universes, fan-out, `fund_valuation_eps` per line). Every output's evidence names the F8 `result_hash`, the
+  MF row hash, the link decision and the F7 row. One output per line and engine (C-0080). No market cap (C-0079).
+- `loader`: one MF snapshot (CURRENT refused, row count checked), the link decisions, one F8 `as_of` per linked
+  issuer.
+- `writer`: one transaction; any refusal leaves nothing.
+- `verify`: recomputes every stored hash.
+- `preflight`, `cli` and `ops/bin/cse-engines`; runbook `docs/ops/P4_FEATURES_AND_ENGINES.md`.
+
+Tests: `test_de4_migration_static`, `test_de4_migration_postgres` (guards, owner path, append-only, mode checks),
+`test_de4_store_postgres` (write, verify, eight tamperings, a missing output, a refusal leaves nothing),
+`test_de4_assemble_unit` (one output per line and engine, fan-out, explicit reasons, evidence, AVAILABLE,
+determinism), `test_de4_jobs_postgres` (real MF rows, factors, move flags and link decisions; F8 stood in; a
+decision after T unused; CURRENT refused; the CLI and the owner path), `test_de4_ops_static`.
+
+Not yet: storing the DE-3 baselines. Pending: a fresh-context audit of DE-4.
