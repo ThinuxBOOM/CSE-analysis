@@ -124,6 +124,8 @@ def load(conn, query):
             admitted_imports.append((imp, sha, n))
             cur.execute("select symbol, trade_date from mf_history_quarantine where import_id = %s", (imp,))
             for sym, d in cur.fetchall():
+                if query.cutoff is not None and hb.available_at(d) > query.cutoff:
+                    continue                  # dated after T's day: not admitted, as rows are not (audit 3, B-3)
                 quarantined[sym].add(d)
                 inst = max(row_instant(query, recorded, d), batch_instant[imp])
                 q_instants[(sym, d)] = max(q_instants.get((sym, d), inst), inst)
@@ -159,11 +161,14 @@ def load(conn, query):
             q_instants[(sym, d)] = max(c["instant"] for c in cs)
         elif d not in quarantined[sym]:   # a quarantine of any admitted batch wins over a row (C-0063)
             rows[sym][d] = m
-    imported = {sym: hb.Imported(rows=dict(r), complete=tuple(sorted(complete.get(sym, ()))),
+    # a security whose every row was quarantined or disagreed keeps an entry without rows: its quarantine
+    # instants still bind the labels that read across the session it removed (audit 3, B-1). A snapshot skips it.
+    symbols = set(rows) | {sym for sym, ds in quarantined.items() if ds}
+    imported = {sym: hb.Imported(rows=dict(rows.get(sym, {})), complete=tuple(sorted(complete.get(sym, ()))),
                                  quarantined=frozenset(quarantined.get(sym, ())),
                                  quarantine_instants={d: i for (s_, d), i in q_instants.items() if s_ == sym},
                                  complete_recorded=tuple(sorted(complete_recorded.get(sym, ()))))
-                for sym, r in rows.items()}
+                for sym in sorted(symbols)}
     admitted_statements = sorted(s.statement_id for s in statements if query.admits(s.recorded_at, s.available_at))
     evidence = {"imports": admitted_imports, "statements": admitted_statements, "calendar": cal_ids}
     return imported, statements, cal_obs, evidence

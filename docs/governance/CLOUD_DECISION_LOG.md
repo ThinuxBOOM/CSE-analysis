@@ -752,3 +752,10 @@ Three clarifications of the accepted Phase 4 design follow from the audit, each 
 "in any state" means the states F8 shows; §5.1's exact dates are up to the 27th (not the 28th); a conflicting input
 in any applicable TTM path makes the TTM conflicting. The Majors are fixed and tested. Re-audit pending.
 
+## C-0074: the MF-7c third part third re-audit and its fixes ([delegated], 2026-11-16)
+
+The third re-audit fuzzed the label contract over 240 scenarios and found three remaining cases: a security whose
+every row was set aside lost its effect on the labels' timing; a statement naming another security's statement did
+not count that statement's timing; and a set-aside day after T could stamp a label after T. Each is fixed
+conservatively and tested; the tests fail on the old code. A fourth re-audit is pending.
+

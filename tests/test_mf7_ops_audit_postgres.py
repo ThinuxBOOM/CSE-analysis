@@ -166,7 +166,8 @@ CHANGES = [("mf_snapshots", "d_star = d_star - 1"), ("mf_snapshots", "code_versi
            ("mf_target_builds", "target_definition_version = 'targets.0'"),
            ("mf_target_builds", "mode = 'KNOWN'"),
            ("mf_target_builds", "recorded_at = recorded_at - interval '1 hour'"),
-           ("mf_target_builds", "created_by = 'someone'")]
+           ("mf_target_builds", "created_by = 'someone'"),
+           ("mf_target_rows", "adjustment_set = '[\"x\"]'")]
 
 
 @pg

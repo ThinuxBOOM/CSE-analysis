@@ -42,6 +42,8 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
     snap = Snapshot(seq.cutoff, sessions)
     series_by, refs_by = {}, {}
     for sym, imp in sorted(imported_by_symbol.items()):
+        if not imp.rows:                # quarantines only: evidence for labels' instants, not a security of the snapshot
+            continue
         bars = {s: hb.bar_on(sym, imp, s) for s in sessions}
         refs = {r.session: r for r in reference_series([(s, bars[s]) for s in sessions])}
         fs = actions.build_factors(sym, statements, query, sessions=list(sessions), references=refs,

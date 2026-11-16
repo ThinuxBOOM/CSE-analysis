@@ -142,10 +142,12 @@ def statement_instants(query, statements):
 
 
 def superseded_instants(symbol, statements, stmt_instants):
-    """The withdrawn or superseding statements of the security and the statements they name (audits 4 and 6)."""
+    """The withdrawn or superseding statements of the security and every statement they name, whatever its security
+    (a misdirected supersession naming another security's statement stops applying once that statement is admitted:
+    audit 3, B-2; audits 4 and 6)."""
     named = {s.supersedes for s in statements if s.symbol == symbol and s.supersedes}
-    return [stmt_instants[s.statement_id] for s in statements if s.symbol == symbol and s.statement_id in stmt_instants
-            and (s.supersedes or s.kind == actions.WITHDRAWN or s.statement_id in named)]
+    return [stmt_instants[s.statement_id] for s in statements if s.statement_id in stmt_instants
+            and ((s.symbol == symbol and (s.supersedes or s.kind == actions.WITHDRAWN)) or s.statement_id in named)]
 
 
 def admissible_reference(query, mode, cutoff, horizon, recorded_at):

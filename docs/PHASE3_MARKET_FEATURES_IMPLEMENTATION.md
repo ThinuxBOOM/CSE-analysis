@@ -725,8 +725,8 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 ## MF-7c (third part): the commands
 
 **Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers, fixed, C-0065) and by
-its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067); third re-audit
-pending.** MF-7's remaining pieces (design §13.2): the
+its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067) and its third (three Blockers, fixed, C-0074);
+fourth re-audit pending.** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 
@@ -816,4 +816,21 @@ At `8fe248c`. Guard logs empty. N-B1's fix holds (1 981 labels over 57 builds of
 | M-2 | Major | KNOWN_RECORDED's tie-break at the same T untested | **Tested:** `test_p5` |
 | — | Minor | `jobs.snapshot` and `targets_store.build` accepted a future cutoff or horizon outside the CLI | **Fixed:** refused against the database's `now()`. `test_p2` |
 | — | Minors | Designations and configurations outside every hash (a tampered designation `recorded_at` would change selection unseen); on real-data shapes `resolved_at` equals the build's T (the audited calendar-whole rule); identity evidence not loaded (unused); earlier Minors | **Carried**; the designation hash for the owner's review with `main` |
+
+## Third re-audit of MF-7c third part: fresh-context agent
+
+At `f08b200`. Guard logs empty. A contract fuzzer over 240 random scenarios (5 856 labels, both modes) found no
+difference outside the shapes below. **REJECT** (three Blockers).
+
+| # | Severity | Finding | Disposition |
+|---|---|---|---|
+| B-1 | Blocker | A security whose every row was quarantined or disagreed dropped out of the loaded evidence, and with it the instants of the session it removed | **Fixed.** The loader keeps such a security without rows (a snapshot skips it). `tests/test_mf7_ops_contract2_postgres.py` c1, c2 |
+| B-2 | Blocker | A supersession naming another security's statement stops applying once that statement is admitted; that statement's instant was not counted (AVAILABLE) | **Fixed.** Every statement a security's statements name counts, whatever its security. c3 |
+| B-3 | Blocker | Quarantines dated after T were admitted with their batch and could put `resolved_at` after T | **Fixed.** Not admitted, as rows dated after T's day are not. c4 |
+| M5, M7, M10 | Major | The clipped range's latest quarantine, the closing row's instant and a range batch admitted later untested | **Tested.** c5, c6, c7 |
+| M13 | Major | `adjustment_set` in the target `row_hash` untested | **Tested:** a tamper case in `test_p3` |
+| — | Minor | A confirmation whose `available_at` differs from its `recorded_at` raises `ValueError` on load; the CLI exited 1 | **Fixed:** the CLI refuses it (exit 5); nothing is written |
+| — | Minor | `resolved_at` is conservative: median lag 4 sessions without import-calendar ranges, 15 with them (the calendar-whole rule) | **Carried** for the owner (the audited conservative rule) |
+
+The new cases fail on `f08b200`'s code (7 of 13) and pass now.
 

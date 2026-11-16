@@ -240,7 +240,7 @@ def run(args, connect):
         if args.command == "status":
             _print(status(conn))
             return EXIT_OK
-    except (OwnerPathRequired, configuration.ConfigurationError, Refused, LookupError) as exc:
+    except (OwnerPathRequired, configuration.ConfigurationError, Refused, LookupError, ValueError) as exc:
         conn.rollback()
         _print({"state": "refused", "reason": str(exc)})
         return EXIT_REFUSED
