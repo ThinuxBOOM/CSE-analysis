@@ -37,7 +37,7 @@ says.
 
 ## M5-2: the dataset builder, manifest, version and strata (part 1: the pure builder)
 
-**Status: built (parts 1 and 2); audit pending.**
+**Status: built (parts 1 and 2); first audit's Blocker and Majors fixed; re-audit pending.**
 
 | File | Content | Design |
 |---|---|---|
@@ -74,6 +74,38 @@ Mutation check (14 mutants, among them liquidity over ineligible lines, a versio
 values kept, a second build, withheld labels built, a session's own median in its history, the cutoff rule off, the
 earliest snapshot chosen, the best label carried, a trend tag from a later session): all killed; three survived the
 first test set and were closed by `test_mlk17_strata_use_the_eligible_same_t_universe_and_only_earlier_sessions`.
+
+---
+
+## First M5-2 audit (fresh-context agent, at 38a203c)
+
+One Blocker, six Majors, minors. All Blocker and Major findings are fixed or recorded:
+
+- **B1** the pinned build's header was never read: an AVAILABLE build, another H or another label definition could
+  label a dataset, and its labels' R_h would be on another era's clock. Now the loader reads `mf_target_builds` and
+  `build()` requires the header: its id, `target_definition_version`, MF configuration, mode and H must answer the
+  manifest, and every era must be on the build's own clock. Consequence (C-0089): **a dataset is single-mode** until
+  MF's targets give labels each era's own clock; a mixed manifest is refused, not mislabelled.
+- **M1** a session's snapshots of another mode or H made the build fail, by snapshot-id order: now set aside before
+  the cutoff rule and counted (`snapshots_other_mode_or_h`). A CURRENT snapshot is still refused.
+- **M2** the cutoff rule had no instant for the AVAILABLE clock: each era now carries its own instant (default the
+  last microsecond of D, Colombo), inclusive; the boundary, an earlier instant and the tie-break are tested.
+- **M3** labels of rows just before a withheld test period carried test-period prices: a label whose R_h reaches the
+  period (or a pending one while a period starts after T) is not built, and counted (`labels_reaching_test_period`).
+- **M4** a snapshot without a DE run had its lines labelled "no link": now `no_engine_run` on F7 eligibility and on
+  every engine, counted in the report; a line in link conflict says `issuer_link_conflict`.
+- **M5** survivorship reads the import headers and bar dates, outside §3's list: recorded as a departure (C-0089)
+  until MF stores the survivorship it admitted; the rule now uses MF's own admission filter (`raw`, `row_absent`).
+- **M6** tests now kill every mutant the audit listed (20 builder and loader mutants, each failing a test), the
+  age-stratum test asserts real bins, and the loader is tested in AVAILABLE. MLK-20 through real stored rows: F7's
+  `incomplete_lines` nulls reach the dataset with their reason. **Carried Major:** MLK-20 with every MF (ML-1 to
+  ML-24) and Phase 4 (FL-1 to FL-22) plant run through to a built dataset, which needs the full stack end to end;
+  planned with M5-8's rehearsal, before `main`.
+
+Minors fixed: liquidity uses the manifest's admissible states; the version binds T, snapshot id, row metadata and
+the build header; duplicate labels refused; a line's own F7 row must have been computed on the same MF row.
+Carried: the latest DE run is not pinned in the manifest (a rebuild after a re-run changes the version, which
+fails closed); the volatility tag's history is the dataset's own sessions.
 
 ---
 

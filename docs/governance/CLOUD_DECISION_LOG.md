@@ -863,3 +863,15 @@ market snapshot rows, the engine run of each snapshot and the financial feature 
 of one pinned target build. Survivorship comes from the import batches within reach of each snapshot's feature
 windows. Tested against a PostgreSQL world. M5-2 now goes to audit.
 
+## C-0089: the first M5-2 audit and its fix; single-mode datasets ([delegated], 2026-11-16)
+
+The audit found one Blocker: the dataset builder never checked the pinned label build's own mode, horizon,
+configuration and label version, so labels on another era's clock could slip in. Fixed: the build's header is read
+and must match. As a result a dataset is single-mode (all `KNOWN` or all `AVAILABLE` with one H) until MF's labels
+can carry each era's own clock; a mixed request is refused rather than mislabelled. The six Majors are fixed: other
+modes in a session set aside, a cutoff rule per era, labels reaching a test period withheld, a missing engine run
+recorded as such, tests for every surviving mutant. One recorded departure from the design's read list: survivorship
+is taken from the import headers and bar dates (never prices) until MF stores it on the snapshot. One Major is
+carried to the end-to-end rehearsal (M5-8): every upstream leakage plant run through to a built dataset. A re-audit
+is pending.
+

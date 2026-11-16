@@ -23,15 +23,15 @@ class RegimePolicy:
     max_history: int = 1260
 
 
-def _admissible(v):
-    return v is not None and v[0] is not None and v[1] in ADMISSIBLE
+def _admissible(v, admissible=ADMISSIBLE):
+    return v is not None and v[0] is not None and v[1] in admissible
 
 
-def liquidity_classes(turnover):
+def liquidity_classes(turnover, admissible=ADMISSIBLE):
     """Terciles of turnover_avg_21 in the same-T universe. turnover: {key: (value, state, reason)}. A member without an
     admissible value is `unknown`. Ties share a class: the class follows the average rank, so equal values never
     split across a boundary."""
-    vals = {k: v[0] for k, v in turnover.items() if _admissible(v)}
+    vals = {k: v[0] for k, v in turnover.items() if _admissible(v, admissible)}
     out = {k: UNKNOWN for k in turnover}
     n = len(vals)
     ordered = sorted(vals.values())
