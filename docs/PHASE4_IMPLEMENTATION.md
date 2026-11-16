@@ -102,3 +102,18 @@ Choices for the audit: a panel in `anchor_absent` is `no_panel`; "fiscal years w
 counts distinct period ends of numeric 12-month `profit_for_period` facts in the chosen scope and currency; T's date
 is its UTC date.
 
+## DE-1 to DE-3: the engine contract, engine set v1 and the baselines
+
+**Status: implemented and tested (2026-11-16); audit pending.**
+
+| File | Content |
+|---|---|
+| `worker/engines/registry.py` | The engine contract (§7.1) and engine set v1 (§8): fifteen engines, equal weights, required components, minima; `beta_126` reported with weight 0 |
+| `worker/engines/scoring.py` | §7.3: n_c over admissible non-null values; `N_min` 10 (provisional); p = (below + ½ equal)/n_c; s_c = orientation × (2p − 1); the weighted mean; `insufficient_inputs`, `blocked_quality` (a required component conflicting or untrusted), unlabelled absent; the EngineOutput (§7.4) with every component, the universe's digest and the inputs hash; fan-out of an issuer output to its linked lines |
+| `worker/engines/baselines.py` | §9: `base_no_change`, `base_rate_252` (MF's `hist_*` features; the tie rule), `base_momentum_sign`; every other field null, `not_provided_by_baseline` |
+| `tests/test_de_engines_unit.py` | Hand-computed percentiles with ties and orientation; small n; required, minimum, blocking and unlabelled components; weight 0; `fund_valuation_mcap` blocked while untrusted; fan-out with an issuer counted once; determinism; FL-7 and FL-13 by the universe passed; the baselines; FL-9 (no target-module or network import in `worker/engines` or `worker/financial_features`) |
+
+Choices for the audit: a weight-0 component is reported but counts toward neither the mean nor `min_components`;
+the selection of each universe (eligibility, links, groups) is the caller's (the store step, DE-4), and scoring ranks
+exactly the members it is given.
+
