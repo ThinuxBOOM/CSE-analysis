@@ -37,7 +37,7 @@ says.
 
 ## M5-2: the dataset builder, manifest, version and strata (part 1: the pure builder)
 
-**Status: built (parts 1 and 2); first audit's Blocker and Majors fixed; re-audit pending.**
+**Status: ACCEPTED on the branch (C-0090: re-audit reported no Blocker and no Major).**
 
 | File | Content | Design |
 |---|---|---|
@@ -106,6 +106,21 @@ Minors fixed: liquidity uses the manifest's admissible states; the version binds
 the build header; duplicate labels refused; a line's own F7 row must have been computed on the same MF row.
 Carried: the latest DE run is not pinned in the manifest (a rebuild after a re-run changes the version, which
 fails closed); the volatility tag's history is the dataset's own sessions.
+
+---
+
+## M5-2 re-audit (fresh-context agent, at 5f51794): accepted
+
+No Blocker and no Major: every first-audit fix holds (an AVAILABLE dataset with a matching build was built end to
+end), no leakage into features, metadata, strata or labels, and every loader join is keyed by snapshot, run or build.
+50 mutants; the seven that changed results are now killed by new tests (the id tie-break in both orders, the
+volatility median from admissible eligible values only, `unknown` survivorship when no batch is in reach, the build
+header's mode and H read from the database, the link state read from DE's evidence). Minors fixed: the manifest's
+shape is checked (ordered dates, eras inside the range and not overlapping, zone-free cutoff times, aware ordered
+withheld periods); a snapshot that read imported history marks its unlinked lines `captured_only`; the dataset
+version binds the builder's code version (`ml_dataset.2`). **Carried to M5-6:** withheld test periods are given by
+the caller until the registry exists; M5-6 must read the declared, unspent periods itself (§4.1, MLK-4). Also carried
+(C-0089): MLK-20 with every upstream plant, at M5-8.
 
 ---
 

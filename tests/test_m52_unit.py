@@ -413,3 +413,46 @@ def test_version_binds_t_snapshot_and_metadata():
     s3 = [replace(snaps[0], cutoff=snaps[0].cutoff - timedelta(hours=1))] + snaps[1:]
     assert build(manifest(), s3, labs).version != a.version
 
+
+
+# ------------------------------------------------------------------------------------------------ M5-2 re-audit
+
+
+def test_r1_ties_by_id_in_either_order_and_vol_median_from_admissible_eligible_values():
+    a, b = snap(0, sid=5), snap(0, sid=6)
+    for order in ([a, b], [b, a]):
+        assert {r.snapshot_id for r in build(manifest(), order, labels_for([a, b])).rows} == {6}
+    pol = st.RegimePolicy(min_history=1)
+    base = [snap(i) for i in range(3)]
+    ref = build(manifest(regime_policy=pol), base, labels_for(base))
+    noisy = list(base)
+    noisy[2] = replace(base[2], rows={**base[2].rows,
+                                     "U.N0000": line("U.N0000", 2, 70, feats={"vol_21": (D(99), "untrusted", "x")}),
+                                     "I.N0000": line("I.N0000", 2, 71, eligible="no_data",
+                                                     feats={"vol_21": (D(99), "fresh", None)})})
+    got = build(manifest(regime_policy=pol), noisy, labels_for(noisy))
+    tag = {r.session: r.meta["regime_volatility"] for r in ref.rows}
+    assert all(r.meta["regime_volatility"] == tag[r.session] for r in got.rows)
+
+
+def test_r2_manifest_shape_and_imported_coverage():
+    s = snap(0)
+    for bad in (dict(date_from=day(5), date_to=day(1)),
+                dict(eras=(ds.Era(day(0), day(500), "KNOWN"),)),
+                dict(eras=(ds.Era(day(0), day(10), "KNOWN"), ds.Era(day(10), day(400), "KNOWN"))),
+                dict(eras=(ds.Era(day(0), day(400), "KNOWN", None, time(13, tzinfo=timezone.utc)),)),
+                dict(withheld=((t_of(9), t_of(5)),)),
+                dict(withheld=((datetime(2024, 1, 5), datetime(2024, 1, 9)),))):
+        with pytest.raises(ds.Refused, match="manifest_shape"):
+            build(manifest(**bad), [s], [])
+    imp = replace(snap(1, rows={"N.N0000": line("N.N0000", 1, 51, f7=None)}), imported=True)
+    n = next(r for r in build(manifest(), [imp], labels_for([imp])).rows if r.symbol == "N.N0000")
+    assert n.meta["fundamental_coverage"] == "captured_only"
+
+
+def test_r3_the_version_binds_the_builders_code(monkeypatch):
+    import worker.ml_dataset as pkg
+    snaps, labs = world(2)
+    a = build(manifest(), snaps, labs).version
+    monkeypatch.setattr(pkg, "VERSION", "ml_dataset.x")
+    assert build(manifest(), snaps, labs).version != a

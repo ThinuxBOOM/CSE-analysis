@@ -109,6 +109,7 @@ class SnapshotIn:
     basis_raw: bool = True
     market: dict = None                         # {feature_id: (value, state, reason)}; None when not stored (C-0087)
     de_run: bool = True                         # False: no DE run under the manifest's configurations
+    imported: bool = False                      # the snapshot read imported history (its coverage is captured_only)
 
 
 @dataclass(frozen=True)
@@ -204,7 +205,8 @@ def version(manifest, rows, labels, target_build=None):
         lab = [labels[(r.symbol, r.session, h)].row_hash if (r.symbol, r.session, h) in labels else None
                for h in HORIZONS]
         sources.append([r.symbol, r.session, r.t, r.snapshot_id, r.meta, list(r.sources), lab])
-    return hashlib.sha256(canonical({"manifest": manifest, "target_build": target_build,
+    from . import VERSION as code_version
+    return hashlib.sha256(canonical({"code": code_version, "manifest": manifest, "target_build": target_build,
                                      "sources": sources}).encode()).hexdigest()
 
 
@@ -236,6 +238,22 @@ def _check_manifest(m):
         raise Refused("two_h_values", "a dataset never mixes two knowledge horizons (MLK-24)")
     if m.row_filter != ROW_FILTER:
         raise Refused("row_filter", f"unknown row filter {m.row_filter}")
+    # the manifest's shape (M5-2 re-audit, minors): ordered dates, eras inside the range and not overlapping, cutoff
+    # times without a zone (the rule is always Colombo time), withheld periods aware and ordered
+    if m.date_from > m.date_to:
+        raise Refused("manifest_shape", "date_from is after date_to")
+    eras = sorted(m.eras, key=lambda e: e.date_from)
+    for e in eras:
+        if e.date_from > e.date_to or e.date_from < m.date_from or e.date_to > m.date_to:
+            raise Refused("manifest_shape", f"era {e.date_from}..{e.date_to} is inverted or outside the range")
+        if e.cutoff_time.tzinfo is not None:
+            raise Refused("manifest_shape", "an era's cutoff time is a Colombo time of day, without a zone")
+    for a, b in zip(eras, eras[1:]):
+        if b.date_from <= a.date_to:
+            raise Refused("manifest_shape", f"eras {a.date_from} and {b.date_from} overlap")
+    for p in m.withheld:
+        if len(p) != 2 or any(not isinstance(x, datetime) or x.tzinfo is None for x in p) or p[0] > p[1]:
+            raise Refused("manifest_shape", "a withheld period is (start, end), aware instants, start <= end")
 
 
 def _value(v, admissible):
@@ -402,7 +420,7 @@ def build(manifest, snapshots, labels, target_build):
                     report["nulls_by_state"][k] = report["nulls_by_state"].get(k, 0) + 1
             meta = {"label_class": s.label_class, "survivorship": s.survivorship,
                     "fundamental_coverage": ln.f7.fundamental_coverage if ln.f7 is not None else
-                    ("captured_only" if s.mode == "AVAILABLE" else "all"),
+                    ("captured_only" if s.mode == "AVAILABLE" or s.imported else "all"),
                     "liquidity_class": liq[sym], "regime_trend": trend[0], "regime_volatility": vol[s.cutoff][0],
                     "industry_group": ln.industry_group}
             row = Row(sym, s.session, s.cutoff, s.snapshot_id, feats, meta, tuple(srcs))

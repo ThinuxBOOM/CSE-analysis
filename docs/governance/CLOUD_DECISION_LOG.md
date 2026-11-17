@@ -875,3 +875,9 @@ is taken from the import headers and bar dates (never prices) until MF stores it
 carried to the end-to-end rehearsal (M5-8): every upstream leakage plant run through to a built dataset. A re-audit
 is pending.
 
+## C-0090: M5-2 accepted ([delegated], 2026-11-17)
+
+The re-audit of the dataset builder found no Blocker and no Major, so M5-2 is accepted. The seven gaps in its tests
+that could change results are closed, and its minor findings fixed. Carried: test periods are supplied by the
+caller until the model registry (M5-6) can enforce them; the full end-to-end leakage test belongs to M5-8.
+

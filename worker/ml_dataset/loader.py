@@ -142,7 +142,8 @@ def load(conn, manifest):
                     None if s["knowledge_horizon"] is None else s["knowledge_horizon"].astimezone(timezone.utc),
                     s["configuration_id"], s["result_label"], _survivorship(cur, s), lines,
                     manifest.f7_configuration_id if run_id is not None else None,
-                    manifest.de_configuration_id if run_id is not None else None, de_run=run_id is not None))
+                    manifest.de_configuration_id if run_id is not None else None, de_run=run_id is not None,
+                    imported=bool(s["imported_inputs"])))
             ids = [s.snapshot_id for s in out]
             head = _rows(cur, "select build_id, mode, knowledge_horizon, configuration_id, target_definition_version "
                               "from mf_target_builds where build_id = %s", (manifest.target_build_id,))

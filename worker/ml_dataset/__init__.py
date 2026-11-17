@@ -5,4 +5,4 @@ the strata. Pure: the inputs are the stored rows of Phases 3 and 4, already read
   dataset   Manifest, the inputs, build() -> Dataset (feature rows, labels apart, the build report, the version)
   strata    liquidity class, regime tags (a pinned provisional policy), model-age strata
 """
-VERSION = "ml_dataset.1"
+VERSION = "ml_dataset.2"                 # bound into every dataset version

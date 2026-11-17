@@ -106,6 +106,7 @@ def test_l1_the_stored_world_becomes_a_dataset(cluster, monkeypatch):
     assert r5.features["f7.book_to_market"] == (None, "missing", "incomplete_lines")
     z = next(r for r in d.rows if r.symbol == "ZZZ.N0000")
     assert z.features["f7.eligibility"] == (None, "missing", "issuer_link_absent") and z.meta["industry_group"] is None
+    assert snaps[0].rows["ZZZ.N0000"].link_state == "issuer_link_absent"     # read from DE's evidence
     assert d.labels[("S02.N0000", date(2024, 6, 30), 5)].state == "unresolvable_missing_price"
     assert (d.label_class, d.survivorship) == ("point_in_time", "complete")
     again = ds.build(m, *loader.load(c, m))
@@ -256,4 +257,29 @@ def test_l7_available_survivorship_is_governed_by_h(cluster, monkeypatch):
     m = manifest(cid, builds[0], eras=(ds.Era(date(2024, 1, 1), date(2024, 12, 31), "AVAILABLE", h),))
     snaps, _l, _b = loader.load(c, m)
     assert snaps[0].survivorship == "unknown"
+
+
+def test_l8_an_available_dataset_end_to_end_and_imports_out_of_reach(cluster, monkeypatch):
+    """M5-2 re-audit: an AVAILABLE dataset under a matching AVAILABLE build builds; a snapshot that read imported
+    history with no batch in reach is `unknown`, never `complete`."""
+    db = fs.fresh_db(cluster)
+    c, sid, builds, cid = built(cluster, db, monkeypatch, mode="AVAILABLE")
+    h = datetime(2024, 7, 31, tzinfo=timezone.utc)
+    (b,) = sql(cluster, db, [("insert into mf_target_builds (mode, cutoff, knowledge_horizon, configuration_id, "
+                             "target_definition_version, code_version, build_hash) values ('AVAILABLE', "
+                             "'2024-08-31T00:00:00Z', %s, %s, 'targets.1', 'mf.1', repeat('9', 64)) "
+                             "returning build_id", (h, cid))])
+    sql(cluster, db, [("insert into mf_target_rows (build_id, reference_snapshot_id, symbol, horizon, state, "
+                       "values_json, resolved_at, row_hash) select %s, reference_snapshot_id, symbol, horizon, state, "
+                       "values_json, resolved_at, row_hash from mf_target_rows where build_id = %s",
+                       (b[0], builds[0]))])
+    m = manifest(cid, b[0], eras=(ds.Era(date(2024, 1, 1), date(2024, 12, 31), "AVAILABLE", h),))
+    snaps, labels, build = loader.load(c, m)
+    assert (build.mode, build.horizon) == ("AVAILABLE", h)
+    d = ds.build(m, snaps, labels, build)
+    assert len(d.rows) == 13 and d.labels and d.label_class == "reconstructed"
+    sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
+    imports(cluster, db, [("complete", "raw", "row_absent", "2024-01-01T00:00:00Z", "2019-01-02")])   # out of reach
+    snaps, _l, _b = loader.load(c, m)
+    assert snaps[0].survivorship == "unknown" and snaps[0].imported
 
