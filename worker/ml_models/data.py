@@ -2,7 +2,7 @@
 with values fitted on the fit slice and adds a missing indicator. The schema (feature order and categories) is fitted
 on the training rows and stored in the artifact, so prediction uses the same columns."""
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 import numpy as np
@@ -107,25 +107,56 @@ def targets(dataset, keys, horizon):
         if val.get("direction") in CLASSES and val.get("ret") is not None:
             d[i] = CLASSES.index(val["direction"])
             r[i] = _dec(val["ret"])
+        if "volatility_state" not in val:
+            raise ValueError(f"label {sym} {session} h={horizon} has no volatility_state")
         vol = _dec(val.get("volatility"))
-        if vol is not None and val.get("volatility_state", "resolved") in scoring.TRAINED:
+        if vol is not None and val["volatility_state"] in scoring.TRAINED:
             v[i] = vol
     return Targets(list(keys), d, r, v)
 
 
+_ISSUED = object()                            # only train_set makes a Train an adapter accepts
+
+
 @dataclass(frozen=True)
 class Train:
-    """What an adapter fits on: the fit-slice rows (admitted through FitScope), their matrix and targets."""
+    """What an adapter fits on: the rows of one named slice (admitted through FitScope), their matrix and targets.
+    `slice_name` says which; every fitted part (schema, categories, imputation, indicators, scaling, parameters) comes
+    from these rows only."""
     horizon: int
     schema: Schema
     X: np.ndarray
     y: Targets
     rows: tuple
+    slice_name: str = ""
+    issued: object = field(default=None, repr=False, compare=False)
 
 
 def train_set(dataset, scope, rows, horizon):
-    """rows: the dataset rows of the fit slice; `scope` (ml_protocol.FitScope) refuses any row outside it (MLK-3)."""
+    """rows: the dataset rows of one slice; `scope` (ml_protocol.FitScope) names it and refuses any row outside it
+    (MLK-3)."""
     admitted = scope.admit(rows)
     sch = schema(admitted)
     X, keys = matrix(admitted, sch)
-    return Train(horizon, sch, X, targets(dataset, keys, horizon), tuple(admitted))
+    return Train(horizon, sch, X, targets(dataset, keys, horizon), tuple(admitted), scope.slice_name, _ISSUED)
+
+
+def require(train, slice_name):
+    """First M5-4 audit M1: an adapter fits only on a Train made by train_set, of the slice its design names: `linear`
+    and `gbt` on `fit`; the `ref` adapter on the fold's `training` rows (§7.3: base_prior uses all of them)."""
+    from .artifact import Refused
+    if train.issued is not _ISSUED:
+        raise Refused("train_not_scoped", "a training set is made by train_set through a FitScope")
+    if train.slice_name != slice_name:
+        raise Refused("wrong_slice", f"this adapter fits on the {slice_name} slice, not {train.slice_name!r}")
+    return train
+
+
+def direction_of(p):
+    """The predicted class from (p_rise, p_flat, p_fall) with Phase 4's tie rule (worker/engines/baselines.py): a
+    single maximum wins; a tie that includes flat is flat; a rise-fall tie is no class (None)."""
+    if p is None:
+        return None
+    top = max(p)
+    tied = [c for c, x in zip(CLASSES, p) if x == top]
+    return tied[0] if len(tied) == 1 else ("flat" if "flat" in tied else None)

@@ -1,15 +1,16 @@
 """
 `gbt` (§7.2): gradient-boosted trees (LightGBM): multiclass for direction, regression for return and for volatility
 (floored at a configured constant). Nulls are handled natively. Deterministic: one thread, `deterministic`,
-row-wise histograms, no bagging or feature sampling, a fixed seed. The artifact holds LightGBM's own text model of
+row-wise histograms, no bagging or feature sampling, a fixed seed. The one sampling LightGBM keeps is its seeded
+choice of rows for building histogram bins on more than `bin_construct_sample_cnt` (200 000) rows: deterministic
+under the seed, and recorded in the stored model. The artifact holds LightGBM's own text model of
 each booster (never a pickle). Contributions are the library's exact tree contributions (SHAP values), the bias term
 named `bias`.
 """
 import numpy as np
 
-from . import CLASSES
-from .artifact import Artifact, Predictions, environment
-from .data import Schema
+from .artifact import Artifact, Predictions, environment, one_thread
+from .data import Schema, direction_of, require
 
 ADAPTER = "gbt"
 DEFAULTS = {"num_leaves": 15, "learning_rate": 0.05, "num_boost_round": 200, "min_data_in_leaf": 20,
@@ -26,6 +27,11 @@ def _params(hp, seed, objective, extra=None):
 
 
 def fit(train, hyperparameters=None, seed=0):
+    with one_thread():
+        return _fit(require(train, "fit"), hyperparameters, seed)
+
+
+def _fit(train, hyperparameters, seed):
     import lightgbm as lgb
     hp = {**DEFAULTS, **(hyperparameters or {})}
     X, y = train.X, train.y
@@ -44,8 +50,8 @@ def fit(train, hyperparameters=None, seed=0):
                          params={"verbose": -1, "num_threads": 1})
         booster = lgb.train(_params(hp, seed, obj, extra), ds, num_boost_round=hp["num_boost_round"])
         body[out] = booster.model_to_string()
-    body.update(horizon=train.horizon, schema=train.schema.as_json(), columns=list(train.schema.columns()),
-                hyperparameters=hp, environment=environment(seed))
+    body.update(slice=train.slice_name, horizon=train.horizon, schema=train.schema.as_json(),
+                columns=list(train.schema.columns()), hyperparameters=hp, environment=environment(seed))
     return Artifact.make(ADAPTER, body)
 
 
@@ -59,8 +65,15 @@ def schema_of(artifact):
 
 
 def predict(artifact, X, keys):
-    import lightgbm as lgb
     b = artifact.load(ADAPTER)
+    if X.shape[1] != len(b["columns"]):
+        raise ValueError(f"the matrix has {X.shape[1]} columns; the artifact's schema has {len(b['columns'])}")
+    with one_thread():
+        return _predict(b, X, keys)
+
+
+def _predict(b, X, keys):
+    import lightgbm as lgb
     cols = b["columns"] + ["bias"]
     boost = {k: lgb.Booster(model_str=b[k], params={"num_threads": 1}) for k in ("direction", "return", "volatility")}
     p = boost["direction"].predict(X, num_threads=1)
@@ -75,5 +88,5 @@ def predict(artifact, X, keys):
         k = int(np.argmax(p[i]))
         contrib.append({"direction": dict(zip(cols, cd[i, k * width:(k + 1) * width].tolist())),
                         "return": dict(zip(cols, cr[i].tolist())), "volatility": dict(zip(cols, cv[i].tolist()))})
-    return Predictions(list(keys), [tuple(r) for r in p.tolist()], [CLASSES[int(np.argmax(r))] for r in p],
+    return Predictions(list(keys), [tuple(r) for r in p.tolist()], [direction_of(tuple(r)) for r in p.tolist()],
                        ret.tolist(), vol.tolist(), [None] * len(keys), contrib)

@@ -1,7 +1,7 @@
 # Phase 5 ML libraries (docs/PHASE5_ML_DESIGN.md §7.2; step M5-4), pinned. Installed into the Linux CI image
 # (.github/ci/linux.Dockerfile) only: ML tests are planned for Linux (§15); on Windows they skip. Accepting these into
 # a deployable build is the owner's decision P5-R3. The capture, backfill and financial-truth packages import none
-# of them (MLK-14, tests/test_m54_static.py).
+# of them (MLK-14, tests/test_m54_static.py, which runs without the libraries).
 numpy==2.5.3
 scipy==1.16.3
 scikit-learn==1.7.2

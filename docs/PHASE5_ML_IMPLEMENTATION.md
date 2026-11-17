@@ -126,7 +126,7 @@ the caller until the registry exists; M5-6 must read the declared, unspent perio
 
 ## M5-4: adapters and baselines (part 1: `ref`, `linear`, `gbt`)
 
-**Status: built (part 1); audit pending.** Part 2, `calibrated_engine`, follows: it fits only on rows where the
+**Status: part 1 ACCEPTED on the branch (C-0092: first audit reported no Blocker; its Majors fixed).** Part 2, `calibrated_engine`, follows: it fits only on rows where the
 engine used its full component set, which the dataset does not carry yet (a small addition to M5-2's DE features).
 
 | File | Content | Design |
@@ -145,8 +145,38 @@ direction contributions are reported for the predicted class; `base_interval` us
 statistic ceil((n + 1) x level) at level 0.9 by default; `linear` and `gbt` refuse a fit slice without all three
 direction classes. Mutation check: 11 mutants (engine scores admitted, no fit scope, integrity unchecked, no
 smoothing, zero momentum not silent, the h = 1 factor, the conformal index, unscaled contributions, no missing
-indicators, a nondeterministic sampler, no volatility floor): all killed. **Not verified here:** the CI image build
+indicators, a nondeterministic sampler, no volatility floor): all killed. **Correction (first audit):** that set was
+too narrow, and the claim overstated the coverage: 16 further mutants survived it (see below). **Not verified here:** the CI image build
 with the new libraries (Docker is not available in the cloud container); the next CI run is its first build.
+
+---
+
+## First M5-4 audit (fresh-context agent, at 8c37e2e): part 1 accepted
+
+No Blocker: the adapters match §6, §7.2 and §7.3 in every result checked; contributions add up; artifacts are
+canonical and checked; hashes were identical at 1 and 8 threads; the real import graph meets MLK-14. Three Majors,
+all fixed:
+
+- **M1** the interface did not say or enforce which slice each part is fitted on. Now a `Train` records its slice and
+  only `train_set` (through a `FitScope`) can make one an adapter accepts; `linear` and `gbt` refuse anything but the
+  `fit` slice, the `ref` adapter anything but the fold's `training` rows (§7.3: `base_prior` uses all of them); each
+  artifact records its slice.
+- **M2** 16 important rules were untested (training only on `resolved` and `resolved_carried`; the volatility
+  state; the schema from the admitted rows only; median imputation and standardisation; direction contributions of
+  the predicted class in both adapters; LightGBM's sampling, thread and determinism parameters; `linear`'s
+  volatility floor; the interval's centre; `allow_nan`; the scope and slice checks; the tie rule). Each now has a
+  test that fails when it is reverted.
+- **M3** MLK-9 now shuffles within each date and across dates, on data with a common shock per date, over three
+  seeds, for both adapters.
+
+Minors fixed: a label without `volatility_state` is refused; BLAS and OpenMP pools are limited to one thread in fit
+and predict (`threadpoolctl`), and the environment tuple records the BLAS; `linear` contributions carry the
+intercept, so base plus contributions equal the raw score; both adapters check the matrix's column count; the
+classes follow Phase 4's tie rule (a rise-fall tie is no class); LightGBM's seeded bin-construction sample is stated;
+MLK-14 is a separate static test (`tests/test_m54_static.py`) that runs without the libraries, on Windows too, over
+a wider list. **Carried:** `describe` has no clipping bounds or validated envelope yet (M5-7 defines the envelope);
+the expected-hash check of an artifact against the registry is M5-6's (MLK-16); hash-pinned wheels; recording the
+ML library versions in CI's environment report.
 
 ---
 

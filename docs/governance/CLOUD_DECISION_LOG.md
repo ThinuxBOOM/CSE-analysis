@@ -889,3 +889,9 @@ retraining reproduces them exactly. The libraries are pinned and installed into 
 them into a deployable build stays the owner's decision (P5-R3). The engine-calibration adapter follows, after the
 dataset learns which engine outputs used every component.
 
+## C-0092: M5-4 part 1 accepted ([delegated], 2026-11-17)
+
+The audit of the baselines and the two model types found no Blocker, so they are accepted. Its three Majors are
+fixed: each model now refuses to be fitted on anything but its own data slice, 16 untested rules each have a test,
+and the label-shuffle check is run within and across dates. The engine-calibration adapter (part 2) follows.
+

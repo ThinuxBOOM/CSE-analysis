@@ -31,9 +31,17 @@ def environment(seed):
     import numpy
     import scipy
     import sklearn
+    from threadpoolctl import threadpool_info
+    blas = sorted({f"{i.get('internal_api')} {i.get('version')}" for i in threadpool_info()})
     return {"python": platform.python_version(), "numpy": numpy.__version__, "scipy": scipy.__version__,
             "scikit-learn": sklearn.__version__, "lightgbm": lightgbm.__version__, "cpu": _cpu_flags(),
-            "threads": 1, "seed": seed}
+            "blas": blas, "threads": 1, "seed": seed}
+
+
+def one_thread():
+    """Enforce the one thread the environment tuple records (first M5-4 audit, minor): BLAS and OpenMP pools."""
+    from threadpoolctl import threadpool_limits
+    return threadpool_limits(limits=1)
 
 
 def dumps(obj):

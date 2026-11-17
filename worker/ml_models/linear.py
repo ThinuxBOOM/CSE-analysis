@@ -3,15 +3,15 @@
 volatility (floored at a configured constant, never negative). Imputation (the fit slice's median), a missing
 indicator for every numeric column with a null in the fit slice, and standardisation are fitted on the fit slice and
 stored in the artifact. Prediction is computed from the artifact text alone (numpy), never from a library object.
-Contributions: coefficient x standardised value, for the predicted class (direction) and for each regression.
+Contributions: coefficient x standardised value, for the predicted class (direction) and for each regression, with
+the intercept as `intercept`, so base plus contributions equal the raw score (§8.3).
 """
 import math
 
 import numpy as np
 
-from . import CLASSES
-from .artifact import Artifact, Predictions, environment
-from .data import Schema
+from .artifact import Artifact, Predictions, environment, one_thread
+from .data import Schema, direction_of, require
 
 ADAPTER = "linear"
 DEFAULTS = {"C": 1.0, "alpha": 1.0, "max_iter": 2000, "volatility_floor": 0.0}
@@ -29,6 +29,11 @@ def _design(X, body):
 
 
 def fit(train, hyperparameters=None, seed=0):
+    with one_thread():
+        return _fit(require(train, "fit"), hyperparameters, seed)
+
+
+def _fit(train, hyperparameters, seed):
     from sklearn.linear_model import LogisticRegression, Ridge
     hp = {**DEFAULTS, **(hyperparameters or {})}
     X = train.X
@@ -63,8 +68,8 @@ def fit(train, hyperparameters=None, seed=0):
         reg = Ridge(alpha=hp["alpha"], random_state=seed).fit(Z[m], y[m])
         body[out] = {"coef": reg.coef_.tolist(), "intercept": float(reg.intercept_)}
     names = list(train.schema.columns()) + [f"missing:{train.schema.columns()[j]}" for j in ind]
-    body.update(horizon=train.horizon, schema=train.schema.as_json(), columns=names, hyperparameters=hp,
-                environment=environment(seed))
+    body.update(slice=train.slice_name, horizon=train.horizon, schema=train.schema.as_json(), columns=names,
+                hyperparameters=hp, environment=environment(seed))
     return Artifact.make(ADAPTER, body)
 
 
@@ -79,6 +84,13 @@ def schema_of(artifact):
 
 def predict(artifact, X, keys):
     b = artifact.load(ADAPTER)
+    if X.shape[1] != len(b["median"]):
+        raise ValueError(f"the matrix has {X.shape[1]} columns; the artifact's schema has {len(b['median'])}")
+    with one_thread():
+        return _predict(b, X, keys)
+
+
+def _predict(b, X, keys):
     Z = _design(X, b)
     W, w0 = np.array(b["direction"]["coef"]), np.array(b["direction"]["intercept"])
     logits = Z @ W.T + w0
@@ -89,11 +101,13 @@ def predict(artifact, X, keys):
     vol = np.maximum(Z @ np.array(b["volatility"]["coef"]) + b["volatility"]["intercept"],
                      b["hyperparameters"]["volatility_floor"])
     cols = b["columns"]
-    contrib = []
+    contrib, classes = [], [direction_of(tuple(r)) for r in p.tolist()]
     for i in range(len(keys)):
         k = int(np.argmax(p[i]))
-        contrib.append({"direction": dict(zip(cols, (W[k] * Z[i]).tolist())),
-                        "return": dict(zip(cols, (np.array(b["return"]["coef"]) * Z[i]).tolist())),
-                        "volatility": dict(zip(cols, (np.array(b["volatility"]["coef"]) * Z[i]).tolist()))})
-    return Predictions(list(keys), [tuple(r) for r in p.tolist()], [CLASSES[int(np.argmax(r))] for r in p],
-                       ret.tolist(), vol.tolist(), [None] * len(keys), contrib)
+        contrib.append({"direction": {**dict(zip(cols, (W[k] * Z[i]).tolist())), "intercept": float(w0[k])},
+                        "return": {**dict(zip(cols, (np.array(b["return"]["coef"]) * Z[i]).tolist())),
+                                   "intercept": b["return"]["intercept"]},
+                        "volatility": {**dict(zip(cols, (np.array(b["volatility"]["coef"]) * Z[i]).tolist())),
+                                       "intercept": b["volatility"]["intercept"]}})
+    return Predictions(list(keys), [tuple(r) for r in p.tolist()], classes, ret.tolist(), vol.tolist(),
+                       [None] * len(keys), contrib)
