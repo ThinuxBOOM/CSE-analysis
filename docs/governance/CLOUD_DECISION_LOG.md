@@ -881,3 +881,11 @@ The re-audit of the dataset builder found no Blocker and no Major, so M5-2 is ac
 that could change results are closed, and its minor findings fixed. Carried: test periods are supplied by the
 caller until the model registry (M5-6) can enforce them; the full end-to-end leakage test belongs to M5-8.
 
+## C-0091: Phase 5 M5-4 part 1, adapters and baselines; ML libraries pinned ([delegated], 2026-11-17)
+
+The baselines and two of the three model adapters are built and tested: a linear model (scikit-learn) and
+gradient-boosted trees (LightGBM). Models are stored as plain text with a fingerprint, never as program objects, and
+retraining reproduces them exactly. The libraries are pinned and installed into the Linux test image only; accepting
+them into a deployable build stays the owner's decision (P5-R3). The engine-calibration adapter follows, after the
+dataset learns which engine outputs used every component.
+

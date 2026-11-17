@@ -1,0 +1,2 @@
+# Phase 5 ML libraries: the pinned list lives beside the CI image recipe, which installs it.
+-r .github/ci/requirements-ml.txt

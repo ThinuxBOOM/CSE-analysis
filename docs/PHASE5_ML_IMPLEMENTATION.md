@@ -124,6 +124,32 @@ the caller until the registry exists; M5-6 must read the declared, unspent perio
 
 ---
 
+## M5-4: adapters and baselines (part 1: `ref`, `linear`, `gbt`)
+
+**Status: built (part 1); audit pending.** Part 2, `calibrated_engine`, follows: it fits only on rows where the
+engine used its full component set, which the dataset does not carry yet (a small addition to M5-2's DE features).
+
+| File | Content | Design |
+|---|---|---|
+| `.github/ci/requirements-ml.txt` (and `requirements-ml.txt`, which includes it) | Pins: numpy 2.5.3, scipy 1.16.3, scikit-learn 1.7.2, LightGBM 4.6.0, joblib 1.5.2, threadpoolctl 3.6.0 | §7.2 |
+| `.github/ci/linux.Dockerfile` | Installs them (binary wheels; `libgomp1` for LightGBM) at build time, since tests run without network; the build fails unless they import. `docs/CI_TEST_STRATEGY.md` updated | §15 |
+| `worker/ml_models/data.py` | The schema (MF and F7 features only, never `de.*`), the matrix (nulls as NaN, categories one-hot), targets of the trained states only (`scoring.1`), `train_set` through `FitScope` (MLK-3) | §4.4, §6, §7.2 |
+| `worker/ml_models/artifact.py` | Canonical JSON artifacts, SHA-256 identity, integrity and adapter checks (MLK-16), the environment tuple, 9-decimal quantisation | §7.1 |
+| `worker/ml_models/baselines.py` | The `ref` adapter: all six baselines of §7.3, silent where they have no method | §7.3 |
+| `worker/ml_models/linear.py` | Multinomial logistic regression and ridge; median imputation with missing indicators and standardisation fitted on the fit slice; prediction from the artifact text alone; contributions coefficient x standardised value | §7.2 |
+| `worker/ml_models/gbt.py` | LightGBM: one thread, deterministic, no sampling, fixed seed; LightGBM's text model in the artifact; exact tree contributions | §7.2 |
+| `tests/test_m54_unit.py` | 8 tests: MLK-11 and MLK-16 for both adapters; a planted signal beats `base_prior` and shuffled labels give no skill (MLK-9); no engine score in the schema; MLK-3; contributions add up; every baseline by hand; MLK-14 | §13 |
+
+Choices made inside the design's words, for the audit: the volatility floor is a configuration constant (default 0);
+direction contributions are reported for the predicted class; `base_interval` uses the split-conformal order
+statistic ceil((n + 1) x level) at level 0.9 by default; `linear` and `gbt` refuse a fit slice without all three
+direction classes. Mutation check: 11 mutants (engine scores admitted, no fit scope, integrity unchecked, no
+smoothing, zero momentum not silent, the h = 1 factor, the conformal index, unscaled contributions, no missing
+indicators, a nondeterministic sampler, no volatility floor): all killed. **Not verified here:** the CI image build
+with the new libraries (Docker is not available in the cloud container); the next CI run is its first build.
+
+---
+
 ## M5-3: folds and slices
 
 **Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
