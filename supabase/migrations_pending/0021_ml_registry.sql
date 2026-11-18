@@ -90,6 +90,8 @@ create table ml_test_periods (
   recorded_at timestamptz not null default now(),
   constraint chk_mlt_timing check (timing in ('prospective', 'retrospective')),
   constraint chk_mlt_bounds check (not isempty(period) and not lower_inf(period) and not upper_inf(period)),
+  -- section 5.4: a retrospective period is previously_scored (M5-6 re-audit, minor)
+  constraint chk_mlt_prev check (timing <> 'retrospective' or previously_scored),
   -- section 5.4: test periods are pairwise disjoint, spent or not, whichever protocol declared them
   constraint excl_mlt_overlap exclude using gist (period with &&)
 );
@@ -477,6 +479,18 @@ begin
     raise exception 'ml_model_events: production model % has no designation naming it in this transaction',
       new.model_id using errcode = 'check_violation';
   end if;
+  -- M5-6 re-audit F: every model a designation of this transaction lists is a production model of its output and
+  -- horizon whose latest status is production (the new copy's first event is this one)
+  if new.status = 'production' and exists (
+      select 1 from ml_designations d, jsonb_array_elements(d.list_json::jsonb) x(id)
+      where d.recorded_at = now() and not exists (
+        select 1 from ml_models m where m.model_id = (x.id)::text::bigint and m.environment = 'production'
+          and m.output = d.output and m.horizon = d.horizon
+          and (select e.status from ml_model_events e where e.model_id = m.model_id order by e.seq desc limit 1)
+              = 'production')) then
+    raise exception 'ml_designations: a designation lists only production models of its output and horizon'
+      using errcode = 'check_violation';
+  end if;
   return null;
 end;
 $$;
@@ -492,11 +506,22 @@ begin
   if (j ->> 'recorded_at')::timestamptz is distinct from now() then
     raise exception '%: recorded_at must be now()', tg_table_name using errcode = 'check_violation';
   end if;
-  foreach k in array array['created_by', 'registered_by', 'approved_by', 'recorded_by'] loop
+  foreach k in array array['created_by', 'registered_by', 'approved_by', 'recorded_by', 'actor'] loop
     if j ? k and (j ->> k) is distinct from session_user then
       raise exception '%: % must be the session''s login', tg_table_name, k using errcode = 'check_violation';
     end if;
   end loop;
+  return new;
+end;
+$$;
+
+create function ml_gate_report_guard() returns trigger
+language plpgsql as $$
+begin
+  -- M5-6 re-audit (minor): a promotion report is the owner's (gates 9 to 12 run in the owner's command)
+  if new.kind = 'promotion' and current_user <> 'cse_owner' then
+    raise exception 'ml_gate_reports: a promotion report is written on the owner path' using errcode = 'insufficient_privilege';
+  end if;
   return new;
 end;
 $$;
@@ -524,6 +549,12 @@ create trigger trg_mlm_guard before insert on ml_models for each row execute fun
 create trigger trg_mle_guard before insert on ml_model_events for each row execute function ml_model_event_guard();
 create constraint trigger trg_mle_designation after insert on ml_model_events deferrable initially deferred
   for each row execute function ml_production_designation_check();
+create trigger trg_mlg_guard before insert on ml_gate_reports for each row execute function ml_gate_report_guard();
+-- M5-6 re-audit B: one result per test access (the first written is the result; it is never rewritten)
+create unique index uq_mlmm_access_result on ml_model_metrics (((metrics_json::jsonb) ->> 'access_id'))
+  where scope = 'test' and stratum = 'access';
+-- M5-6 re-audit (minor): a version is promoted at most once, also under concurrent owner commands
+create unique index uq_mlm_promoted_from on ml_models (promoted_from) where promoted_from is not null;
 create trigger trg_mlw_owner before insert on ml_waivers for each row execute function ml_owner_only_guard();
 create trigger trg_mli_owner before insert on ml_incident_flags for each row execute function ml_owner_only_guard();
 create trigger trg_mlz_owner before insert on ml_designations for each row execute function ml_owner_only_guard();
@@ -552,7 +583,7 @@ end $$;
 -- =============================================================================
 revoke all on function ml_configuration_guard(), ml_protocol_guard(), ml_test_period_guard(), ml_run_guard(),
   ml_test_access_guard(), ml_model_guard(), ml_model_event_guard(), ml_production_designation_check(),
-  ml_owner_only_guard(), ml_stamp_guard() from public;
+  ml_owner_only_guard(), ml_stamp_guard(), ml_gate_report_guard() from public;
 grant insert on ml_configurations, ml_datasets, ml_protocols, ml_test_periods, ml_runs, ml_run_events, ml_trials,
   ml_artifacts, ml_fold_models, ml_models, ml_model_metrics, ml_gate_reports, ml_test_accesses, ml_model_events,
   r1_predictions to cse_worker;

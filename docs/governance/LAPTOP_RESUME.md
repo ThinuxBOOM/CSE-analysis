@@ -51,6 +51,13 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-18: M5-6 re-audit Majors fixed (C-0104)
+
+All seven are fixed. **Changed for you as the owner:** a protocol declaration now needs `policies` (ids of policies
+you validated with `cse-ml validate-policy`), `embargo_sessions` (a whole number, at least 1) and, for promotion,
+`point_in_time_share`; `promote` reads its evidence from the registry, and your evidence file states only the
+backtest and the point-in-time share. Pending migration 0021 changed (new checks and indexes).
+
 ### 2026-11-18: M5-6 accepted (C-0101)
 
 The model registry passed its re-audit (no Blocker). Seven new Majors are a task to fix before `main`; they are listed

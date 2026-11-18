@@ -15,10 +15,11 @@ GUARDS = {"ml_configurations": ["trg_mlc_guard"], "ml_protocols": ["trg_mlp_guar
           "ml_test_periods": ["trg_mlt_guard"], "ml_runs": ["trg_mlr_guard"], "ml_test_accesses": ["trg_mlx_guard"],
           "ml_models": ["trg_mlm_guard"], "ml_model_events": ["trg_mle_guard", "trg_mle_designation"],
           "ml_waivers": ["trg_mlw_owner"], "ml_incident_flags": ["trg_mli_owner"],
-          "ml_designations": ["trg_mlz_owner"]}
+          "ml_designations": ["trg_mlz_owner"], "ml_gate_reports": ["trg_mlg_guard"]}
 GUARD_FUNCTIONS = ("ml_configuration_guard()", "ml_protocol_guard()", "ml_test_period_guard()", "ml_run_guard()",
                    "ml_test_access_guard()", "ml_model_guard()", "ml_model_event_guard()",
-                   "ml_production_designation_check()", "ml_owner_only_guard()", "ml_stamp_guard()")
+                   "ml_production_designation_check()", "ml_owner_only_guard()", "ml_stamp_guard()",
+                   "ml_gate_report_guard()")
 
 
 def triggers(table):

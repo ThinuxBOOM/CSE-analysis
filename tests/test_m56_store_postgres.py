@@ -46,9 +46,24 @@ CFG = {"adapter": "linear", "horizon": 5}
 CFG_ID = store.sha(store.canonical({**CFG, "kind": "model", "status": "provisional"}))
 
 
+POLICY = {"name": "scoring.1"}
+POLICY_ID = store.sha(store.canonical({**POLICY, "kind": "policy", "status": "validated"}))
+EVIDENCE = {"backtest_valid": True, "backtest_ends_at_last_v_end_or_post_access": True, "point_in_time_share": 0.6}
+
+
+def owner_policy(cluster, db):
+    """The owner-validated policy every test declaration lists (§5.4; gate 6 reads its status from the registry)."""
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set role cse_owner")
+    o.commit()
+    return store.register_configuration(o, "policy", POLICY, status="validated",
+                                        evidence_cutoff=datetime(2017, 1, 1, tzinfo=UTC))
+
+
 def declaration(test=("2024-07-01T00:00:00+00:00", "2025-06-30T00:00:00+00:00"), folds=None, family=None):
     return {"family": family or [CFG_ID], "primary": ["direction", 5], "nomination": "best_validation_loss",
-            "embargo_sessions": 5,
+            "embargo_sessions": 5, "policies": [POLICY_ID], "point_in_time_share": 0.5,
             "criterion": {"form": "gate_test_every_baseline_bonferroni_over_nominees"},
             "folds": folds or [{"v_start": f"20{18 + i}-01-01T00:00:00+00:00", "v_end": f"20{18 + i}-06-30T00:00:00+00:00"}
                                for i in range(5)],
@@ -56,6 +71,7 @@ def declaration(test=("2024-07-01T00:00:00+00:00", "2025-06-30T00:00:00+00:00"),
 
 
 def registry_world(cluster, db, synthetic=False, **decl):
+    owner_policy(cluster, db)
     w = fs.conn(cluster, db, user="cse_worker")
     cid = store.register_configuration(w, "model", {"adapter": "linear", "horizon": 5})
     did = store.register_dataset(w, dataset(), synthetic)
@@ -67,7 +83,7 @@ def registry_world(cluster, db, synthetic=False, **decl):
     store.record_metrics(w, "fold", "overall", {"log_loss": 0.9}, run_id=rid, fold_no=1)
     mid = store.register_model(w, kind="linear", configuration_id=cid, output="direction", horizon=5,
                                dataset_id=did, protocol_id=pid, training_cutoff=datetime(2023, 6, 30, tzinfo=UTC),
-                               evidence_label_class="reconstructed", artifact=art, environment_json={"threads": 1})
+                               evidence_label_class="point_in_time", artifact=art, environment_json={"threads": 1})
     return w, dict(config=cid, dataset=did, protocol=pid, run=rid, model=mid, artifact=art)
 
 
@@ -94,10 +110,10 @@ def test_r1_the_lifecycle_end_to_end(cluster):
         store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": "d" * 64}],
                      lambda: {"nominees_passed": []})
     with pytest.raises(store.Refused, match="owner_path"):
-        store.promote(w, ids["model"], gu.GOODP, purpose="route1", output="direction", horizon=5,
+        store.promote(w, ids["model"], EVIDENCE, purpose="route1", output="direction", horizon=5,
                       list_ids=[ids["model"]], note="the owner promotes it", code_version="code.1")
     o = fs.conn(cluster, db, user="cse_migrator")
-    prod, prep = store.promote(o, ids["model"], gu.GOODP, purpose="route1", output="direction", horizon=5,
+    prod, prep = store.promote(o, ids["model"], EVIDENCE, purpose="route1", output="direction", horizon=5,
                                list_ids=[ids["model"]], note="the owner promotes it", code_version="code.1")
     assert prep["passed"] and prod and store.status(w, prod) == "production"
     assert store.alerts(w) == []
@@ -116,7 +132,7 @@ def test_r2_a_failing_validation_is_recorded_and_changes_nothing(cluster):
         assert cur.fetchall() == [(False,)]
     w.rollback()
     o = fs.conn(cluster, db, user="cse_migrator")
-    prod, _ = store.promote(o, ids["model"], replace(gu.GOODP, access_done=False), purpose="route1",
+    prod, _ = store.promote(o, ids["model"], EVIDENCE, purpose="route1",
                             output="direction", horizon=5, list_ids=[ids["model"]], note="the owner tries it",
                             code_version="code.1")
     assert prod is None

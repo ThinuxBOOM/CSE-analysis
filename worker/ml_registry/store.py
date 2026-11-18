@@ -101,8 +101,26 @@ def declare_protocol(conn, declaration, plan):
             raise Refused("declaration", f"a protocol declares its {key} (§5.4)")
     if not declaration["folds"]:
         raise Refused("declaration", "a protocol declares at least one fold")
+    for f in declaration["folds"]:
+        if not isinstance(f, dict) or "v_start" not in f or "v_end" not in f:
+            raise Refused("declaration", "each fold declares its v_start and v_end")
+    emb = declaration["embargo_sessions"]
+    if isinstance(emb, bool) or not isinstance(emb, int) or emb < 1:          # M5-6 re-audit A
+        raise Refused("declaration", "embargo_sessions is a whole number of sessions, at least 1")
+    pol = declaration.get("policies")
+    if not isinstance(pol, list) or not pol or not all(isinstance(x, str) and x for x in pol):   # re-audit E
+        raise Refused("declaration", "a protocol declares every policy it uses (§5.4): a non-empty list of ids")
+    alpha = declaration.get("alpha", 0.05)
+    if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or not 0 < alpha <= 0.05:     # re-audit minor
+        raise Refused("declaration", "alpha is in (0, 0.05]")
+    fam = declaration["family"]
+    ok = (isinstance(fam, list) and fam and all(isinstance(x, str) for x in fam)) or (
+        isinstance(fam, dict) and fam and all(isinstance(k, str) and isinstance(v, list) and v and
+                                              all(isinstance(x, str) for x in v) for k, v in fam.items()))
+    if not ok:                                                                  # re-audit minor: the family's shape
+        raise Refused("declaration", "family is a non-empty list of configuration ids, or {\"output:h\": [ids]}")
     last_v_end = max(_ts(f["v_end"]) for f in declaration["folds"])
-    gap = timedelta(days=int(declaration["embargo_sessions"]))
+    gap = timedelta(days=emb)
     for start, _end in declaration["test_periods"]:
         # §5.4: P_start at least the embargo after the last V_end. Sessions are at least days apart, so this is a
         # necessary condition checked here; the protocol's calendar check is the exact one (M5-6 audit M3)
@@ -188,7 +206,9 @@ def multiplicity(conn, output, horizon, protocol_id):
                     "ml_model_metrics m where m.run_id = r.run_id and m.scope = 'fold')", (output, horizon))
         tried = set()
         for cid, dj in cur.fetchall():
-            for f in json.loads(dj)["folds"]:
+            for f in json.loads(dj).get("folds", []):
+                if not isinstance(f, dict) or "v_start" not in f or "v_end" not in f:
+                    continue                    # re-audit minor: a malformed declaration never blocks validate
                 a, b = _ts(f["v_start"]), _ts(f["v_end"])
                 if any(a <= y and b >= x for x, y in mine):
                     tried.add(cid)
@@ -266,6 +286,8 @@ def record_fold_model(conn, run_id, fold_no, boundaries, artifact, predictions_s
 
 
 def record_metrics(conn, scope, stratum, metrics, run_id=None, model_id=None, fold_no=None):
+    if scope == "test":                     # M5-6 re-audit B: the test result is written by access() alone
+        raise Refused("access", "test-period metrics are written only by the one access")
     _write(conn, lambda cur: cur.execute(
         "insert into ml_model_metrics (model_id, run_id, scope, fold_no, stratum, metrics_json) values "
         "(%s, %s, %s, %s, %s, %s)", (model_id, run_id, scope, fold_no, stratum, canonical(metrics))))
@@ -316,11 +338,20 @@ def registry_facts(conn, model_id):
     (§5.4, with policies counted as tried when their evidence cutoff is not before the first V_start) and the status of
     every declared policy (validated only by the owner, 0021)."""
     def work(cur):
-        m = _one(cur, "select protocol_id, configuration_id, output, horizon from ml_models where model_id = %s",
-                 (model_id,))
+        m = _one(cur, "select m.protocol_id, m.configuration_id, m.output, m.horizon, d.survivorship, d.version "
+                      "from ml_models m join ml_datasets d using (dataset_id) where m.model_id = %s", (model_id,))
         if m is None:
             raise Refused("model", f"no model {model_id}")
-        pid, cid, output, horizon = m
+        pid, cid, output, horizon, survivorship, version = m
+        # M5-6 re-audit D (gate 7): the dataset's survivorship, and an owner waiver of kind survivorship that names
+        # this dataset version in covers_json["datasets"]
+        waiver = None
+        if survivorship != "complete":
+            cur.execute("select waiver_id, covers_json from ml_waivers where kind = 'survivorship' order by waiver_id")
+            for wid, cj in cur.fetchall():
+                covers = json.loads(cj)
+                if isinstance(covers, dict) and version in (covers.get("datasets") or []):
+                    waiver = wid
         decl_js, suff = _one(cur, "select declaration_json, sufficiency from ml_protocols where protocol_id = %s",
                              (pid,))
         decl = json.loads(decl_js)
@@ -335,6 +366,7 @@ def registry_facts(conn, model_id):
         return {"protocol_sufficiency": suff if primary else sf.EXPLORATORY, "declared_before_first_run": True,
                 "in_family": cid in _family(decl, output, horizon), "declared_folds": len(decl["folds"]),
                 "alpha": float(decl.get("alpha", 0.05)), "horizon": horizon, "policy_status": policies,
+                "survivorship": survivorship, "survivorship_waiver": waiver,
                 "late_policies": late, "output": output, "protocol_id": pid}
     facts = _read(conn, work)
     facts["multiplicity"] = multiplicity(conn, facts.pop("output"), facts["horizon"], facts.pop("protocol_id")) + \
@@ -412,15 +444,15 @@ def access(conn, protocol_id, period_id, nominees, compute_result):
     try:
         result = compute_result()
     except Exception as exc:
+        failed = {"nominees_passed": [], "failed": f"{type(exc).__name__}: {exc}"[:300], "access_id": aid}
         _write(conn, lambda cur: cur.execute(
             "insert into ml_model_metrics (run_id, model_id, scope, stratum, metrics_json) values (null, %s, 'test', "
-            "'access', %s)", (nominees[0]["model_id"], canonical({"access_id": aid, "nominees_passed": [],
-                                                                  "failed": f"{type(exc).__name__}: {exc}"[:300]}))))
+            "'access', %s)", (nominees[0]["model_id"], canonical(failed))))
         raise
     _write(conn, lambda cur: cur.execute(
         "insert into ml_model_metrics (run_id, model_id, scope, stratum, metrics_json) values (null, %s, 'test', "
-        "'access', %s)", (nominees[0]["model_id"], canonical({"access_id": aid, **result}))))
-    return {"access_id": aid, **result}
+        "'access', %s)", (nominees[0]["model_id"], canonical({**result, "access_id": aid}))))
+    return {**result, "access_id": aid}
 
 
 def _family(decl, output, horizon):
@@ -453,11 +485,15 @@ def promotion_evidence(conn, model_id, external):
         if _one(cur, "select session_user")[0] != "cse_migrator":
             raise Refused("owner_path", "promotion evidence is read on the owner path (cse_migrator as cse_owner)")
         cur.execute("set local role cse_owner")
-        m = _one(cur, "select protocol_id, rollforward_of, environment from ml_models where model_id = %s",
-                 (model_id,))
+        m = _one(cur, "select protocol_id, rollforward_of, environment, evidence_label_class from ml_models where "
+                      "model_id = %s", (model_id,))
         if m is None or m[2] != "research":
             raise Refused("model", f"model {model_id} is not a registered research model")
-        protocol_id, rollforward_of = m[0], m[1]
+        protocol_id, rollforward_of, evidence_class = m[0], m[1], m[3]
+        # M5-6 re-audit G (MLK-24): evidence that is not point_in_time carries reconstructed_evidence, and a model
+        # validated only on reconstructed rows has no point-in-time share to state
+        if evidence_class == "reconstructed" and float(external["point_in_time_share"]) > 0:
+            raise Refused("evidence", "a reconstructed-only model has no point_in_time share")
         decl = json.loads(_one(cur, "select declaration_json from ml_protocols where protocol_id = %s",
                                (protocol_id,))[0])
         if "point_in_time_share" not in decl:
@@ -471,15 +507,16 @@ def promotion_evidence(conn, model_id, external):
             access_done = True
             timing |= {"retrospective"} if tm == "retrospective" else set()
             timing |= {"previously_scored"} if prev else set()
-            cur.execute("select metrics_json from ml_model_metrics where scope = 'test' and stratum = 'access'")
-            for (js,) in cur.fetchall():
-                r = json.loads(js)
-                if r.get("access_id") == aid and model_id in r.get("nominees_passed", []):
-                    passed = True
+            # the one result of this access (re-audit B: a unique index keeps it single and unrewritten)
+            res = _one(cur, "select metrics_json from ml_model_metrics where scope = 'test' and stratum = 'access' "
+                            "and (metrics_json::jsonb ->> 'access_id')::bigint = %s", (aid,))
+            if res is not None and model_id in json.loads(res[0]).get("nominees_passed", []):
+                passed = True
         row = _one(cur, "select checks_json from ml_gate_reports where model_id = %s and kind = 'validation' and "
                         "passed order by report_id desc limit 1", (model_id,))
         labels = set(json.loads(row[0])["labels"]) if row else set()
-        labels |= timing | ({"rollforward_of"} if rollforward_of is not None else set())
+        labels |= timing | ({"rollforward_of"} if rollforward_of is not None else set()) | (
+            {"reconstructed_evidence"} if evidence_class != "point_in_time" else set())
         waiver = external.get("reconstructed_waiver")
         if waiver is not None and _one(cur, "select kind from ml_waivers where waiver_id = %s", (waiver,)) != \
                 ("reconstructed_evidence",):
@@ -499,7 +536,19 @@ def promote(owner_conn, model_id, evidence, *, purpose, output, horizon, list_id
     """The owner's act (gates 9 to 12): on the owner path, write the promotion report for the validated version,
     then, if it passed, the production copy (same artifact), the designation naming it with every label, and its
     first event, in one transaction; the database checks the owner path, the validated source, the report and the
-    designation at commit. Returns (production model id or None, report)."""
+    designation at commit. Returns (production model id or None, report). `evidence` is the owner's statement (the
+    dict `promotion_evidence` takes): everything else is read from the registry here (M5-6 re-audit, minor)."""
+    if not isinstance(evidence, dict):
+        raise Refused("evidence", "promote derives its evidence from the registry: pass the owner's statement")
+    for x in list_ids:
+        if x != model_id:
+            row = _read(owner_conn, lambda cur: (cur.execute("set local role cse_owner"), _one(
+                cur, "select m.environment, m.output, m.horizon, (select e.status from ml_model_events e where "
+                     "e.model_id = m.model_id order by e.seq desc limit 1) from ml_models m where m.model_id = %s",
+                (x,)))[1])
+            if row != ("production", output, horizon, "production"):          # re-audit F (the database checks too)
+                raise Refused("designation", f"model {x} is not a production model of {output}/{horizon}")
+    evidence = promotion_evidence(owner_conn, model_id, evidence)
     report = gt.promotion_report(evidence)
 
     def work(cur):

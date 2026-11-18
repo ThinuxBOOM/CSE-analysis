@@ -983,3 +983,11 @@ over captured days are the next part; until then they are refused rather than bu
 Labels (target builds) can now be built over captured days. The time at which each label counts as known is taken
 from the capture runs and observations it rests on, in the same conservative way as for imported history, so a label
 never becomes usable before the evidence behind it existed. MF-8 now goes to its audit.
+
+## C-0104: M5-6 re-audit Majors fixed ([delegated], 2026-11-18)
+
+The seven Majors of the registry's re-audit are fixed: the test-period embargo cannot be bypassed with a negative
+value; the result of the one look at a test period can no longer be rewritten afterwards; every writer column is
+stamped by the database; the survivorship gate reads the dataset and the owner's waiver from the registry; a protocol
+must list its policies; a designation can list only production models of the right output and horizon; and a model
+built on reconstructed evidence carries that label. Every fix is pinned by a test that fails when it is removed.

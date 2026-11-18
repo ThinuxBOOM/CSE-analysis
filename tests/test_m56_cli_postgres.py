@@ -35,16 +35,18 @@ def cluster(tmp_path_factory):
 
 
 def registry_world(cluster, db, share=0.5):
+    sp.owner_policy(cluster, db)
     w = fs.conn(cluster, db, user="cse_worker")
     cid = store.register_configuration(w, "model", {"adapter": "linear", "horizon": 5})
     did = store.register_dataset(w, sp.dataset(), False)
-    decl = {**sp.declaration(), **({"point_in_time_share": share} if share is not None else {})}
+    decl = {k: v for k, v in sp.declaration().items() if k != "point_in_time_share"}
+    decl.update({"point_in_time_share": share} if share is not None else {})
     pid, state, _ = store.declare_protocol(w, decl, gu.GOOD_PLAN)
     assert state == "sufficient"
     art = Artifact.make("linear", {"w": [1.0, 2.0]})
     mid = store.register_model(w, kind="linear", configuration_id=cid, output="direction", horizon=5,
                                dataset_id=did, protocol_id=pid, training_cutoff=datetime(2023, 6, 30, tzinfo=UTC),
-                               evidence_label_class="reconstructed", artifact=art, environment_json={"threads": 1})
+                               evidence_label_class="point_in_time", artifact=art, environment_json={"threads": 1})
     assert store.validate(w, mid, gu.GOOD, "code.1")["passed"]
     return w, pid, mid
 
@@ -175,7 +177,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
     other = store.register_model(w, kind="linear", configuration_id=store.register_configuration(
         w, "model", {"adapter": "linear", "horizon": 5}), output="direction", horizon=5,
         dataset_id=store.register_dataset(w, sp.dataset(), False), protocol_id=pid,
-        training_cutoff=datetime(2023, 6, 30, tzinfo=UTC), evidence_label_class="reconstructed",
+        training_cutoff=datetime(2023, 6, 30, tzinfo=UTC), evidence_label_class="point_in_time",
         artifact=Artifact.make("linear", {"w": [3.0]}), environment_json={"threads": 1})
     assert store.validate(w, other, gu.GOOD, "code.1")["passed"]
     store.access(w, pid, sp.period_of(w, pid), [{"model_id": other, "predictions_sha256": "e" * 64}],
@@ -191,7 +193,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
     m2 = store.register_model(w2, kind="linear", configuration_id=store.register_configuration(
         w2, "model", {"adapter": "linear", "horizon": 5}), output="direction", horizon=5,
         dataset_id=store.register_dataset(w2, sp.dataset(), False), protocol_id=pid2,
-        training_cutoff=datetime(2023, 6, 30, tzinfo=UTC), evidence_label_class="reconstructed",
+        training_cutoff=datetime(2023, 6, 30, tzinfo=UTC), evidence_label_class="point_in_time",
         artifact=Artifact.make("linear", {"w": [4.0]}), environment_json={"threads": 1})
     assert store.validate(w2, m2, replace(gu.GOOD, no_engine_component=True), "code.1")["passed"]
     e2 = store.promotion_evidence(fs.conn(cluster, db2, user="cse_migrator"), m2, EVIDENCE)
@@ -224,3 +226,15 @@ def test_c8_validate_policy_is_an_owner_command(cluster, capsys):
     with fs.conn(cluster, db, user="cse_worker").cursor() as cur:
         cur.execute("select status, kind, registered_by from ml_configurations where configuration_id = %s", (cid,))
         assert cur.fetchone() == ("validated", "policy", "cse_migrator")
+
+
+def test_c9_retire_is_for_production_and_a_policy_keeps_its_cutoff(cluster, capsys):
+    db = fs.fresh_db(cluster)
+    _w, _pid, mid = registry_world(cluster, db)
+    assert call(cluster, db, "cse_migrator", "retire", "--model", str(mid), "--reason", "x") == cli.EXIT_REFUSED
+    assert "not a production model" in out(capsys)["reason"]
+    args = ("validate-policy", "--body", '{"name": "tolerance.1"}', "--evidence-cutoff")
+    assert call(cluster, db, "cse_migrator", *args, "2017-01-01T00:00:00+00:00") == cli.EXIT_OK
+    capsys.readouterr()
+    assert call(cluster, db, "cse_migrator", *args, "2019-01-01T00:00:00+00:00") == cli.EXIT_REFUSED
+    assert "never changes" in out(capsys)["reason"]

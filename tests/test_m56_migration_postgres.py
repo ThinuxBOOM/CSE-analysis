@@ -195,9 +195,16 @@ def promote_setup(cluster, db):
            "(%s, 'validation', true, '{}', 1, 'c')", (m,))
     one(w, "insert into ml_model_events (model_id, seq, status, reason) values (%s, 2, 'validated', 'gates 1-8')",
         (m,))
-    one(w, "insert into ml_gate_reports (model_id, kind, passed, checks_json, multiplicity, code_version) values "
-           "(%s, 'promotion', true, '{}', 1, 'c')", (m,))
     w.commit()
+    assert "owner path" in refused(w, "insert into ml_gate_reports (model_id, kind, passed, checks_json, "
+                                      "multiplicity, code_version) values (%s, 'promotion', true, '{}', 1, 'c')", (m,))
+    w.rollback()                                       # M5-6 re-audit: a promotion report is the owner's
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set local role cse_owner")
+        cur.execute("insert into ml_gate_reports (model_id, kind, passed, checks_json, multiplicity, code_version) "
+                    "values (%s, 'promotion', true, '{}', 1, 'c')", (m,))
+    o.commit()
     return w, ids
 
 

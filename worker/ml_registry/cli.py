@@ -147,8 +147,7 @@ def promote(conn, model_id, purpose, list_ids, evidence_path, note, code_version
     conn.rollback()
     if row is None:
         raise LookupError(f"no model {model_id}")
-    evidence = store.promotion_evidence(conn, model_id, external)
-    prod, report = store.promote(conn, model_id, evidence, purpose=purpose, output=row[0], horizon=row[1],
+    prod, report = store.promote(conn, model_id, external, purpose=purpose, output=row[0], horizon=row[1],
                                  list_ids=ids, note=_noted(note, operator), code_version=code_version)
     return prod, report
 
@@ -205,6 +204,13 @@ def run(args, connect):
     try:
         if args.command == "retire":
             _owner_path(conn)
+            with conn.cursor() as cur:
+                cur.execute("set local role cse_owner")
+                cur.execute("select environment from ml_models where model_id = %s", (args.model,))
+                env_ = cur.fetchone()
+            conn.rollback()
+            if env_ != ("production",):                     # re-audit minor: retire is for production models
+                raise ValueError(f"model {args.model} is not a production model (use transition for research models)")
             store.transition(conn, args.model, "retired", _noted(args.reason, operator))
             _print({"state": "retired", "model_id": args.model})
             return EXIT_OK
@@ -216,8 +222,15 @@ def run(args, connect):
             with conn.cursor() as cur:
                 cur.execute("set role cse_owner")
             conn.commit()
-            cid = store.register_configuration(conn, "policy", body, status="validated",
-                                               evidence_cutoff=store._ts(args.evidence_cutoff))
+            cutoff = store._ts(args.evidence_cutoff)
+            cid = store.register_configuration(conn, "policy", body, status="validated", evidence_cutoff=cutoff)
+            with conn.cursor() as cur:                      # re-audit minor: an existing policy keeps its cutoff
+                cur.execute("select evidence_cutoff from ml_configurations where configuration_id = %s", (cid,))
+                stored = cur.fetchone()[0]
+            conn.rollback()
+            if stored != cutoff:
+                raise ValueError(f"policy {cid} is already validated with evidence cutoff {stored}; a policy's "
+                                 "evidence cutoff never changes (register a new version of the policy)")
             _print({"state": "validated", "configuration_id": cid})
             return EXIT_OK
         if args.command == "waive":

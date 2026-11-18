@@ -387,6 +387,24 @@ from the caller; **E** gate 6 passes when a declaration lists no policies; **F**
 **G** `reconstructed_evidence` is not derived from `evidence_label_class`. Eleven Minors and eleven surviving mutants
 are listed in the re-audit report and carried with the task.
 
+**Re-audit Majors fixed (C-0104):** **A** `embargo_sessions` must be a whole number of at least 1 (a bool is refused);
+**B** `record_metrics` refuses test-period metrics and a unique index keeps one result per access, so a result can
+never be rewritten; `promotion_evidence` reads that one row; **C** `actor` joins the stamped writer columns; **D**
+gate 7 reads the dataset's survivorship and an owner waiver of kind survivorship naming the dataset version
+(`covers_json["datasets"]`); **E** a declaration must list its policies; **F** a designation may list, besides the new
+copy, only production models of its output and horizon whose latest status is production (in `promote` and, at
+commit, in the database); **G** `reconstructed_evidence` is derived from `evidence_label_class` (reconstructed or
+mixed), and a reconstructed-only model may not state a point-in-time share. Minors fixed: promotion reports are
+owner-only; `promote` derives its evidence itself (the owner's statement is all it takes); alpha in (0, 0.05]; the
+family's shape validated; a result can never overwrite its access id; a unique index on `promoted_from`; a
+retrospective period is `previously_scored` (database check); `validate-policy` refuses a changed cutoff; `retire`
+is for production models; a malformed declaration never blocks `multiplicity`. Not changed: the designation's
+`recorded_at = now()` check (near-equivalent, as the re-audit says). Tests: `tests/test_m56_reaudit_postgres.py` (9)
+and updates; every test declaration now lists an owner-validated policy. Mutation check: 18 mutants (each Major,
+both sides of F, the minors): all killed; one survived the first test set (the stored access id) and was closed. The
+re-audit's surviving mutants each have a test (stamps of `created_by` and `approved_by`, the replicates floor at
+large m, alpha from the registry, the policy cutoff boundary, `rollforward_of`, overlap in the multiplicity).
+
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings

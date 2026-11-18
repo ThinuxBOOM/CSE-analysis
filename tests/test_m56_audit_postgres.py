@@ -57,7 +57,7 @@ def test_m6_retiring_a_production_model_is_the_owners(cluster):
     store.access(w, ids["protocol"], sp.period_of(w, ids["protocol"]),
                  [{"model_id": ids["model"], "predictions_sha256": "d" * 64}], lambda: {"nominees_passed": [ids["model"]]})
     o = fs.conn(cluster, db, user="cse_migrator")
-    prod, _ = store.promote(o, ids["model"], gu.GOODP, purpose="route1", output="direction", horizon=5,
+    prod, _ = store.promote(o, ids["model"], sp.EVIDENCE, purpose="route1", output="direction", horizon=5,
                             list_ids=[ids["model"]], note="the owner promotes it", code_version="code.1")
     with pytest.raises(store.Refused, match="owner"):
         store.transition(w, prod, "retired", "the worker tries")
@@ -249,11 +249,11 @@ def test_audit_survivors_the_designation_cites_the_lifetime_access_count(cluster
     store.access(w, ids["protocol"], sp.period_of(w, ids["protocol"]),
                  [{"model_id": ids["model"], "predictions_sha256": "d" * 64}], lambda: {"nominees_passed": [ids["model"]]})
     o = fs.conn(cluster, db, user="cse_migrator")
-    store.promote(o, ids["model"], replace(gu.GOODP, lifetime_test_accesses=7), purpose="route1", output="direction",
+    store.promote(o, ids["model"], sp.EVIDENCE, purpose="route1", output="direction",
                   horizon=5, list_ids=[ids["model"]], note="the owner promotes it", code_version="code.1")
     with w.cursor() as cur:
         cur.execute("select labels_json from ml_designations")
-        assert json.loads(cur.fetchone()[0])["lifetime_test_accesses"] == 7          # M41
+        assert json.loads(cur.fetchone()[0])["lifetime_test_accesses"] == 1          # M41: the registry's count
     w.rollback()
 
 
