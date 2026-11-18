@@ -902,3 +902,9 @@ components, explained by the engine's own components. To know that, the dataset 
 output, whether its component set was full and each component's share of the score. That is a small addition to the
 accepted dataset builder, so its audit covers both.
 
+## C-0094: Phase 5 M5-5, calibration and intervals ([delegated], 2026-11-18)
+
+Probability calibration and prediction intervals are built and tested on synthetic data with a known truth: the
+calibration repairs an overconfident model, and the intervals reach their nominal coverage in each liquidity class.
+The planted-signal test of the design (MLK-7) passes. Audit pending.
+

@@ -197,6 +197,23 @@ killed.
 
 ---
 
+## M5-5: calibration, intervals, contributions
+
+**Status: built; audit pending.**
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_models/calibration.py` | Vector scaling on the calibrate slice (a scale and an offset per class on the log-probabilities, offsets summing to zero; L-BFGS from the identity); the calibrated probabilities beside the raw ones; reliability tables and ECE overall and per liquidity class; `reliability_ok` for `calibrated_engine` (its map is the calibration). Split-conformal intervals: scale max(vol_21 x sqrt(h), floor), the floor the 5th percentile of the fit slice's positive scales, a null `vol_21` taking the floor and flagged; the quantile of the scaled residuals per liquidity class on the conformal slice; a class with too few rows for the level gets no interval and a flag. The coverage report as §8.2 claims it: rows inside, averaged over dates, per class. Every fitted part admitted through a FitScope of its slice | §8.1, §8.2 |
+| `tests/test_m55_unit.py` | 5 tests on synthetic data with known truth: vector scaling halves the ECE of an overconfident, biased model on held-out rows, in every class, and lowers log loss; class-conditional intervals within 3 points of 90% in every class where one pooled quantile undercovers the wide class; the floor, the null flag, too few rows, slice refusals; coverage averaged over dates, not rows; **MLK-7**: a planted signal of stated size (0.5) passes the gate test (level 0.05, delta 0, B = 9 999) in at least 4 of 5 seeds, and the contributions name the planted feature in all 5 | §13 |
+
+Contributions (§8.3): the adapters already store base plus contributions equal to the raw score (M5-4); the
+calibrated value is stored beside it and not decomposed. Mutation check: 10 mutants (unconstrained offsets, a pooled
+quantile, unscaled residuals, the floor's percentile, the null flag, the conformal index, a finite interval from too
+few rows, coverage by rows, no slice check, a scale-free map): all killed; one survived the first test set (coverage
+by rows) and was closed by `test_i3`.
+
+---
+
 ## M5-3: folds and slices
 
 **Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
