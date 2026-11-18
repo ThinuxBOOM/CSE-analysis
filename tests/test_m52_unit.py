@@ -456,3 +456,21 @@ def test_r3_the_version_binds_the_builders_code(monkeypatch):
     a = build(manifest(), snaps, labs).version
     monkeypatch.setattr(pkg, "VERSION", "ml_dataset.x")
     assert build(manifest(), snaps, labs).version != a
+
+
+def test_m54_engine_detail_reaches_the_dataset_only_for_scored_outputs():
+    """M5-4 part 2: whether the engine used its full component set, and the components' shares, travel with a scored
+    output; never into the null counts or an ML schema."""
+    detail = {"fund_growth": (True, {"rev_g_cum": D("0.3"), "profit_g_cum": D("0.2")})}
+    s = snap(0, rows={"Q.N0000": replace(line("Q.N0000", 0, 80), de_detail=detail)})
+    d = build(manifest(), [s], labels_for([s]))
+    q = next(r for r in d.rows if r.symbol == "Q.N0000")
+    assert q.features["de.fund_growth.full"] == (True, "fresh", None)
+    assert q.features["de.fund_growth.parts"][0] == {"rev_g_cum": D("0.3"), "profit_g_cum": D("0.2")}
+    other = next(r for r in d.rows if r.symbol == "S0.N0000")
+    assert "de.fund_growth.full" not in other.features                      # no detail given: none invented
+    unscored = replace(line("U.N0000", 0, 81), de={"fund_growth": (None, "insufficient_inputs", "h" * 64)},
+                       de_detail=detail)
+    u = next(r for r in build(manifest(), [snap(0, rows={"U.N0000": unscored})],
+                              labels_for([snap(0, rows={"U.N0000": unscored})])).rows if r.symbol == "U.N0000")
+    assert "de.fund_growth.full" not in u.features

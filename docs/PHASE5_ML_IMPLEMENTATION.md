@@ -180,6 +180,23 @@ ML library versions in CI's environment report.
 
 ---
 
+## M5-4 part 2: `calibrated_engine`
+
+**Status: built; audit pending.**
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_dataset/` (M5-2 addition; `ml_dataset.3`) | For each scored DE output: `de.<engine>.full` (the engine used every component its registry entry has) and `de.<engine>.parts` (each present component's share, contribution / total weight, adding up to the score), read from the stored output, whose hash the dataset already binds; nothing for an unscored output; never in the null counts or an ML schema | §7.2 |
+| `worker/ml_models/calibrated_engine.py` | One engine's calibration: a multinomial logistic map on (s, s²) and a linear map on s, fitted on the fit slice's full-set rows only (nothing to select: an effectively unregularised map); silent where the engine has no score or missed a component; no volatility; provenance names the engine, its version and the registry; contributions are the engine's components, share x the map's slope at s, plus the intercept, adding up to the raw logit or return exactly | §7.2, P5-D3 |
+| `tests/test_m54_engine_unit.py` | 4 tests: fits only full-set rows (partial rows carry contradicting labels) and beats `base_prior`; silent on partial or unscored rows; contributions are the engine's components and add up; provenance, determinism, refusals (unknown engine, wrong slice, another adapter's artifact) | §13 |
+
+Also: a dataset unit test of the new fields and a PostgreSQL check that `full` and the shares match the stored
+outputs (both cases occur in the test world). Mutation check: 7 mutants (partial rows fitted, contributions without
+the slope or unscaled, no s² term, detail for an unscored output, `full` always true, unnormalised shares): all
+killed.
+
+---
+
 ## M5-3: folds and slices
 
 **Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**

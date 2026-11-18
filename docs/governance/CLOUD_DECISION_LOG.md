@@ -895,3 +895,10 @@ The audit of the baselines and the two model types found no Blocker, so they are
 fixed: each model now refuses to be fitted on anything but its own data slice, 16 untested rules each have a test,
 and the label-shuffle check is run within and across dates. The engine-calibration adapter (part 2) follows.
 
+## C-0093: Phase 5 M5-4 part 2, the engine calibration ([delegated], 2026-11-18)
+
+The last adapter is built: a calibration of one Phase 4 engine, fitted only where the engine used all of its
+components, explained by the engine's own components. To know that, the dataset now carries, for every scored engine
+output, whether its component set was full and each component's share of the score. That is a small addition to the
+accepted dataset builder, so its audit covers both.
+

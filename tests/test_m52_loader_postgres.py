@@ -5,6 +5,7 @@ in), plus a target build. The dataset built from the database carries the run's 
 build's labels only, survivorship from the import headers, and is the same twice. Skipped unless P1_PG_BINDIR is set.
 """
 import json
+from decimal import Decimal as D
 import os
 from datetime import date, datetime, timezone
 
@@ -99,6 +100,18 @@ def test_l1_the_stored_world_becomes_a_dataset(cluster, monkeypatch):
     assert r5.features["f7.eligibility"] == ("eligible", "fresh", None)
     assert r5.features["f7.roe_end"][0] is not None and "f7.eps_latest_fy" in r5.features
     assert r5.features["de.fund_leverage"][1] == "scored" and r5.meta["industry_group"] == "general"
+    # M5-4 part 2: full set and shares from the stored output; the shares add up to the score
+    from worker.engines import registry
+    with c.cursor() as cur:
+        cur.execute("select engine_id, output_json from de_outputs where member = 'S05.N0000' and state = 'scored'")
+        stored = {e: json.loads(j) for e, j in cur.fetchall()}
+    c.rollback()
+    assert stored
+    for eid, js in stored.items():
+        want = set(js["components_present"]) == {x.feature_id for x in registry.BY_ID[eid].components}
+        assert r5.features[f"de.{eid}.full"][0] is want
+        assert abs(sum(r5.features[f"de.{eid}.parts"][0].values()) - r5.features[f"de.{eid}"][0]) < D("1e-11")
+    assert {r5.features[f"de.{e}.full"][0] for e in stored} == {True, False}      # both cases occur here
     assert len(r5.sources) == 1 + 2 + 15                                         # MF row, two F7 rows, 15 outputs
     # MLK-20 through real stored rows: F7's market value is missing (no market cap in MF, C-0079) and its yields
     # follow; each reaches the dataset as a null with the reason F7 stored, never as a value

@@ -58,6 +58,20 @@ def _survivorship(cur, snap):
     return max(found, key=ds.SURVIVORSHIP_ORDER.index) if found else "unknown"
 
 
+def _detail(engine_id, js):
+    """(full, parts) of one scored output: whether every component of the engine's registry entry was present, and
+    each present component's share of the score, contribution / total weight of the present components (DE-1 §7.3),
+    so that the shares add up to the score."""
+    from worker.engines import registry
+    engine = registry.BY_ID.get(engine_id)
+    present = set(js.get("components_present") or [])
+    comps = [c for c in js.get("components") or [] if c.get("feature_id") in present and "contribution" in c]
+    weight = sum(Decimal(str(c["weight"])) for c in comps)
+    parts = {c["feature_id"]: Decimal(c["contribution"]) / weight for c in comps} if weight else {}
+    full = engine is not None and present == {c.feature_id for c in engine.components if c.weight > 0}
+    return full, parts
+
+
 def _run(cur, sid, manifest):
     runs = _rows(cur, "select run_id from de_runs where snapshot_id = %s and f7_configuration_id = %s and "
                       "de_configuration_id = %s order by run_id desc limit 1",
@@ -80,6 +94,8 @@ def _de_and_f7(cur, run_id, sid, mf_hashes):
                                         "link": None})
         score = js.get("score")
         d["de"][o["engine_id"]] = (None if score is None else Decimal(str(score)), o["state"], o["output_hash"])
+        if score is not None:
+            d.setdefault("detail", {})[o["engine_id"]] = _detail(o["engine_id"], js)
         group = (js.get("universe") or {}).get("group")
         if o["engine_id"] in GROUP_ENGINES and o["state"] != "not_applicable" and group:
             d["group"] = group
@@ -108,7 +124,7 @@ def _de_and_f7(cur, run_id, sid, mf_hashes):
                 if r["fundamental_coverage"] == "captured_only":
                     cov = "captured_only"
             f7in = ds.F7In(feats, elig, tuple(sorted(d["f7"])), cov)
-        out[sym] = (d["de"], d["group"], f7in, d["link"])
+        out[sym] = (d["de"], d["group"], f7in, d["link"], d.get("detail", {}))
     return out
 
 
@@ -134,9 +150,9 @@ def load(conn, manifest):
                                                               {r["symbol"]: r["row_hash"] for r in rows})
                 lines = {}
                 for r in rows:
-                    de, group, f7in, link = extra.get(r["symbol"], ({}, None, None, None))
+                    de, group, f7in, link, detail = extra.get(r["symbol"], ({}, None, None, None, {}))
                     lines[r["symbol"]] = ds.LineIn(r["eligibility"], _triples(json.loads(r["features_json"]), 1),
-                                                   r["row_hash"], f7in, de, group, link)
+                                                   r["row_hash"], f7in, de, group, link, detail)
                 out.append(ds.SnapshotIn(
                     s["snapshot_id"], s["d_star"], s["cutoff"].astimezone(timezone.utc), s["mode"],
                     None if s["knowledge_horizon"] is None else s["knowledge_horizon"].astimezone(timezone.utc),
