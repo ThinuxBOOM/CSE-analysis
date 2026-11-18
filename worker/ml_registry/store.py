@@ -16,7 +16,7 @@ Test periods (§5.4), enforced here where the database cannot:
 import base64
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from worker.ml_dataset import dataset as ds
 
@@ -76,7 +76,10 @@ def register_configuration(conn, kind, body, status="provisional", evidence_cuto
 
 
 def register_dataset(conn, dataset, synthetic):
-    """An ml_datasets row for a built dataset (M5-2); its manifest and report as canonical JSON. Returns its id."""
+    """An ml_datasets row for a built dataset (M5-2); its manifest and report as canonical JSON. Returns its id.
+    MLK-4 (M5-6 audit M10): a dataset that does not withhold every unspent test period its range touches is refused."""
+    check_manifest(conn, dataset.manifest)
+
     def work(cur):
         row = _one(cur, "select dataset_id from ml_datasets where version = %s", (dataset.version,))
         if row:
@@ -93,9 +96,19 @@ def declare_protocol(conn, declaration, plan):
     primary horizon (§5.5). declaration must name: family, primary (output, horizon), nomination, criterion, the
     fold schedule with each fold's validation range, and test_periods [[start, end], ...]. Returns
     (protocol_id, sufficiency, reasons)."""
-    for key in ("family", "primary", "nomination", "criterion", "folds", "test_periods"):
+    for key in ("family", "primary", "nomination", "criterion", "folds", "test_periods", "embargo_sessions"):
         if key not in declaration:
             raise Refused("declaration", f"a protocol declares its {key} (§5.4)")
+    if not declaration["folds"]:
+        raise Refused("declaration", "a protocol declares at least one fold")
+    last_v_end = max(_ts(f["v_end"]) for f in declaration["folds"])
+    gap = timedelta(days=int(declaration["embargo_sessions"]))
+    for start, _end in declaration["test_periods"]:
+        # §5.4: P_start at least the embargo after the last V_end. Sessions are at least days apart, so this is a
+        # necessary condition checked here; the protocol's calendar check is the exact one (M5-6 audit M3)
+        if _ts(start) <= last_v_end + gap:
+            raise Refused("test_period", f"a test period starting {start} is not after the last V_end "
+                                         f"{last_v_end.isoformat()} plus the embargo")
     if declaration["criterion"].get("form") != "gate_test_every_baseline_bonferroni_over_nominees":
         raise Refused("criterion", "the test criterion has at least §5.4's minimum form")
     state, reasons = sf.check(plan)
@@ -187,6 +200,18 @@ def multiplicity(conn, output, horizon, protocol_id):
 
 
 def start_run(conn, protocol_id, configuration_id, dataset_id, output, horizon, code_version):
+    """A run of a configuration on a registered dataset. MLK-4 again at the run (M5-6 audit M10): a test period
+    declared after the dataset was registered must be withheld by it too, or the run is refused."""
+    js = _read(conn, lambda cur: _one(cur, "select manifest_json from ml_datasets where dataset_id = %s",
+                                      (dataset_id,)))
+    if js is None:
+        raise Refused("dataset", f"no dataset {dataset_id}")
+    m = json.loads(js[0])
+    from types import SimpleNamespace
+    check_manifest(conn, SimpleNamespace(date_from=datetime.fromisoformat(m["date_from"]).date(),
+                                         date_to=datetime.fromisoformat(m["date_to"]).date(),
+                                         withheld=tuple((_ts(x), _ts(y)) for x, y in m.get("withheld", []))))
+
     def work(cur):
         rid = _one(cur, "insert into ml_runs (protocol_id, configuration_id, dataset_id, output, horizon, code_version) "
                         "values (%s, %s, %s, %s, %s, %s) returning run_id",
@@ -284,9 +309,45 @@ def _report(cur, model_id, report, code_version):
                  report["multiplicity"], code_version))[0]
 
 
+def registry_facts(conn, model_id):
+    """What gates 2, 4, 5 and 6 take from the registry, never from the caller (M5-6 audit M9): the protocol's
+    sufficiency (for its primary output and horizon; any other is `exploratory` until declared, audit minor 14),
+    whether the model's configuration is in the declared family, the declared folds, the level, the multiplicity
+    (§5.4, with policies counted as tried when their evidence cutoff is not before the first V_start) and the status of
+    every declared policy (validated only by the owner, 0021)."""
+    def work(cur):
+        m = _one(cur, "select protocol_id, configuration_id, output, horizon from ml_models where model_id = %s",
+                 (model_id,))
+        if m is None:
+            raise Refused("model", f"no model {model_id}")
+        pid, cid, output, horizon = m
+        decl_js, suff = _one(cur, "select declaration_json, sufficiency from ml_protocols where protocol_id = %s",
+                             (pid,))
+        decl = json.loads(decl_js)
+        primary = list(decl["primary"]) == [output, horizon]
+        first_v = min(_ts(f["v_start"]) for f in decl["folds"])
+        policies, late = {}, 0
+        for p in decl.get("policies", []):
+            row = _one(cur, "select status, evidence_cutoff from ml_configurations where configuration_id = %s", (p,))
+            policies[p] = row[0] if row else "missing"
+            if row is None or row[1] is None or row[1] >= first_v:
+                late += 1
+        return {"protocol_sufficiency": suff if primary else sf.EXPLORATORY, "declared_before_first_run": True,
+                "in_family": cid in _family(decl, output, horizon), "declared_folds": len(decl["folds"]),
+                "alpha": float(decl.get("alpha", 0.05)), "horizon": horizon, "policy_status": policies,
+                "late_policies": late, "output": output, "protocol_id": pid}
+    facts = _read(conn, work)
+    facts["multiplicity"] = multiplicity(conn, facts.pop("output"), facts["horizon"], facts.pop("protocol_id")) + \
+        facts.pop("late_policies")
+    return facts
+
+
 def validate(conn, model_id, evidence, code_version):
     """Gates 2 to 8: write the report; on a pass, the `validated` event in the same transaction (the database
-    re-checks gate 1 and the report). On a fail the model stays `candidate`. Returns the report."""
+    re-checks gate 1 and the report). On a fail the model stays `candidate`. Returns the report. The registry's own
+    facts (`registry_facts`) replace whatever the caller's evidence says about them."""
+    from dataclasses import replace
+    evidence = replace(evidence, **registry_facts(conn, model_id))
     report = gt.validation_report(evidence)
 
     def work(cur):
@@ -301,7 +362,17 @@ def transition(conn, model_id, new_status, reason):
     """rejected or retired (the database refuses any other move)."""
     if new_status not in ("rejected", "retired"):
         raise Refused("transition", "validated comes from validate(); production from promote()")
-    _write(conn, lambda cur: _event(cur, model_id, new_status, reason))
+
+    def work(cur):
+        owner = _one(cur, "select session_user")[0] == "cse_migrator"
+        if owner:
+            cur.execute("set local role cse_owner")
+        last = _one(cur, "select status from ml_model_events where model_id = %s order by seq desc limit 1",
+                    (model_id,))
+        if last and last[0] == "production" and not owner:
+            raise Refused("owner_path", "retiring a production model is the owner's act (§9.2)")
+        _event(cur, model_id, new_status, reason)
+    _write(conn, work)
 
 
 def access(conn, protocol_id, period_id, nominees, compute_result):
@@ -311,24 +382,50 @@ def access(conn, protocol_id, period_id, nominees, compute_result):
     object with "nominees_passed": [model ids]. Returns that result."""
     if not nominees:
         raise Refused("nominees", "an access names at least one nominee")
+    import re
 
-    def work(cur):
+    def check(cur):
+        decl = json.loads(_one(cur, "select declaration_json from ml_protocols where protocol_id = %s",
+                               (protocol_id,))[0])
         for n in nominees:
-            row = _one(cur, "select protocol_id from ml_models where model_id = %s", (n["model_id"],))
+            row = _one(cur, "select protocol_id, configuration_id, output, horizon from ml_models where model_id = %s",
+                       (n["model_id"],))
             if row is None or row[0] != protocol_id:
                 raise Refused("nominee", f"model {n['model_id']} is not a final fit of protocol {protocol_id}")
-            if len(n.get("predictions_sha256", "")) != 64:
+            if not re.fullmatch(r"[0-9a-f]{64}", str(n.get("predictions_sha256", ""))):
                 raise Refused("frozen", f"model {n['model_id']}'s test-period predictions are not frozen and hashed")
-        combined = sha(canonical(sorted((n["model_id"], n["predictions_sha256"]) for n in nominees)))
-        aid = _one(cur, "insert into ml_test_accesses (period_id, protocol_id, nominees_json, predictions_sha256, "
-                        "result_json) values (%s, %s, %s, %s, '{}') returning access_id",
-                   (period_id, protocol_id, canonical(nominees), combined))[0]
+            # M5-6 audit M4 (MLK-4): a nominee is validated and of the declared family
+            st = _one(cur, "select status from ml_model_events where model_id = %s order by seq desc limit 1",
+                      (n["model_id"],))
+            if st is None or st[0] != "validated":
+                raise Refused("nominee", f"model {n['model_id']} is not validated")
+            if row[1] not in _family(decl, row[2], row[3]):
+                raise Refused("nominee", f"model {n['model_id']}'s configuration is not in the declared family")
+    _read(conn, check)
+    combined = sha(canonical(sorted((n["model_id"], n["predictions_sha256"]) for n in nominees)))
+    # §5.4 (M5-6 audit M5): the access row is written and committed FIRST; whatever happens after, the period is
+    # spent and the access counts. A failure while building labels or evaluating is recorded as the result.
+    aid = _write(conn, lambda cur: _one(
+        cur, "insert into ml_test_accesses (period_id, protocol_id, nominees_json, predictions_sha256, result_json) "
+             "values (%s, %s, %s, %s, '{}') returning access_id",
+        (period_id, protocol_id, canonical(nominees), combined))[0])
+    try:
         result = compute_result()
-        cur.execute("insert into ml_model_metrics (run_id, model_id, scope, stratum, metrics_json) values "
-                    "(null, %s, 'test', 'access', %s)", (nominees[0]["model_id"], canonical({"access_id": aid,
-                                                                                           **result})))
-        return {"access_id": aid, **result}
-    return _write(conn, work)
+    except Exception as exc:
+        _write(conn, lambda cur: cur.execute(
+            "insert into ml_model_metrics (run_id, model_id, scope, stratum, metrics_json) values (null, %s, 'test', "
+            "'access', %s)", (nominees[0]["model_id"], canonical({"access_id": aid, "nominees_passed": [],
+                                                                  "failed": f"{type(exc).__name__}: {exc}"[:300]}))))
+        raise
+    _write(conn, lambda cur: cur.execute(
+        "insert into ml_model_metrics (run_id, model_id, scope, stratum, metrics_json) values (null, %s, 'test', "
+        "'access', %s)", (nominees[0]["model_id"], canonical({"access_id": aid, **result}))))
+    return {"access_id": aid, **result}
+
+
+def _family(decl, output, horizon):
+    fam = decl["family"]
+    return fam.get(f"{output}:{horizon}", []) if isinstance(fam, dict) else fam
 
 
 def lifetime_accesses(conn):

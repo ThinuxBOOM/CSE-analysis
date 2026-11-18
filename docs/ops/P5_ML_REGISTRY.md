@@ -13,7 +13,7 @@ inspection and for the owner's decisions.
 | Command | OS user | PostgreSQL login |
 |---|---|---|
 | `preflight`, `status`, `verify`, `alerts`, `transition` | `cse-worker` | `cse_worker` (peer) |
-| `waive`, `flag`, `promote` (owner decisions) | `cse-migrator` | `cse_migrator`, acting as `cse_owner` |
+| `retire`, `validate-policy`, `waive`, `flag`, `promote` (owner decisions) | `cse-migrator` | `cse_migrator`, acting as `cse_owner` |
 
 All through `sudo bash /opt/cse/app/ops/bin/cse-ml <command>`. Exit status: 0 ok, 4 PostgreSQL unavailable,
 5 refused or failed. Owner decisions record the operator (the human who ran `sudo`) in their note.
@@ -28,8 +28,15 @@ All through `sudo bash /opt/cse/app/ops/bin/cse-ml <command>`. Exit status: 0 ok
   hash in Python; report models whose artifact is missing. Read-only.
 - `alerts`: production models whose source version was later rejected. They are reported, never retired
   automatically (§9.2); retiring one is a decision.
-- `transition --model ID --to rejected|retired --reason TEXT`: a research decision. `validated` comes only from
-  the gates (research code); `production` only from `promote`.
+- `transition --model ID --to rejected|retired --reason TEXT`: a research decision on a research model. `validated`
+  comes only from the gates (research code); `production` only from `promote`.
+- `retire --model ID --reason TEXT`: the owner retires a production model (§9.2; the database refuses it from the
+  worker).
+- `validate-policy --body JSON --evidence-cutoff TS`: the owner validates a policy (an eligibility policy, a
+  tolerance, an effect size, a domain margin). It prints the policy's content-addressed id, which a protocol lists
+  under `policies`; gate 6 reads each listed policy's status from the registry, and a policy whose evidence cutoff is
+  not before the protocol's first V_start counts as a configuration tried (§5.4, MLK-6). Only the owner can record a
+  validated configuration (0021).
 - `waive --kind survivorship|mode|reconstructed_evidence --covers JSON --note TEXT`: the owner's waiver. `--covers`
   is a JSON object naming what it covers (dataset versions, eras, protocols). Gate 7 accepts a survivorship waiver;
   gate 11 a `reconstructed_evidence` waiver.

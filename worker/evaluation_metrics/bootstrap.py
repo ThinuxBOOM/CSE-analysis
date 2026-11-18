@@ -100,6 +100,8 @@ class TestResult:
     blocks: float
     replicates: int
     rejects: Optional[bool] = None
+    level: Optional[float] = None     # the level it was run at (alpha / m); gate 5 checks it (M5-6 audit)
+    simulation: bool = False          # floors lifted for a size study: never evidence for a gate
 
 
 def gate_test(d, *, delta, h, level, replicates=None, seed=0, block=None, simulation=False):
@@ -114,16 +116,16 @@ def gate_test(d, *, delta, h, level, replicates=None, seed=0, block=None, simula
     if not simulation and (replicates < floor_b or (block is not None and block < max(h, 10))):
         raise ValueError("the block length or the number of replicates is below the design's floor")
     if len(d) < 10:
-        return TestResult("insufficient_evidence", None, None, 0, 0.0, 0)
+        return TestResult("insufficient_evidence", None, None, 0, 0.0, 0, None, level, simulation)
     L = block if block is not None else block_length(d, h)
     blocks = len(d) / L
     if blocks < MIN_BLOCKS:
-        return TestResult("insufficient_evidence", None, None, L, blocks, 0)
+        return TestResult("insufficient_evidence", None, None, L, blocks, 0, None, level, simulation)
     obs = math.fsum(d) / len(d)
     centred = [v - obs - delta for v in d]                       # the series under the null boundary, mean -delta
     means = stationary_means(centred, L, replicates, random.Random(seed))
     p = (1 + sum(1 for m in means if m <= obs)) / (replicates + 1)
-    return TestResult("tested", obs, p, L, blocks, replicates, p <= level)
+    return TestResult("tested", obs, p, L, blocks, replicates, p <= level, level, simulation)
 
 
 def family_test(d_by_baseline, *, delta, h, alpha, m, replicates=None, seed=0, simulation=False):

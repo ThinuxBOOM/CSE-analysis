@@ -128,16 +128,20 @@ def test_g2_configurations_protocols_artifacts_are_what_they_say(cluster):
 def test_g3_test_periods_disjoint_timed_by_the_clock_and_accessed_once(cluster):
     db = fs.fresh_db(cluster)
     w, ids = world(cluster, db)
-    pr = ids["protocol"]
-    dec = json.dumps({"family": ["y"]})
-    other = one(w, "insert into ml_protocols (declaration_json, declaration_hash, sufficiency) values (%s, %s, "
-                   "'exploratory') returning protocol_id", (dec, sha(dec)))
     tp = "insert into ml_test_periods (protocol_id, period, timing, previously_scored) values (%s, %s, %s, true)"
+    assert "own transaction" in refused(w, tp, (ids["protocol"], "[2030-01-01Z,2030-06-30Z]", "prospective"))
+    w.rollback()                                       # audit M1: never after the protocol's transaction (its runs)
+    proto = "insert into ml_protocols (declaration_json, declaration_hash, sufficiency) values (%s, %s, " \
+            "'exploratory') returning protocol_id"
+    dec, dec2 = json.dumps({"family": ["y"]}), json.dumps({"family": ["y2"]})
+    pr = one(w, proto, (dec, sha(dec)))
     assert refused(w, tp, (pr, "[2024-01-01Z,2024-06-30Z]", "retrospective")) is None
-    assert refused(w, tp, (other, "[2024-06-01Z,2024-12-31Z]", "retrospective"))      # overlaps another protocol's
     assert refused(w, tp, (pr, "[2023-01-01Z,2023-06-30Z]", "prospective"))            # the clock says retrospective
-    assert refused(w, tp, (other, "[2099-01-01Z,2099-06-30Z]", "prospective")) is None
     assert refused(w, tp, (pr, "[2022-01-01Z,)", "retrospective"))                     # unbounded
+    w.commit()
+    other = one(w, proto, (dec2, sha(dec2)))
+    assert refused(w, tp, (other, "[2024-06-01Z,2024-12-31Z]", "retrospective"))      # overlaps another protocol's
+    assert refused(w, tp, (other, "[2099-01-01Z,2099-06-30Z]", "prospective")) is None
     w.commit()
     pid = one(w, "select period_id from ml_test_periods where protocol_id = %s", (pr,))
     acc = ("insert into ml_test_accesses (period_id, protocol_id, nominees_json, predictions_sha256, result_json) "

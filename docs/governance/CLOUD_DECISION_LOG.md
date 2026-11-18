@@ -944,3 +944,13 @@ flags that had no source now have one: the bonus and rights issues that could no
 (never a price adjustment) that marks an unexplained move as dilution, and labels from imported years without
 completeness ranges are counted apart. The audit of the registry (parts 1 to 3) accepted it with ten Majors; they are
 being fixed before the step exits.
+
+## C-0099: M5-6 audit fixes ([delegated], 2026-11-18)
+
+The audit of the model registry accepted it (no Blocker) and found ten Majors; all are fixed. The database now stamps
+every registry record with its own clock and login; test periods can be declared only together with their protocol
+and must lie after its validation folds; the one look at a test period counts even if the evaluation then fails; a
+nominee must be validated and of the declared family; retiring a production model and validating a policy are the
+owner's acts (two new owner commands); the significance gate checks that each test was run at the corrected level
+with the design's minimums; and validation takes the protocol's facts from the registry, not from the caller. Every
+fix is pinned by a test that fails when the fix is removed. The step goes to a re-audit.

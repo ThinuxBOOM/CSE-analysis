@@ -1,6 +1,7 @@
 """
 ML registry command line (Phase 5 §9, M5-6). On the server run it through ops/bin/cse-ml: as the cse-worker OS user
-(peer-authenticated as cse_worker), except the owner acts `waive`, `flag` and `promote`, which run as the
+(peer-authenticated as cse_worker), except the owner acts `retire`, `validate-policy`, `waive`, `flag` and `promote`,
+which run as the
 owner-delegation login cse-migrator acting as cse_owner. A JSON report goes to stdout. No command contacts CSE or
 any network. Training, validation and the test access are done by the research code through `store`; this command
 line is for inspection and for the owner's decisions.
@@ -11,6 +12,10 @@ line is for inspection and for the owner's decisions.
     alerts                                       production models whose source version was later rejected
     transition --model ID --to rejected|retired --reason TEXT
                                                  a research decision; validated and production have their own paths
+    retire --model ID --reason TEXT              OWNER decision: retire a production model (§9.2)
+    validate-policy --body JSON --evidence-cutoff TS
+                                                 OWNER decision: a validated policy configuration (gate 6), with the
+                                                 evidence cutoff it rests on (§5.4); prints its id
     waive --kind survivorship|mode|reconstructed_evidence --covers JSON --note TEXT
                                                  OWNER decision: a waiver (gates 7 and 11)
     flag --from TS --to TS --note TEXT           OWNER decision: an incident flag over an interval
@@ -36,7 +41,7 @@ from . import preflight, store
 
 EXIT_OK, EXIT_DATABASE_UNAVAILABLE, EXIT_REFUSED = 0, 4, 5
 OWNER_PATH_ROLE = "cse_migrator"
-OWNER = ("waive", "flag", "promote")
+OWNER = ("retire", "validate-policy", "waive", "flag", "promote")
 WRITING = ("transition",)
 TABLES = ("ml_configurations", "ml_datasets", "ml_protocols", "ml_test_periods", "ml_runs", "ml_run_events",
           "ml_trials", "ml_artifacts", "ml_fold_models", "ml_models", "ml_model_metrics", "ml_gate_reports",
@@ -57,6 +62,12 @@ def parser():
     t.add_argument("--model", type=int, required=True)
     t.add_argument("--to", choices=("rejected", "retired"), required=True)
     t.add_argument("--reason", required=True)
+    r = sub.add_parser("retire")
+    r.add_argument("--model", type=int, required=True)
+    r.add_argument("--reason", required=True)
+    v = sub.add_parser("validate-policy")
+    v.add_argument("--body", required=True)
+    v.add_argument("--evidence-cutoff", dest="evidence_cutoff", required=True)
     w = sub.add_parser("waive")
     w.add_argument("--kind", choices=("survivorship", "mode", "reconstructed_evidence"), required=True)
     w.add_argument("--covers", required=True)
@@ -192,6 +203,23 @@ def run(args, connect):
         return EXIT_DATABASE_UNAVAILABLE
     operator = os.environ.get("CSE_OPERATOR")
     try:
+        if args.command == "retire":
+            _owner_path(conn)
+            store.transition(conn, args.model, "retired", _noted(args.reason, operator))
+            _print({"state": "retired", "model_id": args.model})
+            return EXIT_OK
+        if args.command == "validate-policy":
+            _owner_path(conn)
+            body = json.loads(args.body)
+            if not isinstance(body, dict) or not body:
+                raise ValueError("--body is a non-empty JSON object (the policy's parameters)")
+            with conn.cursor() as cur:
+                cur.execute("set role cse_owner")
+            conn.commit()
+            cid = store.register_configuration(conn, "policy", body, status="validated",
+                                               evidence_cutoff=store._ts(args.evidence_cutoff))
+            _print({"state": "validated", "configuration_id": cid})
+            return EXIT_OK
         if args.command == "waive":
             _print({"state": "waived", "id": waive(conn, args.kind, args.covers, args.note, operator)})
             return EXIT_OK

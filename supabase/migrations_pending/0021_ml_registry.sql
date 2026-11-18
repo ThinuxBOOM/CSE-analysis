@@ -322,6 +322,10 @@ begin
      or (new.configuration_json::jsonb ->> 'status') is distinct from new.status then
     raise exception 'ml_configurations: kind or status differs from the JSON' using errcode = 'check_violation';
   end if;
+  -- M5-6 audit M7: a configuration (a policy above all) is validated only by the owner, never by the worker's say-so
+  if new.status = 'validated' and current_user <> 'cse_owner' then
+    raise exception 'ml_configurations: a validated configuration is an owner decision' using errcode = 'insufficient_privilege';
+  end if;
   return new;
 end;
 $$;
@@ -340,6 +344,11 @@ $$;
 create function ml_test_period_guard() returns trigger
 language plpgsql as $$
 begin
+  -- M5-6 audit M1: a test period is declared with its protocol, in the same transaction, never after its runs
+  if (select recorded_at from ml_protocols where protocol_id = new.protocol_id) is distinct from now() then
+    raise exception 'ml_test_periods: a test period is declared in its protocol''s own transaction'
+      using errcode = 'check_violation';
+  end if;
   -- prospective or retrospective is the database clock's call, not the caller's
   if new.timing is distinct from (case when lower(new.period) > now() then 'prospective' else 'retrospective' end) then
     raise exception 'ml_test_periods: a period starting % is %, by the database clock', lower(new.period),
@@ -389,10 +398,12 @@ begin
       raise exception 'ml_models: promoted_from % is not a validated version', new.promoted_from
         using errcode = 'check_violation';
     end if;
-    if (select artifact_sha256 from ml_models where model_id = new.promoted_from) is distinct from new.artifact_sha256
-    then
-      raise exception 'ml_models: a promotion keeps the artifact of the version it promotes'
-        using errcode = 'check_violation';
+    if (select row(artifact_sha256, kind, configuration_id, output, horizon, dataset_id, protocol_id)
+          from ml_models where model_id = new.promoted_from)
+       is distinct from row(new.artifact_sha256, new.kind, new.configuration_id, new.output, new.horizon,
+                            new.dataset_id, new.protocol_id) then
+      raise exception 'ml_models: a promotion keeps the artifact, kind, configuration, output, horizon, dataset and '
+        'protocol of the version it promotes' using errcode = 'check_violation';
     end if;
     if exists (select 1 from ml_models m where m.promoted_from = new.promoted_from) then
       raise exception 'ml_models: version % is already promoted', new.promoted_from
@@ -437,6 +448,9 @@ begin
                                     ('validated', 'retired'), ('production', 'retired'))) then
     raise exception 'ml_model_events: % -> % is not a legal transition', prev, new.status
       using errcode = 'check_violation';
+  elsif prev = 'production' and current_user <> 'cse_owner' then   -- M5-6 audit M6: section 9.2
+    raise exception 'ml_model_events: retiring a production model is an owner decision'
+      using errcode = 'insufficient_privilege';
   end if;
   if new.status = 'validated' then
     if ds_synthetic then
@@ -457,12 +471,33 @@ language plpgsql as $$
 begin
   -- at commit: a production model's first event and a designation naming it were written in the same transaction
   if new.status = 'production' and not exists (
-      select 1 from ml_designations d
-      where d.recorded_at = now() and (d.list_json::jsonb) @> to_jsonb(new.model_id)) then
+      select 1 from ml_designations d join ml_models m on m.model_id = new.model_id
+      where d.recorded_at = now() and (d.list_json::jsonb) @> to_jsonb(new.model_id)
+        and d.output = m.output and d.horizon = m.horizon) then
     raise exception 'ml_model_events: production model % has no designation naming it in this transaction',
       new.model_id using errcode = 'check_violation';
   end if;
   return null;
+end;
+$$;
+
+create function ml_stamp_guard() returns trigger
+language plpgsql as $$
+declare
+  j jsonb := to_jsonb(new);
+  k text;
+begin
+  -- M5-6 audit M2: every ledger time is the database's clock and every writer the session's login, never a value
+  -- the writer supplies (MLK-6: "a protocol ... with a supplied earlier timestamp")
+  if (j ->> 'recorded_at')::timestamptz is distinct from now() then
+    raise exception '%: recorded_at must be now()', tg_table_name using errcode = 'check_violation';
+  end if;
+  foreach k in array array['created_by', 'registered_by', 'approved_by', 'recorded_by'] loop
+    if j ? k and (j ->> k) is distinct from session_user then
+      raise exception '%: % must be the session''s login', tg_table_name, k using errcode = 'check_violation';
+    end if;
+  end loop;
+  return new;
 end;
 $$;
 
@@ -503,6 +538,8 @@ begin
       'ml_designations', 'r1_predictions'] loop
     execute format('create trigger trg_%s_append_only before update or delete on %I for each row '
                    'execute function f5_reject_mutation()', t, t);
+    execute format('create trigger trg_%s_stamp before insert on %I for each row execute function ml_stamp_guard()',
+                   t, t);
     execute format('create trigger trg_%s_no_truncate before truncate on %I for each statement '
                    'execute function f5_reject_mutation()', t, t);
     execute format('revoke all on %I from public', t);
@@ -515,7 +552,7 @@ end $$;
 -- =============================================================================
 revoke all on function ml_configuration_guard(), ml_protocol_guard(), ml_test_period_guard(), ml_run_guard(),
   ml_test_access_guard(), ml_model_guard(), ml_model_event_guard(), ml_production_designation_check(),
-  ml_owner_only_guard() from public;
+  ml_owner_only_guard(), ml_stamp_guard() from public;
 grant insert on ml_configurations, ml_datasets, ml_protocols, ml_test_periods, ml_runs, ml_run_events, ml_trials,
   ml_artifacts, ml_fold_models, ml_models, ml_model_metrics, ml_gate_reports, ml_test_accesses, ml_model_events,
   r1_predictions to cse_worker;

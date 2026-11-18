@@ -177,6 +177,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
         dataset_id=store.register_dataset(w, sp.dataset(), False), protocol_id=pid,
         training_cutoff=datetime(2023, 6, 30, tzinfo=UTC), evidence_label_class="reconstructed",
         artifact=Artifact.make("linear", {"w": [3.0]}), environment_json={"threads": 1})
+    assert store.validate(w, other, gu.GOOD, "code.1")["passed"]
     store.access(w, pid, sp.period_of(w, pid), [{"model_id": other, "predictions_sha256": "e" * 64}],
                  lambda: {"nominees_passed": [other]})
     o = fs.conn(cluster, db, user="cse_migrator")
@@ -195,3 +196,31 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
     assert store.validate(w2, m2, replace(gu.GOOD, no_engine_component=True), "code.1")["passed"]
     e2 = store.promotion_evidence(fs.conn(cluster, db2, user="cse_migrator"), m2, EVIDENCE)
     assert "no_engine_component" in e2.model_labels                     # carried from the validation report
+
+
+def test_c7_retiring_production_is_an_owner_command(cluster, capsys, tmp_path):
+    db = fs.fresh_db(cluster)
+    w, pid, mid = setup(cluster, db)
+    store.access(w, pid, sp.period_of(w, pid), [{"model_id": mid, "predictions_sha256": "d" * 64}],
+                 lambda: {"nominees_passed": [mid]})
+    assert call(cluster, db, "cse_migrator", "promote", "--model", str(mid), "--purpose", "route1", "--list",
+                str(mid), "--note", "the owner promotes it", "--code-version", "code.1", "--evidence",
+                evidence_file(tmp_path, EVIDENCE)) == cli.EXIT_OK
+    prod = out(capsys)["production_model_id"]
+    assert call(cluster, db, "cse_worker", "transition", "--model", str(prod), "--to", "retired", "--reason",
+                "the worker tries") == cli.EXIT_REFUSED and "owner" in out(capsys)["reason"]
+    assert call(cluster, db, "cse_worker", "retire", "--model", str(prod), "--reason", "x") == cli.EXIT_REFUSED
+    assert call(cluster, db, "cse_migrator", "retire", "--model", str(prod), "--reason", "superseded") == cli.EXIT_OK
+    assert store.status(w, prod) == "retired"
+
+
+def test_c8_validate_policy_is_an_owner_command(cluster, capsys):
+    db = fs.fresh_db(cluster)
+    args = ("validate-policy", "--body", '{"name": "eligibility.1", "min_turnover": "1000"}', "--evidence-cutoff",
+            "2017-01-01T00:00:00+00:00")
+    assert call(cluster, db, "cse_worker", *args) == cli.EXIT_REFUSED
+    assert call(cluster, db, "cse_migrator", *args) == cli.EXIT_OK
+    cid = out(capsys)["configuration_id"]
+    with fs.conn(cluster, db, user="cse_worker").cursor() as cur:
+        cur.execute("select status, kind, registered_by from ml_configurations where configuration_id = %s", (cid,))
+        assert cur.fetchone() == ("validated", "policy", "cse_migrator")

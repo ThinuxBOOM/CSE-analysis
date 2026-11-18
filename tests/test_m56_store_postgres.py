@@ -42,8 +42,13 @@ def dataset(version="a" * 64, date_to=date(2023, 12, 31)):
     return ds.Dataset(m, version, (), {}, "reconstructed", "complete", "captured_only", {"rows": 0})
 
 
+CFG = {"adapter": "linear", "horizon": 5}
+CFG_ID = store.sha(store.canonical({**CFG, "kind": "model", "status": "provisional"}))
+
+
 def declaration(test=("2024-07-01T00:00:00+00:00", "2025-06-30T00:00:00+00:00"), folds=None, family=None):
-    return {"family": family or ["cfg-linear"], "primary": ["direction", 5], "nomination": "best_validation_loss",
+    return {"family": family or [CFG_ID], "primary": ["direction", 5], "nomination": "best_validation_loss",
+            "embargo_sessions": 5,
             "criterion": {"form": "gate_test_every_baseline_bonferroni_over_nominees"},
             "folds": folds or [{"v_start": f"20{18 + i}-01-01T00:00:00+00:00", "v_end": f"20{18 + i}-06-30T00:00:00+00:00"}
                                for i in range(5)],
@@ -139,21 +144,31 @@ def test_mlk4_test_periods_withheld_accessed_once_and_only_by_their_nominees(clu
     assert store.check_manifest(w, replace(m, withheld=((start, end),)))
     assert store.check_manifest(w, dataset(date_to=date(2023, 12, 31)).manifest)       # before the period
     pid = period_of(w, ids["protocol"])
+    with pytest.raises(store.Refused, match="not validated"):                       # audit M4: a candidate
+        store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": "d" * 64}],
+                     lambda: {"nominees_passed": []})
+    assert store.validate(w, ids["model"], gu.GOOD, "code.1")["passed"]
     dec = declaration(test=("2026-07-01T00:00:00+00:00", "2027-06-30T00:00:00+00:00"))
     other, _s, _r = store.declare_protocol(w, dec, gu.GOOD_PLAN)
     with pytest.raises(store.Refused, match="nominee"):
         store.access(w, other, period_of(w, other), [{"model_id": ids["model"], "predictions_sha256": "d" * 64}],
                      lambda: {"nominees_passed": []})
-    with pytest.raises(store.Refused, match="frozen"):
-        store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": ""}], lambda: {})
+    for bad in ("", "z" * 64):                                                        # audit M4: hex only
+        with pytest.raises(store.Refused, match="frozen"):
+            store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": bad}], lambda: {})
     def boom():
         raise RuntimeError("the criterion failed to compute")
     with pytest.raises(RuntimeError):
         store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": "d" * 64}], boom)
-    assert store.lifetime_accesses(w) == 0                                             # nothing spent
-    store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": "d" * 64}],
-                 lambda: {"nominees_passed": []})
+    assert store.lifetime_accesses(w) == 1                     # audit M5: looking is an access, whatever follows
     assert all(p[0] != pid for p in store.unspent_periods(w))                         # spent: no longer withheld
+    with pytest.raises(Exception):                                                     # and it cannot be retried
+        store.access(w, ids["protocol"], pid, [{"model_id": ids["model"], "predictions_sha256": "d" * 64}],
+                     lambda: {"nominees_passed": []})
+    with w.cursor() as cur:
+        cur.execute("select metrics_json from ml_model_metrics where scope = 'test'")
+        assert "the criterion failed to compute" in cur.fetchone()[0]                  # the failure is the result
+    w.rollback()
 
 
 def test_mlk5_other_protocols_intervals_and_the_multiplicity(cluster):
@@ -189,8 +204,19 @@ def test_protocol_declarations_are_complete_and_runs_follow_them(cluster):
                                                                       "2030-12-31T00:00:00+00:00")),
                                                  replace(gu.GOOD_PLAN, test_dates=10))
     assert state == "exploratory" and reasons
+    early = [{"v_start": f"201{i}-01-01T00:00:00+00:00", "v_end": f"201{i}-06-30T00:00:00+00:00"} for i in range(5)]
     old, _s, _r = store.declare_protocol(w, declaration(test=("2021-01-01T00:00:00+00:00",
-                                                              "2021-06-30T00:00:00+00:00")), gu.GOOD_PLAN)
+                                                              "2021-06-30T00:00:00+00:00"), folds=early), gu.GOOD_PLAN)
+    with pytest.raises(store.Refused, match="test_period"):        # audit M3: inside its own validation folds
+        store.declare_protocol(w, declaration(test=("2019-01-01T00:00:00+00:00", "2019-06-30T00:00:00+00:00")),
+                               gu.GOOD_PLAN)
+    with pytest.raises(store.Refused, match="test_period"):        # inside the embargo after the last V_end
+        store.declare_protocol(w, declaration(test=("2022-07-03T00:00:00+00:00", "2022-12-31T00:00:00+00:00")),
+                               gu.GOOD_PLAN)
+    nofold = declaration()
+    del nofold["embargo_sessions"]
+    with pytest.raises(store.Refused, match="embargo_sessions"):
+        store.declare_protocol(w, nofold, gu.GOOD_PLAN)
     with w.cursor() as cur:
         cur.execute("select timing, previously_scored from ml_test_periods where protocol_id = %s", (pid,))
         assert cur.fetchone() == ("prospective", False)

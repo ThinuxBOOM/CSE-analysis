@@ -18,11 +18,11 @@ GUARDS = {"ml_configurations": ["trg_mlc_guard"], "ml_protocols": ["trg_mlp_guar
           "ml_designations": ["trg_mlz_owner"]}
 GUARD_FUNCTIONS = ("ml_configuration_guard()", "ml_protocol_guard()", "ml_test_period_guard()", "ml_run_guard()",
                    "ml_test_access_guard()", "ml_model_guard()", "ml_model_event_guard()",
-                   "ml_production_designation_check()", "ml_owner_only_guard()")
+                   "ml_production_designation_check()", "ml_owner_only_guard()", "ml_stamp_guard()")
 
 
 def triggers(table):
-    return GUARDS.get(table, []) + [f"trg_{table}_append_only", f"trg_{table}_no_truncate"]
+    return GUARDS.get(table, []) + [f"trg_{table}_append_only", f"trg_{table}_no_truncate", f"trg_{table}_stamp"]
 
 
 def _one(conn, sql, args=()):

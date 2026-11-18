@@ -343,6 +343,42 @@ know yet (the Phase 10 backtest and the validation's point-in-time share); any o
 the declared share, the validation labels, the owner path): all killed; 4 survived the first test set and were
 closed by `test_c6`.
 
+## First M5-6 audit (fresh-context agent, at 6678ca5): parts 1 to 3 accepted
+
+No Blocker (C-0037): append-only everywhere, the lifecycle, gate 1, the run clock, disjoint and clock-timed test
+periods with one access, the owner-only production row, MLK-16 and §5.5's sufficiency verified (43 mutants, 31
+killed). Ten Majors, all fixed; each fix fails a test when reverted (`tests/test_m56_audit_postgres.py` and the
+updated store, migration, CLI and gate tests):
+- **M1** a test period could be added to a protocol after its runs: now only in the protocol's own transaction (0021).
+- **M2** every ledger time and writer was caller-settable: `ml_stamp_guard()` on all eighteen tables (MLK-6's
+  "supplied earlier timestamp").
+- **M3** a test period inside the protocol's own validation folds was accepted: the declaration states
+  `embargo_sessions` and P_start must lie after the last V_end plus that many days (a necessary condition; the exact
+  session count is the protocol builder's, M5-8).
+- **M4** an access accepted a candidate, an out-of-family nominee and a non-hex hash: all refused (MLK-4).
+- **M5** a failure after looking left the period unspent: the access row is committed first; a failure is recorded
+  as the result and the period stays spent.
+- **M6** the worker could retire a production model: owner only (0021), with an owner `retire` command.
+- **M7** the worker could mark a policy validated: a validated configuration is the owner's (0021; `validate-policy`);
+  gate 6 reads each declared policy's status from the registry; a policy whose evidence cutoff is not before the
+  first V_start counts toward the multiplicity (MLK-6's second half).
+- **M8** gate 5 read only `state` and `rejects`: a result now carries its level and whether it was a simulation, and
+  counts only at alpha/m for the registry's m, with B and L at the design's floors.
+- **M9** `validate` took registry facts from the caller: `registry_facts` supplies sufficiency (the primary horizon's;
+  any other is `exploratory`, minor 14), family membership, folds, level, multiplicity and policy statuses. Promotion
+  evidence comes from the registry (part 4).
+- **M10** `check_manifest` had no caller: `register_dataset` and `start_run` both apply it (a period declared after a
+  dataset was registered refuses its next run).
+Minors fixed: 11 (a production copy equals its source; the designation matches its output and horizon), 12 (gate 4
+needs at least one declared fold), 14 (above), 15 (the result is a metrics row; the access row stays append-only).
+Recorded, not changed: 13 (a version is promoted at most once ever, stricter than §9.2's once per purpose); 16 (fold
+`grace` = 21 equals the target policy's today; binding it to the pinned build is M5-8's); 17 (design §5.5's worked
+table predates revision 5's 20-block rule; for the owner's next design revision). The twelve surviving mutants of
+the audit each now have a test. Mutation check of the fixes: 22 mutants (each Major's rule, gate 5's three
+conditions, minors 11, 12 and 14): all killed; 2 survived the first test set (an out-of-family nominee, which
+`validate` cannot produce, now tested by a hand-validated model; gate 4 with no folds) and were closed. **Status:
+M5-6 is ready for its re-audit.**
+
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings

@@ -10,6 +10,8 @@ promotion to production (evidence about the final-fit artifact; the owner's act)
 from dataclasses import dataclass, field
 from typing import Optional
 
+from worker.evaluation_metrics.bootstrap import replicates_for
+
 from .sufficiency import SUFFICIENT
 
 VALIDATION, PROMOTION = "validation", "promotion"
@@ -46,10 +48,19 @@ class ValidationEvidence:
     ages_evaluated: tuple                   # (min, max) sessions since C_train with evaluated rows
     multiplicity: int                       # the m used: max(declared family, the registry's count; §5.4)
     no_engine_component: bool = False
+    alpha: float = 0.05                     # the protocol's declared level
+    horizon: int = 1                        # the model's horizon (gate 5's block-length floor)
 
 
 def _g(ok, reason, **evidence):
     return {"pass": bool(ok), "reason": None if ok else reason, "evidence": evidence}
+
+
+def _as_required(r, alpha, m, horizon):
+    level = getattr(r, "level", None)
+    return (not getattr(r, "simulation", True) and level is not None and level <= alpha / m * (1 + 1e-12)
+            and getattr(r, "replicates", 0) >= replicates_for(m, alpha)
+            and getattr(r, "block_length", 0) >= max(horizon, 10))
 
 
 def validation_report(e: ValidationEvidence):
@@ -62,21 +73,27 @@ def validation_report(e: ValidationEvidence):
     g[3] = _g(e.leakage_suite_passed, "the leakage suite has not passed on this code version",
               code_version=e.code_version)
     numbers = sorted(f.fold_no for f in e.folds)
-    every = numbers == list(range(1, e.declared_folds + 1))
+    every = e.declared_folds >= 1 and numbers == list(range(1, e.declared_folds + 1))    # audit minor 12
     bad = [f.fold_no for f in e.folds if not f.has_metrics or f.reliability_ok is False or f.coverage_ok is False
            or not f.refusal_rates_reported]
     g[4] = _g(every and not bad, "a fold is missing" if not every else f"folds {bad}: metrics, reliability, coverage "
                                                                      f"or refusal rates not as required",
               folds=numbers)
     missing = [b for b in e.required_baselines if b not in e.baseline_results]
+    m = max(1, e.multiplicity)
     failed = [b for b in e.required_baselines if b in e.baseline_results and not (
         e.baseline_results[b].state == "tested" and e.baseline_results[b].rejects)]
+    # M5-6 audit M8: a result counts only if it was run as the gate requires: at alpha / m for this m, with the
+    # design's floors on B and L, never as a simulation
+    unfit = [b for b in e.required_baselines if b in e.baseline_results and b not in failed and not _as_required(
+        e.baseline_results[b], e.alpha, m, e.horizon)]
     if not e.size_shown:
         g[5] = _g(False, "size_not_shown")
     else:
-        g[5] = _g(bool(e.required_baselines) and not missing and not failed,
+        g[5] = _g(bool(e.required_baselines) and not missing and not failed and not unfit,
                   "no baseline" if not e.required_baselines else f"not tested against {missing}" if missing
-                  else f"does not beat {failed}", baselines=list(e.required_baselines))
+                  else f"does not beat {failed}" if failed else f"not tested at alpha/m with the floors: {unfit}",
+                  baselines=list(e.required_baselines), level=e.alpha / m)
     prov = sorted(k for k, v in e.policy_status.items() if v != "validated")
     g[6] = _g(not prov, f"provisional policies: {prov}")
     waived = e.survivorship != "complete" and e.survivorship_waiver is not None

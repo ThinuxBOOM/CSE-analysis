@@ -30,8 +30,9 @@ def test_s1_sufficiency_each_minimum_alone():
                             test_dates=419))[0] == sf.EXPLORATORY
 
 
-def passed():
-    return NS(state="tested", rejects=True)
+def passed(level=0.05 / 3, replicates=9999, block_length=10, simulation=False):
+    return NS(state="tested", rejects=True, level=level, replicates=replicates, block_length=block_length,
+              simulation=simulation)
 
 
 GOOD = gt.ValidationEvidence(
@@ -107,3 +108,32 @@ def test_mlk13_each_promotion_gate_alone_blocks():
         assert not rep["gates"][12]["pass"] and label in rep["gates"][12]["reason"]
     w = gt.promotion_report(replace(GOODP, point_in_time_share=0.0, reconstructed_waiver=7))
     assert w["gates"][11]["pass"] and "reconstructed_evidence" in w["labels"]
+
+
+def test_audit_m8_gate5_counts_only_a_result_run_at_alpha_over_m_with_the_floors():
+    both = ("base_prior", "base_rate_252")
+    for bad in (passed(level=0.05), passed(simulation=True), passed(replicates=199), passed(block_length=9),
+                NS(state="tested", rejects=True)):                     # a result that does not say how it was run
+        rep = gt.validation_report(replace(GOOD, baseline_results={"base_prior": passed(), "base_rate_252": bad}))
+        assert not rep["passed"] and [n for n, x in rep["gates"].items() if not x["pass"]] == [5], bad
+        assert "alpha/m" in rep["gates"][5]["reason"]
+    # the audit's case: a result at m = 1 while the registry's multiplicity is 1000
+    big = replace(GOOD, multiplicity=1000, baseline_results={b: passed(level=0.05) for b in both})
+    assert not gt.validation_report(big)["gates"][5]["pass"]
+    ok = replace(big, baseline_results={b: passed(level=0.05 / 1000, replicates=400_000) for b in both})
+    assert gt.validation_report(ok)["passed"]
+    assert not gt.validation_report(replace(ok, horizon=21))["gates"][5]["pass"]      # L >= max(h, 10)
+
+
+def test_audit_survivors_inner_minimum_at_h10_and_gate11_boundary():
+    p10 = replace(GOOD_PLAN, horizon=10, inner_dates=(60, 60, 60), fold_dates=(80,) * 5)
+    assert sf.check(p10) == (sf.SUFFICIENT, [])
+    state, reasons = sf.check(replace(p10, inner_dates=(60, 59, 60)))                # max(42, 6h) = 60, not 42
+    assert state == sf.EXPLORATORY and any("calibrate slice 59 < 60" in r for r in reasons)
+    assert gt.promotion_report(replace(GOODP, point_in_time_share=0.5))["gates"][11]["pass"]     # equal passes
+    assert not gt.promotion_report(replace(GOODP, point_in_time_share=0.4999))["gates"][11]["pass"]
+
+
+def test_audit_minor12_gate4_needs_a_declared_fold():
+    rep = gt.validation_report(replace(GOOD, folds=(), declared_folds=0))
+    assert not rep["gates"][4]["pass"] and [n for n, x in rep["gates"].items() if not x["pass"]] == [4]
