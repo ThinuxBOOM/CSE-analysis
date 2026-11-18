@@ -108,8 +108,9 @@ def test_l1_the_stored_world_becomes_a_dataset(cluster, monkeypatch):
     c.rollback()
     assert stored
     for eid, js in stored.items():
-        want = set(js["components_present"]) == {x.feature_id for x in registry.BY_ID[eid].components}
-        assert r5.features[f"de.{eid}.full"][0] is want
+        weighted = {c["feature_id"] for c in js["components"] if D(str(c["weight"])) > 0}
+        assert r5.features[f"de.{eid}.full"][0] is (weighted <= set(js["components_present"]))
+        assert r5.features[f"de.{eid}.version"][0] == js["engine_version"] == registry.BY_ID[eid].version
         assert abs(sum(r5.features[f"de.{eid}.parts"][0].values()) - r5.features[f"de.{eid}"][0]) < D("1e-11")
     assert {r5.features[f"de.{e}.full"][0] for e in stored} == {True, False}      # both cases occur here
     assert len(r5.sources) == 1 + 2 + 15                                         # MF row, two F7 rows, 15 outputs

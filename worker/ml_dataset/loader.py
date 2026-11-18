@@ -59,17 +59,18 @@ def _survivorship(cur, snap):
 
 
 def _detail(engine_id, js):
-    """(full, parts) of one scored output: whether every component of the engine's registry entry was present, and
-    each present component's share of the score, contribution / total weight of the present components (DE-1 §7.3),
-    so that the shares add up to the score."""
-    from worker.engines import registry
-    engine = registry.BY_ID.get(engine_id)
+    """(full, parts, engine version) of one scored output, all from the stored output itself, which the dataset binds
+    by its hash (first M5-4 part 2 audit, M1): `full` when every component the output lists with a positive weight is
+    among its components_present (a weight-0 component never counts); each present component's share of the score,
+    contribution / total weight of the present components (DE-1 §7.3); the output's own engine_version."""
     present = set(js.get("components_present") or [])
-    comps = [c for c in js.get("components") or [] if c.get("feature_id") in present and "contribution" in c]
+    listed = js.get("components") or []
+    weighted = {c["feature_id"] for c in listed if Decimal(str(c.get("weight", 0))) > 0}
+    comps = [c for c in listed if c.get("feature_id") in present and "contribution" in c]
     weight = sum(Decimal(str(c["weight"])) for c in comps)
     parts = {c["feature_id"]: Decimal(c["contribution"]) / weight for c in comps} if weight else {}
-    full = engine is not None and present == {c.feature_id for c in engine.components if c.weight > 0}
-    return full, parts
+    full = bool(weighted) and weighted <= present
+    return full, parts, js.get("engine_version")
 
 
 def _run(cur, sid, manifest):

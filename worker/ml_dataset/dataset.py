@@ -91,7 +91,7 @@ class LineIn:
     de: dict = field(default_factory=dict)      # {engine_id: (score, state, output_hash)}
     industry_group: Optional[str] = None
     link_state: Optional[str] = None            # why there is no F7 row: issuer_link_absent | issuer_link_conflict
-    de_detail: dict = field(default_factory=dict)   # {engine_id: (full component set used, {feature_id: share})}
+    de_detail: dict = field(default_factory=dict)   # {engine_id: (full set used, {feature_id: share}, version)}
 
 
 @dataclass(frozen=True)
@@ -417,11 +417,12 @@ def build(manifest, snapshots, labels, target_build):
                 if score is not None and eid in ln.de_detail:
                     # M5-4 part 2 (§7.2): calibrated_engine fits only where the engine used its full component set,
                     # and reports the engine's own components; both come from the output, bound by its hash
-                    full, parts = ln.de_detail[eid]
+                    full, parts, engine_version = ln.de_detail[eid]
                     feats[f"de.{eid}.full"] = (bool(full), "fresh", None)
                     feats[f"de.{eid}.parts"] = (dict(parts), "fresh", None)
+                    feats[f"de.{eid}.version"] = (engine_version, "fresh", None)
             for name, (value, state, _r) in feats.items():
-                if name.endswith((".full", ".parts")):
+                if name.endswith((".full", ".parts", ".version")):
                     continue
                 if value is None:
                     family = name.split(".")[0]

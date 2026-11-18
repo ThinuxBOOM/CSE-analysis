@@ -182,7 +182,8 @@ ML library versions in CI's environment report.
 
 ## M5-4 part 2: `calibrated_engine`
 
-**Status: built; audit pending.**
+**Status: ACCEPTED on the branch (C-0095: audit reported no Blocker; its Majors fixed). With part 1, M5-4 is
+complete.**
 
 | File | Content | Design |
 |---|---|---|
@@ -193,7 +194,18 @@ ML library versions in CI's environment report.
 Also: a dataset unit test of the new fields and a PostgreSQL check that `full` and the shares match the stored
 outputs (both cases occur in the test world). Mutation check: 7 mutants (partial rows fitted, contributions without
 the slope or unscaled, no s² term, detail for an unscored output, `full` always true, unnormalised shares): all
-killed.
+killed. **Correction (audit):** the "partial rows fitted" mutant covered only the shared path; fitting the direction
+map alone on partial rows survived (M2, below).
+
+**Audit (fresh-context agent, at d3294be): no Blocker.** Fixed: **M1** `full` and the engine version came from the
+running registry, not from the stored output, so a changed registry could turn partial-set rows full without the
+dataset version changing. Now `full`, the shares and the engine version all come from the stored output alone (whose
+hash the dataset binds; `ml_dataset.4`): `full` when every positively weighted component it lists is present; the
+adapter refuses rows of mixed versions or of a version other than the registry's, and records the data's.
+**M2** the direction map is now checked against an explicit fit on full-set rows only. Minors: contributions rescale
+the quantised shares to add up to s (to floating-point precision; the claim "exactly" is withdrawn); weight-0
+components never count toward a full set, with a `_detail` unit test (weight 0, `n_below_min`, an own-value absence)
+and the PostgreSQL check aligned; the only hyperparameter is `engine_id`. Each fix fails a test when reverted.
 
 ---
 

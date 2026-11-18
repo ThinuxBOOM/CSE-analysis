@@ -36,7 +36,8 @@ def world(n=1200, seed=2, partial_noise=False):
         feats = {"mf.x": (D(str(round(rnd.gauss(0, 1), 6))), "fresh", None),
                  f"de.{E}": (D(str(round(s, 12))), "scored", None),
                  f"de.{E}.full": (full, "fresh", None),
-                 f"de.{E}.parts": ({"rev_g_cum": D(str(a)), "profit_g_cum": D(str(round(s - a, 12)))}, "fresh", None)}
+                 f"de.{E}.parts": ({"rev_g_cum": D(str(a)), "profit_g_cum": D(str(round(s - a, 12)))}, "fresh", None),
+                 f"de.{E}.version": (registry.BY_ID[E].version, "fresh", None)}
         rows.append(ds.Row(sym, session, datetime.combine(session, datetime.min.time(), timezone.utc), i, feats, {},
                            ()))
         sign = 1 if full else -1
@@ -60,6 +61,15 @@ def test_e1_fits_only_full_set_rows_and_finds_the_engine_signal():
     art = ce.fit(tr, {"engine_id": E}, seed=1)
     b = art.load("calibrated_engine")
     assert b["return"]["slope"] > 0.015                                     # the sign of the full-set rows only
+    # first part 2 audit M2: the direction map too is the fit on full-set rows only, exactly
+    from sklearn.linear_model import LogisticRegression
+    full_rows = [i for i, r in enumerate(tr.rows) if r.features[f"de.{E}.full"][0] and tr.y.direction[i] >= 0]
+    s = np.array([float(tr.rows[i].features[f"de.{E}"][0]) for i in full_rows])
+    ref = LogisticRegression(C=1e6, max_iter=2000, random_state=1).fit(np.column_stack([s, s * s]),
+                                                                       tr.y.direction[full_rows])
+    order = [list(ref.classes_).index(k) for k in range(3)]
+    assert np.allclose(b["direction"]["coef"], ref.coef_[order], atol=1e-6)
+    assert b["direction"]["coef"][0][0] > 1.0                               # rise rises with s on full-set rows
     assert b["rows_used"] == sum(1 for r in tr.rows if r.features[f"de.{E}.full"][0])
     full = [r for r in test if r.features[f"de.{E}.full"][0]]
     p = ce.predict(art, full)
@@ -95,7 +105,7 @@ def test_e3_contributions_are_the_engines_components_and_add_up():
         s = float(r.features[f"de.{E}"][0])
         c = p.contributions[i]
         assert set(c["return"]) == {"rev_g_cum", "profit_g_cum", "intercept"}
-        assert sum(c["return"].values()) == pytest.approx(p.ret[i], abs=1e-12)
+        assert sum(c["return"].values()) == pytest.approx(p.ret[i], abs=1e-15)
         logits = w0 + W[:, 0] * s + W[:, 1] * s * s
         assert sum(c["direction"].values()) == pytest.approx(logits[int(np.argmax(logits))], abs=1e-9)
 
@@ -114,6 +124,15 @@ def test_e4_provenance_determinism_and_refusals():
         [q9(x) for x in ce.predict(a2, rows).ret if x is not None]
     with pytest.raises(ValueError, match="engine_id"):
         ce.fit(tr, {"engine_id": "no_such_engine"})
+    with pytest.raises(ValueError, match="nothing to select"):
+        ce.fit(tr, {"engine_id": E, "C": 0.01})
+    rows = list(d.rows)
+    r0 = rows[1]
+    rows[1] = ds.Row(r0.symbol, r0.session, r0.t, r0.snapshot_id, {**r0.features, f"de.{E}.version": ("0", "fresh",
+                                                                                                    None)}, {}, ())
+    mixed = ds.Dataset(None, "v", tuple(rows), d.labels, "point_in_time", "complete", "all", {})
+    with pytest.raises(ValueError, match="one engine version"):
+        ce.fit(split(mixed)[0], {"engine_id": E})
     with pytest.raises(Refused, match="wrong_slice"):
         ce.fit(split(d, name="training")[0], {"engine_id": E})
     with pytest.raises(Refused, match="artifact_adapter"):

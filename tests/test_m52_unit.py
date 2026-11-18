@@ -461,12 +461,13 @@ def test_r3_the_version_binds_the_builders_code(monkeypatch):
 def test_m54_engine_detail_reaches_the_dataset_only_for_scored_outputs():
     """M5-4 part 2: whether the engine used its full component set, and the components' shares, travel with a scored
     output; never into the null counts or an ML schema."""
-    detail = {"fund_growth": (True, {"rev_g_cum": D("0.3"), "profit_g_cum": D("0.2")})}
+    detail = {"fund_growth": (True, {"rev_g_cum": D("0.3"), "profit_g_cum": D("0.2")}, "1")}
     s = snap(0, rows={"Q.N0000": replace(line("Q.N0000", 0, 80), de_detail=detail)})
     d = build(manifest(), [s], labels_for([s]))
     q = next(r for r in d.rows if r.symbol == "Q.N0000")
     assert q.features["de.fund_growth.full"] == (True, "fresh", None)
     assert q.features["de.fund_growth.parts"][0] == {"rev_g_cum": D("0.3"), "profit_g_cum": D("0.2")}
+    assert q.features["de.fund_growth.version"] == ("1", "fresh", None)
     other = next(r for r in d.rows if r.symbol == "S0.N0000")
     assert "de.fund_growth.full" not in other.features                      # no detail given: none invented
     unscored = replace(line("U.N0000", 0, 81), de={"fund_growth": (None, "insufficient_inputs", "h" * 64)},
@@ -474,3 +475,25 @@ def test_m54_engine_detail_reaches_the_dataset_only_for_scored_outputs():
     u = next(r for r in build(manifest(), [snap(0, rows={"U.N0000": unscored})],
                               labels_for([snap(0, rows={"U.N0000": unscored})])).rows if r.symbol == "U.N0000")
     assert "de.fund_growth.full" not in u.features
+
+
+def test_m54_detail_comes_from_the_stored_output_alone():
+    """First M5-4 part 2 audit, M1 and m2: `full` from the output's own component list (weight-0 components never
+    count; an n_below_min or an own-value absence makes it partial), the version from the output, never from the
+    running registry."""
+    from worker.ml_dataset.loader import _detail
+    def out(components, present, version="1"):
+        return {"engine_version": version, "components_present": present, "components": components}
+    full = out([{"feature_id": "a", "weight": 1, "contribution": "0.2"},
+                {"feature_id": "b", "weight": 1, "contribution": "0.4"},
+                {"feature_id": "beta", "weight": 0, "absent": "n_below_min"}], ["a", "b"])
+    f, parts, v = _detail("mkt_relative", full)
+    assert f is True and v == "1" and parts == {"a": D("0.1"), "b": D("0.2")}
+    partial = out([{"feature_id": "a", "weight": 1, "contribution": "0.2"},
+                   {"feature_id": "b", "weight": 1, "absent": "n_below_min"}], ["a"])
+    assert _detail("x", partial)[0] is False and _detail("x", partial)[1] == {"a": D("0.2")}
+    own = out([{"feature_id": "a", "weight": 1, "contribution": "0.2"},
+               {"feature_id": "b", "weight": 1, "absent": "missing"}], ["a"], version="2")
+    assert _detail("fund_growth", own)[0] is False and _detail("fund_growth", own)[2] == "2"
+    assert _detail("no_such_engine", full)[0] is True                       # the running registry is not consulted
+

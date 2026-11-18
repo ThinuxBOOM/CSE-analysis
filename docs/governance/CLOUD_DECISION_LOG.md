@@ -908,3 +908,10 @@ Probability calibration and prediction intervals are built and tested on synthet
 calibration repairs an overconfident model, and the intervals reach their nominal coverage in each liquidity class.
 The planted-signal test of the design (MLK-7) passes. Audit pending.
 
+## C-0095: M5-4 part 2 accepted; M5-4 complete ([delegated], 2026-11-18)
+
+The audit of the engine calibration found no Blocker, so it is accepted and M5-4 is complete. Its two Majors are
+fixed: whether an engine used all its components, and which engine version produced a score, are now read from the
+stored engine output itself rather than from today's code, so a later engine change cannot silently alter an old
+dataset; and the direction map is tested against a fit on full-set rows only.
+
