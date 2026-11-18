@@ -37,7 +37,7 @@ def explain(conn, snapshot_id, symbol):
     mode, cutoff, horizon, _cid, d_star = head
     el, fj, px, rs, stale, adj, dj, wd = row
     snap, imported, _ev = jobs.build(conn, Query(mode, cutoff, horizon), cfg)
-    ids, digest, window = store.provenance(snap, imported, symbol) if symbol in imported else ([], None, [])
+    ids, digest, window = store.provenance(snap, imported, symbol)          # MF-8: imported and captured ids
     return {"snapshot_id": snapshot_id, "symbol": symbol, "mode": mode, "d_star": d_star, "eligibility": el,
             "px_ref": px, "ref_session": rs, "stale_sessions": stale, "adj_ref": adj,
             "features": json.loads(fj), "factors": factors, "moves": moves,

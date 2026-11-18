@@ -103,10 +103,15 @@ def snapshot_report(conn, header, margin=MARGIN):
             for sym in sorted(set(stored) | set(again)):
                 if stored.get(sym) != again.get(sym):
                     problems.append(f"{sym}: replay row differs")
+            stored_company = {r[0]: r[12] for r in rows}
+            for r in snap.rows:                          # MF-8: the company link is a replayed fact too
+                if r["symbol"] in stored_company and (stored_company[r["symbol"]] or None) != \
+                        (r.get("company_id") or None):
+                    problems.append(f"{r['symbol']}: replay company_id differs")
             if _factor_rows([f for fs in snap.factors.values() for f in fs]) != _factor_rows(factors):
                 problems.append("replay factor list differs")
-            mv = sorted((sym, m.session_from, m.session_to, imported[sym].rows[m.session_from]["close"],
-                         imported[sym].rows[m.session_to]["close"], store.MOVE_STATUS[m.state])
+            mv = sorted((sym, m.session_from, m.session_to, snap.closes[sym][m.session_from],
+                         snap.closes[sym][m.session_to], store.MOVE_STATUS[m.state])
                         for sym, ms in snap.moves.items() for m in ms)
             if mv != sorted(moves):
                 problems.append("replay move flags differ")

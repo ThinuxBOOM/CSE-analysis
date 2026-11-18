@@ -53,11 +53,19 @@ def snapshot(conn, snapshot_id):
     for sym, company, el, fj, px, adj, rs, stale, rh in raw:
         sec = va.SecurityRow(sym, company, d_star, None if px is None else Decimal(px),
                              None if adj is None else Decimal(adj), rs, stale,
-                             None,                     # market_cap_reported: not in an MF row (C-0079)
+                             _market_cap(json.loads(fj)),   # MF's stored feature (MF-8; review m7, C-0079)
                              tuple(factors.get(sym, ())), tuple(moves.get(sym, ())))
         rows[sym] = MFRow(sec, el, mf_values(json.loads(fj)), rh)
     return {"snapshot_id": snapshot_id, "mode": mode, "cutoff": _iso(cutoff), "horizon": _iso(horizon),
             "d_star": d_star, "imported": bool(imported), "configuration_id": mf_cid}, rows
+
+
+def _market_cap(features):
+    """CSE's reported market cap from the MF row's own feature (`market_cap_reported`, provisional), or None. Only a
+    value in an admissible state (fresh, stale, partial) is read; any other reaches the engines as absent."""
+    x = features.get("market_cap_reported") or {}
+    v = x.get("value")
+    return Decimal(str(v)) if v is not None and x.get("state") in ("fresh", "stale", "partial") else None
 
 
 def decisions(conn, company_ids):

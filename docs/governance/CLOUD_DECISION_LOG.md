@@ -969,3 +969,11 @@ fixes, and some owner-path checks in the command line) must be fixed before `mai
 work on the branch review's Blocker has started: the market-feature store can now read Phase 2's captured data (part
 1: the loader). The configuration gains the captured path's parameters (minimum coverage and MF's own tolerances),
 which changes every MF configuration id: a configuration registered before must be registered again.
+
+## C-0102: MF-8 part 2a, snapshots over captured data ([delegated], 2026-11-18)
+
+Market-feature snapshots are now built from Phase 2's captured data as well as the TradeIQ import. Each security row
+records the company it belongs to, which is what lets the financial engines reach the issuer's statements; a day both
+sources cover is compared value by value, and any disagreement is marked and kept rather than resolved silently, as
+the design requires. The engines also now read CSE's reported market cap from the snapshot. Labels (target builds)
+over captured days are the next part; until then they are refused rather than built wrongly.

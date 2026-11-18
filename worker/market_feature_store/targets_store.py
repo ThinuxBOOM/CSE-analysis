@@ -226,6 +226,11 @@ def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VE
             refs[sid], ref_instants[sid] = reference_rows(cur, sid), inst
     conn.rollback()
     snap, imported, _ev, statements, cal_obs = jobs.build_all(conn, query, cfg, keep_series=True)
+    if snap.captured is not None and snap.captured.finals:
+        # MF-8 part 2b: labels' resolved_at on captured sessions (the governing events' and observations' instants)
+        # is not built yet; refusing is better than labelling captured windows with imported-only instants
+        raise configuration_.ConfigurationError("target builds over captured sessions are not implemented yet "
+                                                "(MF-8 part 2b)")
     labelled, skipped = labels(snap, imported, statements, cal_obs, query, refs, cfg.target_policy, ref_instants)
     rows = []
     for sid, lab in labelled:

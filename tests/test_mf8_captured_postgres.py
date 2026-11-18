@@ -82,3 +82,24 @@ def test_c4_coverage_below_the_minimum_is_not_final(env, pg):
     assert state == "succeeded"
     strict = captured.load(conn(pg), known(datetime.now(timezone.utc)), Decimal("1.01"), CAP.tolerance_dict())
     assert TD not in [d for d, _g in strict.finals] and TD in strict.non_finals
+
+
+def test_c5_observations_are_admitted_by_the_query_and_events_need_a_received_response(env, pg):
+    before = datetime.now(timezone.utc) - timedelta(seconds=1)
+    e = env()
+    assert e.capture()[0] == "succeeded"
+    c = conn(pg)
+    ids = {r[0] for r in q(c, "select id::text from companies where ticker = any(%s)", (TRADED,))}
+    with c.cursor() as cur:
+        assert captured._observations(cur, known(datetime.now(timezone.utc)), TD, ids)
+        assert captured._observations(cur, known(before), TD, ids) == {}      # created after T: not admitted
+    c.rollback()
+
+    class Rows:                                                        # one terminal event of a run with no response
+        def execute(self, *a):
+            pass
+
+        def fetchall(self):
+            return [("r1", "market_capture", TD, "post_close", "succeeded", datetime.now(timezone.utc),
+                     {"summary": {"B": {"status": "known"}}}, None)]
+    assert captured.load_events(Rows(), known(datetime.now(timezone.utc))) == ()

@@ -11,6 +11,7 @@ from fractions import Fraction
 from worker.market_features import actions, calendar, canonical, features, market, numeric, series, universe
 from worker.market_features.reference import reference_series
 
+from . import combined
 from . import history_bars as hb
 
 MARKET_LOOKBACK = 130          # sessions of membership a snapshot needs (beta_126 and the market sums)
@@ -29,26 +30,44 @@ class Snapshot:
     series: dict = field(default_factory=dict, repr=False)       # symbol -> Series (not stored; target builds)
     references: dict = field(default_factory=dict, repr=False)   # symbol -> {session: Reference} (not stored)
     sequence: object = field(default=None, repr=False)           # the session sequence (not stored)
+    pending: tuple = ()                                 # MF-8: non-final captured sessions after D* (stored)
+    closes: dict = field(default_factory=dict, repr=False)       # symbol -> {session: raw close used} (move flags)
+    captured: object = field(default=None, repr=False)           # MF-8: the captured evidence read (provenance)
 
 
 def build(imported_by_symbol, statements, query, *, calendar_observations=(), threshold=Fraction(1, 4),
-          policy=universe.EligibilityPolicy(), config=features.FeatureConfig(), keep_series=False):
-    finals = hb.final_sessions(imported_by_symbol)
-    seq = calendar.session_sequence(final_dates=finals, non_final_dates=[], query=query,
+          policy=universe.EligibilityPolicy(), config=features.FeatureConfig(), keep_series=False, captured=None,
+          tolerances=None):
+    """captured: MF-8's captured evidence (`captured.Captured`) or None; tolerances: the configuration's (§5.4)."""
+    finals = set(hb.final_sessions(imported_by_symbol))
+    non_finals = ()
+    if captured is not None:
+        finals |= {d for d, _g in captured.finals}
+        non_finals = tuple(d for d in captured.non_finals if d not in finals)
+    seq = calendar.session_sequence(final_dates=sorted(finals), non_final_dates=list(non_finals), query=query,
                                     calendar_observations=calendar_observations)
     if seq.cutoff is None:
         raise ValueError("no final session is admitted")
     sessions = seq.sessions
     snap = Snapshot(seq.cutoff, sessions)
+    snap.captured = captured
+    snap.pending = tuple(d for d in non_finals if d > seq.cutoff)
     series_by, refs_by = {}, {}
-    for sym, imp in sorted(imported_by_symbol.items()):
-        if not imp.rows:                # quarantines only: evidence for labels' instants, not a security of the snapshot
+    symbols = {sym for sym, imp in imported_by_symbol.items() if imp.rows}   # quarantines only: not a security here
+    if captured is not None:
+        symbols |= set(captured.bars)
+    for sym in sorted(symbols):
+        imp = imported_by_symbol.get(sym)
+        bars = {s: combined.bar(captured.bar_on(sym, s) if captured is not None else None,
+                                hb.bar_on(sym, imp, s) if imp is not None and imp.rows else None, tolerances or {})
+                for s in sessions}
+        if all(b is None for b in bars.values()):
             continue
-        bars = {s: hb.bar_on(sym, imp, s) for s in sessions}
         refs = {r.session: r for r in reference_series([(s, bars[s]) for s in sessions])}
         fs = actions.build_factors(sym, statements, query, sessions=list(sessions), references=refs,
                                    cutoff_session=seq.cutoff)
         closes = [(s, b.px_close) for s, b in bars.items() if b is not None and b.px_close is not None]
+        snap.closes[sym] = dict(closes)
         mv = actions.detect_moves(sym, sorted(closes), fs, statements, query, threshold)
         series_by[sym] = series.build_series(sym, seq, bars, refs, fs, mv)
         refs_by[sym] = refs
@@ -69,6 +88,7 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
                    if ref.px_ref is not None and actions.adj(ref.px_ref, ref.ref_session, seq.cutoff, s.factors)
                    is not None else None)
         snap.rows.append({"symbol": sym, "security_id": canonical.security_id(sym), "eligibility": el.result,
+                          "company_id": captured.company_ids.get(sym) if captured is not None else None,
                           "features": {k: (v.value, v.state, v.reasons) for k, v in sorted(vals.items())},
                           "px_ref": ref.px_ref, "ref_session": ref.ref_session, "stale_sessions": ref.stale_sessions,
                           "adj_ref": adj_ref, "ref_source_quality": ref.source_quality})

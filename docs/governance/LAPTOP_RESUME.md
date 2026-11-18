@@ -45,7 +45,11 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 1 (loader) done: `worker/market_feature_store/captured.py`, tests `tests/test_mf8_captured_postgres.py`.
 - **The MF configuration changed** (new `capture` block: `min_coverage` 0.95 and MF's own tolerances). Every MF
   configuration id is new; run `register-configuration` again on any test database before `snapshot`.
-- Parts 2 (snapshot path) and 3 (audit) follow; see the MF-8 section of the Phase 3 implementation record.
+- Part 2a (snapshots) done: captured and imported bars merged per §5.4; rows carry `company_id`; `pending_sessions`
+  and captured observation ids stored; `verify` and `explain` handle captured data; DE-4 reads the stored market cap.
+  **MF code version is now `mf.3`**: snapshots written by `mf.2` code show as a different code version in `verify`.
+- Part 2b (target builds over captured sessions) and part 3 (audit) follow. Until 2b lands, `targets` refuses a
+  build whose snapshot used captured sessions, with a message naming MF-8 part 2b.
 
 ### 2026-11-18: M5-6 accepted (C-0101)
 

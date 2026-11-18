@@ -906,3 +906,31 @@ followed, §5.1). **This changes every MF configuration id**; a configuration wr
 path** against the fake CSE into PostgreSQL and read it back: the final session and its governing run, rows 1 and 3
 bars, company ids equal to `companies.id`, the reported market cap, admission by T and by H, a `post_open` run that
 never governs, coverage below the minimum giving a non-final session.
+
+**Part 2a, snapshots over captured and imported evidence** (MF code version `mf.3`):
+- `worker/market_feature_store/combined.py`: one bar per (security, final session) by §5.4. One source: that bar.
+  Both: compared field by field (traded exactly; close, high, low, open by the price tolerance; share volume and
+  trade count by the volume tolerance; turnover by its own). Agreement is flagged `imported_agrees`; a disagreement
+  makes the bar `conflicting` and keeps the imported value in `imported_differs:<field>=<value>`. The captured bar
+  carries the record because it holds the raw provenance, not because its values win.
+- `snapshot.build` takes the captured evidence: the session sequence is the union of captured and imported final
+  sessions, with captured non-final sessions as its gaps; securities are the union; each row carries `company_id`
+  (the latest governing run naming it); non-final sessions after D* are stored as `pending_sessions`; the closes
+  actually used are kept for the move flags.
+- `store`: `company_id` and `pending_sessions` are written (and bound by `snapshot_hash`); a row's provenance lists
+  the imported bar ids, then the raw observation ids of its captured bars (D* and the window); move flags store the
+  closes of the bars used. `verify` replays with captured evidence and also compares each row's `company_id`;
+  `explain` re-derives the provenance of captured-only securities. `jobs.build_all` loads both; the captured evidence
+  enters the input digest only when there is some, so an import-only snapshot keeps its exact digest.
+- DE-4's loader now reads the stored `market_cap_reported` feature (fresh, stale or partial) instead of passing
+  nothing (branch review m7). Market-value features can therefore be computed on captured data; they remain
+  `untrusted` while that input is provisional (P4-D4).
+- **Not yet:** target builds over captured sessions refuse with "MF-8 part 2b": labels' `resolved_at` on captured
+  sessions needs the governing events' and observations' instants (together with task "label resolution
+  granularity").
+Tests: `tests/test_mf8_unit.py` (4, the comparison and the configuration block), `tests/test_mf8_snapshot_postgres.py`
+(2, end to end: P2's real capture path -> snapshot -> `verify` replay -> DE-4's loader sees every company id and the
+market cap; a disagreeing import is `conflicting`, an agreeing one is not, another volume is), `tests/test_mf8_captured_postgres.py`
+(5). Mutation check: 13 mutants (each comparison, the conflict mark, the company id in the row and in the loader,
+observation admission, events without a received response, captured provenance, the captured evidence in the
+digest, DE-4's market cap, the coverage default): all killed; 3 survived the first test set and were closed.

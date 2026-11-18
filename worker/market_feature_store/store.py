@@ -207,9 +207,17 @@ def provenance(snap, imported, symbol):
     """(D* bar ids, window digest) of a snapshot row (§13.1): the mf_history_bars ids merged into the security's D*
     bar, and a SHA-256 over the ids of every admitted row of the security at a session of the snapshot (every window
     reads within them). `explain` re-derives the list and checks it against the digest."""
-    rows = imported[symbol].rows
+    rows = imported[symbol].rows if symbol in imported else {}
     dstar = list(rows.get(snap.d_star, {}).get("ids", ()))
     window = sorted(i for s in snap.sessions if s in rows for i in rows[s].get("ids", ()))
+    cap = getattr(snap, "captured", None)
+    if cap is not None:
+        # MF-8: the raw observation ids reconcile merged into the captured bars, after the imported bar ids (ints
+        # and uuid texts are never sorted together, so an import-only snapshot keeps its exact provenance)
+        dstar += sorted(str(i) for i in (cap.bar_on(symbol, snap.d_star).contributing_observation_ids
+                                         if cap.bar_on(symbol, snap.d_star) is not None else ()))
+        window += sorted(str(i) for s in snap.sessions if cap.bar_on(symbol, s) is not None
+                         for i in cap.bar_on(symbol, s).contributing_observation_ids)
     return dstar, sha256_hex(canonical_json(window)), window
 
 
@@ -246,29 +254,32 @@ def write(conn, snap, query, *, configuration_id, code_version, evidence, import
         dj = canonical_json(dstar_ids)
         rows.append((r["security_id"], r["symbol"], r["eligibility"], row_payload(r), r["px_ref"], r["ref_session"],
                      r["stale_sessions"], r["adj_ref"], r["ref_source_quality"], dj, window_digest,
-                     row_hash(r, dj, window_digest)))
+                     row_hash(r, dj, window_digest), r.get("company_id")))
     factors = [(sym, f.kind, f.ex_date, f.numerator, f.denominator, f.status, "|".join(f.flags),
                 canonical_json(sorted(f.statement_ids))) for sym, fs in sorted(snap.factors.items()) for f in fs]
     moves = []
     for sym, ms in sorted(snap.moves.items()):
         for m in ms:
-            src = imported[sym].rows                       # the two raw closes of the move (design §13.1)
-            moves.append((sym, m.session_from, m.session_to, src[m.session_from]["close"], src[m.session_to]["close"],
+            src = snap.closes[sym]                         # the two raw closes of the move (design §13.1; MF-8:
+            moves.append((sym, m.session_from, m.session_to, src[m.session_from], src[m.session_to],   # either source)
                           MOVE_STATUS[m.state]))
     header = (query.mode, query.label, query.cutoff, query.horizon, snap.d_star, configuration_id, code_version,
               input_digest_, snap.adjustment_set_hash, len(snap.rows), bool(evidence["imports"]))
     with conn.cursor() as cur:
         cur.execute("select now(), session_user")             # the column defaults of this transaction's inserts
         recorded, by = cur.fetchone()
-        h = snapshot_hash(header, [(r[1], r[11], None) for r in rows], factors, moves, (recorded, by, "[]"))
+        pending = canonical_json([d.isoformat() for d in getattr(snap, "pending", ())])
+        h = snapshot_hash(header, [(r[1], r[11], r[12]) for r in rows], factors, moves, (recorded, by, pending))
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
-                    "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs, snapshot_hash) "
-                    "values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id", header + (h,))
+                    "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs, snapshot_hash, "
+                    "pending_sessions) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
+                    header + (h, pending))
         sid = cur.fetchone()[0]
         for r in rows:
             cur.execute("insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, features_json, "
                         "px_ref, ref_session, stale_sessions, adj_ref, ref_source_quality, dstar_observation_ids, "
-                        "window_digest, row_hash) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (sid,) + r)
+                        "window_digest, row_hash, company_id) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                        (sid,) + r)
         for f in factors:
             cur.execute("insert into mf_snapshot_factors (snapshot_id, symbol, kind, ex_date, numerator, "
                         "denominator, status, flags, statement_ids) values (%s,%s,%s,%s,%s,%s,%s,%s,%s)", (sid,) + f)
