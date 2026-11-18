@@ -261,6 +261,15 @@ validated version with the same artifact, at most once, its first event `product
 for the source and a designation naming it in the same transaction (checked at commit); waivers, incident flags and
 designations owner-only.
 
+**Part 2, the rules in application code** (`worker/ml_registry/`): `sufficiency.py` (§5.5's minimums, every unmet
+one named; revision 5's test period of at least max(126, 8h, 20L) dates); `gates.py` (gates 2 to 8 and 9 to 12 into
+a report with each gate's result, reason and evidence, the labels the model carries, and the multiplicity used).
+`tests/test_m56_gates_unit.py` (4): every sufficiency minimum alone; **MLK-13**, each gate alone blocking, both
+branches of gate 5 (a baseline not beaten; `size_not_shown`), the engine baselines of a `no_engine_component`
+combination, and each label a designation must cite. **A design inconsistency, for the owner:** §5.5's worked table
+(test period 148 dates at h = 1, 210 at h = 21) predates revision 5's 20-block rule, which needs at least 200 and 420;
+the code follows the rule, so the table's example schedules are `exploratory`.
+
 Tests: `tests/test_m56_migration_postgres.py` (8: the chain and append-only; configuration, protocol and artifact
 identities, MLK-16 in the database; disjoint, clock-timed, once-accessed test periods; the protocol before its runs;
 the lifecycle, gate 1 and the gate report; the owner path and its designation at commit; a validated source and its
