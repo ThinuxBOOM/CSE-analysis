@@ -270,6 +270,18 @@ combination, and each label a designation must cite. **A design inconsistency, f
 (test period 148 dates at h = 1, 210 at h = 21) predates revision 5's 20-block rule, which needs at least 200 and 420;
 the code follows the rule, so the table's example schedules are `exploratory`.
 
+**Part 3, the store** (`worker/ml_registry/store.py`): registrations (content-addressed configurations, datasets,
+protocols with their sufficiency and their test periods timed by the database clock, `previously_scored` when
+retrospective or when a registered dataset reaches into the period), runs, events, trials, fold models with their
+artifacts, metrics, models with their first event; `validate` (gates 2 to 8 and the event in one transaction, the
+database re-checking gate 1 and the report); `transition`; the one `access`; the owner's `promote` (the production
+copy, its designation with every label and the lifetime access count, and its first event in one owner-path
+transaction); `alerts` (a production copy of a later-rejected version, reported, never retired automatically). Test
+periods: `withheld_for` and `check_manifest` close **M5-2's carry**: a dataset for training or validation that does
+not withhold every unspent test period it touches is refused (MLK-4); `check_rows_outside_unspent` (MLK-5);
+`multiplicity` follows the sessions (MLK-5). `tests/test_m56_store_postgres.py` (6), each rule failing a test when
+reverted (8 mutants).
+
 Tests: `tests/test_m56_migration_postgres.py` (8: the chain and append-only; configuration, protocol and artifact
 identities, MLK-16 in the database; disjoint, clock-timed, once-accessed test periods; the protocol before its runs;
 the lifecycle, gate 1 and the gate report; the owner path and its designation at commit; a validated source and its
