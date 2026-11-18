@@ -9,6 +9,7 @@ import json
 import os
 import socket
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal as D
 
 import pytest
 
@@ -79,7 +80,7 @@ def test_s1_a_captured_session_becomes_a_snapshot_with_company_links_that_replay
     assert all(x is not None for x in cap)                                  # review m7: the stored feature is read
 
 
-def _import(pg, symbol, close, shares=None):
+def _import(pg, symbol, close, shares=None, day=TD):
     o = conn(pg, "cse_migrator")
     with o.cursor() as cur:
         cur.execute("set local role cse_owner")
@@ -88,8 +89,9 @@ def _import(pg, symbol, close, shares=None):
                     "'test', 'test', 'raw', 'complete', 'row_absent', %s) returning import_id", (TD,))
         imp = cur.fetchone()[0]
         cur.execute("insert into mf_history_bars (import_id, symbol, trade_date, close, shares, source_sheet, "
-                    "source_row) values (%s, %s, %s, %s, %s, 's', 1)", (imp, symbol, TD, close, shares))
+                    "source_row) values (%s, %s, %s, %s, %s, 's', 1)", (imp, symbol, day, close, shares))
     o.commit()
+    return imp
 
 
 def test_s2_captured_and_imported_bars_are_compared_never_silently_preferred(env, pg):
@@ -111,3 +113,42 @@ def test_s2_captured_and_imported_bars_are_compared_never_silently_preferred(env
     _import(pg, TRADED[2], stored_rows(w, sid3)[TRADED[2]][3], shares=1)   # same close, another volume
     w, sid4, _s, _t = snapshot_now(pg)
     assert stored_rows(w, sid4)[TRADED[2]][2] == "conflicting"
+
+
+def test_s3_labels_over_captured_sessions_resolve_no_earlier_than_their_evidence(env, pg):
+    """MF-8 part 2b: a target build over a captured reference session (Friday) and the next, imported session
+    (Monday). The capture happens AFTER the import, so the label's resolved_at must come from the captured evidence."""
+    from datetime import date
+    from worker.market_feature_store import targets_store
+    sym = TRADED[4]                    # no earlier test of this module imported a row for it: its captured bar is fresh
+    o = conn(pg, "cse_migrator")
+    with o.cursor() as cur:                                                # the weekend, declared closed
+        cur.execute("set local role cse_owner")
+        for d in (date(2026, 9, 5), date(2026, 9, 6)):
+            cur.execute("insert into mf_calendar_observations (kind, date_from, date_to, available_at, "
+                        "source_reference) values ('declared_closed', %s, %s, '2026-09-01Z', 'notice')", (d, d))
+    o.commit()
+    first = env()
+    assert first.capture()[0] == "succeeded"
+    w, sid, snap0, _t = snapshot_now(pg)                                   # the reference snapshot, D* = TD (Fri)
+    assert snap0.d_star == TD
+    close = stored_rows(w, sid)[sym][3]
+    _import(pg, sym, close * D("1.1"), day=date(2026, 9, 7))              # Monday's close, imported: +10%
+    e = env()
+    assert e.capture()[0] == "succeeded"                                   # Friday again: the build's governing run
+                                                                           # is recorded after the import
+    _st, cid = configuration.register(w, configuration.Configuration())
+    rep = targets_store.build(w, Query(KNOWN, datetime.now(timezone.utc)), cid, [sid])
+    assert rep["labels"] > 0
+    lab = q(w, "select state, values_json, resolved_at from mf_target_rows where build_id = %s and symbol = %s "
+               "and horizon = 1", (rep["build_id"], sym))[0]
+    assert lab[0] == "resolved", lab
+    assert D(json.loads(lab[1])["ret"]) == D("0.1")                        # captured Friday to imported Monday
+    governing = q(w, "select max(e.occurred_at) from market_capture_run_events e join market_capture_runs r on "
+                     "r.id = e.run_id where r.trading_date = %s and e.state = 'succeeded'", (TD,))[0][0]
+    imported_at = q(w, "select max(recorded_at) from mf_history_imports")[0][0]
+    assert governing > imported_at and lab[2] >= governing                 # the captured evidence binds it
+    from worker.market_feature_store import captured as captured_
+    cc = configuration.CaptureConfig()
+    cap = captured_.load(conn(pg), Query(KNOWN, datetime.now(timezone.utc)), cc.min_coverage, cc.tolerance_dict())
+    assert cap.bar_instants[(sym, TD)] >= governing and cap.date_instants[TD] >= governing

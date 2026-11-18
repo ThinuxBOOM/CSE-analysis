@@ -18,6 +18,10 @@ than that (re-audit N-B1).
     names, go into `extra_instants`;
   - calendar evidence, all of it (audit 8): a declared closure's admission instant; an import range's, at the latest
     date of the range the build admits.
+Captured evidence (MF-8 part 2b): a captured session's finality takes the latest admission instant of every admitted
+terminal event and observation dated in (previous session, session]; a captured bar's own instant is its governing
+event's and every observation reconcile read for it (superseded ones too); a security's presence rests on its
+earliest captured or imported bar.
 """
 import bisect
 from dataclasses import asdict
@@ -63,7 +67,7 @@ def build_hash(header, rows, written=None):
                                       "rows": sorted([a, b, c, d] for a, b, c, d in rows)}))
 
 
-def _finality(imported, sessions):
+def _finality(imported, sessions, captured=None):
     """{session: the latest instant of any admitted evidence dated in (previous session, session]}: every row of every
     security (zero-price rows included) and every quarantine. A session is final because of some of it, and a date
     between two sessions is not a session because of the rest (a quarantine, a disagreeing correction, a zero-price
@@ -77,6 +81,9 @@ def _finality(imported, sessions):
         for d, i in imp.quarantine_instants.items():
             if i is not None:
                 by_date[d] = max(by_date.get(d, i), i)
+    if captured is not None:                  # MF-8: every admitted terminal event and observation, by its date
+        for d, i in captured.date_instants.items():
+            by_date[d] = max(by_date.get(d, i), i)
     out, dates = {}, sorted(by_date)
     k = 0
     for i, s in enumerate(sessions):
@@ -91,8 +98,8 @@ def _finality(imported, sessions):
     return out
 
 
-def session_instants(symbol, imported, sessions, finality, query):
-    imp = imported[symbol]
+def session_instants(symbol, imported, sessions, finality, query, captured=None):
+    imp = imported.get(symbol) or hb.Imported(rows={})
     dates = sorted(imp.rows)
     q_dates = sorted(imp.quarantine_instants)
     out = {}
@@ -116,7 +123,8 @@ def session_instants(symbol, imported, sessions, finality, query):
                 later = [imp.quarantine_instants[d] for d in q_dates[bisect.bisect_right(q_dates, s):]
                          if imp.quarantine_instants[d] is not None]
                 own = max(later) if later else None
-        vals = [x for x in (finality.get(s), own) if x is not None]
+        cap_own = captured.bar_instants.get((symbol, s)) if captured is not None else None
+        vals = [x for x in (finality.get(s), own, cap_own) if x is not None]
         if vals:
             out[s] = max(vals)
     return out
@@ -180,7 +188,8 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
     build admits that stored reference snapshot}; the stored P_D, s_D and quality are inputs of every label."""
     ref_instants = ref_instants or {}
     sessions = snap.sequence.sessions
-    finality = _finality(imported, sessions)
+    cap = getattr(snap, "captured", None)
+    finality = _finality(imported, sessions, cap)
     stmt = statement_instants(query, statements)
     cal = calendar_instant(query, cal_obs, snap.d_star)
     out, skipped = [], {}
@@ -191,11 +200,14 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
             if why:
                 skipped[why] = skipped.get(why, 0) + 4
                 continue
-            inst = session_instants(row.symbol, imported, sessions, finality, query)
+            inst = session_instants(row.symbol, imported, sessions, finality, query, cap)
             # the security's presence in the build rests on its surviving rows: a security whose rows were all set
             # aside and that came back through a later row exists only from that row's admission (audit 4, E-1). A
             # row that survives at T survives at any earlier T' where it is admitted, so the earliest one suffices.
-            surviving = [r.get("instant") for r in imported[row.symbol].rows.values() if r.get("instant") is not None]
+            surviving = [r.get("instant") for r in (imported[row.symbol].rows.values() if row.symbol in imported else ())
+                         if r.get("instant") is not None]
+            if cap is not None:                       # MF-8: a captured bar is presence evidence too
+                surviving += [i for (s_, _d), i in cap.bar_instants.items() if s_ == row.symbol]
             presence = min(surviving) if surviving else None
             extra = [x for x in [cal, ref_instants.get(sid), presence]
                      + superseded_instants(row.symbol, statements, stmt) if x is not None]
@@ -226,11 +238,6 @@ def build(conn, query, configuration_id, reference_snapshot_ids, code_version=VE
             refs[sid], ref_instants[sid] = reference_rows(cur, sid), inst
     conn.rollback()
     snap, imported, _ev, statements, cal_obs = jobs.build_all(conn, query, cfg, keep_series=True)
-    if snap.captured is not None and snap.captured.finals:
-        # MF-8 part 2b: labels' resolved_at on captured sessions (the governing events' and observations' instants)
-        # is not built yet; refusing is better than labelling captured windows with imported-only instants
-        raise configuration_.ConfigurationError("target builds over captured sessions are not implemented yet "
-                                                "(MF-8 part 2b)")
     labelled, skipped = labels(snap, imported, statements, cal_obs, query, refs, cfg.target_policy, ref_instants)
     rows = []
     for sid, lab in labelled:

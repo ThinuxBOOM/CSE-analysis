@@ -28,6 +28,8 @@ from typing import Optional
 
 from worker.market_features import bars, sessions
 
+from . import store
+
 COLOMBO = timezone(timedelta(hours=5, minutes=30))
 TERMINAL = ("succeeded", "partial", "failed", "blocked", "abandoned", "missed")
 OBSERVATION_COLUMNS = ("id", "request_attempt_id", "company_id", "observation_date", "capture_window", "source",
@@ -45,6 +47,9 @@ class Captured:
     company_ids: dict = field(default_factory=dict)      # {symbol: company_id text}
     members: dict = field(default_factory=dict)          # {date: frozenset of member symbols} on final sessions
     evidence: dict = field(default_factory=dict)         # {"runs": [[run, pass]], "observations": [ids]}
+    # MF-8 part 2b, labels' resolved_at (targets_store): admission instants under the query's mode
+    date_instants: dict = field(default_factory=dict)    # {date: latest instant of any admitted event or observation}
+    bar_instants: dict = field(default_factory=dict)     # {(symbol, date): governing event and the bar's observations}
 
     def bar_on(self, symbol, d):
         return self.bars.get(symbol, {}).get(d)
@@ -110,10 +115,16 @@ def _observations(cur, query, d, company_ids):
 
 
 def _observed_dates(cur, query):
-    """Dates with an admitted derived observation: proof that a session happened (§4.3, migration 0014's guard)."""
+    """{date: latest admission instant} of the dates with an admitted derived observation: proof that a session
+    happened (§4.3, migration 0014's guard)."""
     cur.execute("select observation_date, created_at, observed_at from raw_market_observations where "
                 "observation_date <= %s", (_last_day(query),))
-    return {d for d, created, observed in cur.fetchall() if query.admits(created, observed)}
+    out = {}
+    for d, created, observed in cur.fetchall():
+        if query.admits(created, observed):
+            i = store.admission_instant(query, created, observed)
+            out[d] = max(out.get(d, i), i)
+    return out
 
 
 def _capture_run_ids(cur):
@@ -130,16 +141,25 @@ def load(conn, query, min_coverage, tolerances):
         finals = sessions.final_sessions(events, query, min_coverage)
         observed = _observed_dates(cur, query)
         final_dates = {d for d, _g in finals}
-        candidates = {e.trading_date for e in events} | observed
+        candidates = {e.trading_date for e in events} | set(observed)
         non_finals = tuple(sorted(d for d in candidates - final_dates if sessions.classify(
             events, d, query, min_coverage, has_admitted_observation=d in observed) == sessions.NON_FINAL))
         run_ids = _capture_run_ids(cur)
         out = Captured(events=events, finals=tuple(finals), non_finals=non_finals)
+        for d, i in observed.items():
+            out.date_instants[d] = i
+        for ev in events:
+            if query.admits(ev.recorded_at, ev.available_at):
+                i = store.admission_instant(query, ev.recorded_at, ev.available_at)
+                out.date_instants[ev.trading_date] = max(out.date_instants.get(ev.trading_date, i), i)
         company_at = {}
         used_obs = set()
         for d, g in finals:
             results = _results(cur, g.run_id, g.pass_no)
             obs = _observations(cur, query, d, {r.company_id for r in results.values() if r.company_id})
+            governing_at = store.admission_instant(query, g.recorded_at, g.available_at)
+            obs_at = {o["id"]: store.admission_instant(query, o["created_at"], o["observed_at"])
+                      for os_ in obs.values() for o in os_}
             members = set()
             for sym, res in results.items():
                 b = bars.feature_bar(sym, res, obs.get(res.company_id, []) if res.company_id else [], g, run_ids,
@@ -148,6 +168,11 @@ def load(conn, query, min_coverage, tolerances):
                     continue
                 members.add(sym)
                 out.bars.setdefault(sym, {})[d] = b
+                # the bar rests on its governing event and on every observation passed to reconcile (superseded
+                # ones included: they were read)
+                read = [obs_at[str(i)] for i in b.contributing_observation_ids + b.superseded_observation_ids
+                        if str(i) in obs_at]
+                out.bar_instants[(sym, d)] = max([governing_at] + read)
                 used_obs.update(b.contributing_observation_ids)
                 if res.company_id is not None:
                     company_at[sym] = res.company_id      # finals are in date order: the latest governing run wins

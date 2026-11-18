@@ -56,3 +56,19 @@ def test_u4_the_capture_block_round_trips_and_an_old_configuration_is_refused():
     with pytest.raises(configuration.ConfigurationError, match="register it again"):
         configuration.parse(json.dumps(old, sort_keys=True, separators=(",", ":")))
     assert TOL["reconciliation_volume_tolerance"] == 0.0 and isinstance(TOL["cross_check_turnover_tolerance_pct"], D)
+
+
+def test_u5_captured_instants_bind_finality_and_the_security_s_own_bar():
+    from datetime import date, datetime, timezone
+    from worker.market_feature_store import targets_store
+    from worker.market_feature_store.captured import Captured
+    from worker.market_features.modes import KNOWN, Query
+    t = lambda h: datetime(2026, 9, 10, h, tzinfo=timezone.utc)                     # noqa: E731
+    d1, between, d2 = date(2026, 9, 4), date(2026, 9, 5), date(2026, 9, 7)
+    cap = Captured(date_instants={d1: t(1), between: t(5), d2: t(2)}, bar_instants={("ABC.N0000", d2): t(9)})
+    fin = targets_store._finality({}, (d1, d2), cap)
+    assert fin == {d1: t(1), d2: t(5)}            # a date between sessions binds the next session (as for imports)
+    assert targets_store._finality({}, (d1, d2)) == {}
+    inst = targets_store.session_instants("ABC.N0000", {}, (d1, d2), fin, Query(KNOWN, t(12)), cap)
+    assert inst == {d1: t(1), d2: t(9)}           # the security's own captured bar is later than finality: it binds
+    assert targets_store.session_instants("XYZ.N0000", {}, (d1, d2), fin, Query(KNOWN, t(12)), cap) == fin

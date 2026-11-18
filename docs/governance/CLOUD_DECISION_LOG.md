@@ -977,3 +977,9 @@ records the company it belongs to, which is what lets the financial engines reac
 sources cover is compared value by value, and any disagreement is marked and kept rather than resolved silently, as
 the design requires. The engines also now read CSE's reported market cap from the snapshot. Labels (target builds)
 over captured days are the next part; until then they are refused rather than built wrongly.
+
+## C-0103: MF-8 part 2b, labels over captured data ([delegated], 2026-11-18)
+
+Labels (target builds) can now be built over captured days. The time at which each label counts as known is taken
+from the capture runs and observations it rests on, in the same conservative way as for imported history, so a label
+never becomes usable before the evidence behind it existed. MF-8 now goes to its audit.

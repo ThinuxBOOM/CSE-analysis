@@ -48,8 +48,8 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2a (snapshots) done: captured and imported bars merged per §5.4; rows carry `company_id`; `pending_sessions`
   and captured observation ids stored; `verify` and `explain` handle captured data; DE-4 reads the stored market cap.
   **MF code version is now `mf.3`**: snapshots written by `mf.2` code show as a different code version in `verify`.
-- Part 2b (target builds over captured sessions) and part 3 (audit) follow. Until 2b lands, `targets` refuses a
-  build whose snapshot used captured sessions, with a message naming MF-8 part 2b.
+- Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
+- Part 3, the audit of MF-8, is next.
 
 ### 2026-11-18: M5-6 accepted (C-0101)
 

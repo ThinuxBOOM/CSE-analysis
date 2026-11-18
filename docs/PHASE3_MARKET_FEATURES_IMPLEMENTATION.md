@@ -934,3 +934,16 @@ market cap; a disagreeing import is `conflicting`, an agreeing one is not, anoth
 (5). Mutation check: 13 mutants (each comparison, the conflict mark, the company id in the row and in the loader,
 observation admission, events without a received response, captured provenance, the captured evidence in the
 digest, DE-4's market cap, the coverage default): all killed; 3 survived the first test set and were closed.
+
+**Part 2b, target builds over captured sessions:** the refusal of part 2a is removed. The captured loader records,
+under the query's mode, each date's latest admission instant of any admitted terminal event or observation
+(`date_instants`) and each captured bar's own instant: its governing event and every observation reconcile read for
+it, superseded ones too (`bar_instants`). `targets_store` folds them in exactly as it does imported rows: a session's
+finality takes every instant dated in (previous session, session], so a date between sessions binds the next one; a
+security's own bar takes its captured instant; its presence rests on its earliest captured or imported bar.
+`resolved_at` therefore stays conservative across captured, imported and mixed windows. Tests: `test_s3` (a label from
+a captured Friday to an imported Monday resolves with the right return, and no earlier than the governing capture
+run, which is recorded after the import), `test_u5` (finality and the security's own captured instant, each alone).
+Mutation check: 5 mutants (finality without captured instants, the bar instant, both, events in the date instants,
+observations in the bar instant); 4 killed, and the last is recorded as defensive: under P2's own ordering an
+observation is always admitted no later than its run's terminal event, so it cannot raise a bar's instant today.
