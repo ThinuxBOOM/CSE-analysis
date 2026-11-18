@@ -57,7 +57,8 @@ def test_d1_0020_applies_after_0019_and_stays_pending(cluster):
     c = fs.conn(cluster, db, user="postgres")
     with c.cursor() as cur:
         cur.execute("select version from ops.schema_migrations order by version")
-        assert [r[0] for r in cur.fetchall()][-2:] == [19, 20]
+        versions = [r[0] for r in cur.fetchall()]
+        assert versions[versions.index(19):versions.index(19) + 2] == [19, 20]       # later pending ones may follow
         cur.execute("select c.relname, count(*) from pg_trigger t join pg_class c on c.oid = t.tgrelid "
                     "join pg_proc p on p.oid = t.tgfoid where p.proname = 'f5_reject_mutation' "
                     "and c.relname = any(%s) group by 1", (TABLES,))

@@ -245,6 +245,29 @@ covered a different set: 10 further mutants survived (M3). Fixed:
 
 ---
 
+## M5-6: the registry (part 1: pending migration 0021)
+
+**Status: in progress (part 1 of the step: the database).** The registry store, the gates in application code, the
+protocol and test-period access commands, the wrapper and the runbook follow.
+
+`supabase/migrations_pending/0021_ml_registry.sql` (after 0019 and 0020, outside the chain until the owner's merge
+decision): the eighteen tables of §9.1, every one append-only for every role; artifacts as base64 text checked
+against their SHA-256 and a 32 MiB cap. What the database enforces (§9.3's left column, §5.4): legal first events
+and transitions in sequence; `validated` only with a passing validation gate report for the model and a dataset that
+is not synthetic (gate 1); a protocol declared before its first run, by the database clock; test periods pairwise
+disjoint (an exclusion constraint), their timing (prospective or retrospective) set by the database clock, one access
+each, only by the protocol that declared it; a production model only through the owner path, promoted from a
+validated version with the same artifact, at most once, its first event `production` with a passing promotion report
+for the source and a designation naming it in the same transaction (checked at commit); waivers, incident flags and
+designations owner-only.
+
+Tests: `tests/test_m56_migration_postgres.py` (8: the chain and append-only; configuration, protocol and artifact
+identities, MLK-16 in the database; disjoint, clock-timed, once-accessed test periods; the protocol before its runs;
+the lifecycle, gate 1 and the gate report; the owner path and its designation at commit; a validated source and its
+promotion report; owner-only decisions), `tests/test_m56_migration_static.py` (2).
+
+---
+
 ## M5-3: folds and slices
 
 **Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
