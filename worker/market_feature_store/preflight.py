@@ -11,15 +11,15 @@ from .calendar_sync import TABLE as CALENDAR
 WRITE_TABLES = ("mf_configurations", "mf_calendar_observations", "mf_snapshots", "mf_snapshot_factors",
                 "mf_snapshot_move_flags", "mf_snapshot_rows", "mf_target_builds", "mf_target_rows")
 READ_ONLY = ("mf_designations", "mf_identity_observations", "mf_corporate_action_observations", "mf_history_imports",
-             "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine")
+             "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine", "mf_candidate_actions")
 NEVER = ("UPDATE", "DELETE", "TRUNCATE")
 GUARDS = {"mf_configurations": "trg_mfc_guard", "mf_designations": "trg_mfd_owner",
           "mf_identity_observations": "trg_mfi_owner", "mf_corporate_action_observations": "trg_mfa_owner",
           "mf_history_imports": "trg_mfh_owner", "mf_history_bars": "trg_mfb_owner",
           "mf_history_security_complete": "trg_mfs_owner", "mf_history_quarantine": "trg_mfq_owner",
-          "mf_calendar_observations": "trg_mfk_guard"}
+          "mf_calendar_observations": "trg_mfk_guard", "mf_candidate_actions": "trg_mfu_owner"}
 STAMPED = {"mf_calendar_observations": "trg_mfk_stamp", "mf_snapshots": "trg_mfn_stamp",
-           "mf_target_builds": "trg_mft_stamp"}
+           "mf_target_builds": "trg_mft_stamp", "mf_candidate_actions": "trg_mfu_stamp"}
 GUARD_FUNCTIONS = ("mf_configuration_guard()", "mf_owner_only_guard()", "mf_calendar_guard()", "mf_stamp_guard()")
 
 

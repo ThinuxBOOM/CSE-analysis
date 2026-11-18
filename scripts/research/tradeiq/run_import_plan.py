@@ -22,7 +22,9 @@ def build(root, work, summary_json, reconstructed_csv):
     sessions = vd.calendar_from_index(next(iter(dp.read_sheets(os.path.join(hd, "07Market Indices - Daily.xls"))))[1],
                                       dp.to_date)
     splits = read_splits(os.path.join(hd, "05Sub Division (Share Splits).xls"))
-    return ti.plan(work, summary_json, splits, reconstructed_csv, sessions)
+    unentered = os.path.join(os.path.dirname(os.path.abspath(reconstructed_csv)), "unentered_actions.csv")
+    return ti.plan(work, summary_json, splits, reconstructed_csv, sessions,
+                   unentered_csv=unentered if os.path.exists(unentered) else None)
 
 
 def counts(p):

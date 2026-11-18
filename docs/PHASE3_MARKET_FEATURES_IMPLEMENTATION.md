@@ -862,3 +862,16 @@ the presence rule counting only rows with a close, or skipping zero-price rows. 
 closed: `test_c8` also comes back through a close-less and a zero-price row, and fails under both mutants. The
 carried Minors stand.
 
+
+---
+
+## After the branch review (2026-11-18): candidate actions and database stamps
+
+- **Stamp guard (review M3):** `mf_stamp_guard()` makes `recorded_at` and the writer the database's own on
+  `mf_calendar_observations`, `mf_snapshots`, `mf_target_builds` and `mf_candidate_actions`; a worker calendar copy is
+  never back-dated. Preflight checks the triggers.
+- **`mf_candidate_actions`** (new table in pending 0019; Phase 5 review M-2): known but unentered bonus and rights
+  issues with the window their ex-date lies in. Owner-only, stamped, append-only; never a factor, never adjusts a
+  price. Filled by `import-tradeiq` from `unentered_actions.csv`, which `run_ca_reconstruct.py` now writes beside
+  `reconstructed_actions.csv` (absent: counted as `unentered_file_absent`). Read only by the ML dataset loader, for
+  `scoring.1`'s `candidate_event`.

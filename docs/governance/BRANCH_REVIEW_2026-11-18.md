@@ -73,7 +73,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | MF captured-data loader (`company_id`, market cap, `pending_sessions`) | branch work |
 | Label resolution granularity on real data | branch work |
 | Owner statement tooling | branch work |
-| A source for `scoring.1`'s flags | branch work |
+| A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |
 | PostgreSQL 17 CI run of DE-4 and M5 | branch work |
 | ML versions in CI's environment report; hash-pinned wheels | branch work |

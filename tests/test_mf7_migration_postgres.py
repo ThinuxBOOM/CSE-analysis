@@ -16,10 +16,10 @@ pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_
 PENDING = os.path.join(fs.REPO, "supabase", "migrations_pending")
 TABLES = ["mf_configurations", "mf_designations", "mf_identity_observations", "mf_corporate_action_observations",
           "mf_history_imports", "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine",
-          "mf_calendar_observations", "mf_snapshots", "mf_snapshot_factors", "mf_snapshot_move_flags",
+          "mf_candidate_actions", "mf_calendar_observations", "mf_snapshots", "mf_snapshot_factors", "mf_snapshot_move_flags",
           "mf_snapshot_rows", "mf_target_builds", "mf_target_rows"]
 OWNER_ONLY = ["mf_designations", "mf_identity_observations", "mf_corporate_action_observations", "mf_history_imports",
-              "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine"]
+              "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine", "mf_candidate_actions"]
 
 
 @pytest.fixture(scope="module")
@@ -229,6 +229,9 @@ def test_x7_guards_refuse_every_login_but_the_owner_even_under_a_mistaken_grant(
                               "('w', repeat('a', 64), 'o', 't', 'raw', 'complete', 'row_absent', '2026-10-19')",
         "mf_calendar_observations": "insert into mf_calendar_observations (kind, date_from, date_to, available_at, "
                                     "source_reference) values ('declared_closed','2024-01-15','2024-01-15',now(),'owner')",
+        "mf_candidate_actions": "insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, "
+                                "reason, source_reference) values ('c1','A.N0000','bonus','2020-01-01','2020-02-01',"
+                                "'no_match','n')",
     }
     for login in ("cse_worker", "cse_backup", "cse_verifier"):
         c = fs.conn(cluster, db, user=login)

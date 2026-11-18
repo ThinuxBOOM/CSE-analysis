@@ -115,6 +115,25 @@ def targets(dataset, keys, horizon):
     return Targets(list(keys), d, r, v)
 
 
+def label_rows(dataset, keys, horizon, resolved_late=()):
+    """scoring.1's input for the rows `keys` at horizon h: one LabelRow per present label, with its return and
+    direction where the state carries them and the dataset's scoring flags (candidate_event, era_row_absent).
+    resolved_late: the keys whose label resolved after the scored window (the protocol decides; §5.2)."""
+    late = set(resolved_late)
+    out = []
+    for sym, session in keys:
+        lab = dataset.labels.get((sym, session, horizon))
+        if lab is None:
+            continue
+        val = lab.values
+        ret = None if val.get("ret") is None else float(_dec(val["ret"]))
+        out.append(scoring.LabelRow((sym, session, horizon), lab.state, ret, val.get("direction"),
+                                    candidate_event="candidate_event" in lab.flags,
+                                    era_row_absent="era_row_absent" in lab.flags,
+                                    resolved_late=(sym, session) in late))
+    return out
+
+
 _ISSUED = object()                            # only train_set makes a Train an adapter accepts
 
 

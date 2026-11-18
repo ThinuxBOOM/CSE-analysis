@@ -15,7 +15,16 @@ Honest labelling (§4.3): every row carries its label class, survivorship and fu
 the worst of them. Nothing is dropped silently: the report counts every exclusion by reason, and every label by
 horizon and state.
 
-The version is the SHA-256 of the canonical manifest plus the ordered source row hashes (§4.2).
+Scoring flags (§6, `scoring.1`; branch review 2026-11-18, M-2): each label carries the flags scoring needs and the
+label row cannot say, from evidence the loader reads as of the pinned build's own recording time (`ScoringEvidence`):
+  - `candidate_event`: an `unexplained_move_in_horizon` label whose window (s_D, s_F] meets the window of a known but
+    unentered bonus or rights issue of the security (`mf_candidate_actions`, the TradeIQ events not reconstructed);
+  - `era_row_absent`: a `terminated` (left the universe) or `unresolvable_missing_price` label whose absent session
+    lies in an admitted `row_absent` import batch where `security_complete` does not cover the security, and is not
+    after the security's last covered range in that batch (after it, the absence is evidence of leaving).
+
+The version is the SHA-256 of the canonical manifest plus the ordered source row hashes, each label's flags and the
+scoring evidence (§4.2).
 """
 import hashlib
 import json
@@ -144,6 +153,33 @@ class Label:
     values: dict
     resolved_at: Optional[datetime]
     row_hash: str
+    flags: tuple = ()                           # scoring flags: candidate_event, era_row_absent
+
+
+@dataclass(frozen=True)
+class AbsentEra:
+    """An admitted `row_absent` import batch: its span (first and last bar date) and, per symbol, the ranges
+    `security_complete` covers."""
+    import_id: int
+    date_from: date
+    date_to: date
+    complete: dict                              # {symbol: ((date_from, date_to), ...)}
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """A known but unentered bonus or rights issue: the window its ex-date lies in."""
+    candidate_id: str
+    symbol: str
+    kind: str
+    window_from: date
+    window_to: date
+
+
+@dataclass(frozen=True)
+class ScoringEvidence:
+    eras: tuple = ()                            # AbsentEra
+    candidates: tuple = ()                      # Candidate
 
 
 @dataclass(frozen=True)
@@ -198,17 +234,50 @@ def canonical(obj):
     return json.dumps(_plain(obj), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def version(manifest, rows, labels, target_build=None):
+def version(manifest, rows, labels, target_build=None, scoring=None):
     """§4.2: SHA-256 of the canonical manifest and the pinned build's header plus, per row in order, its key, T,
-    snapshot id, metadata (label class, survivorship, coverage, strata) and every source and label row hash."""
+    snapshot id, metadata (label class, survivorship, coverage, strata), every source and label row hash with the
+    label's scoring flags, and the scoring evidence."""
     sources = []
     for r in rows:
-        lab = [labels[(r.symbol, r.session, h)].row_hash if (r.symbol, r.session, h) in labels else None
-               for h in HORIZONS]
+        lab = [[labels[(r.symbol, r.session, h)].row_hash, list(labels[(r.symbol, r.session, h)].flags)]
+               if (r.symbol, r.session, h) in labels else None for h in HORIZONS]
         sources.append([r.symbol, r.session, r.t, r.snapshot_id, r.meta, list(r.sources), lab])
     from . import VERSION as code_version
     return hashlib.sha256(canonical({"code": code_version, "manifest": manifest, "target_build": target_build,
-                                     "sources": sources}).encode()).hexdigest()
+                                     "scoring": scoring, "sources": sources}).encode()).hexdigest()
+
+
+def _date_of(v):
+    return v if isinstance(v, date) or v is None else date.fromisoformat(str(v))
+
+
+def scoring_flags(symbol, session, state, values, evidence):
+    """The scoring flags of one label (module docstring). values: the label row's values (Phase 3 `values_json`)."""
+    out = []
+    if state == "unexplained_move_in_horizon":
+        lo = _date_of(values.get("reference_px_session")) or session
+        hi = _date_of(values.get("target_session"))
+        if hi is not None and any(c.symbol == symbol and c.window_from <= hi and c.window_to > lo
+                                  for c in evidence.candidates):
+            out.append("candidate_event")
+    absent = None
+    ev = tuple(values.get("evidence") or ())
+    if state == "terminated" and "left_universe" in ev:
+        absent = _date_of(values.get("left_session"))
+    elif state == "unresolvable_missing_price":
+        absent = session if "no_reference_price_at_D" in ev else _date_of(values.get("target_session"))
+    if absent is not None:
+        for e in evidence.eras:
+            if not e.date_from <= absent <= e.date_to:
+                continue
+            ranges = e.complete.get(symbol, ())
+            covered = any(a <= absent <= b for a, b in ranges)
+            after_last = bool(ranges) and absent > max(b for _a, b in ranges)
+            if not covered and not after_last:
+                out.append("era_row_absent")
+                break
+    return tuple(out)
 
 
 # ------------------------------------------------------------------------------------------------ the build
@@ -349,9 +418,10 @@ def _reaches(m, t, resolved_at):
     return False
 
 
-def build(manifest, snapshots, labels, target_build):
-    """manifest: Manifest; snapshots: [SnapshotIn]; labels: [LabelIn]; target_build: TargetBuildIn. Returns a
-    Dataset."""
+def build(manifest, snapshots, labels, target_build, scoring=None):
+    """manifest: Manifest; snapshots: [SnapshotIn]; labels: [LabelIn]; target_build: TargetBuildIn; scoring:
+    ScoringEvidence (None: none known, i.e. no row_absent import and no unentered action). Returns a Dataset."""
+    scoring = scoring or ScoringEvidence()
     from worker.engines import registry as engines
     _check_manifest(manifest)
     _check_build(manifest, target_build)
@@ -360,6 +430,7 @@ def build(manifest, snapshots, labels, target_build):
                              "labels_withheld_test_period", "labels_reaching_test_period")}
     report["excluded_by_eligibility"] = {}
     report["labels_by_state"] = {h: {} for h in HORIZONS}
+    report["labels_by_flag"] = {h: {} for h in HORIZONS}
     report["labels_absent"] = {h: 0 for h in HORIZONS}
     report["nulls_by_state"] = {}
     chosen = _select(manifest, snapshots, report)
@@ -448,11 +519,15 @@ def build(manifest, snapshots, labels, target_build):
                     continue
                 if lab.resolved_at is not None and lab.resolved_at <= s.cutoff:
                     raise Refused("label_before_t", f"{sym} at {s.session}, h={h}: resolved_at is not after T")
-                out_labels[(sym, s.session, h)] = Label(lab.state, dict(lab.values), lab.resolved_at, lab.row_hash)
+                flags = scoring_flags(sym, s.session, lab.state, lab.values, scoring)
+                out_labels[(sym, s.session, h)] = Label(lab.state, dict(lab.values), lab.resolved_at, lab.row_hash,
+                                                        flags)
                 by = report["labels_by_state"][h]
                 by[lab.state] = by.get(lab.state, 0) + 1
+                for f in flags:
+                    report["labels_by_flag"][h][f] = report["labels_by_flag"][h].get(f, 0) + 1
     rows = tuple(sorted(rows, key=lambda r: (r.session, r.symbol)))
-    return Dataset(manifest, version(manifest, rows, out_labels, target_build), rows, out_labels,
+    return Dataset(manifest, version(manifest, rows, out_labels, target_build, scoring), rows, out_labels,
                    _worst([r.meta["label_class"] for r in rows], LABEL_CLASS_ORDER),
                    _worst([r.meta["survivorship"] for r in rows], SURVIVORSHIP_ORDER),
                    _worst([r.meta["fundamental_coverage"] for r in rows], COVERAGE_ORDER), report)

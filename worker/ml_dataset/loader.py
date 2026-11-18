@@ -129,8 +129,29 @@ def _de_and_f7(cur, run_id, sid, mf_hashes):
     return out
 
 
+def _scoring(cur, at):
+    """scoring.1's evidence (dataset.ScoringEvidence) as of the pinned build's own recording time: the admitted raw
+    `row_absent` import batches with their span and security_complete ranges, and the unentered bonus and rights
+    issues. Recorded later, neither changes a dataset of this build."""
+    eras = []
+    for r in _rows(cur, "select i.import_id, min(b.trade_date) as lo, max(b.trade_date) as hi from mf_history_imports i "
+                        "join mf_history_bars b on b.import_id = i.import_id where i.price_basis = 'raw' and "
+                        "i.no_trade_convention = 'row_absent' and i.recorded_at <= %s group by i.import_id "
+                        "order by i.import_id", (at,)):
+        complete = {}
+        for c in _rows(cur, "select symbol, date_from, date_to from mf_history_security_complete where import_id = %s "
+                            "order by symbol, date_from", (r["import_id"],)):
+            complete.setdefault(c["symbol"], []).append((c["date_from"], c["date_to"]))
+        eras.append(ds.AbsentEra(r["import_id"], r["lo"], r["hi"], {k: tuple(v) for k, v in complete.items()}))
+    cands = tuple(ds.Candidate(c["candidate_id"], c["symbol"], c["kind"], c["window_from"], c["window_to"])
+                  for c in _rows(cur, "select candidate_id, symbol, kind, window_from, window_to from "
+                                      "mf_candidate_actions where recorded_at <= %s order by candidate_id", (at,)))
+    return ds.ScoringEvidence(tuple(eras), cands)
+
+
 def load(conn, manifest):
-    """(snapshots [SnapshotIn], labels [LabelIn], target build TargetBuildIn) for a manifest. Read-only."""
+    """(snapshots [SnapshotIn], labels [LabelIn], target build TargetBuildIn, scoring evidence ScoringEvidence) for a
+    manifest. Read-only."""
     import psycopg2.extensions as ext
     if conn.autocommit or conn.info.transaction_status != ext.TRANSACTION_STATUS_IDLE:
         raise ds.Refused("connection", "the loader reads in its own read-only transaction")
@@ -162,8 +183,8 @@ def load(conn, manifest):
                     manifest.de_configuration_id if run_id is not None else None, de_run=run_id is not None,
                     imported=bool(s["imported_inputs"])))
             ids = [s.snapshot_id for s in out]
-            head = _rows(cur, "select build_id, mode, knowledge_horizon, configuration_id, target_definition_version "
-                              "from mf_target_builds where build_id = %s", (manifest.target_build_id,))
+            head = _rows(cur, "select build_id, mode, knowledge_horizon, configuration_id, target_definition_version, "
+                              "recorded_at from mf_target_builds where build_id = %s", (manifest.target_build_id,))
             if not head:
                 raise ds.Refused("target_build", f"no target build {manifest.target_build_id}")
             h = head[0]
@@ -175,6 +196,7 @@ def load(conn, manifest):
                       for r in _rows(cur, "select build_id, reference_snapshot_id, symbol, horizon, state, values_json, "
                                           "resolved_at, row_hash from mf_target_rows where build_id = %s and "
                                           "reference_snapshot_id = any(%s)", (manifest.target_build_id, ids))]
-        return out, labels, build
+            scoring = _scoring(cur, h["recorded_at"])
+        return out, labels, build, scoring
     finally:
         conn.rollback()

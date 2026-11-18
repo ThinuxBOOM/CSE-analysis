@@ -251,3 +251,63 @@ def test_t12_a_batch_with_two_calendar_ranges_declares_none_on_the_import(tmp_pa
     b = p.batches["2015 Data.xls"]
     assert b.calendar_years == [(date(2015, 1, 1), date(2015, 12, 31)), (date(2017, 1, 1), date(2017, 12, 31))]
     assert b.calendar is None
+
+
+def unentered(tmp_path, rows):
+    p = tmp_path / "unentered_actions.csv"
+    with open(p, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["candidate_id", "symbol", "kind", "window_from", "window_to", "reason", "source_row"])
+        w.writerows(rows)
+    return p
+
+
+UNENTERED = [["tiq:bonus:x:2005:3", "AAF.N0000", "bonus", "2005-03-01", "2005-04-15", "no_match", "03 [2005] row 3"],
+             ["tiq:rights:x:2006:9", "AAF.N0000", "rights", "2006-05-01", "2006-04-01", "ambiguous_match", "04 r 9"],
+             ["tiq:bonus:x:2007:1", "AAF.N0000", "dividend", "2007-01-01", "2007-02-01", "no_match", "03 r 1"]]
+
+
+def test_t12_review_m2_unentered_events_are_planned_as_candidates_never_as_actions(tmp_path):
+    w = workdir(tmp_path, ROWS)
+    p = ti.plan(w, w / "summary.json", SPLITS, w / "recon.csv", SESSIONS, unentered_csv=unentered(tmp_path, UNENTERED))
+    assert [c["candidate_id"] for c in p.candidates] == ["tiq:bonus:x:2005:3"]
+    assert p.counts["unentered_unreadable"] == 2 and p.counts["candidates"] == 1
+    assert not any(a["statement_id"] == "tiq:bonus:x:2005:3" for a in p.actions)     # never a factor
+    assert make_plan(tmp_path).counts["unentered_file_absent"] == 1
+
+
+@pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR not set")
+def test_t13_review_m2_candidates_are_owner_written_stamped_and_read_by_the_ml_loader(tmp_path):
+    from datetime import datetime, timezone
+    from worker.ml_dataset import loader as ml_loader
+    fs, ec = _cluster(tmp_path)
+    try:
+        db = fs.fresh_db(ec)
+        w = workdir(tmp_path, ROWS)
+        p = ti.plan(w, w / "summary.json", SPLITS, w / "recon.csv", SESSIONS,
+                    unentered_csv=unentered(tmp_path, UNENTERED[:1]))
+        ti.write(fs.conn(ec, db, user="cse_migrator"), p)
+        worker = fs.conn(ec, db, user="cse_worker")
+        with pytest.raises(Exception):
+            with worker.cursor() as cur:
+                cur.execute("insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, "
+                            "reason, source_reference) values ('w', 'X', 'bonus', '2005-01-01', '2005-01-02', 'r', 's')")
+        worker.rollback()
+        owner = fs.conn(ec, db, user="cse_migrator")
+        with pytest.raises(Exception):                                     # the stamp is the database's own
+            with owner.cursor() as cur:
+                cur.execute("set local role cse_owner")
+                cur.execute("insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, "
+                            "reason, source_reference, recorded_at) values ('o', 'X', 'bonus', '2005-01-01', "
+                            "'2005-01-02', 'r', 's', '2000-01-01')")
+        owner.rollback()
+        with worker.cursor() as cur:
+            ev = ml_loader._scoring(cur, datetime.now(timezone.utc))
+            early = ml_loader._scoring(cur, datetime(2000, 1, 1, tzinfo=timezone.utc))
+        worker.rollback()
+        assert [(c.candidate_id, c.window_from, c.window_to) for c in ev.candidates] == [
+            ("tiq:bonus:x:2005:3", date(2005, 3, 1), date(2005, 4, 15))]
+        assert len(ev.eras) == 6 and any(e.complete for e in ev.eras)
+        assert early.candidates == () and early.eras == ()                 # recorded after the build: not used
+    finally:
+        ec.stop()

@@ -90,7 +90,7 @@ def test_l1_the_stored_world_becomes_a_dataset(cluster, monkeypatch):
     db = fs.fresh_db(cluster)
     c, sid, builds, cid = built(cluster, db, monkeypatch)
     m = manifest(cid, builds[0])
-    snaps, labels, build = loader.load(c, m)
+    snaps, labels, build, _scoring = loader.load(c, m)
     assert len(snaps) == 1 and snaps[0].de_run and build.build_id == builds[0] and build.mode == "KNOWN"
     assert {x.build_id for x in labels} == {builds[0]}                        # the pinned build only
     d = ds.build(m, snaps, labels, build)
@@ -131,7 +131,7 @@ def test_l2_configurations_and_imports(cluster, monkeypatch):
     db = fs.fresh_db(cluster)
     c, sid, builds, cid = built(cluster, db, monkeypatch)
     other = manifest(cid, builds[0], de_configuration_id="0" * 64)            # no run under this configuration
-    snaps, labels, build = loader.load(c, other)
+    snaps, labels, build, _sc = loader.load(c, other)
     assert not snaps[0].de_run and all(ln.f7 is None and not ln.de for ln in snaps[0].rows.values())
     assert ds.build(other, snaps, labels, build).report["snapshots_without_de_run"] == 1
     su = fs.conn(cluster, db, user="postgres")                               # an imported, survivors-only batch
@@ -150,7 +150,7 @@ def test_l2_configurations_and_imports(cluster, monkeypatch):
                         "values (%s, 'S01.N0000', %s, 10, 'Sheet1', 7)", (imp, day))
     su.commit()
     su.close()
-    snaps, labels, build = loader.load(c, manifest(cid, builds[0]))
+    snaps, labels, build, _sc = loader.load(c, manifest(cid, builds[0]))
     assert snaps[0].survivorship == "survivors_only"                          # the 2020 batch is out of reach
     assert ds.build(manifest(cid, builds[0]), snaps, labels, build).survivorship == "survivors_only"
 
@@ -257,7 +257,7 @@ def test_l6_survivorship_only_from_batches_mf_admits_by_the_governing_time(clust
                           ("unknown", "raw", "volume_zero", "2024-01-01T00:00:00Z", "2024-03-01"),
                           ("unknown", "raw", "row_absent", "2024-07-15T00:00:00Z", "2024-03-01"),     # after T
                           ("survivors_only", "raw", "row_absent", "2024-01-01T00:00:00Z", "2024-03-01")])
-    snaps, _l, _b = loader.load(c, manifest(cid, builds[0]))
+    snaps, _l, _b, _sc = loader.load(c, manifest(cid, builds[0]))
     assert snaps[0].survivorship == "survivors_only"
 
 
@@ -269,7 +269,7 @@ def test_l7_available_survivorship_is_governed_by_h(cluster, monkeypatch):
                           ("unknown", "raw", "row_absent", "2024-07-15T00:00:00Z", "2024-03-01")])   # T < rec <= H
     h = datetime(2024, 7, 31, tzinfo=timezone.utc)
     m = manifest(cid, builds[0], eras=(ds.Era(date(2024, 1, 1), date(2024, 12, 31), "AVAILABLE", h),))
-    snaps, _l, _b = loader.load(c, m)
+    snaps, _l, _b, _sc = loader.load(c, m)
     assert snaps[0].survivorship == "unknown"
 
 
@@ -288,12 +288,12 @@ def test_l8_an_available_dataset_end_to_end_and_imports_out_of_reach(cluster, mo
                        "values_json, resolved_at, row_hash from mf_target_rows where build_id = %s",
                        (b[0], builds[0]))])
     m = manifest(cid, b[0], eras=(ds.Era(date(2024, 1, 1), date(2024, 12, 31), "AVAILABLE", h),))
-    snaps, labels, build = loader.load(c, m)
+    snaps, labels, build, _sc = loader.load(c, m)
     assert (build.mode, build.horizon) == ("AVAILABLE", h)
     d = ds.build(m, snaps, labels, build)
     assert len(d.rows) == 13 and d.labels and d.label_class == "reconstructed"
     sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
     imports(cluster, db, [("complete", "raw", "row_absent", "2024-01-01T00:00:00Z", "2019-01-02")])   # out of reach
-    snaps, _l, _b = loader.load(c, m)
+    snaps, _l, _b, _sc = loader.load(c, m)
     assert snaps[0].survivorship == "unknown" and snaps[0].imported
 

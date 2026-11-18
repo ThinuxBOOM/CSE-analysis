@@ -14,6 +14,8 @@ one transaction through the owner path (cse_migrator -> SET ROLE cse_owner):
   mf_calendar_observations      import_calendar_complete per year from 1992 whose dates equal the index workbook's
   mf_corporate_action_observations   the splits whose raw prices drop by the ratio (F1; the others are left out with
                                 their reason) and the reconstructed bonus and rights issues (C-0055)
+  mf_candidate_actions          the bonus and rights issues with a known symbol and allotment that were not
+                                reconstructed, with their window: never a factor; Phase 5's `candidate_event` source
 Rows dated before 1991 are not admitted (TRADEIQ_VALIDATION §4 rule 1).
 
 `plan()` is pure apart from reading its input files; `write()` is the only database code.
@@ -64,6 +66,7 @@ class Plan:
     batches: dict = field(default_factory=dict)       # source label -> Batch
     actions: list = field(default_factory=list)       # dicts for mf_corporate_action_observations
     links: list = field(default_factory=list)         # dicts for mf_identity_observations
+    candidates: list = field(default_factory=list)    # dicts for mf_candidate_actions
     left_out: list = field(default_factory=list)      # (statement id, reason) for splits not written
     counts: collections.Counter = field(default_factory=collections.Counter)
 
@@ -105,10 +108,11 @@ def split_confirmed(series, old, new, eff):
     return "no_drop" if abs(ratio - 1) < SPLIT_TOLERANCE else "other_move"
 
 
-def plan(work_dir, summary_json, splits, reconstructed_csv, index_sessions):
+def plan(work_dir, summary_json, splits, reconstructed_csv, index_sessions, unentered_csv=None):
     """work_dir: run_validation's output (daily.csv, rejected.csv); summary_json: its counts summary with each file's
     SHA-256; splits: [(symbol, old, new, effective date, announcement date or None, statement id)];
-    reconstructed_csv: run_ca_reconstruct's output; index_sessions: the index workbook's session dates."""
+    reconstructed_csv: run_ca_reconstruct's output; index_sessions: the index workbook's session dates;
+    unentered_csv: run_ca_reconstruct's unentered events (None: none recorded, counted)."""
     p = Plan()
     shas = {f["file"]: f["sha256"] for f in json.load(open(summary_json))["files"]}
     rows = list(csv.DictReader(open(os.path.join(work_dir, "daily.csv"), newline="")))
@@ -204,6 +208,18 @@ def plan(work_dir, summary_json, splits, reconstructed_csv, index_sessions):
                           "ex_date": date.fromisoformat(r["ex_date"]), "terms_json": canonical(terms),
                           "available_at": end_of_day(date.fromisoformat(r["available_on"])),
                           "source_reference": r["source_row"]})
+    if unentered_csv is None:
+        p.counts["unentered_file_absent"] = 1
+    else:
+        for r in csv.DictReader(open(unentered_csv, newline="")):
+            lo, hi = date.fromisoformat(r["window_from"]), date.fromisoformat(r["window_to"])
+            if r["kind"] not in ("bonus", "rights") or lo > hi:
+                p.counts["unentered_unreadable"] += 1
+                continue
+            p.candidates.append({"candidate_id": r["candidate_id"], "symbol": r["symbol"], "kind": r["kind"],
+                                 "window_from": lo, "window_to": hi, "reason": r["reason"],
+                                 "source_reference": r["source_row"]})
+    p.counts["candidates"] = len(p.candidates)
     p.counts["actions"] = len(p.actions)
     p.counts["links"] = len(p.links)
     return p
@@ -245,4 +261,9 @@ def write(conn, p):
                         "available_at, source_reference) values (%s,%s,%s,%s,%s,%s,%s)",
                         (a["statement_id"], a["symbol"], a["kind"], a["ex_date"], a["terms_json"], a["available_at"],
                          a["source_reference"]))
+        for c in p.candidates:
+            cur.execute("insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, reason, "
+                        "source_reference) values (%s,%s,%s,%s,%s,%s,%s)",
+                        (c["candidate_id"], c["symbol"], c["kind"], c["window_from"], c["window_to"], c["reason"],
+                         c["source_reference"]))
     conn.commit()

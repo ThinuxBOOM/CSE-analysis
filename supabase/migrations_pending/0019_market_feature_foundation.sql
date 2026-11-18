@@ -154,6 +154,24 @@ create table mf_history_quarantine (                       -- a (security, date)
   primary key (import_id, symbol, trade_date)
 );
 
+-- Known but unentered bonus and rights issues (Phase 5 section 6, scoring.1's candidate_event; branch review
+-- 2026-11-18): an event whose company and allotment are known but whose ex-date could not be reconstructed. It is never
+-- a factor and never adjusts a price; it only marks an unexplained move inside its window as dilution, not a return.
+create table mf_candidate_actions (
+  candidate_id text primary key,                       -- stable: the source and its row
+  symbol text not null,
+  kind text not null,
+  window_from date not null,                           -- the window its ex-date lies in (the reconstruction's search
+  window_to date not null,                             -- window: announcement or allotment - N days, to allotment + M)
+  reason text not null,                                -- why it is not entered (the reconstruction's outcome)
+  source_reference text not null,
+  entered_by text not null default session_user,
+  recorded_at timestamptz not null default now(),
+  constraint chk_mfu_kind check (kind in ('bonus', 'rights')),
+  constraint chk_mfu_window check (window_from <= window_to),
+  constraint chk_mfu_ref check (length(btrim(source_reference)) > 0 and length(btrim(reason)) > 0)
+);
+
 -- Calendar evidence (section 6): declared closures (owner path) and calendar-sync copies (worker)
 create table mf_calendar_observations (
   id bigint generated always as identity primary key,
@@ -377,6 +395,8 @@ create trigger trg_mfb_owner before insert on mf_history_bars for each row execu
 create trigger trg_mfs_owner before insert on mf_history_security_complete
   for each row execute function mf_owner_only_guard();
 create trigger trg_mfq_owner before insert on mf_history_quarantine for each row execute function mf_owner_only_guard();
+create trigger trg_mfu_owner before insert on mf_candidate_actions for each row execute function mf_owner_only_guard();
+create trigger trg_mfu_stamp before insert on mf_candidate_actions for each row execute function mf_stamp_guard();
 create trigger trg_mfk_guard before insert on mf_calendar_observations for each row execute function mf_calendar_guard();
 create trigger trg_mfk_stamp before insert on mf_calendar_observations for each row execute function mf_stamp_guard();
 create trigger trg_mfn_stamp before insert on mf_snapshots for each row execute function mf_stamp_guard();
@@ -388,7 +408,7 @@ declare
 begin
   foreach t in array array['mf_configurations', 'mf_designations', 'mf_identity_observations',
       'mf_corporate_action_observations', 'mf_history_imports', 'mf_history_bars', 'mf_history_security_complete',
-      'mf_history_quarantine', 'mf_calendar_observations', 'mf_snapshots', 'mf_snapshot_factors',
+      'mf_history_quarantine', 'mf_candidate_actions', 'mf_calendar_observations', 'mf_snapshots', 'mf_snapshot_factors',
       'mf_snapshot_move_flags', 'mf_snapshot_rows', 'mf_target_builds', 'mf_target_rows'] loop
     execute format('create trigger trg_%s_append_only before update or delete on %I for each row '
                    'execute function f5_reject_mutation()', t, t);

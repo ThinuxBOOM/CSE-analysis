@@ -933,3 +933,14 @@ bound to one horizon. The Blocker (captured data is never linked to an issuer) a
 and are now tasks; all of them, and the owner's 0019 decisions, must close before `main`. Accepted steps stay
 accepted for the code as tested; Phase 4 is not usable on captured data until the loader exists. CI on this commit:
 pending.
+
+## C-0098: registry command line; settled links; scoring flags given a source ([delegated], 2026-11-18)
+
+Three items from the branch review are done. The model registry has its command line, wrapper and runbook; the
+owner's promotion now takes the test access, its result, the labels and the access count from the registry itself, so
+the owner states only the backtest and the point-in-time share. An engine run now waits until its time point is
+settled, so an issuer link written just before it cannot be missed and then appear on a re-run. And the two scoring
+flags that had no source now have one: the bonus and rights issues that could not be dated become a separate record
+(never a price adjustment) that marks an unexplained move as dilution, and labels from imported years without
+completeness ranges are counted apart. The audit of the registry (parts 1 to 3) accepted it with ten Majors; they are
+being fixed before the step exits.

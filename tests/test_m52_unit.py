@@ -497,3 +497,71 @@ def test_m54_detail_comes_from_the_stored_output_alone():
     assert _detail("fund_growth", own)[0] is False and _detail("fund_growth", own)[2] == "2"
     assert _detail("no_such_engine", full)[0] is True                       # the running registry is not consulted
 
+
+
+# ------------------------------------------------------------------------------------------------ scoring flags
+
+
+ERA = ds.AbsentEra(1, date(1995, 1, 2), date(2010, 12, 31), {"S1.N0000": ((date(2001, 1, 2), date(2008, 6, 30)),)})
+CAND = ds.Candidate("tiq:bonus:x:1", "S1.N0000", "bonus", date(2005, 3, 1), date(2005, 4, 15))
+EV = ds.ScoringEvidence((ERA,), (CAND,))
+
+
+def test_review_m2_candidate_event_is_an_unexplained_move_meeting_an_unentered_window():
+    f = lambda s, st, v, sym="S1.N0000": ds.scoring_flags(sym, s, st, v, EV)     # noqa: E731
+    u = "unexplained_move_in_horizon"
+    move = {"reference_px_session": "2005-02-25", "target_session": "2005-03-04"}
+    assert f(date(2005, 2, 25), u, move) == ("candidate_event",)
+    assert f(date(2005, 2, 25), u, move, sym="S2.N0000") == ()                     # another security's event
+    assert f(date(2005, 2, 25), "resolved", move) == ()                              # only unexplained moves
+    # (s_D, s_F] is half-open at s_D: a window ending at s_D does not meet it; one starting at s_F does
+    assert f(date(2005, 4, 15), u, {"reference_px_session": "2005-04-15", "target_session": "2005-04-20"}) == ()
+    assert f(date(2005, 2, 20), u, {"reference_px_session": "2005-02-20", "target_session": "2005-03-01"}) == \
+        ("candidate_event",)
+    assert f(date(2005, 2, 1), u, {"reference_px_session": "2005-02-01", "target_session": "2005-02-28"}) == ()
+
+
+def test_review_m2_era_row_absent_where_security_complete_does_not_speak():
+    f = lambda s, st, v, sym="S1.N0000": ds.scoring_flags(sym, s, st, v, EV)     # noqa: E731
+    t, m = "terminated", "unresolvable_missing_price"
+    left = lambda d: {"evidence": ["left_universe"], "left_session": d}           # noqa: E731
+    assert f(date(1998, 3, 2), t, left("1998-03-10")) == ("era_row_absent",)        # before 2001: no coverage
+    assert f(date(2009, 3, 2), t, left("2009-03-10")) == ()                         # after its last row: it left
+    assert f(date(1998, 3, 2), t, {"evidence": ["merger", "s1"], "left_session": "1998-03-10"}) == ()   # an event
+    assert f(date(2011, 3, 2), t, left("2011-03-10")) == ()                         # outside the batch
+    assert f(date(1998, 3, 2), t, left("1998-03-10"), sym="S9.N0000") == ("era_row_absent",)   # no range at all
+    assert f(date(1998, 3, 2), m, {"evidence": ["no_reference_price_at_F"], "target_session": "1998-03-09"}) == \
+        ("era_row_absent",)
+    assert f(date(1998, 3, 2), m, {"evidence": ["no_reference_price_at_D"], "target_session": "2009-03-09"}) == \
+        ("era_row_absent",)                                                         # D is the absent session
+    assert f(date(2009, 3, 2), m, {"evidence": ["no_reference_price_at_F"], "target_session": "2009-03-09"}) == ()
+    assert f(date(1998, 3, 2), "resolved", left("1998-03-10")) == ()
+
+
+def test_review_m2_flags_reach_the_dataset_its_report_its_version_and_scoring():
+    from worker.evaluation_metrics import scoring
+    from worker.ml_models import data
+    m = manifest()
+    snaps = [snap(i, n=2) for i in range(3)]
+    s1 = snaps[1]
+    labs = []
+    for x in labels_for(snaps):
+        if (x.snapshot_id, x.symbol, x.horizon) == (s1.snapshot_id, "S1.N0000", 5):
+            x = replace(x, state="unexplained_move_in_horizon",
+                        values={"ret": "-0.3", "direction": "fall", "reference_px_session": day(1).isoformat(),
+                                "target_session": day(6).isoformat()})
+        labs.append(x)
+    cand = ds.Candidate("c1", "S1.N0000", "bonus", day(3), day(9))
+    plain = ds.build(m, snaps, labs, tb(m))
+    flagged = ds.build(m, snaps, labs, tb(m), ds.ScoringEvidence((), (cand,)))
+    assert plain.labels[("S1.N0000", day(1), 5)].flags == ()
+    assert flagged.labels[("S1.N0000", day(1), 5)].flags == ("candidate_event",)
+    assert flagged.report["labels_by_flag"][5] == {"candidate_event": 1}
+    assert flagged.version != plain.version                                         # the flags are bound
+    other = ds.build(m, snaps, labs, tb(m), ds.ScoringEvidence((), (replace(cand, candidate_id="c2",
+                                                                            window_from=day(30), window_to=day(31)),)))
+    assert other.version != plain.version and other.labels[("S1.N0000", day(1), 5)].flags == ()   # evidence bound
+    rows = data.label_rows(flagged, [("S1.N0000", day(1))], 5)
+    assert rows[0].candidate_event and not rows[0].era_row_absent
+    p = scoring.population(rows)
+    assert p.counts["unexplained_candidate_event"] == 1 and p.unexplained_raw == []

@@ -4,7 +4,9 @@ Run the strict ex-date reconstruction (ca_reconstruct.py; C-0055) over the Trade
     python3 -I scripts/research/tradeiq/run_ca_reconstruct.py <archive root> <work dir> <summary.json>
 
 <work dir> must already hold daily.csv from run_validation.py. Writes <work dir>/reconstructed_actions.csv (evidence
-candidates with their source rows; CSE data, never committed) and <summary.json> (counts only). Sends no request.
+candidates with their source rows; CSE data, never committed), <work dir>/unentered_actions.csv (the events with a
+matched symbol and an allotment date that were not reconstructed, with the window their ex-date lies in: Phase 5's
+`candidate_event` source; never committed) and <summary.json> (counts only). Sends no request.
 """
 import collections
 import csv
@@ -124,7 +126,7 @@ def main(root, work, out_json):
     names = names_by_symbol(hd)
     counts = collections.Counter()
     by_year = collections.defaultdict(collections.Counter)
-    rows_out = []
+    rows_out, unentered = [], []
     for fname, kind in (("03Capitalization of Reserves (Bonus Issues).xls", "bonus"), ("04Rights Issues.xls", "rights")):
         path = os.path.join(hd, "stock_data", fname)
         sha = rv.sha256(path)
@@ -141,6 +143,10 @@ def main(root, work, out_json):
                 m, why = ca.find_ex_date(kind, ratio, closes.get(sym, []), ca.window_for(kind, allot, announce), price)
             counts[f"{kind}_{why}"] += 1
             by_year[sheet][f"{kind}_{why}"] += 1
+            if m is None and sym is not None and allot is not None:
+                lo, hi = ca.window_for(kind, allot, announce)
+                unentered.append([f"tiq:{kind}:{sha[:12]}:{sheet}:{i}", sym, kind, lo.isoformat(), hi.isoformat(),
+                                  why, f"{fname} [{sheet}] row {i}"])
             if m is not None:
                 new, held = (ratio[0], ratio[1]) if m.reading == "new:held" else (ratio[1], ratio[0])
                 rows_out.append([f"tiq:{kind}:{sha[:12]}:{sheet}:{i}", sym, kind, m.ex_date.isoformat(), m.reading,
@@ -153,6 +159,11 @@ def main(root, work, out_json):
                     "expected_factor", "observed_factor",
                     "cum_session", "available_on", "method", "source_row", "source_sha256"])
         w.writerows(rows_out)
+    with open(os.path.join(work, "unentered_actions.csv"), "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow(["candidate_id", "symbol", "kind", "window_from", "window_to", "reason", "source_row"])
+        w.writerows(unentered)
+    counts["unentered_with_window"] = len(unentered)
     splits = []
     for sheet, rows in dp.read_sheets(os.path.join(hd, "stock_data", "05Sub Division (Share Splits).xls")):
         h = next((i for i, r in enumerate(rows) if any("OLD PROPORTION" in dp.text(c).upper() for c in r)), None)

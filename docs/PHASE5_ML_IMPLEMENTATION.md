@@ -351,8 +351,26 @@ Recorded in full in `docs/governance/BRANCH_REVIEW_2026-11-18.md`. Fixed here: *
 one horizon (`FitScope.of(..., horizon=h)`; `for_horizon` refuses another), used by `train_set`, the calibration and
 the reliability report; **m-2** `predict` of `linear`, `gbt` and `calibrated_engine` refuses an artifact fitted for
 another horizon. Not fixed, with their destinations: **M-2** `scoring.1`'s `candidate_event` and `era_row_absent`
-have no source in the dataset (new task, before M5-8); **M-3** CI results recorded in the review; m-1 two tie rules,
+had no source in the dataset: **fixed** (below); **M-3** CI results recorded in the review; m-1 two tie rules,
 m-3 calibration and conformal artifacts not bound to their model, m-5 withheld labels reported as `pending` (M5-7);
 m-4 the fold `grace` default (M5-6 audit); m-6 the `ml_models` docstring and version (M5-7); m-7 MLK-7 through the
 protocol (M5-8); MLK-23 and MLK-24 have no step in design §15: MLK-23 goes to M5-8 (gates 5 and 9 need it), MLK-24
 is covered by M5-2's refusals.
+
+**M-2 fixed: a source for `scoring.1`'s flags** (`ml_dataset.5`). Each dataset label now carries `flags`, from
+evidence the loader reads as of the pinned target build's own recording time (`dataset.ScoringEvidence`, bound into
+the version with each label's flags; `report["labels_by_flag"]`):
+- `candidate_event`: an `unexplained_move_in_horizon` label whose window (s_D, s_F] meets the window of a known but
+  unentered bonus or rights issue of the security. Source: a new owner-only, stamped table in pending migration 0019,
+  `mf_candidate_actions`, filled by the TradeIQ import from the reconstruction run's new `unentered_actions.csv` (the
+  events with a matched symbol and an allotment date that were not reconstructed, with the reconstruction's own search
+  window). Events whose company matched no symbol, or without an allotment date, cannot be placed and are not
+  candidates: their moves stay `unexplained_genuine`, the conservative side (they keep the sensitivity).
+- `era_row_absent`: a `terminated` (left the universe) or `unresolvable_missing_price` label whose absent session lies
+  in an admitted raw `row_absent` import batch where `security_complete` does not cover the security and is not after
+  its last covered range (after it, the absence is evidence of leaving).
+`ml_models.data.label_rows` turns a dataset's labels into `scoring.1` rows with the flags. Tests: three in
+`test_m52_unit.py` (each rule's edges; the flags in the dataset, its report, its version and scoring), `t12` and
+`t13` in `test_mf7_tradeiq_import.py` (the plan; owner-only and stamped writes; the loader's as-of read).
+**Not run here:** the reconstruction script against the archive (it is not in the container); the owner reruns it
+before the import.
