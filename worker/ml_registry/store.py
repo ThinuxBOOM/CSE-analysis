@@ -335,6 +335,69 @@ def lifetime_accesses(conn):
     return _read(conn, lambda cur: _one(cur, "select count(*) from ml_test_accesses")[0])
 
 
+EXTERNAL = ("backtest_valid", "backtest_ends_at_last_v_end_or_post_access", "point_in_time_share")
+
+
+def promotion_evidence(conn, model_id, external):
+    """Gates 9 to 12's evidence, read from the registry wherever the registry holds it, so that the owner's command
+    states only what the registry cannot know yet: the Phase 10 backtest (`backtest_valid`,
+    `backtest_ends_at_last_v_end_or_post_access`), the validation's `point_in_time_share`, and optionally a
+    `reconstructed_waiver` id (checked: an owner waiver of kind reconstructed_evidence). From the registry: whether
+    the protocol's one access named this model and whether it passed; the declared point-in-time share (the
+    protocol's `point_in_time_share`); the labels the model carries (its passing validation report's, the access
+    period's `retrospective` and `previously_scored`, `rollforward_of`); the lifetime access count. Owner path only."""
+    missing = [k for k in EXTERNAL if k not in external]
+    unknown = sorted(set(external) - set(EXTERNAL) - {"reconstructed_waiver"})
+    if missing or unknown:
+        raise Refused("evidence", f"the owner states exactly {list(EXTERNAL)} (+ reconstructed_waiver); "
+                                  f"missing {missing}, unknown {unknown}")
+
+    def work(cur):
+        if _one(cur, "select session_user")[0] != "cse_migrator":
+            raise Refused("owner_path", "promotion evidence is read on the owner path (cse_migrator as cse_owner)")
+        cur.execute("set local role cse_owner")
+        m = _one(cur, "select protocol_id, rollforward_of, environment from ml_models where model_id = %s",
+                 (model_id,))
+        if m is None or m[2] != "research":
+            raise Refused("model", f"model {model_id} is not a registered research model")
+        protocol_id, rollforward_of = m[0], m[1]
+        decl = json.loads(_one(cur, "select declaration_json from ml_protocols where protocol_id = %s",
+                               (protocol_id,))[0])
+        if "point_in_time_share" not in decl:
+            raise Refused("declaration", "the protocol declares no point_in_time_share (gate 11)")
+        access_done, passed, timing = False, False, set()
+        cur.execute("select a.access_id, a.nominees_json, p.timing, p.previously_scored from ml_test_accesses a "
+                    "join ml_test_periods p on p.period_id = a.period_id where a.protocol_id = %s", (protocol_id,))
+        for aid, nominees, tm, prev in cur.fetchall():
+            if model_id not in [n["model_id"] for n in json.loads(nominees)]:
+                continue
+            access_done = True
+            timing |= {"retrospective"} if tm == "retrospective" else set()
+            timing |= {"previously_scored"} if prev else set()
+            cur.execute("select metrics_json from ml_model_metrics where scope = 'test' and stratum = 'access'")
+            for (js,) in cur.fetchall():
+                r = json.loads(js)
+                if r.get("access_id") == aid and model_id in r.get("nominees_passed", []):
+                    passed = True
+        row = _one(cur, "select checks_json from ml_gate_reports where model_id = %s and kind = 'validation' and "
+                        "passed order by report_id desc limit 1", (model_id,))
+        labels = set(json.loads(row[0])["labels"]) if row else set()
+        labels |= timing | ({"rollforward_of"} if rollforward_of is not None else set())
+        waiver = external.get("reconstructed_waiver")
+        if waiver is not None and _one(cur, "select kind from ml_waivers where waiver_id = %s", (waiver,)) != \
+                ("reconstructed_evidence",):
+            raise Refused("waiver", f"waiver {waiver} is not an owner waiver of reconstructed_evidence")
+        lifetime = _one(cur, "select count(*) from ml_test_accesses")[0]
+        return gt.PromotionEvidence(
+            access_done=access_done, nominee_passed=passed, backtest_valid=bool(external["backtest_valid"]),
+            backtest_ends_at_last_v_end_or_post_access=bool(external["backtest_ends_at_last_v_end_or_post_access"]),
+            point_in_time_share=float(external["point_in_time_share"]),
+            declared_point_in_time_share=float(decl["point_in_time_share"]), reconstructed_waiver=waiver,
+            model_labels=tuple(sorted(labels)), designation_labels=tuple(sorted(labels)),
+            designation_cites_access_count=True, lifetime_test_accesses=lifetime)
+    return _read(conn, work)
+
+
 def promote(owner_conn, model_id, evidence, *, purpose, output, horizon, list_ids, note, code_version):
     """The owner's act (gates 9 to 12): on the owner path, write the promotion report for the validated version,
     then, if it passed, the production copy (same artifact), the designation naming it with every label, and its

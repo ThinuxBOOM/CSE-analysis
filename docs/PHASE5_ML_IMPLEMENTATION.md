@@ -290,8 +290,8 @@ covered a different set: 10 further mutants survived (M3). Fixed:
 
 ## M5-6: the registry (parts 1 to 3: migration 0021, the rules, the store)
 
-**Status: parts 1 to 3 built, not yet audited.** Part 1 the database, part 2 the rules in application code, part 3
-the store (below). The wrapper, the command line and the runbook follow, then the audit.
+**Status: parts 1 to 4 built; the audit of parts 1 to 3 is running.** Part 1 the database, part 2 the rules in
+application code, part 3 the store, part 4 the command line, wrapper and runbook (below).
 
 `supabase/migrations_pending/0021_ml_registry.sql` (after 0019 and 0020, outside the chain until the owner's merge
 decision): the eighteen tables of §9.1, every one append-only for every role; artifacts as base64 text checked
@@ -329,6 +329,19 @@ Tests: `tests/test_m56_migration_postgres.py` (8: the chain and append-only; con
 identities, MLK-16 in the database; disjoint, clock-timed, once-accessed test periods; the protocol before its runs;
 the lifecycle, gate 1 and the gate report; the owner path and its designation at commit; a validated source and its
 promotion report; owner-only decisions), `tests/test_m56_migration_static.py` (2).
+
+**Part 4, the command line** (`worker/ml_registry/cli.py`, `preflight.py`, `ops/bin/cse-ml`,
+`docs/ops/P5_ML_REGISTRY.md`): `preflight`, `status`, `verify` (every artifact, configuration and declaration hash
+re-proved in Python), `alerts` and `transition` as the worker; the owner acts `waive`, `flag` and `promote` on the
+owner path. **`store.promotion_evidence`** reads gates 9 to 12's evidence from the registry: whether the protocol's
+one access named this model and whether it passed, the protocol's declared point-in-time share, every label the model
+carries (its passing validation report's, the access period's `retrospective` and `previously_scored`,
+`rollforward_of`) and the lifetime access count. The owner's evidence file may state only what the registry cannot
+know yet (the Phase 10 backtest and the validation's point-in-time share); any other key is refused. Tests:
+`tests/test_m56_cli_postgres.py` (6), `tests/test_m56_ops_static.py` (4). Mutation check: 7 mutants on the evidence
+(an access of another nominee, a pass without being named, the period's labels, the file claiming registry facts,
+the declared share, the validation labels, the owner path): all killed; 4 survived the first test set and were
+closed by `test_c6`.
 
 ---
 

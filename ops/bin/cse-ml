@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Run the ML registry command line (Phase 5, docs/PHASE5_ML_DESIGN.md section 9) with the server configuration
+# loaded. Never as root, never as postgres. No network, no CSE request: the registry reads and writes only
+# PostgreSQL.
+#
+# Who runs what (all reached only through sudo, i.e. by root/the owner):
+#   every command                  OS cse-worker   -> PostgreSQL cse_worker (peer)
+#   waive, flag, promote (owner)   OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner - the owner path
+#
+#   sudo bash /opt/cse/app/ops/bin/cse-ml preflight
+#   sudo bash /opt/cse/app/ops/bin/cse-ml status
+#   sudo bash /opt/cse/app/ops/bin/cse-ml promote --model 12 --purpose route1 --list 12 --evidence /path/e.json \
+#       --note "the owner's reason" --code-version f5.1
+set -euo pipefail
+APP="${CSE_APP_DIR:-/opt/cse/app}"
+[[ $# -ge 1 ]] || { echo "usage: $0 <command> [args...]  (python -m worker.ml_registry --help)" >&2; exit 2; }
+[[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
+user=cse-worker; role=cse_worker
+case "$1" in
+  waive|flag|promote) user=cse-migrator; role=cse_migrator ;;
+esac
+operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an owner decision
+exec runuser -u "$user" -- bash -c '
+  set -a
+  . /etc/cse/cse.env
+  set +a
+  export PYTHONPATH="$0" CSE_DB_USER="$1" CSE_OPERATOR="$2"
+  shift 2
+  cd /
+  exec python3 -m worker.ml_registry "$@"' "$APP" "$role" "$operator" "$@"
