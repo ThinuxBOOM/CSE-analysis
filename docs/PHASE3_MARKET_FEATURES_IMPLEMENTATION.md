@@ -875,3 +875,34 @@ carried Minors stand.
   price. Filled by `import-tradeiq` from `unentered_actions.csv`, which `run_ca_reconstruct.py` now writes beside
   `reconstructed_actions.csv` (absent: counted as `unentered_file_absent`). Read only by the ML dataset loader, for
   `scoring.1`'s `candidate_event`.
+
+---
+
+## MF-8: the captured path (branch review Blocker B1)
+
+**Why.** MF read only the TradeIQ import; nothing read Phase 2's captured data, so no snapshot row had a
+`company_id`, and Phase 4's fundamental engines could not reach an issuer on real captured data. The design already
+specifies the captured path (§4.3, §5.1 to §5.4, §8, §13.1) and the pure package implements its pieces
+(`sessions.py`, `bars.py`, `universe.py`); the loader and the snapshot path were missing. No new owner decision: the
+design fixes the overlap rule (§5.4: compared field by field, a disagreement makes the bar `conflicting`) and market
+cap (§5.1: CSE's reported `marketCap` from the stored payload, `provisional`).
+
+**Plan.** Part 1, the loader (done, below). Part 2, the snapshot path: captured and imported bars merged per §5.4,
+the session sequence with non-final sessions, `company_id`, `pending_sessions` and `dstar_observation_ids` stored,
+and `verify`, `explain` and target builds on the combined evidence. Part 3, the audit.
+
+**Part 1** (`worker/market_feature_store/captured.py`): one read-only, repeatable-read transaction over
+`market_capture_runs`, `market_capture_run_events`, `market_source_responses`, `market_capture_security_results` and
+`raw_market_observations`. Each terminal event carrying P2's completeness summary becomes a `TerminalEvent` (E1, E2,
+universe known, expected and produced, the derivation pass it names; recorded_at = occurred_at, available_at = the
+latest observed_at of the run's ok responses; a run with no ok response is no evidence). Final sessions and their
+governing events come from `sessions.final_sessions`; non-final sessions from `sessions.classify` (E1 on any admitted
+event, or an admitted observation). For each final session, only the governing pass's per-security rows are read, and
+each security's admitted observations go through `bars.feature_bar` (MFB-7 keeps only the governing post_close run's).
+`company_id` is taken from the latest governing run naming the security. The configuration gains `capture`:
+`min_coverage` (0.95) and MF's own reconcile and cross-check tolerances (provisional; P2's `system_config` is not
+followed, §5.1). **This changes every MF configuration id**; a configuration written before MF-8 is refused by
+`parse` with "register it again". Tests: `tests/test_mf8_captured_postgres.py` (4) drive **Phase 2's real capture
+path** against the fake CSE into PostgreSQL and read it back: the final session and its governing run, rows 1 and 3
+bars, company ids equal to `companies.id`, the reported market cap, admission by T and by H, a `post_open` run that
+never governs, coverage below the minimum giving a non-final session.

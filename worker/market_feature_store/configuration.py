@@ -21,12 +21,35 @@ class ConfigurationError(ValueError):
     pass
 
 
+# MF-8 (branch review B1): the captured path's parameters, pinned here because P2 reads its own from the mutable
+# system_config, which MF does not follow (§5.1 step 3). Provisional values (§17).
+DEFAULT_TOLERANCES = (("cross_check_closing_price_tolerance_pct", Decimal("0.1")),
+                      ("cross_check_last_traded_price_tolerance_pct", Decimal("0.1")),
+                      ("cross_check_market_cap_tolerance_pct", Decimal("0.5")),
+                      ("cross_check_turnover_tolerance_pct", Decimal("0.5")),
+                      ("reconciliation_price_tolerance_pct", Decimal("0.1")),
+                      ("reconciliation_turnover_tolerance_pct", Decimal("0.5")),
+                      ("reconciliation_volume_tolerance", Decimal("0")))
+
+
+@dataclass(frozen=True)
+class CaptureConfig:
+    min_coverage: Decimal = Decimal("0.95")             # §4.3: a final session's coverage, provisional
+    tolerances: tuple = DEFAULT_TOLERANCES              # §5.1 (reconcile), §5.2 (MFB-8), §5.4 (captured vs imported)
+
+    def tolerance_dict(self):
+        """As `reconcile` and `bars` read them: reconcile's own keys as floats (it compares floats), MF's as
+        Decimals."""
+        return {k: (float(v) if k.startswith("reconciliation_") else v) for k, v in self.tolerances}
+
+
 @dataclass(frozen=True)
 class Configuration:
     policy: universe.EligibilityPolicy = field(default_factory=universe.EligibilityPolicy)
     feature_config: features.FeatureConfig = field(default_factory=features.FeatureConfig)
     detector_threshold: Fraction = Fraction(1, 4)       # provisional (§7.3, §17)
     target_policy: targets.TargetPolicy = field(default_factory=targets.TargetPolicy)
+    capture: CaptureConfig = field(default_factory=CaptureConfig)
 
     def body(self):
         pol = {k: str(v) for k, v in asdict(self.policy).items()}
@@ -37,7 +60,9 @@ class Configuration:
                 "feature_config": {k: str(v) for k, v in asdict(self.feature_config).items()},
                 "detector_threshold": str(self.detector_threshold),
                 "target_definition_version": targets.TARGET_DEFINITION_VERSION,
-                "target_policy": {k: str(v) for k, v in asdict(self.target_policy).items()}}
+                "target_policy": {k: str(v) for k, v in asdict(self.target_policy).items()},
+                "capture": {"min_coverage": str(self.capture.min_coverage),
+                            "tolerances": {k: str(v) for k, v in self.capture.tolerances}}}
 
     def json(self):
         return canonical_json(self.body())
@@ -48,6 +73,13 @@ class Configuration:
 
 PINNED = ("code_version", "feature_registry_version", "adjustment_policy", "availability_policy", "universe_rule",
           "market_lookback", "target_definition_version")
+
+
+def _capture(b):
+    c = b.get("capture")
+    if not isinstance(c, dict):
+        raise ConfigurationError("configuration has no capture parameters (written before MF-8): register it again")
+    return CaptureConfig(Decimal(c["min_coverage"]), tuple(sorted((k, Decimal(v)) for k, v in c["tolerances"].items())))
 
 
 def parse(configuration_json):
@@ -68,7 +100,8 @@ def parse(configuration_json):
     cfg = Configuration(policy, features.FeatureConfig(max_stale_sessions=int(fc["max_stale_sessions"]),
                                                        min_constituents=int(fc["min_constituents"])),
                         Fraction(b["detector_threshold"]),
-                        targets.TargetPolicy(grace_sessions=int(b["target_policy"]["grace_sessions"])))
+                        targets.TargetPolicy(grace_sessions=int(b["target_policy"]["grace_sessions"])),
+                        _capture(b))
     if cfg.json() != configuration_json:
         raise ConfigurationError("configuration JSON does not round-trip (not written by this code)")
     return cfg

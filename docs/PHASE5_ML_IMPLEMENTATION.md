@@ -379,6 +379,14 @@ conditions, minors 11, 12 and 14): all killed; 2 survived the first test set (an
 `validate` cannot produce, now tested by a hand-validated model; gate 4 with no folds) and were closed. **Status:
 M5-6 is ready for its re-audit.**
 
+**Re-audit (fresh-context agent, at 9622e3b): ACCEPTED (C-0101).** No Blocker; each of the ten fixes holds (each
+reverted fix fails a test). Seven new Majors, to be fixed before `main` (task "M5-6 re-audit Majors"): **A** a negative
+`embargo_sessions` bypasses the embargo check; **B** an access result can be rewritten afterwards through
+`record_metrics`; **C** `ml_model_events.actor` is not stamped; **D** gate 7 still takes survivorship and the waiver
+from the caller; **E** gate 6 passes when a declaration lists no policies; **F** a designation list can name any model;
+**G** `reconstructed_evidence` is not derived from `evidence_label_class`. Eleven Minors and eleven surviving mutants
+are listed in the re-audit report and carried with the task.
+
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings

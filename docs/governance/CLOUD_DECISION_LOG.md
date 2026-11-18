@@ -961,3 +961,11 @@ CI regression failed on the review commit in one group: six registry tests error
 pytest treats a test helper called `setup` as a setup hook. Locally a newer pytest did not, so the local runs passed.
 The helpers are renamed and a static test now refuses that name in any test file. Nothing in the product code was
 wrong. CI is re-run on the fixed head.
+
+## C-0101: M5-6 accepted; seven re-audit Majors carried; MF-8 part 1 ([delegated], 2026-11-18)
+
+The re-audit of the model registry found no Blocker, so M5-6 is accepted. Its seven new Majors (holes left by the
+fixes, and some owner-path checks in the command line) must be fixed before `main` and are a task. Separately, the
+work on the branch review's Blocker has started: the market-feature store can now read Phase 2's captured data (part
+1: the loader). The configuration gains the captured path's parameters (minimum coverage and MF's own tolerances),
+which changes every MF configuration id: a configuration registered before must be registered again.
