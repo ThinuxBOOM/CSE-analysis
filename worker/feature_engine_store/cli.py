@@ -141,7 +141,7 @@ def run(args, connect):
         if args.command == "status":
             _print(status(conn))
             return EXIT_OK
-    except (OwnerPathRequired, Refused, loader.SnapshotRefused, jobs.NotInForce, LookupError, ValueError) as exc:
+    except (OwnerPathRequired, Refused, loader.SnapshotRefused, jobs.NotInForce, jobs.Unsettled, LookupError, ValueError) as exc:
         conn.rollback()
         _print({"state": "refused", "reason": str(exc)})
         return EXIT_REFUSED

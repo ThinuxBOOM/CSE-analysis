@@ -508,3 +508,32 @@ def test_m1_m4_universes_and_code_version_are_recorded(cluster, monkeypatch):
     assert u["mkt_momentum"]["all"]["size"] == 13 and u["fund_growth"]["general"]["size"] == 12
     assert all(g["size"] > 0 and g["digest"] for e in u.values() for g in e.values())
 
+
+
+def test_settled_a_run_waits_until_its_governing_time_is_settled(cluster, monkeypatch, capsys):
+    """Branch review 2026-11-18: a link decision stamped before T (H in AVAILABLE) may be uncommitted when the run
+    reads, so the run is refused until the governing time is SETTLE_MARGIN old by the database's clock."""
+    from datetime import datetime, timedelta, timezone
+    from worker.feature_engine_store import cli
+    t = datetime.fromisoformat(w.T) if isinstance(w.T, str) else w.T
+    h = datetime(2024, 7, 31, tzinfo=timezone.utc)
+    # a margin that settles T but not H: now - margin lies halfway between them
+    monkeypatch.setattr(jobs, "SETTLE_MARGIN", datetime.now(timezone.utc) - (t + (h - t) / 2))
+    db = fs.fresh_db(cluster)
+    sid, ids = seed(cluster, db, mode="AVAILABLE")
+    stand_in(monkeypatch, ids)
+    c = fs.conn(cluster, db, user="cse_worker")
+    with pytest.raises(jobs.Unsettled, match="not settled"):
+        jobs.run(c, sid, **explicit())
+    with c.cursor() as cur:
+        cur.execute("select count(*) from de_runs")
+        assert cur.fetchone()[0] == 0
+    c.rollback()
+    db2 = fs.fresh_db(cluster)
+    sid2, ids2 = seed(cluster, db2)
+    stand_in(monkeypatch, ids2)
+    assert jobs.run(fs.conn(cluster, db2, user="cse_worker"), sid2)["run_id"]     # KNOWN: T is settled
+    monkeypatch.setattr(jobs, "SETTLE_MARGIN", timedelta(days=365 * 100))
+    rc = cli.run(cli.parser().parse_args(["run", "--snapshot", str(sid2)]),
+                 lambda: fs.conn(cluster, db2, user="cse_worker"))
+    assert rc == cli.EXIT_REFUSED and "not settled" in json.loads(capsys.readouterr().out.splitlines()[-1])["reason"]

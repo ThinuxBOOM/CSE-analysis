@@ -4,14 +4,39 @@ transaction. The configurations are content-addressed and inserted if absent.
 FL-10 (design §12; branch review, Phase 4 M2): in KNOWN a run uses the configurations in force at T: where the owner
 has designated an F7, DE or MF configuration at or before T, the run is refused unless it is the one this code
 implements (or, for MF, the snapshot's). In AVAILABLE the F7, DE and F8 configuration ids are passed explicitly and
-must be the code's; a later designation changes nothing in either mode."""
+must be the code's; a later designation changes nothing in either mode.
+
+Settled links (branch review, 2026-11-18): an issuer link decision is stamped with its transaction's start time, so
+one stamped at or before the governing time (T in KNOWN, H in AVAILABLE) can still be uncommitted when the run reads.
+The run is refused until the governing time lies at least SETTLE_MARGIN before the database's clock: F8's settled
+rule with MF's margin (`market_feature_store.verify.MARGIN`); the link writers are short transactions."""
+from datetime import timedelta
+
 from worker.financial_features import panel as pn
 
 from . import assemble, codec, loader, writer
 
 
+SETTLE_MARGIN = timedelta(minutes=15)
+
+
 class NotInForce(ValueError):
     pass
+
+
+class Unsettled(ValueError):
+    pass
+
+
+def check_settled(conn, governing):
+    """Refuse a run whose governing time is not yet SETTLE_MARGIN before the database's now()."""
+    with conn.cursor() as cur:
+        cur.execute("select now()")
+        now = cur.fetchone()[0]
+    conn.rollback()
+    if governing > now - SETTLE_MARGIN:
+        raise Unsettled(f"the governing time {governing.isoformat()} is not settled: link decisions stamped before it "
+                        f"may still be uncommitted; run after {(governing + SETTLE_MARGIN).isoformat()}")
 
 
 def in_force(conn, table, at):
@@ -49,9 +74,10 @@ def run(conn, snapshot_id, *, f8_configuration_id=None, f7_configuration_id=None
     code = {"f7": codec.f7_configuration(status)[0], "de": codec.de_configuration(status)[0]}
     _check_configurations(conn, head, code, {"f7": f7_configuration_id, "de": de_configuration_id,
                                              "f8": f8_configuration_id})
-    decisions = loader.decisions(conn, [r.security.company_id for r in rows.values()])
     from .assemble import F8_MODE, _aware
     t, h = _aware(head["cutoff"]), _aware(head["horizon"])
+    check_settled(conn, h if head["mode"] == "AVAILABLE" else t)
+    decisions = loader.decisions(conn, [r.security.company_id for r in rows.values()])
     linked = {pn.security_link(decisions, r.security.company_id, F8_MODE[head["mode"]], t, h)
               for r in rows.values()}
     issuers = {lk.issuer_id for lk in linked if lk.state == pn.LINKED}

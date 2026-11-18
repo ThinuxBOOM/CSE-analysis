@@ -267,7 +267,8 @@ Minors fixed: the stamp is the database's own (`f7_stamp_guard`: `now()` and `se
 a real MF kind. Minors recorded, not changed (C-0081): a re-run of a snapshot is a new run, by design; AVAILABLE
 runs use the F8 configuration designated at H unless one is passed; the loader checks the MF row count but leaves
 re-proving the snapshot hash to MF's `verify`; link decisions are not checked for being settled at T (the same rule
-as F8's, applied with MF's margin, is a later change); `de_outputs.issuer_id` has no foreign key (text, like
+as F8's, applied with MF's margin, is a later change; **done after the branch review of 2026-11-18**: a run is
+refused until its T, or H in AVAILABLE, is 15 minutes old by the database clock, `jobs.check_settled`); `de_outputs.issuer_id` has no foreign key (text, like
 `f7_panels.issuer_id`).
 
 ## DE-4 re-audit (fresh-context agent, at 770c7b7): accepted

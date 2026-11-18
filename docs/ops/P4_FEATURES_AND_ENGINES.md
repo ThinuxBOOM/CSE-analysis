@@ -26,7 +26,9 @@ All through `sudo bash /opt/cse/app/ops/bin/cse-engines <command>`. Exit status:
   run names `--f7-configuration`, `--de-configuration` and `--f8-configuration` explicitly (FL-10).
 - `run --snapshot ID [--f8-configuration ID]`: for a stored KNOWN or AVAILABLE MF snapshot, read its rows, the link
   decisions and one F8 result per linked issuer; build the panels, features, eligibility and every engine's output;
-  write them in one transaction. A CURRENT snapshot is refused.
+  write them in one transaction. A CURRENT snapshot is refused. A run is refused until its governing time (T, or H
+  in AVAILABLE) is at least 15 minutes old by the database clock: a link decision stamped before it may still be
+  uncommitted until then. Run it again later.
 - `verify`: recompute every stored hash (configuration ids, panel, feature row, output and run hashes); report
   disagreements. Read-only.
 - `status`: counts and the latest runs.
