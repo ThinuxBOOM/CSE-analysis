@@ -539,6 +539,7 @@ def test_review_m2_era_row_absent_where_security_complete_does_not_speak():
 
 
 def test_review_m2_flags_reach_the_dataset_its_report_its_version_and_scoring():
+    pytest.importorskip("numpy")                  # ml_models needs the ML libraries (Linux CI image only)
     from worker.evaluation_metrics import scoring
     from worker.ml_models import data
     m = manifest()
