@@ -7,7 +7,10 @@ as cse_owner. A JSON report goes to stdout. No command contacts CSE or any netwo
     register-configuration                       insert the F7 and DE configurations if absent (provisional)
     designate --kind f7|de --configuration ID --note TEXT
                                                  OWNER decision: the canonical configuration
-    run --snapshot ID [--f8-configuration ID]    panels, features and one engine run for a stored MF snapshot
+    run --snapshot ID [--f8-configuration ID] [--f7-configuration ID] [--de-configuration ID]
+                                                 panels, features and one engine run for a stored MF snapshot:
+                                                 KNOWN uses the configurations in force at T; AVAILABLE needs all
+                                                 three ids (FL-10)
     verify                                       re-prove every stored hash (read-only)
     status                                       counts and the latest runs
 
@@ -45,6 +48,8 @@ def parser():
     r = sub.add_parser("run")
     r.add_argument("--snapshot", type=int, required=True)
     r.add_argument("--f8-configuration", dest="f8_configuration")
+    r.add_argument("--f7-configuration", dest="f7_configuration")
+    r.add_argument("--de-configuration", dest="de_configuration")
     sub.add_parser("verify")
     sub.add_parser("status")
     return p
@@ -124,7 +129,8 @@ def run(args, connect):
             _print({"state": "registered", **register(conn)})
             return EXIT_OK
         if args.command == "run":
-            out = jobs.run(conn, args.snapshot, f8_configuration_id=args.f8_configuration)
+            out = jobs.run(conn, args.snapshot, f8_configuration_id=args.f8_configuration,
+                           f7_configuration_id=args.f7_configuration, de_configuration_id=args.de_configuration)
             _print({"state": "stored", "snapshot_id": args.snapshot, "panels": len(out["panels"]),
                     "feature_rows": out["rows"], "run_id": out["run_id"], "run_hash": out["run_hash"]})
             return EXIT_OK
@@ -135,7 +141,7 @@ def run(args, connect):
         if args.command == "status":
             _print(status(conn))
             return EXIT_OK
-    except (OwnerPathRequired, Refused, loader.SnapshotRefused, LookupError, ValueError) as exc:
+    except (OwnerPathRequired, Refused, loader.SnapshotRefused, jobs.NotInForce, LookupError, ValueError) as exc:
         conn.rollback()
         _print({"state": "refused", "reason": str(exc)})
         return EXIT_REFUSED

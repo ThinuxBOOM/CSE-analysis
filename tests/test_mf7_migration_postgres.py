@@ -283,3 +283,29 @@ def test_x8_each_check_constraint_refuses_a_bad_row(cluster):
     for name, sql, args in bad:
         assert refused(o, sql, args) is not None, name
     o.rollback()
+
+
+def test_x9_stamps_are_the_databases_own(cluster):
+    """Branch review, Phase 3 M3: a writer cannot back-date a snapshot, a target build or a calendar-sync copy, nor
+    name another writer; KNOWN and KNOWN_RECORDED read these stamps."""
+    db = fs.fresh_db(cluster)
+    w = fs.conn(cluster, db, user="cse_worker")
+    cid, js, st, _ = config_row()
+    with w.cursor() as cur:
+        cur.execute("insert into mf_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
+                    (cid, js, st))
+    snap = ("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, input_digest, "
+            "adjustment_set_hash, row_count, snapshot_hash{c}) values ('KNOWN','point_in_time',now(),'2024-01-12',%s,"
+            "'mf.1',repeat('c',64),repeat('d',64),0,repeat('e',64){v})")
+    assert refused(w, snap.format(c=", recorded_at", v=", '2020-01-01'"), (cid,))
+    assert refused(w, snap.format(c=", created_by", v=", 'cse_owner'"), (cid,))
+    assert refused(w, snap.format(c="", v=""), (cid,)) is None
+    build = ("insert into mf_target_builds (mode, cutoff, configuration_id, target_definition_version, code_version, "
+             "build_hash{c}) values ('KNOWN', now(), %s, 't.1', 'mf.1', repeat('9',64){v})")
+    assert refused(w, build.format(c=", recorded_at", v=", '2020-01-01'"), (cid,))
+    assert refused(w, build.format(c="", v=""), (cid,)) is None
+    copy = ("insert into mf_calendar_observations (kind, date_from, date_to, available_at, source_reference) values "
+            "('declared_closed', '2024-01-15', '2024-01-15', %s, 'trading_calendar:2024-01-15')")
+    assert refused(w, copy, ("2020-01-01T00:00:00Z",))                      # a back-dated copy
+    assert refused(w, copy, ("2999-01-01T00:00:00Z",)) is None
+    w.rollback()

@@ -42,7 +42,7 @@ def label(direction, ret, vol="0.01"):
 
 
 def scope(name, rows):
-    return FitScope(name, frozenset(r.key for r in rows))
+    return FitScope(name, frozenset(r.key for r in rows), H)
 
 
 # ------------------------------------------------------------------------------------------------ §8.1

@@ -66,7 +66,7 @@ def synthetic(n=600, seed=1, shuffle=False, signal=1.0, date_shock=0.0):
 def split(d, frac=0.7, name="fit", h=H):
     k = int(len(d.rows) * frac)
     fit_rows, test_rows = d.rows[:k], d.rows[k:]
-    scope = FitScope(name, frozenset(r.key for r in fit_rows))
+    scope = FitScope(name, frozenset(r.key for r in fit_rows), h)
     return data.train_set(d, scope, fit_rows, h), test_rows
 
 
@@ -119,7 +119,7 @@ def test_engine_scores_are_never_ml_inputs_and_mlk3_fit_scope():
     assert not any(c.startswith("de.") for c in tr.schema.columns())
     assert "f7.eligibility=eligible" in tr.schema.columns() and "mf.gap" in tr.schema.numeric
     with pytest.raises(ScopeRefused, match="fit_scope"):
-        data.train_set(d, FitScope("fit", frozenset(r.key for r in d.rows[:10])), d.rows[:20], H)
+        data.train_set(d, FitScope("fit", frozenset(r.key for r in d.rows[:10]), H), d.rows[:20], H)
 
 
 def test_contributions_add_up():
@@ -287,3 +287,21 @@ def test_m2_artifacts_refuse_nan_and_a_wrong_matrix():
             a.predict(art, X[:, 1:], keys)
     assert data.direction_of((0.4, 0.2, 0.4)) is None and data.direction_of((0.3, 0.4, 0.3)) == "flat"
     assert data.direction_of((0.4, 0.4, 0.2)) == "flat" and data.direction_of((0.5, 0.2, 0.3)) == "rise"
+
+
+def test_review_m1_a_scope_cut_for_one_horizon_never_fits_another():
+    """Branch review, Phase 5 M-1: slices are purged per horizon; an h=5 fit slice offered for an h=21 fit, or a
+    scope that names no horizon, is refused; an artifact predicts only its own horizon."""
+    d = synthetic(n=300)
+    rows = d.rows[:200]
+    with pytest.raises(ScopeRefused, match="horizon_scope"):
+        data.train_set(d, FitScope("fit", frozenset(r.key for r in rows), 5), rows, 21)
+    with pytest.raises(ScopeRefused, match="horizon_scope"):
+        data.train_set(d, FitScope("fit", frozenset(r.key for r in rows)), rows, H)
+    tr, test = split(d)
+    art = linear.fit(tr)
+    X, keys = data.matrix(test, linear.schema_of(art))
+    with pytest.raises(ValueError, match="fitted for h=5"):
+        linear.predict(art, X, keys, horizon=21)
+    assert linear.predict(art, X, keys, horizon=H).probs
+

@@ -24,6 +24,8 @@ from worker.financial_features import features as ft
 from worker.financial_features import panel as pn
 from worker.financial_features import valuation as va
 
+from worker.market_features.universe import is_equity_line, security_class
+
 from .writer import PanelBatch, RunBatch
 
 MF_LABEL = {"KNOWN": "point_in_time", "AVAILABLE": "reconstructed"}
@@ -100,7 +102,7 @@ def assemble(*, mode, cutoff, horizon, snapshot_id, rows, results, decisions,
         out.links[sym] = pn.security_link(decisions, r.security.company_id, F8_MODE[mode], t, h)
     lines_of = {}
     for sym, lk in out.links.items():
-        if lk.state == pn.LINKED:
+        if lk.state == pn.LINKED and is_equity_line(sym):     # §7.2: equity lines only (branch review, Phase 4 M3)
             lines_of.setdefault(lk.issuer_id, []).append(sym)
 
     issuer_info, issuer_vals, line_vals, hashes = {}, {}, {}, {}
@@ -168,6 +170,16 @@ def _excluded(e, member, group, reason, evidence, label):
                            dict(evidence, excluded=reason), label)
 
 
+def _not_equity(e, sec, lk, rows, label):
+    """§7.4: a line of another security class (a debenture, a warrant, ...) is not_applicable to every fundamental
+    engine; it carries no issuer output and no per-share valuation (branch review, Phase 4 M3)."""
+    o = sc.not_applicable(e, sec, "")
+    from dataclasses import replace
+    return replace(o, evidence={"not_applicable": f"security_class:{security_class(sec)}",
+                                "link_decision_id": lk.decision_id, "mf_row_hash": rows[sec].row_hash},
+                   label_class=label)
+
+
 def _unlinked(e, sec, lk, rows, label):
     """A line with no issuer link at T (absent or in conflict) has no fundamental input (§4.6)."""
     return _excluded(e, sec, "", lk.state, {"link_decision_id": lk.decision_id, "mf_row_hash": rows[sec].row_hash},
@@ -190,6 +202,9 @@ def _issuer_engine(e, info, vals, hashes, links, rows, label, n_min):
     for sec, lk in sorted(links.items()):
         if lk.state != pn.LINKED:
             out.append((_unlinked(e, sec, lk, rows, label), None))
+            continue
+        if not is_equity_line(sec):
+            out.append((_not_equity(e, sec, lk, rows, label), lk.issuer_id))
             continue
         iss = lk.issuer_id
         ev = _line_evidence(info, links, rows, sec, iss)
@@ -219,6 +234,8 @@ def _eps_engine(e, info, line_vals, rows, links, label, n_min):
     for sec, lk in sorted(links.items()):
         if lk.state != pn.LINKED:
             out.append((_unlinked(e, sec, lk, rows, label), None))
+        elif not is_equity_line(sec):
+            out.append((_not_equity(e, sec, lk, rows, label), lk.issuer_id))
         elif sec not in ranked:
             x = info[lk.issuer_id]
             why = ("no_industry_group" if x["group"] is None else f"financially_ineligible:{x['eligibility']}"

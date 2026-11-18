@@ -51,7 +51,7 @@ def world(n=1200, seed=2, partial_noise=False):
 
 def split(d, frac=0.7, name="fit"):
     k = int(len(d.rows) * frac)
-    scope = FitScope(name, frozenset(r.key for r in d.rows[:k]))
+    scope = FitScope(name, frozenset(r.key for r in d.rows[:k]), H)
     return data.train_set(d, scope, d.rows[:k], H), d.rows[k:]
 
 

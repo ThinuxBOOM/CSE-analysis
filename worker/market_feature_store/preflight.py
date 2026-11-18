@@ -18,12 +18,14 @@ GUARDS = {"mf_configurations": "trg_mfc_guard", "mf_designations": "trg_mfd_owne
           "mf_history_imports": "trg_mfh_owner", "mf_history_bars": "trg_mfb_owner",
           "mf_history_security_complete": "trg_mfs_owner", "mf_history_quarantine": "trg_mfq_owner",
           "mf_calendar_observations": "trg_mfk_guard"}
-GUARD_FUNCTIONS = ("mf_configuration_guard()", "mf_owner_only_guard()", "mf_calendar_guard()")
+STAMPED = {"mf_calendar_observations": "trg_mfk_stamp", "mf_snapshots": "trg_mfn_stamp",
+           "mf_target_builds": "trg_mft_stamp"}
+GUARD_FUNCTIONS = ("mf_configuration_guard()", "mf_owner_only_guard()", "mf_calendar_guard()", "mf_stamp_guard()")
 
 
 def triggers(table):
     names = [f"trg_{table}_append_only", f"trg_{table}_no_truncate"]
-    return ([GUARDS[table]] if table in GUARDS else []) + names
+    return ([GUARDS[table]] if table in GUARDS else []) + ([STAMPED[table]] if table in STAMPED else []) + names
 
 
 def _one(conn, sql, args=()):

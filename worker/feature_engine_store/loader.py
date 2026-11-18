@@ -22,12 +22,12 @@ def _iso(d):
 def snapshot(conn, snapshot_id):
     """(header dict, {symbol: MFRow}). Refuses a CURRENT snapshot and one whose stored row count disagrees."""
     with conn.cursor() as cur:
-        cur.execute("select mode, cutoff, knowledge_horizon, d_star, row_count, imported_inputs from mf_snapshots "
-                    "where snapshot_id = %s", (snapshot_id,))
+        cur.execute("select mode, cutoff, knowledge_horizon, d_star, row_count, imported_inputs, configuration_id "
+                    "from mf_snapshots where snapshot_id = %s", (snapshot_id,))
         h = cur.fetchone()
         if h is None:
             raise SnapshotRefused(f"no MF snapshot {snapshot_id}")
-        mode, cutoff, horizon, d_star, row_count, imported = h
+        mode, cutoff, horizon, d_star, row_count, imported, mf_cid = h
         if mode not in ("KNOWN", "AVAILABLE"):
             raise SnapshotRefused(f"snapshot {snapshot_id} is {mode}: DE runs on point-in-time snapshots only")
         cur.execute("select symbol, company_id::text, eligibility, features_json, px_ref, adj_ref, ref_session, "
@@ -57,7 +57,7 @@ def snapshot(conn, snapshot_id):
                              tuple(factors.get(sym, ())), tuple(moves.get(sym, ())))
         rows[sym] = MFRow(sec, el, mf_values(json.loads(fj)), rh)
     return {"snapshot_id": snapshot_id, "mode": mode, "cutoff": _iso(cutoff), "horizon": _iso(horizon),
-            "d_star": d_star, "imported": bool(imported)}, rows
+            "d_star": d_star, "imported": bool(imported), "configuration_id": mf_cid}, rows
 
 
 def decisions(conn, company_ids):

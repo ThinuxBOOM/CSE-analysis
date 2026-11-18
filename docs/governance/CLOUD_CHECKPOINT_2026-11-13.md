@@ -1,5 +1,8 @@
 # Cloud session checkpoint, 2026-11-13
 
+> **Superseded.** This describes the branch on 2026-11-13. The current state, open items and the list to close
+> before `main` are in `docs/governance/BRANCH_REVIEW_2026-11-18.md` and the decision log.
+
 This is the state of the branch `integration/cloud` at the end of the cloud session that ran while the owner's
 laptop was away. It is written so that the work can be picked up again (by the laptop's orchestrator, implementor
 and auditor, or by a later cloud session) without reading the whole session.

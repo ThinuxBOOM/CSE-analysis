@@ -76,8 +76,10 @@ def describe(artifact):
                               "hyperparameters", "environment")}
 
 
-def predict(artifact, rows):
+def predict(artifact, rows, horizon=None):
     b = artifact.load(ADAPTER)
+    if horizon is not None and b["horizon"] != horizon:
+        raise ValueError(f"the artifact was fitted for h={b['horizon']}, not h={horizon}")
     eid = b["engine_id"]
     W, w0 = np.array(b["direction"]["coef"]), np.array(b["direction"]["intercept"])
     slope, icept = b["return"]["slope"], b["return"]["intercept"]

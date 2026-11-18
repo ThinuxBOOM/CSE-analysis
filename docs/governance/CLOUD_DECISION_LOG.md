@@ -922,3 +922,14 @@ a reliability check no longer passes when there is no evidence; the coverage rep
 including one with no interval, against the target level, and says when the estimate is coarse; and ten untested
 rules each have a test. The planted-signal test now uses a smaller signal and a no-signal control, so it can fail.
 
+
+## C-0097: branch-wide review recorded; six Majors fixed ([delegated], 2026-11-18)
+
+A review of the whole branch by three fresh reviewers found one Blocker and eleven Majors
+(`docs/governance/BRANCH_REVIEW_2026-11-18.md`). Six Majors are fixed: engine runs record their code version and
+refuse mixed industry universes; a KNOWN run uses the configurations in force at T; rights, warrants and debentures
+are no longer scored by fundamental engines; database stamps are the database's own; and a model fitting scope is
+bound to one horizon. The Blocker (captured data is never linked to an issuer) and four other Majors need new work
+and are now tasks; all of them, and the owner's 0019 decisions, must close before `main`. Accepted steps stay
+accepted for the code as tested; Phase 4 is not usable on captured data until the loader exists. CI on this commit:
+pending.

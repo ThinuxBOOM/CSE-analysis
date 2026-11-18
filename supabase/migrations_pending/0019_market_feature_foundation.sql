@@ -322,6 +322,28 @@ $$;
 
 -- A declared closure is owner evidence; the worker may insert only the calendar-sync copy of a trading_calendar row,
 -- which it marks with a source reference beginning 'trading_calendar:'.
+create function mf_stamp_guard() returns trigger
+language plpgsql as $$
+declare
+  j jsonb := to_jsonb(new);
+begin
+  -- KNOWN's reproducibility rests on the database's own stamps (design 4.1): recorded_at is now() and the writer is
+  -- session_user, never a value the writer supplies; a worker's calendar copy is available from now on, never
+  -- back-dated (branch review, Phase 3 M3)
+  if (j ->> 'recorded_at')::timestamptz is distinct from now()
+     or coalesce(j ->> 'created_by', j ->> 'entered_by') is distinct from session_user then
+    raise exception '%: recorded_at and the writer must be now() and session_user', tg_table_name
+      using errcode = 'check_violation';
+  end if;
+  if tg_table_name = 'mf_calendar_observations' and current_user = 'cse_worker'
+     and (j ->> 'available_at')::timestamptz < now() then
+    raise exception 'mf_calendar_observations: a calendar-sync copy is never back-dated'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
 create function mf_calendar_guard() returns trigger
 language plpgsql as $$
 begin
@@ -356,6 +378,9 @@ create trigger trg_mfs_owner before insert on mf_history_security_complete
   for each row execute function mf_owner_only_guard();
 create trigger trg_mfq_owner before insert on mf_history_quarantine for each row execute function mf_owner_only_guard();
 create trigger trg_mfk_guard before insert on mf_calendar_observations for each row execute function mf_calendar_guard();
+create trigger trg_mfk_stamp before insert on mf_calendar_observations for each row execute function mf_stamp_guard();
+create trigger trg_mfn_stamp before insert on mf_snapshots for each row execute function mf_stamp_guard();
+create trigger trg_mft_stamp before insert on mf_target_builds for each row execute function mf_stamp_guard();
 
 do $$
 declare
@@ -377,7 +402,7 @@ end $$;
 -- =============================================================================
 -- Privileges: PUBLIC nothing (above); the worker's inserts; the reader's SELECT (above)
 -- =============================================================================
-revoke all on function mf_configuration_guard(), mf_owner_only_guard(), mf_calendar_guard() from public;
+revoke all on function mf_configuration_guard(), mf_owner_only_guard(), mf_calendar_guard(), mf_stamp_guard() from public;
 grant insert on mf_configurations, mf_calendar_observations, mf_snapshots, mf_snapshot_factors,
   mf_snapshot_move_flags, mf_snapshot_rows, mf_target_builds, mf_target_rows to cse_worker;
 

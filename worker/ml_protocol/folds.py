@@ -157,10 +157,18 @@ class FitScope:
     to one slice and refuses rows outside it."""
     slice_name: str
     allowed: frozenset = field(default_factory=frozenset)
+    horizon: Optional[int] = None        # the h the slices were cut for: purge and R_h bounds are per horizon (§5.2)
 
     @classmethod
-    def of(cls, slices_out, name):
-        return cls(name, frozenset(r.key for r in slices_out[name]))
+    def of(cls, slices_out, name, horizon=None):
+        return cls(name, frozenset(r.key for r in slices_out[name]), horizon)
+
+    def for_horizon(self, horizon):
+        """Branch review, Phase 5 M-1: slices cut for one horizon never admit a fit for another; a scope that does not
+        name its horizon admits none."""
+        if self.horizon is None or self.horizon != horizon:
+            raise Refused("horizon_scope", f"the {self.slice_name} slice was cut for h={self.horizon}, not h={horizon}")
+        return self
 
     def admit(self, rows):
         stray = [r.key for r in rows if r.key not in self.allowed]

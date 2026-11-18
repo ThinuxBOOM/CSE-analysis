@@ -53,10 +53,10 @@ def _check_probs(probs):
             raise ValueError("a probability vector is three finite non-negative numbers summing to 1")
 
 
-def _scoped(scope, rows, slice_name):
+def _scoped(scope, rows, slice_name, horizon):
     if scope.slice_name != slice_name:
         raise Refused("wrong_slice", f"this is fitted on the {slice_name} slice, not {scope.slice_name!r}")
-    return scope.admit(rows)
+    return scope.for_horizon(horizon).admit(rows)
 
 
 # ------------------------------------------------------------------------------------------------ §8.1
@@ -73,7 +73,7 @@ def fit_vector_scaling(scope, rows, probs, dataset, horizon):
     """rows: the calibrate slice's rows (admitted through `scope`, which must be that slice); probs: the model's
     (p_rise, p_flat, p_fall) on them. Rows without a trained direction label are not used."""
     from scipy.optimize import minimize
-    rows = _scoped(scope, rows, "calibrate")
+    rows = _scoped(scope, rows, "calibrate", horizon)
     _same_length(rows, probs, "probability vectors")
     _check_probs(probs)
     y = targets(dataset, [r.key for r in rows], horizon).direction
@@ -126,7 +126,7 @@ def reliability_report(dataset, rows, probs, horizon, bins=10, scope=None):
     """{"overall": (ECE, table, n), "<liquidity class>": (ECE, table, n)} over rows with a probability and a trained
     direction label. With `scope`, the rows are admitted through it (the calibrate slice, for calibrated_engine)."""
     if scope is not None:
-        rows = scope.admit(rows)
+        rows = scope.for_horizon(horizon).admit(rows)
     _same_length(rows, probs, "probability vectors")
     _check_probs(probs)
     y = targets(dataset, [r.key for r in rows], horizon).direction
@@ -173,8 +173,8 @@ def fit_intervals(fit_scope, fit_rows, conformal_scope, conformal_rows, predicte
     """The floor from the fit slice's positive scales; the per-class quantile of |y - prediction| / scale on the
     conformal slice. predicted: the model's return on each conformal row (None: not used)."""
     _check_level(level)
-    fit_rows = _scoped(fit_scope, fit_rows, "fit")
-    conformal_rows = _scoped(conformal_scope, conformal_rows, "conformal")
+    fit_rows = _scoped(fit_scope, fit_rows, "fit", horizon)
+    conformal_rows = _scoped(conformal_scope, conformal_rows, "conformal", horizon)
     _same_length(conformal_rows, predicted, "predictions")
     if any(p is not None and not math.isfinite(p) for p in predicted):
         raise ValueError("a prediction is not a finite number")

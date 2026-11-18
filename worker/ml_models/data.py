@@ -135,7 +135,7 @@ class Train:
 def train_set(dataset, scope, rows, horizon):
     """rows: the dataset rows of one slice; `scope` (ml_protocol.FitScope) names it and refuses any row outside it
     (MLK-3)."""
-    admitted = scope.admit(rows)
+    admitted = scope.for_horizon(horizon).admit(rows)
     sch = schema(admitted)
     X, keys = matrix(admitted, sch)
     return Train(horizon, sch, X, targets(dataset, keys, horizon), tuple(admitted), scope.slice_name, _ISSUED)

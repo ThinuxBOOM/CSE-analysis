@@ -99,6 +99,7 @@ create table f7_panels (
   anchor_months integer,
   flags text not null default '',
   counts_json text not null default '{}',
+  code_version text not null,                          -- the code version tuple (design section 16, Q14)
   panel_hash text not null,                            -- SHA-256 binding every column above
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
@@ -144,6 +145,7 @@ create table de_runs (
   fundamental_coverage text not null,
   universes_json text not null,                        -- per engine and group: level, size, digest
   counts_json text not null,
+  code_version text not null,                          -- the code version tuple (design section 16, Q14)
   run_hash text not null,                              -- SHA-256 binding every column and every output's hash
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),

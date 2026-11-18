@@ -240,3 +240,19 @@ def test_m10_an_instant_hashes_the_same_in_any_zone_and_as_text_or_datetime():
     from worker.feature_engine_store import codec
     a = codec._norm("2024-06-30T05:30:00+05:30")
     assert a == codec._norm(datetime(2024, 6, 30, tzinfo=timezone.utc)) == codec._norm("2024-06-30 00:00:00+00:00")
+
+
+def test_m3_a_non_equity_line_is_not_applicable_to_fundamental_engines():
+    """Branch review, Phase 4 M3: a debenture linked to an issuer carries no issuer output, no per-share valuation
+    and no feature row; it is not_applicable with its security class."""
+    rows, results, decisions = world()
+    rows["S01.D0001"] = mf_row("S01.D0001", "c1d", 1, px="900")
+    decisions.append(pn.Decision(300, "c1d", "iss01", "evidenced", DECIDED))
+    a = asm.assemble(mode="KNOWN", cutoff=T, horizon=None, snapshot_id=1, rows=rows, results=results,
+                     decisions=decisions)
+    by = outputs(a)
+    for e in ("fund_growth", "fund_profitability", "fund_valuation_eps"):
+        o, iss = by[(e, "S01.D0001")]
+        assert o.state == sc.NOT_APPLICABLE and o.evidence["not_applicable"] == "security_class:debenture"
+    assert "S01.D0001" not in {r["subject"] for b in a.panels for r in b.rows}
+    assert by[("fund_growth", "S01.N0000")][0].state == sc.SCORED

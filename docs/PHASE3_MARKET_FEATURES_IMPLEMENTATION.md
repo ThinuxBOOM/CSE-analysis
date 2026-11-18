@@ -1,6 +1,6 @@
 # Phase 3: market feature foundation (implementation record)
 
-**Design:** `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 5, accepted [delegated] for implementation on
+**Design:** `docs/PHASE3_MARKET_FEATURES_DESIGN.md`, revision 6 (C-0051), accepted [delegated] for implementation on
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0026). **Branch:** `integration/cloud` only. Nothing
 here is on `main`, nothing is frozen, and nothing has run against real data: no production data exists.
 
@@ -199,7 +199,7 @@ Choices made inside the design's words, to be checked by the audit:
   `insufficient_history`, `blocked_quality`, `low_activity`, `stale`. Every failing criterion is also listed in
   `failed`. Freshness is not evaluated while the price is unknown.
 - **Liquidity has no result name of its own in §9**; a median turnover below the minimum (or no turnover at all)
-  gives `low_activity`, with the measured median stored.
+  gives `low_liquidity` (`universe.py`), with the measured median stored.
 - **Minor 5:** a bar with `traded = unknown` is left out of both the numerator and the denominator of the activity
   ratio; with no known session in the window the ratio is null and the result `low_activity`.
 - A session of the window on which the security has no bar is likewise not in the ratio's denominator.
@@ -335,7 +335,7 @@ on level windows (a session window must not count the gap before its first sessi
 
 ---
 
-## MF-6: targets (DRAFT, checkpoint of 2026-11-13)
+## MF-6: targets (accepted, C-0060; drafted at the checkpoint of 2026-11-13)
 
 **Status: ACCEPTED on the branch (C-0060: audit 9 reported no Blocker; an independent oracle agreed on every state and value over 313 000 cases).** The draft of the checkpoint (C-0034) was unchanged until audit 3;
 `tests/test_mf6_unit.py` now covers it (10 tests).
@@ -357,7 +357,7 @@ Mutation check (scratch copy, 12 mutants): 11 killed. The survivor removes the v
 a gap is caught first as `unknown_session_in_horizon`.
 
 `worker/market_features/targets.py` was written just before the checkpoint (C-0034) and is committed so that the
-work is not lost. It has no test file. What it contains, against design §11:
+work is not lost. (At the checkpoint it had no test file; tests from C-0041 on, below.) What it contains, against design §11:
 
 - `ReferenceRow` (what a label takes from the stored reference snapshot row), `Label`, `TargetPolicy`
   (grace period 21, provisional), `label()` for one (row, horizon) at a target build, `_volatility`, and
@@ -634,7 +634,7 @@ MF-6 took nine audits; the record above (audits 3 to 9) lists every Blocker and 
 
 ## MF-7c (first part): imported bars and the snapshot builder
 
-**Status: implemented and tested (2026-11-14); audit pending. The database loader and writer, `verify` and the CLI are
+**Status: accepted (C-0063). The database loader and writer, `verify` and the CLI are
 not yet written.**
 
 | File | Content |
@@ -726,7 +726,7 @@ No Blocker; nothing stores a wrong state or price on the real data, nothing leak
 
 **Status: implemented and tested (2026-11-15); rejected by its first audit (three Blockers, fixed, C-0065) and by
 its re-audit (one Blocker, fixed, C-0066) and its second re-audit (one Blocker, fixed, C-0067) and its third (three Blockers, fixed, C-0074) and its fourth (one Blocker, fixed,
-C-0078); fifth re-audit pending.** MF-7's remaining pieces (design §13.2): the
+C-0078); accepted after the fifth re-audit (C-0086).** MF-7's remaining pieces (design §13.2): the
 configuration, `calendar-sync`, `preflight`, `verify`, `explain`, `KNOWN_RECORDED`, the target-build writer, the
 command line, the wrapper and the runbook.
 

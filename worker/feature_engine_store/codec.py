@@ -68,9 +68,18 @@ def de_configuration(status="provisional", n_min=sc.N_MIN):
 
 # ------------------------------------------------------------------------------------------------ records
 
+CODE_VERSION = "f7de.2"        # bumped whenever F7 or DE semantics change (branch review, Phase 4 M4; design §16 Q14)
+
+
+def code_version():
+    """The code version tuple stored with every panel and run: this store's version and the F7 and engine registry
+    versions it ran with."""
+    return canonical({"store": CODE_VERSION, "features": ft.REGISTRY_VERSION, "engines": reg.REGISTRY_VERSION})
+
 PANEL_COLUMNS = ("issuer_id", "mode", "result_label", "cutoff", "knowledge_horizon", "f7_configuration_id",
                  "f8_configuration_id", "f8_result_hash", "state", "scope", "currency", "newest_period",
-                 "anchor_period", "anchor_months", "flags", "counts_json", "created_by", "recorded_at")
+                 "anchor_period", "anchor_months", "flags", "counts_json", "code_version", "created_by",
+                 "recorded_at")
 
 
 def panel_record(p, f7_configuration_id, stamp):
@@ -84,7 +93,8 @@ def panel_record(p, f7_configuration_id, stamp):
                scope=p.scope, currency=p.currency,
                newest_period=None if p.newest_period is None else p.newest_period.isoformat(),
                anchor_period=None if p.anchor_period is None else p.anchor_period.isoformat(),
-               anchor_months=p.anchor_months, flags=",".join(sorted(p.flags)), counts_json=canonical(dict(p.counts)), recorded_at=stamp[0], created_by=stamp[1])
+               anchor_months=p.anchor_months, flags=",".join(sorted(p.flags)), counts_json=canonical(dict(p.counts)), code_version=code_version(), recorded_at=stamp[0],
+               created_by=stamp[1])
     rec["panel_hash"] = panel_hash(rec)
     return rec
 
@@ -144,7 +154,8 @@ def output_record(o, issuer_id=None):
 
 
 RUN_COLUMNS = ("mode", "cutoff", "knowledge_horizon", "snapshot_id", "f7_configuration_id", "de_configuration_id",
-               "label_class", "fundamental_coverage", "universes_json", "counts_json", "created_by", "recorded_at")
+               "label_class", "fundamental_coverage", "universes_json", "counts_json", "code_version", "created_by",
+               "recorded_at")
 
 
 def run_record(*, mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, de_configuration_id,
@@ -161,12 +172,18 @@ def run_record(*, mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration
     universes, counts = {}, {}
     for o in outputs:
         u = json.loads(o["output_json"])["universe"]
-        universes.setdefault(o["engine_id"], {})[u.get("group") or ""] = u
         counts[o["state"]] = counts.get(o["state"], 0) + 1
+        if not u.get("digest"):
+            continue        # an excluded or not_applicable output carries no universe (branch review, Phase 4 M1)
+        group = universes.setdefault(o["engine_id"], {})
+        key = u.get("group") or ""
+        if key in group and group[key] != u:
+            raise ValueError(f"{o['engine_id']}/{key}: two universes in one run")
+        group[key] = u
     rec = dict(mode=mode, cutoff=cutoff, knowledge_horizon=knowledge_horizon, snapshot_id=snapshot_id,
                f7_configuration_id=f7_configuration_id, de_configuration_id=de_configuration_id,
                label_class=label_class, fundamental_coverage=fundamental_coverage,
-               universes_json=canonical(universes), counts_json=canonical(counts),
+               universes_json=canonical(universes), counts_json=canonical(counts), code_version=code_version(),
                recorded_at=stamp[0], created_by=stamp[1])
     rec["run_hash"] = run_hash(rec, outputs)
     return rec

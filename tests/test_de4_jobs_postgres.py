@@ -80,6 +80,13 @@ def seed(cluster, db, mode="KNOWN", late=False):
     return sid, ids
 
 
+def explicit():
+    """FL-10: an AVAILABLE run names its F7, DE and F8 configurations."""
+    from worker.feature_engine_store import codec
+    return dict(f7_configuration_id=codec.f7_configuration()[0], de_configuration_id=codec.de_configuration()[0],
+                f8_configuration_id="c" * 64)
+
+
 def stand_in(monkeypatch, ids, mode="KNOWN", horizon=None):
     by_uuid = {u: f for f, u in ids.items()}
 
@@ -135,7 +142,7 @@ def test_j3_available_snapshot_is_reconstructed(cluster, monkeypatch):
     sid, ids = seed(cluster, db, mode="AVAILABLE")
     stand_in(monkeypatch, ids)
     c = fs.conn(cluster, db, user="cse_worker")
-    jobs.run(c, sid)
+    jobs.run(c, sid, **explicit())
     assert verify.report(c) == []
     with c.cursor() as cur:
         cur.execute("select distinct label_class from f7_feature_rows union select label_class from de_runs")
@@ -253,14 +260,14 @@ def test_b2_the_database_ties_rows_and_runs_to_their_snapshot_and_stamp(cluster)
         cur.execute("insert into de_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
                     (did, djs, dst))
         cur.execute("insert into f7_panels (issuer_id, mode, result_label, cutoff, f7_configuration_id, "
-                    "f8_configuration_id, f8_result_hash, state, panel_hash) values ('I', 'KNOWN', 'known', %s, %s, "
-                    "'f8', repeat('a',64), 'ok', repeat('b',64)) returning panel_id", (w.T, cid))
+                    "f8_configuration_id, f8_result_hash, state, code_version, panel_hash) values ('I', 'KNOWN', 'known', %s, %s, "
+                    "'f8', repeat('a',64), 'ok', 'c', repeat('b',64)) returning panel_id", (w.T, cid))
         pid = cur.fetchone()[0]
     w_.commit()
     from test_de4_migration_postgres import refused
     run = ("insert into de_runs (mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, "
-           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, run_hash%s) "
-           "values (%%s, %%s, %%s, %%s, %%s, %%s, %%s, 'all', '{}', '{}', repeat('c',64)%s)")
+           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, code_version, run_hash%s) "
+           "values (%%s, %%s, %%s, %%s, %%s, %%s, %%s, 'all', '{}', '{}', 'c', repeat('c',64)%s)")
     base = run % ("", "")
     assert refused(w_, base, ("AVAILABLE", "2030-01-01T00:00:00+00:00", "2030-02-01T00:00:00+00:00", sid, cid, did,
                               "reconstructed"))                      # R5: not the snapshot's mode, T, H
@@ -419,8 +426,8 @@ def test_r4_rows_and_runs_must_share_their_snapshots_t_and_h(cluster):
         cur.execute("insert into de_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
                     (did, djs, dst))
         panel = ("insert into f7_panels (issuer_id, mode, result_label, cutoff, knowledge_horizon, "
-                 "f7_configuration_id, f8_configuration_id, f8_result_hash, state, panel_hash) values ('I', "
-                 "'AVAILABLE', 'reconstructed', %s, %s, %s, 'f8', repeat('a',64), 'ok', repeat('b',64)) "
+                 "f7_configuration_id, f8_configuration_id, f8_result_hash, state, code_version, panel_hash) values ('I', "
+                 "'AVAILABLE', 'reconstructed', %s, %s, %s, 'f8', repeat('a',64), 'ok', 'c', repeat('b',64)) "
                  "returning panel_id")
         cur.execute(panel, (w.T, "2024-08-31T00:00:00+00:00", cid))   # H differs from the snapshot's
         bad_h = cur.fetchone()[0]
@@ -433,9 +440,71 @@ def test_r4_rows_and_runs_must_share_their_snapshots_t_and_h(cluster):
     assert refused(w_, row, (bad_h, sid))                               # N08
     assert refused(w_, row, (good, sid)) is None
     run = ("insert into de_runs (mode, cutoff, knowledge_horizon, snapshot_id, f7_configuration_id, "
-           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, run_hash) values "
+           "de_configuration_id, label_class, fundamental_coverage, universes_json, counts_json, code_version, run_hash) values "
            "('AVAILABLE', %s, '2024-07-31T00:00:00+00:00', %s, %s, %s, 'reconstructed', 'captured_only', '{}', "
-           "'{}', repeat('c',64))")
+           "'{}', 'c', repeat('c',64))")
     assert refused(w_, run, ("2024-06-29T00:00:00+00:00", sid, cid, did))   # N09: another T
     assert refused(w_, run, (w.T, sid, cid, did)) is None
     w_.rollback()
+
+
+# ------------------------------------------------------------------------------------------------ branch review
+
+
+def designate(cluster, db, table, cid, at):
+    """An owner designation recorded at `at` (owner path; a hand-set time stands for one made then)."""
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set role cse_owner")
+        import hashlib
+        if table != "mf_designations" and cid == hashlib.sha256(b'{"status":"provisional","x":1}').hexdigest():
+            cur.execute(f"insert into {table[:-13]}_configurations (configuration_id, configuration_json, status) "
+                        "values (%s, %s, 'provisional') on conflict do nothing",
+                        (cid, '{"status":"provisional","x":1}'))
+        cur.execute(f"insert into {table} (purpose, configuration_id, note, recorded_at) values ('canonical', %s, "
+                    "'the owner designates it', %s)", (cid, at))
+    o.commit()
+    o.close()
+
+
+def test_fl10_known_uses_the_configurations_in_force_at_t_available_names_them(cluster, monkeypatch):
+    import hashlib
+    from worker.feature_engine_store import codec
+    other_js = '{"status":"provisional","x":1}'
+    other = hashlib.sha256(other_js.encode()).hexdigest()
+    db = fs.fresh_db(cluster)
+    sid, ids = seed(cluster, db)
+    stand_in(monkeypatch, ids)
+    c = fs.conn(cluster, db, user="cse_worker")
+    designate(cluster, db, "de_designations", other, "2026-01-01T00:00:00Z")        # after T: changes nothing
+    assert jobs.run(c, sid)["run_id"]
+    designate(cluster, db, "de_designations", other, "2024-01-01T00:00:00Z")        # in force at T: another one
+    with pytest.raises(jobs.NotInForce, match="in force at T"):
+        jobs.run(c, sid)
+    designate(cluster, db, "de_designations", codec.de_configuration()[0], "2024-03-01T00:00:00Z")
+    assert jobs.run(c, sid)["run_id"]                                               # the latest at T is the code's
+    with pytest.raises(jobs.NotInForce, match="not the one this code implements"):
+        jobs.run(c, sid, f7_configuration_id="0" * 64)
+    db = fs.fresh_db(cluster)
+    sid, ids = seed(cluster, db, mode="AVAILABLE")
+    stand_in(monkeypatch, ids)
+    c = fs.conn(cluster, db, user="cse_worker")
+    with pytest.raises(jobs.NotInForce, match="explicitly"):
+        jobs.run(c, sid)
+    assert jobs.run(c, sid, **explicit())["run_id"]
+
+
+def test_m1_m4_universes_and_code_version_are_recorded(cluster, monkeypatch):
+    db = fs.fresh_db(cluster)
+    c, sid = written(cluster, db, monkeypatch)
+    from worker.feature_engine_store import codec
+    with c.cursor() as cur:
+        cur.execute("select universes_json, code_version from de_runs")
+        uj, cv = cur.fetchone()
+        cur.execute("select distinct code_version from f7_panels")
+        assert [r[0] for r in cur.fetchall()] == [cv] == [codec.code_version()]
+    c.rollback()
+    u = json.loads(uj)
+    assert u["mkt_momentum"]["all"]["size"] == 13 and u["fund_growth"]["general"]["size"] == 12
+    assert all(g["size"] > 0 and g["digest"] for e in u.values() for g in e.values())
+

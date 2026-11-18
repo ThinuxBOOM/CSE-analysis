@@ -109,8 +109,8 @@ def test_d4_panel_and_run_checks(cluster):
         cur.execute("insert into f7_configurations (configuration_id, configuration_json, status) values (%s,%s,%s)",
                     (cid, js, st))
     panel = ("insert into f7_panels (issuer_id, mode, result_label, cutoff, knowledge_horizon, f7_configuration_id, "
-             "f8_configuration_id, f8_result_hash, state, panel_hash) values ('I1', %s, %s, now(), %s, %s, 'f8', "
-             "repeat('a',64), 'ok', repeat('b',64))")
+             "f8_configuration_id, f8_result_hash, state, code_version, panel_hash) values ('I1', %s, %s, now(), %s, %s, 'f8', "
+             "repeat('a',64), 'ok', 'c', repeat('b',64))")
     assert refused(w, panel, ("KNOWN", "known", None, cid)) is None
     assert refused(w, panel, ("KNOWN", "reconstructed", None, cid))  # label must match the mode
     assert refused(w, panel, ("AVAILABLE", "reconstructed", None, cid))   # AVAILABLE needs H

@@ -39,7 +39,7 @@ Choices for the audit:
 
 ## F7-3 (part 1): the feature registry and the fundamental features
 
-**Status: implemented and tested (2026-11-15); audit pending. Part 2 (EPS restatement and the valuation join, §6.3)
+**Status: accepted with F7-1 to F7-3 (C-0085). Part 2 (EPS restatement and the valuation join, §6.3)
 follows.**
 
 | File | Content |
@@ -236,7 +236,8 @@ inserts, owner-only designations (guard plus grant), configuration ids that must
 Tests: `test_de4_migration_static`, `test_de4_migration_postgres` (guards, owner path, append-only, mode checks),
 `test_de4_store_postgres` (write, verify, eight tamperings, a missing output, a refusal leaves nothing),
 `test_de4_assemble_unit` (one output per line and engine, fan-out, explicit reasons, evidence, AVAILABLE,
-determinism), `test_de4_jobs_postgres` (real MF rows, factors, move flags and link decisions; F8 stood in; a
+determinism), `test_de4_jobs_postgres` (MF rows, factors, move flags and link decisions inserted by hand, not by MF's writer, which
+is how the branch review's `company_id` finding went unseen; F8 stood in; a
 decision after T unused; CURRENT refused; the CLI and the owner path), `test_de4_ops_static`.
 
 Not yet: storing the DE-3 baselines.

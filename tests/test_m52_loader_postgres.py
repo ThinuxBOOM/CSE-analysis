@@ -74,7 +74,7 @@ def built(cluster, db, monkeypatch, mode="KNOWN"):
     sid, ids = dj.seed(cluster, db, mode=mode)
     dj.stand_in(monkeypatch, ids)
     c = fs.conn(cluster, db, user="cse_worker")
-    jobs.run(c, sid)
+    jobs.run(c, sid, **(dj.explicit() if mode == "AVAILABLE" else {}))
     su = fs.conn(cluster, db, user="postgres")       # the session is T's own day, so the cutoff rule selects it
     with su.cursor() as cur:
         cur.execute("alter table mf_snapshots disable trigger user")

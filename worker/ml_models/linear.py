@@ -82,8 +82,10 @@ def schema_of(artifact):
     return Schema.from_json(artifact.load(ADAPTER)["schema"])
 
 
-def predict(artifact, X, keys):
+def predict(artifact, X, keys, horizon=None):
     b = artifact.load(ADAPTER)
+    if horizon is not None and b["horizon"] != horizon:
+        raise ValueError(f"the artifact was fitted for h={b['horizon']}, not h={horizon}")
     if X.shape[1] != len(b["median"]):
         raise ValueError(f"the matrix has {X.shape[1]} columns; the artifact's schema has {len(b['median'])}")
     with one_thread():

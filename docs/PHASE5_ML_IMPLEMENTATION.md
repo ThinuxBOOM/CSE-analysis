@@ -12,15 +12,16 @@
 | `worker/evaluation_metrics/metrics.py` | Confusion matrix, directional and balanced accuracy, multi-class Brier, log loss (a zero probability floored at 1e-15 and counted), reliability and ECE, point errors with quantiles, price error, volatility error, interval coverage and width, the date-level series | §12.1, MA §25 |
 | `worker/evaluation_metrics/scoring.py` | `scoring.1`: training, headline, `resolved` alone, `resolved_late`, the pessimistic `terminated` sensitivity, the genuine unexplained-move sensitivity; counts per state, candidate-event exclusions and `era_absence` | §6 (revision 5) |
 | `worker/evaluation_metrics/bootstrap.py` | The one-sided recentred stationary-bootstrap test, B = max(9 999, ⌈20m/α⌉), L = max(h, 10, Politis–White), `insufficient_evidence` below 20 blocks, the intersection-union test over baselines at α/m | §9.3, §12.3 |
-| `tests/test_m51_unit.py` | 8 tests, every metric against a hand-computed case; MLK-8; MLK-22 | §13 |
+| `tests/test_m51_unit.py` | 11 tests (8 at this step; 3 added by its audit), every metric against a hand-computed case; MLK-8; MLK-22 | §13 |
 
 Choices made inside the design's words, for the audit:
 - Floats with `math.fsum` and fixed orders, not Decimal: these are statistics, not stored prices.
 - The predicted class breaks ties in the order rise, flat, fall.
 - ECE is the mean over the three classes of the one-vs-rest, count-weighted calibration gap, 10 equal-width bins.
 - The data-driven block length is Politis and White (2004) with the Patton, Politis and White (2009) correction.
-- **MLK-8 in CI uses 200 seeds and B = 199** (the design says 400 seeds) so that it runs in about 6 seconds; the
-  acceptance region is the binomial 0.1% to 99.9% range for 200 trials.
+- **MLK-8 in CI uses B = 199** so that it runs in seconds. At this step it used 200 seeds; the audit raised the
+  single test to the design's 400 seeds (the family check stays at 200). The acceptance region is the binomial 0.1%
+  to 99.9% range for the number of tested seeds.
 
 **Measured (synthetic, n = 300 dates, h = 5, a GARCH-like common shock smoothed over h dates, 30 securities):** the
 single test rejected in 15 of 200 null cases (7.5% at nominal 5%), and the family of five at α/5 in 16 of 200 (8%).
@@ -43,7 +44,7 @@ says.
 |---|---|---|
 | `worker/ml_dataset/dataset.py` | `Manifest` (configurations, range, eras with mode and H, the pinned target build, cutoff rule, row filter, admissible states, withheld test periods, regime policy); `build()`: one snapshot per session by the cutoff rule, market-eligible lines only, MF, F7 and DE features with nulls that keep state and reason, labels apart from features from one target build, labels of withheld test periods not built, the worst label class, survivorship and coverage, a report that counts every exclusion; `version()` | §4.1 to §4.4, §5.4 |
 | `worker/ml_dataset/strata.py` | Liquidity terciles of `turnover_avg_21` in the same-T eligible universe (ties share a class); the trend tag from `mkt_ret_ew_21` against fixed bands; the volatility tag from the cross-sectional median of `vol_21` within its own earlier sessions; model-age strata; `RegimePolicy` (`regime.0`, provisional) | §4.1, §12.2, §5.6 |
-| `tests/test_m52_unit.py` | 14 tests: determinism and order-freedom; the version bound to every source and label hash; labels apart; the cutoff rule; exclusions counted; withheld labels; MLK-17; MLK-18; MLK-20 (nulls with their reasons, label states passed through, a label resolved by T refused, rows at T unchanged by later plants); the MLK-24 refusals of a dataset (two H values, `basis_not_raw`) and the era, mode and configuration refusals | §13 |
+| `tests/test_m52_unit.py` | 26 tests (14 at part 1; the rest added by later parts and audits): determinism and order-freedom; the version bound to every source and label hash; labels apart; the cutoff rule; exclusions counted; withheld labels; MLK-17; MLK-18; MLK-20 (nulls with their reasons, label states passed through, a label resolved by T refused, rows at T unchanged by later plants); the MLK-24 refusals of a dataset (two H values, `basis_not_raw`) and the era, mode and configuration refusals | §13 |
 
 Choices made inside the design's words, for the audit:
 - The cutoff rule's instant is a time of day in Colombo (default 23:59:59); among the snapshots of a session at or
@@ -65,7 +66,7 @@ issuer's and the line's own); its industry group comes from an issuer engine's u
 survivorship is `complete` for a snapshot that read no imported history, else the worst of the raw import batches
 admitted by its governing time that hold a bar in the 400 days before the session (the reach of the longest feature
 window). A snapshot without a matching DE run loads without F7 and DE inputs and is counted.
-`tests/test_m52_loader_postgres.py` (3 tests, on DE-4's PostgreSQL world plus two target builds): the dataset carries
+`tests/test_m52_loader_postgres.py` (9 tests now; 3 at part 2, on DE-4's PostgreSQL world plus two target builds): the dataset carries
 the run's F7 rows and 15 engine scores per line, the pinned build's labels only, label states as stored, and is the
 same twice; a run under other configurations is not used; survivorship from an in-reach import, not an older one; a
 snapshot past its session's cutoff rule is not used.
@@ -124,10 +125,52 @@ the caller until the registry exists; M5-6 must read the declared, unspent perio
 
 ---
 
+## M5-3: folds and slices
+
+**Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_protocol/folds.py` | `Calendar` (session arithmetic), `Fold` (training, validation, `resolved_late`, unused with reasons), `Slices` (fit, select, calibrate, conformal, with purge and embargo at each boundary), `walk_forward` (expanding folds), `FitScope` (MLK-3) | §5.2, §5.3 (revision 5) |
+| `tests/test_m53_unit.py` | 6 tests now (5 at this step): MLK-1 (in a session-index era, a datetime era and across two eras; expanding folds never validate a row twice), refusals of malformed folds and slices, MLK-2 (a date memoriser: chance under the protocol in all 40 histories, skill without the purge), MLK-3 | §13 |
+
+Choices made inside the design's words, for the audit:
+- The inner slices use the outer split's purge and embargo literally: a select, calibrate or conformal row has
+  T at least `embargo` sessions after the slice's lower boundary and at most g sessions before its upper one, and
+  R_h at or before the upper one. Rows between are unused.
+- A row with no R_h (pending) is never a training or validation row and is counted as `pending`.
+- `resolved_late` rows exist only when a label resolves after V_end although its T is g sessions before it (a late
+  corporate action or confirmation): the purge already covers the grace period.
+
+Mutation check (6 mutants: no purge, late rows fitted, training by T, slices without purge or R bound, no embargo,
+an open fit scope): all killed. Three of my first test expectations were wrong (no late row without a late
+confirmation; a memoriser that used non-overlapping labels; reused keys) and were corrected before commit.
+
+---
+
+## Audit of M5-1 and M5-3: fresh-context agent
+
+Audited at `53d15b2`. Verdicts: **both ACCEPT** (no Blocker). The bootstrap's recentring and p-value, the geometric
+blocks, the circular wrap and Politis–White were verified numerically; the oversize of MLK-8 comes from the method at
+small n (a non-studentised test with about 30 blocks, and the stationary bootstrap's down-weighting of an MA overlap),
+not from the code: 6.45% for iid data at n = 300, 5.3% at n = 2 000.
+
+| Finding | Severity | Disposition |
+|---|---|---|
+| The design's floors on L and B were not enforced inside `gate_test` | Major | **Fixed.** Refused below max(h, 10) and max(9 999, ⌈20/level⌉); only `simulation=True` lifts them, for size studies |
+| Test gaps (p without +1, geometric mean, last-block cut, family at α/m, an insufficient baseline in a family, Politis–White) | Major | **Fixed.** `test_b3` (exact p, family level, an untestable baseline fails the family, the fast resampler against a direct step-by-step one on autocorrelated data), `test_b4` (Politis–White against AR(1) theory) |
+| MLK-8 at 200 seeds and counting `insufficient_evidence` as non-rejection | Major | **Fixed.** 400 seeds; the rate among tested seeds. Measured: 30 of 368 tested (8.2%), 32 untestable; inside the acceptance region, and oversized as stated above |
+| Slice T-side purge and embargo never asserted | Major | **Fixed.** `check_mlk1` asserts them; an embargo of 3 case |
+| R_h ≤ T rows; negative grace or embargo; length and class checks in metrics; fewer than 10 dates; pending row in a window; R = C_train; inclusive coverage; balanced accuracy over present classes | Minor | **Fixed** and tested |
+| `price_error` equals the return error | Minor | **Stated** in its docstring |
+| `era_absence` mixes two states; the datetime session convention | Minor | **Carried** |
+
+---
+
 ## M5-4: adapters and baselines (part 1: `ref`, `linear`, `gbt`)
 
-**Status: part 1 ACCEPTED on the branch (C-0092: first audit reported no Blocker; its Majors fixed).** Part 2, `calibrated_engine`, follows: it fits only on rows where the
-engine used its full component set, which the dataset does not carry yet (a small addition to M5-2's DE features).
+**Status: part 1 ACCEPTED on the branch (C-0092: first audit reported no Blocker; its Majors fixed).** Part 2,
+`calibrated_engine`, is below (accepted, C-0095).
 
 | File | Content | Design |
 |---|---|---|
@@ -138,7 +181,7 @@ engine used its full component set, which the dataset does not carry yet (a smal
 | `worker/ml_models/baselines.py` | The `ref` adapter: all six baselines of §7.3, silent where they have no method | §7.3 |
 | `worker/ml_models/linear.py` | Multinomial logistic regression and ridge; median imputation with missing indicators and standardisation fitted on the fit slice; prediction from the artifact text alone; contributions coefficient x standardised value | §7.2 |
 | `worker/ml_models/gbt.py` | LightGBM: one thread, deterministic, no sampling, fixed seed; LightGBM's text model in the artifact; exact tree contributions | §7.2 |
-| `tests/test_m54_unit.py` | 8 tests: MLK-11 and MLK-16 for both adapters; a planted signal beats `base_prior` and shuffled labels give no skill (MLK-9); no engine score in the schema; MLK-3; contributions add up; every baseline by hand; MLK-14 | §13 |
+| `tests/test_m54_unit.py` | 12 tests now (8 at part 1): MLK-11 and MLK-16 for both adapters; a planted signal beats `base_prior` and shuffled labels give no skill (MLK-9); no engine score in the schema; MLK-3; contributions add up; every baseline by hand; MLK-14 | §13 |
 
 Choices made inside the design's words, for the audit: the volatility floor is a configuration constant (default 0);
 direction contributions are reported for the predicted class; `base_interval` uses the split-conformal order
@@ -216,7 +259,7 @@ and the PostgreSQL check aligned; the only hyperparameter is `engine_id`. Each f
 | File | Content | Design |
 |---|---|---|
 | `worker/ml_models/calibration.py` | Vector scaling on the calibrate slice (a scale and an offset per class on the log-probabilities, offsets summing to zero; L-BFGS from the identity); the calibrated probabilities beside the raw ones; reliability tables and ECE overall and per liquidity class; `reliability_ok` for `calibrated_engine` (its map is the calibration). Split-conformal intervals: scale max(vol_21 x sqrt(h), floor), the floor the 5th percentile of the fit slice's positive scales, a null `vol_21` taking the floor and flagged; the quantile of the scaled residuals per liquidity class on the conformal slice; a class with too few rows for the level gets no interval and a flag. The coverage report as §8.2 claims it: rows inside, averaged over dates, per class. Every fitted part admitted through a FitScope of its slice | §8.1, §8.2 |
-| `tests/test_m55_unit.py` | 5 tests on synthetic data with known truth: vector scaling halves the ECE of an overconfident, biased model on held-out rows, in every class, and lowers log loss; class-conditional intervals within 3 points of 90% in every class where one pooled quantile undercovers the wide class; the floor, the null flag, too few rows, slice refusals; coverage averaged over dates, not rows; **MLK-7**: a planted signal of stated size (0.5) passes the gate test (level 0.05, delta 0, B = 9 999) in at least 4 of 5 seeds, and the contributions name the planted feature in all 5 | §13 |
+| `tests/test_m55_unit.py` | 12 tests now (5 at this step) on synthetic data with known truth: vector scaling halves the ECE of an overconfident, biased model on held-out rows, in every class, and lowers log loss; class-conditional intervals within 3 points of 90% in every class where one pooled quantile undercovers the wide class; the floor, the null flag, too few rows, slice refusals; coverage averaged over dates, not rows; **MLK-7**: a planted signal of stated size (0.5 at this step; 0.15 after the audit, below) passes the gate test (level 0.05, delta 0, B = 9 999) in at least 4 of 5 seeds, and the contributions name the planted feature in all 5 | §13 |
 
 Contributions (§8.3): the adapters already store base plus contributions equal to the raw score (M5-4); the
 calibrated value is stored beside it and not decomposed. Mutation check: 10 mutants (unconstrained offsets, a pooled
@@ -245,10 +288,10 @@ covered a different set: 10 further mutants survived (M3). Fixed:
 
 ---
 
-## M5-6: the registry (part 1: pending migration 0021)
+## M5-6: the registry (parts 1 to 3: migration 0021, the rules, the store)
 
-**Status: in progress (part 1 of the step: the database).** The registry store, the gates in application code, the
-protocol and test-period access commands, the wrapper and the runbook follow.
+**Status: parts 1 to 3 built, not yet audited.** Part 1 the database, part 2 the rules in application code, part 3
+the store (below). The wrapper, the command line and the runbook follow, then the audit.
 
 `supabase/migrations_pending/0021_ml_registry.sql` (after 0019 and 0020, outside the chain until the owner's merge
 decision): the eighteen tables of §9.1, every one append-only for every role; artifacts as base64 text checked
@@ -289,43 +332,14 @@ promotion report; owner-only decisions), `tests/test_m56_migration_static.py` (2
 
 ---
 
-## M5-3: folds and slices
+## Branch-wide review (2026-11-18), Phase 5 findings
 
-**Status: ACCEPTED on the branch (C-0049: audit reported no Blocker; Majors fixed).**
-
-| File | Content | Design |
-|---|---|---|
-| `worker/ml_protocol/folds.py` | `Calendar` (session arithmetic), `Fold` (training, validation, `resolved_late`, unused with reasons), `Slices` (fit, select, calibrate, conformal, with purge and embargo at each boundary), `walk_forward` (expanding folds), `FitScope` (MLK-3) | §5.2, §5.3 (revision 5) |
-| `tests/test_m53_unit.py` | 5 tests: MLK-1 (in a session-index era, a datetime era and across two eras; expanding folds never validate a row twice), refusals of malformed folds and slices, MLK-2 (a date memoriser: chance under the protocol in all 40 histories, skill without the purge), MLK-3 | §13 |
-
-Choices made inside the design's words, for the audit:
-- The inner slices use the outer split's purge and embargo literally: a select, calibrate or conformal row has
-  T at least `embargo` sessions after the slice's lower boundary and at most g sessions before its upper one, and
-  R_h at or before the upper one. Rows between are unused.
-- A row with no R_h (pending) is never a training or validation row and is counted as `pending`.
-- `resolved_late` rows exist only when a label resolves after V_end although its T is g sessions before it (a late
-  corporate action or confirmation): the purge already covers the grace period.
-
-Mutation check (6 mutants: no purge, late rows fitted, training by T, slices without purge or R bound, no embargo,
-an open fit scope): all killed. Three of my first test expectations were wrong (no late row without a late
-confirmation; a memoriser that used non-overlapping labels; reused keys) and were corrected before commit.
-
-
----
-
-## Audit of M5-1 and M5-3: fresh-context agent
-
-Audited at `53d15b2`. Verdicts: **both ACCEPT** (no Blocker). The bootstrap's recentring and p-value, the geometric
-blocks, the circular wrap and Politis–White were verified numerically; the oversize of MLK-8 comes from the method at
-small n (a non-studentised test with about 30 blocks, and the stationary bootstrap's down-weighting of an MA overlap),
-not from the code: 6.45% for iid data at n = 300, 5.3% at n = 2 000.
-
-| Finding | Severity | Disposition |
-|---|---|---|
-| The design's floors on L and B were not enforced inside `gate_test` | Major | **Fixed.** Refused below max(h, 10) and max(9 999, ⌈20/level⌉); only `simulation=True` lifts them, for size studies |
-| Test gaps (p without +1, geometric mean, last-block cut, family at α/m, an insufficient baseline in a family, Politis–White) | Major | **Fixed.** `test_b3` (exact p, family level, an untestable baseline fails the family, the fast resampler against a direct step-by-step one on autocorrelated data), `test_b4` (Politis–White against AR(1) theory) |
-| MLK-8 at 200 seeds and counting `insufficient_evidence` as non-rejection | Major | **Fixed.** 400 seeds; the rate among tested seeds. Measured: 30 of 368 tested (8.2%), 32 untestable; inside the acceptance region, and oversized as stated above |
-| Slice T-side purge and embargo never asserted | Major | **Fixed.** `check_mlk1` asserts them; an embargo of 3 case |
-| R_h ≤ T rows; negative grace or embargo; length and class checks in metrics; fewer than 10 dates; pending row in a window; R = C_train; inclusive coverage; balanced accuracy over present classes | Minor | **Fixed** and tested |
-| `price_error` equals the return error | Minor | **Stated** in its docstring |
-| `era_absence` mixes two states; the datetime session convention | Minor | **Carried** |
+Recorded in full in `docs/governance/BRANCH_REVIEW_2026-11-18.md`. Fixed here: **M-1** a FitScope is now bound to
+one horizon (`FitScope.of(..., horizon=h)`; `for_horizon` refuses another), used by `train_set`, the calibration and
+the reliability report; **m-2** `predict` of `linear`, `gbt` and `calibrated_engine` refuses an artifact fitted for
+another horizon. Not fixed, with their destinations: **M-2** `scoring.1`'s `candidate_event` and `era_row_absent`
+have no source in the dataset (new task, before M5-8); **M-3** CI results recorded in the review; m-1 two tie rules,
+m-3 calibration and conformal artifacts not bound to their model, m-5 withheld labels reported as `pending` (M5-7);
+m-4 the fold `grace` default (M5-6 audit); m-6 the `ml_models` docstring and version (M5-7); m-7 MLK-7 through the
+protocol (M5-8); MLK-23 and MLK-24 have no step in design §15: MLK-23 goes to M5-8 (gates 5 and 9 need it), MLK-24
+is covered by M5-2's refusals.

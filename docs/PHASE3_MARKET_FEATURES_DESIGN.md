@@ -2,8 +2,8 @@
 
 **Status: DESIGN, revision 6 (2026-11-14). ACCEPTED [delegated] for implementation on `integration/cloud`
 (revision 5: C-0026; revision 6 records decisions and clarifications from the implementation's code audits, C-0051).
-MF-1 to MF-5 implemented and accepted; MF-6 under re-audit; MF-7 not started. Not the owner's own acceptance, and not
-accepted for `main`.**
+MF-1 to MF-7 implemented and accepted on the branch (C-0086); open items in docs/governance/BRANCH_REVIEW_2026-11-18.md.
+Not the owner's own acceptance, and not accepted for `main`.**
 
 *Revision 6 (2026-11-14) adds no new mechanism. It records the owner's decision on market history (TradeIQ, C-0035)
 and how that source is declared (§14); the universe of a `row_absent` import (§5.4); a liquidity result of its own
