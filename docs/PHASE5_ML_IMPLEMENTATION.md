@@ -211,7 +211,7 @@ and the PostgreSQL check aligned; the only hyperparameter is `engine_id`. Each f
 
 ## M5-5: calibration, intervals, contributions
 
-**Status: built; audit pending.**
+**Status: ACCEPTED on the branch (C-0096: audit reported no Blocker; its Majors fixed).**
 
 | File | Content | Design |
 |---|---|---|
@@ -223,6 +223,25 @@ calibrated value is stored beside it and not decomposed. Mutation check: 10 muta
 quantile, unscaled residuals, the floor's percentile, the null flag, the conformal index, a finite interval from too
 few rows, coverage by rows, no slice check, a scale-free map): all killed; one survived the first test set (coverage
 by rows) and was closed by `test_i3`.
+
+**Audit (fresh-context agent, at 9c31ead): no Blocker; slices and §8.1, §8.2 as specified.** The record's mutant claim
+covered a different set: 10 further mutants survived (M3). Fixed:
+- **M1** `reliability_ok` passed on no evidence: now an empty report, or an overall group below 50 rows, fails;
+  groups below 50 rows are reported, never judged; `reliability_report` can admit its rows through the calibrate
+  slice's scope and reports each group's count.
+- **M2** the coverage report dropped rows and classes without an interval and lacked §8.2's statements: every class
+  with labelled rows now appears, with `no_interval`, the nominal level and tolerance, the number of independent label
+  windows (dates / h), a `coarse` mark below 30, and `within_tolerance` (false when any row had no interval).
+- **M3** tests now pin each of the audit's surviving rules (untrained labels in the calibrate and conformal slices,
+  the NaN-label filter, the scale v x sqrt(h), the floor for positive and for zero volatility, per-class scales,
+  every large group judged, an `unknown` class of its own, inclusive bounds, the empty report, a class without
+  intervals): each fails its test when reverted.
+- Minors fixed: lengths of predictions and probabilities checked against the rows; non-finite predictions refused
+  (fit) or flagged (predict); the level validated; the horizon checked when applying an artifact; probability
+  vectors validated; a non-converged scaling refused, a negative scale flagged (`scale_negative`); **MLK-7** now at
+  size 0.15 (power below certainty) with a no-signal control that rejects in at most 1 of 5 seeds, and `gbt` names
+  the planted feature too. **Carried to M5-7:** storing the calibrated value beside the raw one in `r1_predictions`,
+  with the class the contributions explain (the raw class, which calibration can change).
 
 ---
 

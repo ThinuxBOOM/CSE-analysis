@@ -915,3 +915,10 @@ fixed: whether an engine used all its components, and which engine version produ
 stored engine output itself rather than from today's code, so a later engine change cannot silently alter an old
 dataset; and the direction map is tested against a fit on full-set rows only.
 
+## C-0096: M5-5 accepted ([delegated], 2026-11-18)
+
+The audit of calibration and prediction intervals found no Blocker, so M5-5 is accepted. Its three Majors are fixed:
+a reliability check no longer passes when there is no evidence; the coverage report now shows every liquidity class,
+including one with no interval, against the target level, and says when the estimate is coarse; and ten untested
+rules each have a test. The planted-signal test now uses a smaller signal and a no-signal control, so it can fail.
+
