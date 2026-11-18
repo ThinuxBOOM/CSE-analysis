@@ -954,3 +954,10 @@ nominee must be validated and of the declared family; retiring a production mode
 owner's acts (two new owner commands); the significance gate checks that each test was run at the corrected level
 with the design's minimums; and validation takes the protocol's facts from the registry, not from the caller. Every
 fix is pinned by a test that fails when the fix is removed. The step goes to a re-audit.
+
+## C-0100: a CI-only test error fixed and guarded ([delegated], 2026-11-18)
+
+CI regression failed on the review commit in one group: six registry tests errored before running, because CI's older
+pytest treats a test helper called `setup` as a setup hook. Locally a newer pytest did not, so the local runs passed.
+The helpers are renamed and a static test now refuses that name in any test file. Nothing in the product code was
+wrong. CI is re-run on the fixed head.

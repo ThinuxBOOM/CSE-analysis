@@ -52,7 +52,7 @@ def test_m2_stamps_are_the_databases_own(cluster):
 
 def test_m6_retiring_a_production_model_is_the_owners(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)
+    w, ids = sp.registry_world(cluster, db)
     store.validate(w, ids["model"], gu.GOOD, "code.1")
     store.access(w, ids["protocol"], sp.period_of(w, ids["protocol"]),
                  [{"model_id": ids["model"], "predictions_sha256": "d" * 64}], lambda: {"nominees_passed": [ids["model"]]})
@@ -104,7 +104,7 @@ def test_m7_validated_configurations_are_the_owners_and_gate6_reads_the_registry
 
 def test_m9_the_registrys_facts_replace_the_callers(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)
+    w, ids = sp.registry_world(cluster, db)
     other = store.register_configuration(w, "model", {"adapter": "gbt", "horizon": 5})
     mid = store.register_model(w, kind="gbt", configuration_id=other, output="direction", horizon=5,
                                dataset_id=ids["dataset"], protocol_id=ids["protocol"],
@@ -124,7 +124,7 @@ def test_m9_the_registrys_facts_replace_the_callers(cluster):
 
 def test_m10_a_dataset_must_withhold_unspent_periods_at_registration_and_at_the_run(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)
+    w, ids = sp.registry_world(cluster, db)
     reaching = sp.dataset(version="b" * 64, date_to=date(2025, 12, 31))
     with pytest.raises(store.Refused, match="test_labels"):
         store.register_dataset(w, reaching, False)
@@ -161,7 +161,7 @@ def test_minor11_a_production_copy_equals_its_source(cluster):
 
 def test_audit_survivors_withheld_periods_cover_and_boundaries(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)                                     # its period: 2024-07-01 .. 2025-06-30
+    w, ids = sp.registry_world(cluster, db)                                     # its period: 2024-07-01 .. 2025-06-30
     m = sp.dataset(date_to=date(2024, 7, 1)).manifest                  # touches the period's first day only
     assert len(store.withheld_for(w, m.date_from, m.date_to)) == 1     # M39: a partial overlap counts
     part = replace(m, withheld=((datetime(2024, 7, 2, tzinfo=UTC), datetime(2025, 6, 30, tzinfo=UTC)),))
@@ -244,7 +244,7 @@ def test_audit_survivors_first_events_production_artifact_and_designation(cluste
 
 def test_audit_survivors_the_designation_cites_the_lifetime_access_count(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)
+    w, ids = sp.registry_world(cluster, db)
     store.validate(w, ids["model"], gu.GOOD, "code.1")
     store.access(w, ids["protocol"], sp.period_of(w, ids["protocol"]),
                  [{"model_id": ids["model"], "predictions_sha256": "d" * 64}], lambda: {"nominees_passed": [ids["model"]]})
@@ -259,7 +259,7 @@ def test_audit_survivors_the_designation_cites_the_lifetime_access_count(cluster
 
 def test_m4_an_out_of_family_nominee_is_refused_even_if_validated(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = sp.setup(cluster, db)
+    w, ids = sp.registry_world(cluster, db)
     other = store.register_configuration(w, "model", {"adapter": "gbt", "horizon": 5})
     mid = store.register_model(w, kind="gbt", configuration_id=other, output="direction", horizon=5,
                                dataset_id=ids["dataset"], protocol_id=ids["protocol"],

@@ -64,7 +64,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 |---|---|---|---|
 | `4010395` | success | success | last full pair before the ML libraries |
 | `8c37e2e` | success | not run | first image with the ML libraries |
-| this commit | pending | pending | triggered after push; result recorded in C-0097 |
+| `6678ca5` (this review) | success | **failure**: group L16, 6 errors in `test_m56_store_postgres.py` | CI's pytest 7.4.4 ran a test helper named `setup` as a nose-style fixture; renamed in `fd16c62`'s successors and guarded by `tests/test_ci_hygiene_static.py`; re-run on the fixed head |
 
 ## Before `main` (all of these; the merge itself is the owner's)
 

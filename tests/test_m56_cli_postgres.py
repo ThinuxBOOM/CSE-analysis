@@ -34,7 +34,7 @@ def cluster(tmp_path_factory):
     ec.stop()
 
 
-def setup(cluster, db, share=0.5):
+def registry_world(cluster, db, share=0.5):
     w = fs.conn(cluster, db, user="cse_worker")
     cid = store.register_configuration(w, "model", {"adapter": "linear", "horizon": 5})
     did = store.register_dataset(w, sp.dataset(), False)
@@ -95,7 +95,7 @@ def test_c2_owner_acts_only_on_the_owner_path(cluster, capsys):
 
 def test_c3_promotion_evidence_comes_from_the_registry(cluster, capsys, tmp_path):
     db = fs.fresh_db(cluster)
-    w, pid, mid = setup(cluster, db)
+    w, pid, mid = registry_world(cluster, db)
     base = ("promote", "--model", str(mid), "--purpose", "route1", "--list", str(mid), "--note",
             "the owner promotes it", "--code-version", "code.1", "--evidence")
     # no access yet: gate 9 fails, only the report is written
@@ -129,7 +129,7 @@ def test_c3_promotion_evidence_comes_from_the_registry(cluster, capsys, tmp_path
 
 def test_c4_a_nominee_that_did_not_pass_and_an_undeclared_share_are_not_promoted(cluster, capsys, tmp_path):
     db = fs.fresh_db(cluster)
-    w, pid, mid = setup(cluster, db)
+    w, pid, mid = registry_world(cluster, db)
     store.access(w, pid, sp.period_of(w, pid), [{"model_id": mid, "predictions_sha256": "d" * 64}],
                  lambda: {"nominees_passed": []})
     assert call(cluster, db, "cse_migrator", "promote", "--model", str(mid), "--purpose", "route1", "--list",
@@ -138,7 +138,7 @@ def test_c4_a_nominee_that_did_not_pass_and_an_undeclared_share_are_not_promoted
     r = out(capsys)
     assert r["report"]["gates"]["9"]["reason"] == "the nominee did not pass the test criterion"
     db2 = fs.fresh_db(cluster)
-    _w2, _pid2, mid2 = setup(cluster, db2, share=None)
+    _w2, _pid2, mid2 = registry_world(cluster, db2, share=None)
     o = fs.conn(cluster, db2, user="cse_migrator")
     with pytest.raises(store.Refused, match="point_in_time_share"):
         store.promotion_evidence(o, mid2, EVIDENCE)
@@ -149,7 +149,7 @@ def test_c4_a_nominee_that_did_not_pass_and_an_undeclared_share_are_not_promoted
 
 def test_c5_transition_alerts_status_and_verify(cluster, capsys):
     db = fs.fresh_db(cluster)
-    w, pid, mid = setup(cluster, db)
+    w, pid, mid = registry_world(cluster, db)
     assert call(cluster, db, "cse_worker", "status") == cli.EXIT_OK
     s = out(capsys)
     assert s["ml_models"] == 1 and s["models"][0]["status"] == "validated" and len(s["unspent_test_periods"]) == 1
@@ -171,7 +171,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
                                                                                              tmp_path):
     from dataclasses import replace
     db = fs.fresh_db(cluster)
-    w, pid, mid = setup(cluster, db, share=0.7)
+    w, pid, mid = registry_world(cluster, db, share=0.7)
     other = store.register_model(w, kind="linear", configuration_id=store.register_configuration(
         w, "model", {"adapter": "linear", "horizon": 5}), output="direction", horizon=5,
         dataset_id=store.register_dataset(w, sp.dataset(), False), protocol_id=pid,
@@ -187,7 +187,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
     with pytest.raises(store.Refused, match="owner_path"):
         store.promotion_evidence(w, mid, EVIDENCE)
     db2 = fs.fresh_db(cluster)
-    w2, pid2, _ = setup(cluster, db2)
+    w2, pid2, _ = registry_world(cluster, db2)
     m2 = store.register_model(w2, kind="linear", configuration_id=store.register_configuration(
         w2, "model", {"adapter": "linear", "horizon": 5}), output="direction", horizon=5,
         dataset_id=store.register_dataset(w2, sp.dataset(), False), protocol_id=pid2,
@@ -200,7 +200,7 @@ def test_c6_the_access_names_this_model_the_share_is_the_protocols_the_labels_ar
 
 def test_c7_retiring_production_is_an_owner_command(cluster, capsys, tmp_path):
     db = fs.fresh_db(cluster)
-    w, pid, mid = setup(cluster, db)
+    w, pid, mid = registry_world(cluster, db)
     store.access(w, pid, sp.period_of(w, pid), [{"model_id": mid, "predictions_sha256": "d" * 64}],
                  lambda: {"nominees_passed": [mid]})
     assert call(cluster, db, "cse_migrator", "promote", "--model", str(mid), "--purpose", "route1", "--list",

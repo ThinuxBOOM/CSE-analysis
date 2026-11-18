@@ -55,7 +55,7 @@ def declaration(test=("2024-07-01T00:00:00+00:00", "2025-06-30T00:00:00+00:00"),
             "test_periods": [list(test)]}
 
 
-def setup(cluster, db, synthetic=False, **decl):
+def registry_world(cluster, db, synthetic=False, **decl):
     w = fs.conn(cluster, db, user="cse_worker")
     cid = store.register_configuration(w, "model", {"adapter": "linear", "horizon": 5})
     did = store.register_dataset(w, dataset(), synthetic)
@@ -81,7 +81,7 @@ def period_of(w, pid):
 
 def test_r1_the_lifecycle_end_to_end(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = setup(cluster, db)
+    w, ids = registry_world(cluster, db)
     assert store.status(w, ids["model"]) == "candidate"
     assert store.load_artifact(w, ids["artifact"].sha256) == ids["artifact"].text
     rep = store.validate(w, ids["model"], gu.GOOD, "code.1")
@@ -108,7 +108,7 @@ def test_r1_the_lifecycle_end_to_end(cluster):
 
 def test_r2_a_failing_validation_is_recorded_and_changes_nothing(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = setup(cluster, db)
+    w, ids = registry_world(cluster, db)
     rep = store.validate(w, ids["model"], replace(gu.GOOD, size_shown=False), "code.1")
     assert not rep["passed"] and store.status(w, ids["model"]) == "candidate"
     with w.cursor() as cur:
@@ -124,7 +124,7 @@ def test_r2_a_failing_validation_is_recorded_and_changes_nothing(cluster):
 
 def test_r3_gate1_a_synthetic_dataset_is_never_validated(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = setup(cluster, db, synthetic=True)
+    w, ids = registry_world(cluster, db, synthetic=True)
     with pytest.raises(Exception, match="synthetic"):
         store.validate(w, ids["model"], gu.GOOD, "code.1")
     assert store.status(w, ids["model"]) == "candidate"
@@ -136,7 +136,7 @@ def test_r3_gate1_a_synthetic_dataset_is_never_validated(cluster):
 
 def test_mlk4_test_periods_withheld_accessed_once_and_only_by_their_nominees(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = setup(cluster, db)
+    w, ids = registry_world(cluster, db)
     m = dataset(date_to=date(2025, 12, 31)).manifest
     with pytest.raises(store.Refused, match="test_labels"):
         store.check_manifest(w, m)                                                     # asks for test labels
@@ -173,7 +173,7 @@ def test_mlk4_test_periods_withheld_accessed_once_and_only_by_their_nominees(clu
 
 def test_mlk5_other_protocols_intervals_and_the_multiplicity(cluster):
     db = fs.fresh_db(cluster)
-    w, ids = setup(cluster, db)
+    w, ids = registry_world(cluster, db)
     dec = declaration(test=("2026-07-01T00:00:00+00:00", "2027-06-30T00:00:00+00:00"), family=["a", "b"])
     other, _s, _r = store.declare_protocol(w, dec, gu.GOOD_PLAN)
     inside = datetime(2024, 9, 1, tzinfo=UTC)
