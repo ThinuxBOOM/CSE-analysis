@@ -54,12 +54,18 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-19: identity evidence used; `identity` command (C-0108)
+
+Ticker changes and reused symbols now shape each security's history, and there is an owner command for them
+(`cse-features identity`, see the runbook). On the TradeIQ data, the import's links between 1990s codes and their
+later `.N0000` symbols now join those histories, so snapshots over those years change.
+
 ### 2026-11-19: owner commands for corporate actions (C-0107)
 
 New owner commands on `ops/bin/cse-features` (they run as `cse-migrator`): `action`, `withdraw` and
 `confirm-no-action`. Examples and the rules are in `docs/ops/P3_MARKET_FEATURES.md`. A no-action confirmation counts
-only from when you enter it (it has no announcement date), so it shows up in builds made after that. There is no
-`identity` command yet: identity evidence is not read by the build (a task).
+only from when you enter it (it has no announcement date), so it shows up in builds made after that. The `identity`
+command followed (C-0108).
 
 ### 2026-11-19: labels on real data resolve in their own window (branch review M1, C-0105)
 

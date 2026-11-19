@@ -31,7 +31,7 @@ captured data.
 | M1 | Major | On real data `resolved_at` equals the build's T, so Phase 5 would have no training rows | **New task:** label resolution granularity on real data |
 | M2 | Major | `company_id` never written | Same as Phase 4 B1 |
 | M3 | Major | The stamps (`recorded_at`, `created_by`, `entered_by`) were the writer's, not the database's | **Fixed.** `mf_stamp_guard()` on the three tables; a worker calendar copy dated in the past is refused; preflight checks it |
-| M4 | Major | No owner tooling for corporate-action statements, withdrawals, `no_action_confirmed` or identity links | **Fixed** for statements, withdrawals and confirmations (C-0107); identity links wait for the build to read identity evidence (task) |
+| M4 | Major | No owner tooling for corporate-action statements, withdrawals, `no_action_confirmed` or identity links | **Fixed** for statements, withdrawals and confirmations (C-0107); identity links followed with identity evidence in the build (C-0108) |
 
 Phase 3 Minors, carried: `resolved_at` can equal T (with M1); `import-tradeiq` needs `xlrd` and research code;
 `verify` turns red after a code-version bump; `register-configuration` sets three parameters only; two
@@ -76,7 +76,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 |---|---|
 | MF captured-data loader (`company_id`, market cap, `pending_sessions`) | **done**: MF-8, accepted (C-0105); its 3 Majors before `main` |
 | Label resolution granularity on real data | **done** (C-0105) |
-| Owner statement tooling | **done** (C-0107); identity evidence in the build: branch work |
+| Owner statement tooling | **done** (C-0107, C-0108) |
 | A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |
 | PostgreSQL 17 CI run of DE-4 and M5 | branch work |

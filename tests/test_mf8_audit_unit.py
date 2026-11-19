@@ -144,6 +144,7 @@ def test_a6_the_captured_evidence_enters_the_digest_exactly_when_there_is_some(m
     ds = days(6)
     q = Query(AVAILABLE, datetime(2026, 9, 30, tzinfo=UTC), datetime(2026, 9, 30, tzinfo=UTC))
     monkeypatch.setattr(store, "load", lambda conn, query: (imported(["A.N0000"], ds), [], [], {"imports": [1]}))
+    monkeypatch.setattr(store, "load_identity", lambda conn, query: ((), []))
     for cap, has in ((captured.Captured(), False),
                      (captured.Captured(non_finals=(ds[-1] + timedelta(days=3),), evidence={"runs": []}), True)):
         monkeypatch.setattr(captured, "load", lambda *a, _c=cap: _c)

@@ -4,7 +4,7 @@ package steps (calendar, bars, references, factors, the detector, series, eligib
 returns the rows MF-7's writer stores. Admission of imported rows by the query is the loader's job; corporate-action
 statements are admitted here by `actions.applying`.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from fractions import Fraction
 
@@ -16,6 +16,14 @@ from . import history_bars as hb
 
 MARKET_LOOKBACK = 130          # sessions of membership a snapshot needs (beta_126 and the market sums)
 # threshold: the unexplained-move detector's, provisional (a configuration value, design §7.3 and §17); 25% here
+
+
+def segment_symbol(segments, session):
+    """The symbol whose segment holds `session`, or None (before a reuse; outside the series)."""
+    for g in segments:
+        if (g.start is None or g.start <= session) and (g.end is None or session < g.end):
+            return g.symbol
+    return None
 
 
 @dataclass
@@ -33,12 +41,18 @@ class Snapshot:
     pending: tuple = ()                                 # MF-8: non-final captured sessions after D* (stored)
     closes: dict = field(default_factory=dict, repr=False)       # symbol -> {session: raw close used} (move flags)
     captured: object = field(default=None, repr=False)           # MF-8: the captured evidence read (provenance)
+    segments: dict = field(default_factory=dict, repr=False)     # symbol -> [universe.Segment] (identity, §8.1)
+    identity: tuple = field(default=(), repr=False)               # the admitted identity observations (labels)
 
 
 def build(imported_by_symbol, statements, query, *, calendar_observations=(), threshold=Fraction(1, 4),
           policy=universe.EligibilityPolicy(), config=features.FeatureConfig(), keep_series=False, captured=None,
-          tolerances=None):
-    """captured: MF-8's captured evidence (`captured.Captured`) or None; tolerances: the configuration's (§5.4)."""
+          tolerances=None, identity=()):
+    """captured: MF-8's captured evidence (`captured.Captured`) or None; tolerances: the configuration's (§5.4);
+    identity: every `universe.IdentityObservation` (§8.1). A security's series is made of segments
+    (`universe.series_segments`, admitted by the query): on each session the bar is that of the symbol whose segment
+    holds the session (a predecessor before a link's effective date; nothing before a reuse), and the predecessor's
+    corporate-action statements apply to the series as the security's own."""
     finals = set(hb.final_sessions(imported_by_symbol))
     non_finals = ()
     if captured is not None:
@@ -51,28 +65,39 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
     sessions = seq.sessions
     snap = Snapshot(seq.cutoff, sessions)
     snap.captured = captured
+    snap.identity = tuple(o for o in identity if query.admits(o.recorded_at, o.available_at))
     snap.pending = tuple(d for d in non_finals if d > seq.cutoff)
     series_by, refs_by = {}, {}
     symbols = {sym for sym, imp in imported_by_symbol.items() if imp.rows}   # quarantines only: not a security here
     if captured is not None:
         symbols |= set(captured.bars)
+    captured_finals = captured.members if captured is not None else {}
+
+    def bar_of(owner, s):
+        if owner is None:
+            return None
+        imp = imported_by_symbol.get(owner)
+        return combined.bar(captured.bar_on(owner, s) if captured is not None else None,
+                            # F4: on a captured final session membership is the governing run's
+                            None if (imp is None or not imp.rows or (s in captured_finals and
+                                                                    owner not in captured_finals[s]))
+                            else hb.bar_on(owner, imp, s), tolerances or {})
     for sym in sorted(symbols):
-        imp = imported_by_symbol.get(sym)
-        captured_finals = captured.members if captured is not None else {}
-        bars = {s: combined.bar(captured.bar_on(sym, s) if captured is not None else None,
-                                # F4: on a captured final session membership is the governing run's
-                                None if (imp is None or not imp.rows or (s in captured_finals and
-                                                                        sym not in captured_finals[s]))
-                                else hb.bar_on(sym, imp, s), tolerances or {})
-                for s in sessions}
+        segs = universe.series_segments(sym, identity, query) if identity else [universe.Segment(sym, None, None)]
+        bars = {s: bar_of(segment_symbol(segs, s), s) for s in sessions}
         if all(b is None for b in bars.values()):
             continue
+        snap.segments[sym] = segs
+        preds = {g.symbol for g in segs} - {sym}
+        own_statements = statements if not preds else (
+            [x for x in statements if x.symbol not in preds] + [replace(x, symbol=sym) for x in statements
+                                                                 if x.symbol in preds])
         refs = {r.session: r for r in reference_series([(s, bars[s]) for s in sessions])}
-        fs = actions.build_factors(sym, statements, query, sessions=list(sessions), references=refs,
+        fs = actions.build_factors(sym, own_statements, query, sessions=list(sessions), references=refs,
                                    cutoff_session=seq.cutoff)
         closes = [(s, b.px_close) for s, b in bars.items() if b is not None and b.px_close is not None]
         snap.closes[sym] = dict(closes)
-        mv = actions.detect_moves(sym, sorted(closes), fs, statements, query, threshold)
+        mv = actions.detect_moves(sym, sorted(closes), fs, own_statements, query, threshold)
         series_by[sym] = series.build_series(sym, seq, bars, refs, fs, mv)
         refs_by[sym] = refs
         snap.factors[sym], snap.moves[sym] = fs, mv

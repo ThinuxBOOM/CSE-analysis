@@ -340,3 +340,102 @@ def test_o10_review_m4_owner_statements_through_the_command_line(cluster, capsys
                             "'S0.N0000'", (sid2,)) == [("confirmed_no_action",)]
     assert run(["confirm-no-action", "--id", "own:S0:c2", "--symbol", "S0.N0000", "--from", DAYS[30].isoformat(),
                 "--to", DAYS[29].isoformat(), "--source", "x"]) == 5                # the sessions in order
+
+
+def _two_names(ec, db):
+    """OLD.N0000 trades on days 0 to 19, NEW.N0000 (its new ticker) on days 20 to 39; three other securities."""
+    seed(ec, db, split=False)
+    o = fs.conn(ec, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set local role cse_owner")
+        cur.execute("select import_id from mf_history_imports")
+        imp = cur.fetchone()[0]
+        for i, d in enumerate(DAYS):
+            cur.execute("insert into mf_history_bars (import_id, symbol, trade_date, close, shares, turnover, "
+                        "source_sheet, source_row) values (%s,%s,%s,%s,1000,200000,'t',%s)",
+                        (imp, "OLD.N0000" if i < 20 else "NEW.N0000", d, 100 + i, 9000 + i))
+    o.commit()
+
+
+def test_o11_identity_links_join_series_reuses_split_them_and_admission_holds(cluster, capsys):
+    """§8.1 (task: identity evidence in the build): a link makes NEW's series continue OLD's, so a 21-session return
+    exists at D*; a symbol_reused makes a symbol's earlier bars not its history; a link entered after T is not used;
+    the snapshot replays and its provenance names the predecessor's rows."""
+    db = fs.fresh_db(cluster)
+    _two_names(cluster, db)
+    cid = registered(cluster, db)
+
+    def run(argv, user="cse_migrator"):
+        return cli.run(cli.parser().parse_args(argv), lambda: fs.conn(cluster, db, user=user))
+
+    def ret21(sid, sym):
+        fj = sql(cluster, db, "select features_json from mf_snapshot_rows where snapshot_id = %s and symbol = %s",
+                 (sid, sym))[0][0]
+        return json.loads(fj)["ret_21"]["value"]
+    before, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db)), cid)
+    assert ret21(before, "NEW.N0000") is None                          # 20 sessions of its own: no 21-session return
+    link = ["identity", "--kind", "link", "--symbol", "NEW.N0000", "--predecessor", "OLD.N0000", "--effective",
+            DAYS[20].isoformat(), "--announced", DAYS[15].isoformat(), "--source", "CSE ticker-change notice"]
+    t_before_link = now(cluster, db)
+    assert run(link, user="cse_worker") == 5 and run(link) == 0
+    t_mid = now(cluster, db)
+    sid, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[-1]), t_mid), cid)
+    assert ret21(sid, "NEW.N0000") is not None                         # the joined series reaches back
+    head = sql(cluster, db, "select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, "
+                            "input_digest, adjustment_set_hash, row_count, recorded_at, result_label, code_version, "
+                            "imported_inputs, snapshot_hash, created_by, pending_sessions from mf_snapshots where "
+                            "snapshot_id = %s", (sid,))[0]
+    assert verify.snapshot_report(worker(cluster, db), head, margin=timedelta(0))["problems"] == []
+    ex = explain.explain(worker(cluster, db), sid, "NEW.N0000")
+    old_ids = {r[0] for r in sql(cluster, db, "select id from mf_history_bars where symbol = 'OLD.N0000'")}
+    assert ex["provenance_ok"] and old_ids & set(ex["window_observation_ids"])
+    # in AVAILABLE a link counts from its announcement: a build at T before it does not join the series
+    early, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[14]), now(cluster, db)), cid)
+    assert sql(cluster, db, "select count(*) from mf_snapshot_rows where snapshot_id = %s and symbol = 'NEW.N0000'",
+               (early,)) == [(0,)]                                     # NEW does not exist yet at day 14
+    # in KNOWN a link counts from its entry: a KNOWN build at an instant before the entry has no joined series
+    known_before, _ = _snapshot(cluster, db, Query(KNOWN, t_before_link), cid)
+    assert ret21(known_before, "NEW.N0000") is None
+    known_after, _ = _snapshot(cluster, db, Query(KNOWN, now(cluster, db)), cid)
+    assert ret21(known_after, "NEW.N0000") is not None
+    # a reused symbol: its bars before the effective date belong to another security
+    assert run(["identity", "--kind", "symbol_reused", "--symbol", "S1.N0000", "--effective", DAYS[30].isoformat(),
+                "--announced", DAYS[30].isoformat(), "--source", "CSE notice: symbol reassigned"]) == 0
+    sid3, snap3 = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db)), cid)
+    assert snap3.segments["S1.N0000"][0].start == DAYS[30]            # its bars before day 30 are another security's
+    assert ret21(sid3, "S1.N0000") is None
+    assert run(["identity", "--kind", "link", "--symbol", "S2.N0000", "--effective", DAYS[5].isoformat(),
+                "--announced", DAYS[5].isoformat(), "--source", "x"]) == 5   # a link names its predecessor
+
+
+def test_o12_identity_reaches_factors_the_digest_and_labels(cluster):
+    """The predecessor's corporate actions are the series' own after a link; the admitted identity evidence enters
+    the snapshot's input digest (and only when admitted); a label that rests on a link announced late resolves no
+    earlier than that announcement."""
+    db = fs.fresh_db(cluster)
+    _two_names(cluster, db)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set local role cse_owner")
+        cur.execute("insert into mf_corporate_action_observations (statement_id, symbol, kind, ex_date, terms_json, "
+                    "available_at, source_reference) values ('old-bonus', 'OLD.N0000', 'bonus', %s, "
+                    "'{\"held\":10,\"new\":1}', %s, 't')", (DAYS[10], hb.available_at(DAYS[5])))
+        cur.execute("insert into mf_identity_observations (kind, symbol, predecessor, effective_date, available_at, "
+                    "source_reference) values ('link', 'NEW.N0000', 'OLD.N0000', %s, %s, 'late notice') returning id",
+                    (DAYS[20], hb.available_at(DAYS[38])))
+        link_id = cur.fetchone()[0]
+    o.commit()
+    cid = registered(cluster, db)
+    w = worker(cluster, db)
+    q_late = Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db))
+    snap, _imp, evidence = jobs.build(w, q_late, CFG)
+    assert evidence["identity"] == [link_id]
+    assert any("old-bonus" in f.statement_ids for f in snap.factors["NEW.N0000"])   # the predecessor's action
+    _s, _i, ev_early = jobs.build(w, Query(AVAILABLE, hb.available_at(DAYS[30]), now(cluster, db)), CFG)
+    assert "identity" not in ev_early                                  # announced after that T: not admitted
+    # a target build of NEW's day-25 row reading the joined series: resolved no earlier than the link's notice
+    ref25, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[25]), now(cluster, db)), cid)
+    rep = targets_store.build(w, Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db)), cid, [ref25])
+    rows = sql(cluster, db, "select horizon, resolved_at from mf_target_rows where build_id = %s and symbol = "
+                            "'NEW.N0000' and resolved_at is not null", (rep["build_id"],))
+    assert rows and all(r[1] >= hb.available_at(DAYS[38]) for r in rows)

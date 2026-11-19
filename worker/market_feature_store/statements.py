@@ -119,3 +119,26 @@ def confirm_no_action(conn, statement_id, symbol, session_from, session_to, sour
                       source_reference=_source(source, operator), terms=terms)
     return _insert(conn, (statement_id, symbol, actions.NO_ACTION_CONFIRMED, None, _terms_json(terms), None, None,
                           _source(source, operator)), available_now=True)
+
+
+def enter_identity(conn, kind, symbol, effective, announced, source, predecessor=None, operator=None):
+    """An identity observation (§8.1): `link` (`symbol` continues `predecessor`'s series from `effective`, a ticker
+    change) or `symbol_reused` (`symbol` names a different security from `effective`: earlier bars are not its
+    history). Available from the end of the announcement's Colombo day; it takes effect in KNOWN from its recorded_at
+    and in AVAILABLE from that announcement. Checked as the build checks it before it is written."""
+    from worker.market_features import universe
+    available = hb.available_at(announced)
+    universe.IdentityObservation(kind, symbol, effective, datetime.now(timezone.utc), available,
+                                 _source(source, operator), predecessor)        # the build's own validation
+    try:
+        with conn.cursor() as cur:
+            _owner(cur)
+            cur.execute("insert into mf_identity_observations (kind, symbol, predecessor, effective_date, available_at, "
+                        "source_reference) values (%s, %s, %s, %s, %s, %s) returning id, recorded_at",
+                        (kind, symbol, predecessor, effective, available, _source(source, operator)))
+            new_id, recorded = cur.fetchone()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return {"identity_id": new_id, "recorded_at": recorded.isoformat(), "available_at": available.isoformat()}

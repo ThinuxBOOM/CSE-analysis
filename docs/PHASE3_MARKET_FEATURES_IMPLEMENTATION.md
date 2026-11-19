@@ -1035,3 +1035,28 @@ check: 6 mutants, 5 killed; the owner-path check in Python survives because the 
 **Not built, and why:** an `identity` command. `mf_identity_observations` is written by the TradeIQ import but the
 snapshot build does not read it yet (`universe.series_segments` is not called), so a command would store evidence no
 build uses. Wiring identity evidence into the build, then the command, is a task before `main`.
+
+---
+
+## Identity evidence in the build (§8.1), and the owner's `identity` command
+
+Identity observations were written (the TradeIQ import's 1990s-code links) but never read. Now:
+- `store.load_identity` reads every `mf_identity_observations` row; `jobs.build_all` passes them to the build, and the
+  ids the query admits enter the input digest (only when there are some, so a snapshot without identity evidence
+  keeps its exact digest).
+- `snapshot.build` makes each security's series from `universe.series_segments` (admitted by the query: a link from
+  its recorded_at in KNOWN, from its announcement in AVAILABLE): on each session the bar is that of the symbol whose
+  segment holds it, the predecessor before a link's effective date, nothing before a reuse; the predecessor's
+  corporate-action statements are the series' own. `snap.segments` and the admitted observations are kept.
+- Provenance (`store.provenance`, so `explain` and `verify`) takes each session's rows from its segment's symbol.
+- Target builds: a session's own instant is that of its segment's symbol; presence spans the series' symbols; the
+  admission instant of every identity observation naming one of them enters `resolved_at`.
+- `cse-features identity --kind link|symbol_reused ...` (owner path), checked by the build's own validation.
+**Effect on real data:** the TradeIQ import's links (a 1990s classless code continued by `CODE.N0000`) now join those
+series, so features over the late 1990s and 2001 see one security's history instead of two broken ones.
+Tests: `test_o11` (a link joins NEW to OLD so a 21-session return exists; KNOWN before the entry and AVAILABLE before
+the announcement do not join; the snapshot replays; explain names the predecessor's rows; a reuse cuts the earlier
+bars; a link without a predecessor refused; the worker refused) and `test_o12` (the predecessor's bonus is a factor of
+the series; the digest lists the admitted link and only when admitted; a label resting on a link announced late
+resolves no earlier than the notice). Mutation check: 9 mutants, 8 killed; the survivor (a session's own instant taken
+from the security's own symbol) is equivalent while one batch holds both symbols' rows, as in these tests.

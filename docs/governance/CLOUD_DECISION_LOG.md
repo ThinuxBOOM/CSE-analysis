@@ -1014,3 +1014,11 @@ The owner can now enter corporate actions, withdraw them, and confirm that a lar
 three commands on the owner path. Every statement is checked by exactly the rules the market-feature build applies
 before it is stored. A command for identity links is deliberately not provided yet, because the build does not read
 identity evidence; that wiring is a separate task before `main`.
+
+## C-0108: identity evidence in the market-feature build; owner `identity` command ([delegated], 2026-11-19)
+
+Ticker changes and reused symbols now shape each security's price history as the design specifies: a renamed
+security's history continues across the rename (with the old name's corporate actions), and a reused symbol's older
+prices are not counted as the new security's. Each takes effect only from when it was known. The owner can enter them
+with a new command, checked by the build's own rules. On the imported archive this joins the 1990s codes to their later
+symbols.

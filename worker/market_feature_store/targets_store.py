@@ -98,7 +98,24 @@ def _finality(imported, sessions, captured=None):
     return out
 
 
-def session_instants(symbol, imported, sessions, finality, query, captured=None):
+def session_instants(symbol, imported, sessions, finality, query, captured=None, segments=None):
+    """Per session, the latest instant of its finality and of the security's own bar. With identity segments (§8.1)
+    each session's own bar is that of the symbol whose segment holds it."""
+    if segments and not (len(segments) == 1 and segments[0].symbol == symbol and segments[0].start is None
+                         and segments[0].end is None):
+        from .snapshot import segment_symbol
+        out = {}
+        for g in segments:
+            part = [s for s in sessions if segment_symbol([g], s) == g.symbol]
+            out.update(_session_instants(g.symbol, imported, part, finality, query, captured))
+        for s in sessions:                        # a session outside every segment: its finality alone
+            if s not in out and finality.get(s) is not None:
+                out[s] = finality[s]
+        return out
+    return _session_instants(symbol, imported, sessions, finality, query, captured)
+
+
+def _session_instants(symbol, imported, sessions, finality, query, captured=None):
     imp = imported.get(symbol) or hb.Imported(rows={})
     dates = sorted(imp.rows)
     q_dates = sorted(imp.quarantine_instants)
@@ -207,16 +224,21 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
             if why:
                 skipped[why] = skipped.get(why, 0) + 4
                 continue
-            inst = session_instants(row.symbol, imported, sessions, finality, query, cap)
+            segs = getattr(snap, "segments", {}).get(row.symbol)
+            owners = {g.symbol for g in segs} if segs else {row.symbol}
+            inst = session_instants(row.symbol, imported, sessions, finality, query, cap, segs)
             # the security's presence in the build rests on its surviving rows: a security whose rows were all set
             # aside and that came back through a later row exists only from that row's admission (audit 4, E-1). A
             # row that survives at T survives at any earlier T' where it is admitted, so the earliest one suffices.
-            surviving = [r.get("instant") for r in (imported[row.symbol].rows.values() if row.symbol in imported else ())
+            surviving = [r.get("instant") for o in owners for r in (imported[o].rows.values() if o in imported else ())
                          if r.get("instant") is not None]
             if cap is not None:                       # MF-8: a captured bar is presence evidence too
-                surviving += [i for (s_, _d), i in cap.bar_instants.items() if s_ == row.symbol]
+                surviving += [i for (s_, _d), i in cap.bar_instants.items() if s_ in owners]
             presence = min(surviving) if surviving else None
-            extra = [x for x in [ref_instants.get(sid), presence]
+            # §8.1: the identity evidence the series rests on (a link or reuse naming any of its symbols)
+            ident = [store.admission_instant(query, o.recorded_at, o.available_at)
+                     for o in getattr(snap, "identity", ()) if o.symbol in owners or o.predecessor in owners]
+            extra = [x for x in [ref_instants.get(sid), presence] + ident
                      + superseded_instants(row.symbol, statements, stmt) if x is not None]
             for h in targets.HORIZONS:
                 out.append((sid, targets.label(row, h, snap.series[row.symbol], snap.references[row.symbol],

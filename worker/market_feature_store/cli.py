@@ -16,6 +16,8 @@ CSE or any network.
                                                  OWNER step: cancel a statement (§7.1)
     confirm-no-action --id ID --symbol S --from DATE --to DATE --source TEXT
                                                  OWNER step: a genuine move between two sessions (§11)
+    identity --kind link|symbol_reused --symbol S [--predecessor P] --effective DATE --announced DATE --source TEXT
+                                                 OWNER step: a ticker change or a reused symbol (§8.1)
     calendar-sync                                copy trading_calendar's closures (append-only)
     snapshot --mode KNOWN|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID | --designated)
     targets  --mode KNOWN|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID | --designated)
@@ -45,7 +47,7 @@ from . import (EXIT_DATABASE_UNAVAILABLE, EXIT_OK, EXIT_REFUSED, calendar_sync, 
                preflight, selection, statements, targets_store, verify)
 
 WRITING = ("register-configuration", "calendar-sync", "snapshot", "targets")
-OWNER = ("designate", "import-tradeiq", "action", "withdraw", "confirm-no-action")
+OWNER = ("designate", "import-tradeiq", "action", "withdraw", "confirm-no-action", "identity")
 OWNER_PATH_ROLE = "cse_migrator"
 
 
@@ -99,6 +101,13 @@ def parser():
     c.add_argument("--from", dest="session_from", type=_date, required=True)
     c.add_argument("--to", dest="session_to", type=_date, required=True)
     c.add_argument("--source", required=True)
+    i = sub.add_parser("identity")
+    i.add_argument("--kind", choices=("link", "symbol_reused"), required=True)
+    i.add_argument("--symbol", required=True)
+    i.add_argument("--predecessor")
+    i.add_argument("--effective", type=_date, required=True)
+    i.add_argument("--announced", type=_date, required=True)
+    i.add_argument("--source", required=True)
     sub.add_parser("calendar-sync")
     for name in ("snapshot", "targets"):
         s = sub.add_parser(name)
@@ -238,6 +247,10 @@ def run(args, connect):
         if args.command == "withdraw":
             _print({"state": "entered", **statements.withdraw(conn, args.statement_id, args.withdraws, args.symbol,
                                                               args.announced, args.source, op)})
+            return EXIT_OK
+        if args.command == "identity":
+            _print({"state": "entered", **statements.enter_identity(
+                conn, args.kind, args.symbol, args.effective, args.announced, args.source, args.predecessor, op)})
             return EXIT_OK
         if args.command == "confirm-no-action":
             _print({"state": "entered", **statements.confirm_no_action(

@@ -178,6 +178,25 @@ def load(conn, query):
     return imported, statements, cal_obs, evidence
 
 
+def load_identity(conn, query):
+    """Every identity observation (§8.1), and the ids of those the query admits (for the input digest). Admission
+    itself is `universe.series_segments`'s, by (recorded_at, available_at): a link takes effect from its recorded_at in
+    KNOWN and from its announcement in AVAILABLE."""
+    from worker.market_features import universe
+    with conn.cursor() as cur:
+        cur.execute("set transaction isolation level repeatable read, read only")
+        cur.execute("select id, kind, symbol, predecessor, effective_date, available_at, source_reference, recorded_at "
+                    "from mf_identity_observations order by id")
+        rows = cur.fetchall()
+    conn.rollback()
+    obs, admitted = [], []
+    for i, kind, sym, pred, eff, avail, ref, recorded in rows:
+        obs.append(universe.IdentityObservation(kind, sym, eff, recorded, avail, ref, pred))
+        if query.admits(recorded, avail):
+            admitted.append(i)
+    return tuple(obs), admitted
+
+
 def _value(v):
     return None if v is None else str(v)
 
@@ -211,17 +230,26 @@ def provenance(snap, imported, symbol):
     """(D* bar ids, window digest) of a snapshot row (§13.1): the mf_history_bars ids merged into the security's D*
     bar, and a SHA-256 over the ids of every admitted row of the security at a session of the snapshot (every window
     reads within them). `explain` re-derives the list and checks it against the digest."""
-    rows = imported[symbol].rows if symbol in imported else {}
-    dstar = list(rows.get(snap.d_star, {}).get("ids", ()))
-    window = sorted(i for s in snap.sessions if s in rows for i in rows[s].get("ids", ()))
+    from .snapshot import segment_symbol
+    segs = getattr(snap, "segments", {}).get(symbol)
+
+    def owner(s):                                 # §8.1: the symbol whose segment holds the session
+        return segment_symbol(segs, s) if segs else symbol
+
+    def rows_of(sym):
+        return imported[sym].rows if sym in imported else {}
+    dstar_owner = owner(snap.d_star)
+    dstar = list(rows_of(dstar_owner).get(snap.d_star, {}).get("ids", ())) if dstar_owner else []
+    window = sorted(i for s in snap.sessions if owner(s) and s in rows_of(owner(s))
+                    for i in rows_of(owner(s))[s].get("ids", ()))
     cap = getattr(snap, "captured", None)
     if cap is not None:
         # MF-8: the raw observation ids reconcile merged into the captured bars, after the imported bar ids (ints
         # and uuid texts are never sorted together, so an import-only snapshot keeps its exact provenance)
-        dstar += sorted(str(i) for i in (cap.bar_on(symbol, snap.d_star).contributing_observation_ids
-                                         if cap.bar_on(symbol, snap.d_star) is not None else ()))
-        window += sorted(str(i) for s in snap.sessions if cap.bar_on(symbol, s) is not None
-                         for i in cap.bar_on(symbol, s).contributing_observation_ids)
+        b = cap.bar_on(dstar_owner, snap.d_star) if dstar_owner else None
+        dstar += sorted(str(i) for i in (b.contributing_observation_ids if b is not None else ()))
+        window += sorted(str(i) for s in snap.sessions if owner(s) and cap.bar_on(owner(s), s) is not None
+                         for i in cap.bar_on(owner(s), s).contributing_observation_ids)
     return dstar, sha256_hex(canonical_json(window)), window
 
 
