@@ -54,6 +54,19 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-19: M5-7 accepted and fixed; M5-8 rehearsal built (C-0110, C-0111)
+
+- **M5-7** passed its audit with no Blocker. Its six Majors are fixed (C-0110). **Pending migration 0021 changed:** a
+  new check on `r1_predictions` (a stored prediction must match its own record and hash). Move it with the others at
+  the merge.
+- **M5-8**: one synthetic world now runs through all of Phase 5 and is recorded in the registry. Nothing in it touches
+  real data or CSE. To run it yourself:
+  `python3 -c "from worker.ml_rehearsal import rehearsal as r; print(r.run()['report_hash'])"` (about 4 s; it needs
+  numpy, scipy and the ML libraries).
+- The carried MLK-20 Major is closed at the dataset. The full raw-to-dataset run of every leakage plant belongs to
+  your staging run (ST-33).
+- Audit of M5-8 pending.
+
 ### 2026-11-19: Phase 5 M5-7 built (C-0109)
 
 New package `worker/ml_route1/` (combinations, designation lists, refusals, the prediction record). Nothing for you to

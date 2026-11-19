@@ -7,20 +7,29 @@ its schema; its horizon; the industry groups present; the per-feature envelope (
 fit slice, widened by the policy's margin) and the features that are critical or rank-based; its training cutoff;
 `max_model_age_sessions`.
 
+A domain consulted at another horizon is a caller's error and raises. The domain fails closed (M5-7 audit M3): it cannot be built unless every critical non-rank feature has an envelope,
+and an empty list of industry groups admits no row.
+
 The checks, in this order (the first that applies decides):
   invalid_input            the row's inputs failed their hash checks
   not_applicable           no designation for the purpose
   insufficient_data        not market-data eligible; no combination in the list has all its components; a critical
                            feature null or inadmissible (`missing_critical_features`)
-  blocked                  a critical non-rank feature outside the envelope (`outside_validated_domain`); the
-                           eligibility policy version, or the version of a feature IN THE SCHEMA, differs
-                           (`version_changed`; an unrelated feature added to the registry does not block); the
-                           row's label class or industry group not in the domain and no waiver (`outside_domain`;
+  blocked                  the eligibility policy version, or the version of a
+                           feature IN THE SCHEMA, differs (`version_changed`; an unrelated feature added to the
+                           registry does not block; checked before the envelope, so a changed feature is reported as
+                           changed); a critical non-rank feature outside the envelope (`outside_validated_domain`);
+                           the row's label class or industry group not in the domain and no waiver (`outside_domain`;
                            the C-0039 waiver: a model validated on reconstructed evidence may predict point_in_time
                            rows, flagged `reconstructed_evidence`); older than max_model_age_sessions
                            (`model_stale`); an incident flag that covers T AND was recorded at or before T
-                           (`incident`: a flag entered later does not remove a day from validation with hindsight)
+                           (`incident`: a flag entered later does not remove a day from validation with hindsight,
+                           but the row is flagged `incident_recorded_later`, §11.2's reported stratum). A flag's
+                           range is half-open [from, to), as `ml_incident_flags.covers` is
   predicted                otherwise; non-critical features are clipped to the fit-slice bounds
+
+`refusal_rates` summarises the decisions of a validation or test period by regime (MLK-15: the same logic, the
+rates reported).
 """
 import math
 from dataclasses import dataclass, field
@@ -39,6 +48,15 @@ class Domain:
     rank_features: tuple = ()
     max_age_sessions: int = 252
     reconstructed_waiver: bool = False           # C-0039: reconstructed evidence may predict point_in_time rows
+    training_cutoff: object = None               # C_train of the model (§11.2), recorded with it
+
+    def __post_init__(self):
+        for f in self.critical:
+            if f in self.rank_features:
+                continue
+            env = self.envelope.get(f)
+            if env is None or env[0] is None or env[1] is None or not env[0] <= env[1]:
+                raise ValueError(f"a domain needs an envelope for every critical non-rank feature: {f} has none")
 
 
 def _q(sorted_vals, q):
@@ -70,8 +88,11 @@ class Row:
     hashes_ok: bool = True
 
 
-def decide(row, domain, *, designated, routed, age_sessions, incidents, cutoff):
-    """(state, reason, flags, clipped features). incidents: [(covers_from, covers_to, recorded_at)]."""
+def decide(row, domain, *, designated, routed, age_sessions, incidents, cutoff, horizon):
+    """(state, reason, flags, clipped features). incidents: [(covers_from, covers_to, recorded_at)], each range
+    half-open [covers_from, covers_to)."""
+    if horizon != domain.horizon:
+        raise ValueError(f"a domain for h = {domain.horizon} consulted at h = {horizon}")
     if not row.hashes_ok:
         return "invalid_input", "hash_mismatch", (), None
     if not designated:
@@ -83,15 +104,15 @@ def decide(row, domain, *, designated, routed, age_sessions, incidents, cutoff):
     for f in domain.critical:
         if row.features.get(f) is None or row.admissible.get(f) is False:
             return "insufficient_data", "missing_critical_features", (), None
+    if row.eligibility_policy != domain.eligibility_policy or any(
+            row.feature_versions.get(f) != v for f, v in domain.feature_versions.items()):
+        return "blocked", "version_changed", (), None
     for f in domain.critical:
-        if f in domain.rank_features or f not in domain.envelope or domain.envelope[f] is None:
+        if f in domain.rank_features:
             continue
         lo, hi = domain.envelope[f]
         if not lo <= row.features[f] <= hi:
             return "blocked", "outside_validated_domain", (), None
-    if row.eligibility_policy != domain.eligibility_policy or any(
-            row.feature_versions.get(f) != v for f, v in domain.feature_versions.items()):
-        return "blocked", "version_changed", (), None
     flags = []
     if row.label_class not in domain.label_classes:
         if domain.reconstructed_waiver and row.label_class == "point_in_time" and \
@@ -99,13 +120,15 @@ def decide(row, domain, *, designated, routed, age_sessions, incidents, cutoff):
             flags.append("reconstructed_evidence")
         else:
             return "blocked", "outside_domain", (), None
-    if domain.industry_groups and row.industry_group not in domain.industry_groups:
+    if row.industry_group not in domain.industry_groups:
         return "blocked", "outside_domain", (), None
     if age_sessions > domain.max_age_sessions:
         return "blocked", "model_stale", (), None
     for a, b, recorded in incidents:
-        if a <= cutoff <= b and recorded <= cutoff:
-            return "blocked", "incident", (), None
+        if a <= cutoff < b:
+            if recorded <= cutoff:
+                return "blocked", "incident", (), None
+            flags.append("incident_recorded_later")
     clipped = {}
     for f, v in row.features.items():
         if f in domain.critical or v is None or f not in domain.bounds or domain.bounds[f] is None:
@@ -114,3 +137,15 @@ def decide(row, domain, *, designated, routed, age_sessions, incidents, cutoff):
         lo, hi = domain.bounds[f]
         clipped[f] = min(max(v, lo), hi)
     return "predicted", None, tuple(flags), clipped
+
+
+def refusal_rates(decisions, regimes):
+    """decisions: [(state, reason, flags)] of a period's rows; regimes: the regime of each row. Returns
+    {regime: {"rows": n, "predicted": share, reason: share, ..., "incident_recorded_later": share}}."""
+    out = {}
+    for (state, reason, flags), g in zip(decisions, regimes):
+        d = out.setdefault(g, {"rows": 0})
+        d["rows"] += 1
+        for k in [reason or state] + [f for f in flags if f == "incident_recorded_later"]:
+            d[k] = d.get(k, 0) + 1
+    return {g: {k: (v if k == "rows" else v / d["rows"]) for k, v in d.items()} for g, d in out.items()}

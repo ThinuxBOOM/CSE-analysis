@@ -297,3 +297,38 @@ def test_l8_an_available_dataset_end_to_end_and_imports_out_of_reach(cluster, mo
     snaps, _l, _b, _sc = loader.load(c, m)
     assert snaps[0].survivorship == "unknown" and snaps[0].imported
 
+
+
+def test_l9_mlk20_rows_recorded_after_the_build_change_no_dataset_row(cluster, monkeypatch):
+    """M5-8 (the carried MLK-20 Major): every kind of upstream row the loader reads, recorded after the dataset was
+    built (an import batch with bars in the feature window, an unentered candidate action, a later target build, a
+    later issuer link decision, a later snapshot beyond the manifest's range), changes no row, label or hash of the
+    dataset. The upstream plants ML-1 to ML-24 and FL-1 to FL-22 are each shown at their own stored row by MF's and
+    F7/DE's suites; this shows the dataset reads nothing but those stored rows and the build's own instants."""
+    db = fs.fresh_db(cluster)
+    c, sid, builds, cid = built(cluster, db, monkeypatch)
+    sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
+    imports(cluster, db, [("complete", "raw", "row_absent", "2024-01-01T00:00:00Z", "2024-06-03")])
+    m = manifest(cid, builds[0])
+    before = ds.build(m, *loader.load(c, m))
+    assert before.survivorship == "complete"
+    now = datetime.now(timezone.utc).isoformat()
+    imports(cluster, db, [("survivors_only", "raw", "row_absent", now, "2024-06-04")])           # ML-9
+    sql(cluster, db, [("insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, reason, "
+                       "source_reference) values ('late-1', 'S05.N0000', 'bonus', '2024-06-01', '2024-06-30', "
+                       "'not entered', 'a later reconstruction')", ())], role="cse_owner")      # ML-21's flag source
+    later = target_build(cluster, db, sid)                                                      # ML-18
+    sql(cluster, db, [("insert into issuers (identity_basis, created_rule_version) values ('provisional', 't')", ()),
+                      ("insert into issuer_securities (company_id, issuer_id, link_status, link_basis, "
+                       "observed_sec_ids, evidence_observation_ids, rule_version, evidence_sha256, decided_at) "
+                       "select company_id, (select max(issuer_id::text)::uuid from issuers), link_status, link_basis, "
+                       "observed_sec_ids, evidence_observation_ids, 't', repeat('9', 64), now() from "
+                       "issuer_securities order by id limit 1", ())])                          # ML-10, FL-11
+    sql(cluster, db, [("insert into mf_snapshots (mode, result_label, cutoff, d_star, configuration_id, code_version, "
+                       "input_digest, adjustment_set_hash, row_count, snapshot_hash) values ('KNOWN', "
+                       "'point_in_time', '2025-01-03T00:00:00Z', '2025-01-02', %s, 'mf.1', repeat('c', 64), "
+                       "repeat('d', 64), 0, repeat('e', 64))", (cid,))])                          # ML-1, ML-6
+    after = ds.build(m, *loader.load(c, m))
+    assert later and after.version == before.version and after.rows == before.rows
+    assert after.labels == before.labels and after.survivorship == before.survivorship
+    assert after.report == before.report

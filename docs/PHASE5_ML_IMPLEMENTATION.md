@@ -425,6 +425,91 @@ record; MLK-19 against `ml_designations`). Mutation check: 20 mutants, all kille
 **Not here, by design:** running the refusal logic inside validation and the test (it is called by the protocol
 driver, M5-8), and the per-feature critical list and margin, which a configuration states.
 
+
+## M5-7 audit (fresh-context agent, at `d70ff9d`): accepted
+
+No Blocker (C-0037), so M5-7 is accepted. The audit found six Majors, all fixed (C-0110):
+
+| ID | Finding | Fix |
+|---|---|---|
+| M1 | The combined interval was one pooled quantile of the raw \|y − mean\|, not §8.2's; with two classes of different volatility, coverage was 1.000 against 0.805 at a nominal 0.9 | §8.2's rule in the combiner: scale = max(vol_21·√h, floor), with the floor at the 5th percentile of the fitted rows' positive scales, and one quantile per liquidity class (`RowMeta`). A test checks that each class covers about 0.9 |
+| M2 | The fitted combiner was a plain dict, not bound to a horizon or fold | An `Artifact` (hashed) carrying horizon, fold and cutoff; `apply` refuses another horizon or another fold's predictions; `fit_final` is the final combiner |
+| M3 | The domain failed open: a critical feature with no envelope, or an empty group list, admitted everything | `Domain` refuses construction without an envelope for every critical non-rank feature; an empty group list admits nothing; `decide` takes the horizon and raises on another |
+| M4 | Nothing checked a component's kind or gates, and `no_engine_component` was never derived | `Component(kind, gated)` and `check_components`: Route 2, baselines and ungated configurations are refused; the record requires each component's kind and derives `no_engine_component` |
+| M5 | No validation path ran the refusals; a later-recorded incident gave no flag | `incident_recorded_later` flag; `refusal_rates` by regime; M5-8's rehearsal runs `decide` on every validation row and reports the rates by regime |
+| M6 | `r1_predictions` accepted a row whose hash or columns contradicted its record | `r1_prediction_guard` in 0021: row_hash = SHA-256 of record_json, the columns are the record's key and state, and the designation's horizon is the row's |
+
+**Minors fixed:**
+- Versions are checked before the envelope.
+- Incident ranges are half-open, as `covers` is.
+- The evidence flag follows the actual class: `reconstructed_evidence` for reconstructed or mixed evidence, `<class>_evidence` for any other non-point-in-time class.
+- Canonical form: -0.0 = 0.0 and Decimal scale are normalised, non-text keys are refused, and an unknown type is refused.
+- Record validation by state:
+  - a predicted row needs outputs, components, engines, artifact hashes and the mf, f7 and de source keys;
+  - any refusal needs a reason.
+- The combiner:
+  - refuses non-convergence, invalid probabilities and duplicate predictions;
+  - has `fit_final`;
+  - records the domain's `training_cutoff`.
+
+**Minors open:**
+- `decide` takes the model's age from the caller rather than computing it from a calendar.
+- Turning a designation's model ids into `Position`s is left to the production pipeline.
+
+**Mutation survivors (9), each now killed by a named test:**
+- the logarithm in the scaling: a hand-computed softmax;
+- the sum-to-zero offsets;
+- the three-class check;
+- the waiver applying to classes other than point_in_time;
+- clipping of critical features;
+- the routed position's value;
+- hash rounding;
+- `sort_keys`;
+- a predicted row with no outputs.
+
+Tests now:
+- `test_m57_unit.py`: 18;
+- `test_m57_postgres.py`: 3 (p3: every tampered column and the hash refused; a designation for another horizon refused).
+
+---
+
+## M5-8: the end-to-end synthetic walk-forward rehearsal
+
+Design §15's last step. **Exit:** the whole chain, reproducible.
+
+| Module | What it does |
+|---|---|
+| `worker/evaluation_metrics/size.py` | MLK-23. The dependence of the date-level series is estimated on training rows only: the lag-1 autocorrelation of the series and of its squares. Null series of the protocol's length are simulated (AR(1) with ARCH-like variance) and the gate test is run on each at the protocol's level and block length. The rejection count is compared with the binomial acceptance region (0.1 % to 99.9 %). `shown` is gate 5's `size_shown` |
+| `worker/ml_rehearsal/rehearsal.py` | One synthetic world: a planted signal in `mf.x`, an irrelevant `mf.z`, a persistent common date factor with calm and stress regimes, and three liquidity classes with their volatilities. It runs dataset → 5 expanding walk-forward folds and inner slices → `linear` on each fold's fit slice → vector scaling and §8.2 conformal intervals → the domain from the fit slice and §11.2's refusals on every validation row, with two incident flags (one recorded before the days it covers, one long after) → per-fold metrics, coverage and reliability → the gate test of the pooled date-level loss differences against `base_prior` → the size study → `report_hash`. `record` writes it to the registry as a synthetic dataset and validates it with the rehearsal's own evidence |
+
+**Recorded result** (default world, seed 1, 200 size seeds):
+- The gate test rejects: p = 0.0001 over 325 dates, block 10, B 9 999.
+- The size study is shown: 14 rejections out of 200 at the training rows' dependence (φ ≈ 0.20), inside [2, 21].
+- Fold coverage is about 0.9 per class. `report_hash` `ac22048d…`.
+- Refusals in validation: `outside_validated_domain` 8, `incident` 48, `incident_recorded_later` 72. By regime, the stress days are all predicted, and the incidents fall on calm days.
+- In the registry the protocol is `exploratory` (24 securities < 50, a 106-date fit slice < 504, no test dates), so validation writes a failing report. A `validated` event written directly is refused by the database's gate 1 (synthetic).
+
+**Tests:**
+- `tests/test_m58_unit.py` (5):
+  - the same report and hash twice, another seed a different hash;
+  - each fold refitted, with coverage near nominal;
+  - MLK-7 through the protocol: three worlds with no signal are not rejected, the world with a signal is;
+  - MLK-15 counts and rates by regime;
+  - the size study: the binomial region's edges, φ estimated, an iid series shown, a method that ignores strong dependence (blocks of 1) not shown, a series too short to test not shown.
+- `tests/test_m58_postgres.py` (1): the rehearsal recorded (dataset synthetic; five fold models with their artifacts reloaded by hash; metrics; run events; a failing report), gate 1 at the database, and the caller's evidence unable to override the registry's facts.
+
+**The carried MLK-20 Major** is closed at the dataset by `test_l9` in `tests/test_m52_loader_postgres.py`. Every kind of upstream row the loader reads, recorded after the dataset was built, changes no row, label, report or version:
+- an import batch with bars in the feature window (ML-9);
+- an unentered candidate action (the `candidate_event` source);
+- a later target build (ML-18);
+- a later issuer link decision (ML-10, FL-11);
+- a snapshot beyond the manifest's range (ML-1, ML-6).
+
+The plants ML-1 to ML-24 and FL-1 to FL-22 remain shown at their own stored rows by MF's and F7/DE's suites (`test_mf1_unit` to `test_mf8_*`, `test_f7_*`, `test_de4_*`). The dataset is a function of those rows and of the build's own instants. A run of every plant from raw captured data through MF, F7 and DE to a dataset needs the full stack with captured data, which is the owner's staging run (ST-33).
+
+**Not here:**
+- a combination inside the rehearsal (the world has one model kind; the combiner is tested in M5-7);
+- the test-period access (the rehearsal declares a test period but never opens it).
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings

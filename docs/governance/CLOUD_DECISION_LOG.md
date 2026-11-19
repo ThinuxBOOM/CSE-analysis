@@ -1029,3 +1029,29 @@ Route 1's combinations, designation lists, validated domain and prediction recor
 cases. A combination is fitted only on predictions its components made out of sample, a designation list is judged
 position by position on the rows it would actually route there, every refusal case of the design is implemented in a
 fixed order, and each prediction record holds everything the design lists and reproduces its hash. Audit pending.
+
+## C-0110: M5-7 accepted; its six Majors fixed ([delegated], 2026-11-19)
+
+The fresh-context audit of M5-7 found no Blocker, so the step is accepted. It found six Majors, all fixed:
+- A combination's interval now follows the design's interval rule (scaled by each row's volatility, per liquidity
+  class).
+- A fitted combiner is a hashed artifact that can only be applied at its own horizon and fold.
+- The validated domain refuses rather than admits when it lacks what it needs.
+- Components must be gated models or calibrated engines, and the "no engine component" flag is derived.
+- Incident flags entered after the fact are reported.
+- The database checks that a stored prediction matches its own record and hash.
+
+Most minor findings are fixed too; the ones that remain are listed in the Phase 5 record.
+
+## C-0111: Phase 5 M5-8 built: the synthetic walk-forward rehearsal ([delegated], 2026-11-19)
+
+One synthetic world goes through every Phase 5 step that exists, from dataset to registry:
+- folds, fitting, calibration and intervals;
+- the validated domain and its refusals in validation;
+- the gate test against the baseline and the size study;
+- recording.
+
+It reproduces its own hash. A world with no planted signal is not rejected, and the world with a signal is. The
+recorded model can never be validated, because its dataset is synthetic. The carried MLK-20 Major is closed at the
+dataset: rows recorded after a dataset was built change nothing in it. Each upstream leakage plant remains shown at
+its own module. Audit pending.

@@ -526,6 +526,37 @@ begin
 end;
 $$;
 
+-- M5-7 audit M6: a Route 1 prediction's columns are its record's, and its hash is the SHA-256 of the stored record
+create function r1_prediction_guard() returns trigger
+language plpgsql as $$
+declare
+  rec jsonb;
+  dh integer;
+begin
+  if encode(sha256(convert_to(new.record_json, 'UTF8')), 'hex') is distinct from new.row_hash then
+    raise exception 'r1_predictions: row_hash is not the SHA-256 of record_json' using errcode = 'check_violation';
+  end if;
+  rec := new.record_json::jsonb;
+  if jsonb_typeof(rec -> 'key') is distinct from 'object'
+     or (rec -> 'key' ->> 'symbol') is distinct from new.symbol
+     or (rec -> 'key' ->> 'session')::date is distinct from new.session
+     or (rec -> 'key' ->> 'cutoff')::timestamptz is distinct from new.cutoff
+     or (rec -> 'key' ->> 'horizon')::integer is distinct from new.horizon
+     or (rec -> 'key' ->> 'designation_id')::bigint is distinct from new.designation_id
+     or (rec ->> 'state') is distinct from new.state then
+    raise exception 'r1_predictions: the columns differ from the record''s key and state'
+      using errcode = 'check_violation';
+  end if;
+  if new.designation_id is not null then
+    select horizon into dh from ml_designations where designation_id = new.designation_id;
+    if dh is distinct from new.horizon then
+      raise exception 'r1_predictions: the designation is for another horizon' using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
 create function ml_owner_only_guard() returns trigger
 language plpgsql as $$
 begin
@@ -558,6 +589,7 @@ create unique index uq_mlm_promoted_from on ml_models (promoted_from) where prom
 create trigger trg_mlw_owner before insert on ml_waivers for each row execute function ml_owner_only_guard();
 create trigger trg_mli_owner before insert on ml_incident_flags for each row execute function ml_owner_only_guard();
 create trigger trg_mlz_owner before insert on ml_designations for each row execute function ml_owner_only_guard();
+create trigger trg_r1p_guard before insert on r1_predictions for each row execute function r1_prediction_guard();
 
 do $$
 declare

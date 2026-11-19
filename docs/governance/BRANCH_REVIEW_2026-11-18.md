@@ -80,6 +80,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |
 | PostgreSQL 17 CI run of DE-4 and M5 | branch work |
+| MLK-20 through to a built dataset (Phase 5 carried Major) | **done at the dataset** (M5-8, `test_l9`); the raw-to-dataset run of every plant at the owner's staging run |
 | ML versions in CI's environment report; hash-pinned wheels | branch work |
 | 0019 decisions: market aggregates, survivorship on the snapshot, market cap | **owner** |
 | P4-R3 | **owner** |

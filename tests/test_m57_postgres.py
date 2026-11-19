@@ -3,6 +3,7 @@ Phase 5 M5-7 against migrations 0001 - 0021: a Route 1 prediction is written by 
 hash reproduces from the stored record; MLK-19 at the database: the designation in force at a cutoff is the latest
 recorded at or before it, and one recorded later changes nothing. Skipped unless P1_PG_BINDIR is set.
 """
+import hashlib
 import json
 import os
 from datetime import date, timedelta
@@ -64,3 +65,36 @@ def test_p2_mlk19_the_designation_in_force_at_the_cutoff(cluster):
     assert rc.designation_in_force(w, "route1", "return", 5, t_between + timedelta(days=1))[0] == later
     assert rc.designation_in_force(w, "route1", "return", 5, t_between - timedelta(days=1)) is None
     assert rc.designation_in_force(w, "route1", "direction", 5, t_between) is None
+
+
+def test_p3_m6_a_row_is_its_record_and_its_hash(cluster):
+    db = fs.fresh_db(cluster)
+    w = fs.conn(cluster, db, user="cse_worker")
+    rec = rc.build("S.N0000", date(2026, 1, 2), mu.T0, 5, None, "predicted", **mu.PARTS)
+    js, h = rc.canonical(rec), rc.row_hash(rec)
+    ins = ("insert into r1_predictions (symbol, session, cutoff, horizon, designation_id, state, record_json, "
+           "row_hash) values (%s, %s, %s, %s, %s, %s, %s, %s)")
+    good = ["S.N0000", date(2026, 1, 2), mu.T0, 5, None, "predicted", js, h]
+    for i, bad in ((7, "0" * 64), (6, "{}"), (0, "T.N0000"), (1, date(2026, 1, 3)),
+                   (2, mu.T0 + timedelta(seconds=1)), (3, 10), (5, "blocked")):
+        args = list(good)
+        args[i] = bad
+        if i == 6:
+            args[7] = hashlib.sha256(bad.encode()).hexdigest()          # its own hash: the columns still differ
+        assert mp.refused(w, ins, tuple(args)), (i, bad)
+        w.rollback()
+    with w.cursor() as cur:
+        cur.execute(ins, tuple(good))
+    w.commit()
+    # a designation for another horizon
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set role cse_owner")
+    o.commit()
+    d21 = mp.one(o, "insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
+                    "('route1', 'return', 21, '[1]', '{}', 'a designation for h 21') returning designation_id")
+    o.commit()
+    rec21 = rc.build("S.N0000", date(2026, 1, 2), mu.T0, 5, d21, "predicted", **mu.PARTS)
+    assert mp.refused(w, ins, ("S.N0000", date(2026, 1, 2), mu.T0, 5, d21, "predicted", rc.canonical(rec21),
+                               rc.row_hash(rec21)))
+    w.rollback()
