@@ -1022,3 +1022,10 @@ security's history continues across the rename (with the old name's corporate ac
 prices are not counted as the new security's. Each takes effect only from when it was known. The owner can enter them
 with a new command, checked by the build's own rules. On the imported archive this joins the 1990s codes to their later
 symbols.
+
+## C-0109: Phase 5 M5-7 built ([delegated], 2026-11-19)
+
+Route 1's combinations, designation lists, validated domain and prediction record are built and tested on synthetic
+cases. A combination is fitted only on predictions its components made out of sample, a designation list is judged
+position by position on the rows it would actually route there, every refusal case of the design is implemented in a
+fixed order, and each prediction record holds everything the design lists and reproduces its hash. Audit pending.

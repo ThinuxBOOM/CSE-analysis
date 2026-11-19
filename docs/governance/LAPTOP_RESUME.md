@@ -54,6 +54,11 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-19: Phase 5 M5-7 built (C-0109)
+
+New package `worker/ml_route1/` (combinations, designation lists, refusals, the prediction record). Nothing for you to
+run yet: it is used by the rehearsal (M5-8). Audit pending.
+
 ### 2026-11-19: identity evidence used; `identity` command (C-0108)
 
 Ticker changes and reused symbols now shape each security's history, and there is an owner command for them

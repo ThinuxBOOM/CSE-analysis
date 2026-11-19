@@ -407,6 +407,26 @@ large m, alpha from the registry, the policy cutoff boundary, `rollforward_of`, 
 
 ---
 
+## M5-7: combinations, designation lists, the validated domain, `r1_predictions`
+
+**Status: built; audit pending.**
+
+| File | Content | Design |
+|---|---|---|
+| `worker/ml_route1/combine.py` | `combine_mean_v1`: the mean of the components' calibrated probabilities with its own vector scaling on the log of the mean (a direction-only component never enters a probability mean); the mean of point estimates; its own split-conformal quantile. Fitted only on out-of-fold component predictions of earlier folds, made by their own fold models, resolved by the combiner's cutoff (MLK-10: in-sample, same or later fold, final-fit or late-resolving predictions are refused, never dropped); fold 1 has none. A combination needs all its components, in its order | §10 |
+| `worker/ml_route1/routing.py` | The designation in force at a cutoff (MLK-19); a row goes to the first position whose components are all available; metrics per position on the rows routed to it only (MLK-21) | §10 |
+| `worker/ml_route1/domain.py` | The validated domain (label classes, eligibility policy and schema feature versions, horizon, industry groups, the envelope from the fit slice's 0.1st to 99.9th percentile widened by a margin, critical and rank features, maximum age, the C-0039 waiver) and §11.2's refusal table in a fixed order: `invalid_input`, `not_applicable`, `insufficient_data` (not eligible; no routed combination; a critical feature null or inadmissible), `blocked` (outside the envelope; a changed policy or schema feature version, an unrelated new feature never blocks; label class or industry group outside the domain without the waiver; stale; an incident flag covering T recorded at or before T); non-critical features clipped | §11.2 |
+| `worker/ml_route1/record.py` | The §11.1 record (every part required: outputs, components, the full set of engine outputs, source and artifact hashes, the row's and the evidence's label class, the code version; each direction component keeps its raw and calibrated probabilities and the class its contributions explain, **the M5-5 carry**), its canonical form and row hash; the worker's append-only write to `r1_predictions`; the designation in force read from `ml_designations` | §11.1 |
+
+Tests: `tests/test_m57_unit.py` (9: MLK-10, MLK-15 (every row of the table, the hindsight rule, rank features, the
+waiver, clipping, the age limit), MLK-19, MLK-21, the combiner's direction scaling and conformal index, the record and
+its hash), `tests/test_m57_postgres.py` (2: a written prediction is append-only and its hash reproduces from the stored
+record; MLK-19 against `ml_designations`). Mutation check: 20 mutants, all killed (2 after the first test set).
+**Not here, by design:** running the refusal logic inside validation and the test (it is called by the protocol
+driver, M5-8), and the per-feature critical list and margin, which a configuration states.
+
+---
+
 ## Branch-wide review (2026-11-18), Phase 5 findings
 
 Recorded in full in `docs/governance/BRANCH_REVIEW_2026-11-18.md`. Fixed here: **M-1** a FitScope is now bound to
