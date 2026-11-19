@@ -72,8 +72,8 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 
 | Item | Owner |
 |---|---|
-| MF captured-data loader (`company_id`, market cap, `pending_sessions`) | branch work |
-| Label resolution granularity on real data | branch work |
+| MF captured-data loader (`company_id`, market cap, `pending_sessions`) | **done**: MF-8, accepted (C-0105); its 3 Majors before `main` |
+| Label resolution granularity on real data | **done** (C-0105) |
 | Owner statement tooling | branch work |
 | A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |

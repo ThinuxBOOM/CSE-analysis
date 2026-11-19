@@ -131,6 +131,8 @@ def session_instants(symbol, imported, sessions, finality, query, captured=None)
 
 
 def calendar_instant(query, cal_obs, d_star):
+    """The latest admission instant of the calendar evidence about dates up to `d_star` (per label: its last session;
+    branch review M1). An import range counts up to that date; a declared closure only if it is about such a date."""
     vals = []
     for o in cal_obs:
         if o.kind == "import_calendar_complete":
@@ -139,7 +141,7 @@ def calendar_instant(query, cal_obs, d_star):
                 vals.append(store.row_instant(query, o.recorded_at, last))
                 if getattr(o, "admitted_at", None) is not None:
                     vals.append(o.admitted_at)                   # its batch's admission (re-audit N-B1)
-        elif query.admits(o.recorded_at, o.available_at):
+        elif o.date_from <= d_star and query.admits(o.recorded_at, o.available_at):
             vals.append(store.admission_instant(query, o.recorded_at, o.available_at))
     return max(vals) if vals else None
 
@@ -191,7 +193,12 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
     cap = getattr(snap, "captured", None)
     finality = _finality(imported, sessions, cap)
     stmt = statement_instants(query, statements)
-    cal = calendar_instant(query, cal_obs, snap.d_star)
+    cal_cache = {}
+
+    def calendar_upto(last):                      # per label, up to the last session it read (branch review M1)
+        if last not in cal_cache:
+            cal_cache[last] = calendar_instant(query, cal_obs, min(last, snap.d_star))
+        return cal_cache[last]
     out, skipped = [], {}
     for sid, rows in sorted(refs_by_snapshot.items()):
         for row in rows:
@@ -209,12 +216,13 @@ def labels(snap, imported, statements, cal_obs, query, refs_by_snapshot, policy,
             if cap is not None:                       # MF-8: a captured bar is presence evidence too
                 surviving += [i for (s_, _d), i in cap.bar_instants.items() if s_ == row.symbol]
             presence = min(surviving) if surviving else None
-            extra = [x for x in [cal, ref_instants.get(sid), presence]
+            extra = [x for x in [ref_instants.get(sid), presence]
                      + superseded_instants(row.symbol, statements, stmt) if x is not None]
             for h in targets.HORIZONS:
                 out.append((sid, targets.label(row, h, snap.series[row.symbol], snap.references[row.symbol],
                                                session_instants=inst, statement_instants=stmt,
-                                               extra_instants=tuple(extra), policy=policy)))
+                                               extra_instants=tuple(extra), policy=policy,
+                                               calendar_upto=calendar_upto)))
     return out, skipped
 
 

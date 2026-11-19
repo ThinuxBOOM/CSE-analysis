@@ -991,3 +991,11 @@ value; the result of the one look at a test period can no longer be rewritten af
 stamped by the database; the survivorship gate reads the dataset and the owner's waiver from the registry; a protocol
 must list its policies; a designation can list only production models of the right output and horizon; and a model
 built on reconstructed evidence carries that label. Every fix is pinned by a test that fails when it is removed.
+
+## C-0105: MF-8 accepted (Blocker B1 closed); labels on real data resolve in their own window ([delegated], 2026-11-19)
+
+The audit of the captured-data path found no Blocker, so MF-8 is accepted and the branch review's Blocker is closed:
+market-feature snapshots now link every security to its company on captured data. Its three Majors are fixed before
+`main`. Separately, a label's "known from" time no longer jumps to the end of the whole build on imported history:
+calendar notices and corporate-action announcements dated after the label's own window are no longer counted for it.
+A property test that perturbs the corporate action itself found no case where this lets a label be used too early.

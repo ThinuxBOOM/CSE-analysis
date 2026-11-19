@@ -227,6 +227,39 @@ def test_o8_target_build_labels_and_verify(cluster):
     assert verify.verify(worker(cluster, db))["target_builds"][0]["problems"]
 
 
+def test_o8b_review_m1_a_label_resolves_at_its_own_window_not_at_the_builds_t(cluster):
+    """Branch review M1: on imported history, calendar evidence and corporate-action statements dated after a label's
+    window no longer push its resolved_at up to the build's T, so a historical build has training labels."""
+    db = fs.fresh_db(cluster)
+    seed(cluster, db)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    with o.cursor() as cur:
+        cur.execute("set local role cse_owner")
+        cur.execute("select import_id from mf_history_imports")
+        imp = cur.fetchone()[0]
+        cur.execute("insert into mf_calendar_observations (kind, date_from, date_to, source_reference, import_id) "
+                    "values ('import_calendar_complete', %s, %s, 'the batch is calendar complete', %s)",
+                    (DAYS[0], DAYS[-1], imp))
+        cur.execute("insert into mf_corporate_action_observations (statement_id, symbol, kind, ex_date, terms_json, "
+                    "available_at, source_reference) values ('late', 'S1.N0000', 'bonus', %s, "
+                    "'{\"held\":10,\"new\":1}', %s, 't')", (DAYS[38], hb.available_at(DAYS[38])))
+        weekend = DAYS[35] + timedelta(days=(5 - DAYS[35].weekday()) % 7)    # a Saturday after the window
+        cur.execute("insert into mf_calendar_observations (kind, date_from, date_to, available_at, source_reference) "
+                    "values ('declared_closed', %s, %s, %s, 'a late notice')", (weekend, weekend,
+                                                                                 hb.available_at(DAYS[38])))
+    o.commit()
+    cid = registered(cluster, db)
+    ref, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[25]), now(cluster, db)), cid)
+    tb = Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db))
+    rep = targets_store.build(worker(cluster, db), tb, cid, [ref])
+    rows = {(r[0], r[1]): r for r in sql(cluster, db, "select symbol, horizon, state, resolved_at from "
+                                                       "mf_target_rows where build_id = %s", (rep["build_id"],))}
+    one = rows[("S1.N0000", 1)]
+    assert one[2] == "resolved" and one[3] == hb.available_at(DAYS[26])   # its own F, not DAYS[-1] (the build's T)
+    five = rows[("S1.N0000", 5)]
+    assert five[3] == hb.available_at(DAYS[30])
+
+
 def test_o9_the_command_line(cluster, capsys):
     db = fs.fresh_db(cluster)
     seed(cluster, db)

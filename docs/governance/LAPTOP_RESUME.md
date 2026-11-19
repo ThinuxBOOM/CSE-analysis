@@ -54,6 +54,18 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-19: labels on real data resolve in their own window (branch review M1, C-0105)
+
+Labels' `resolved_at` no longer jumps to the build's T on imported history: calendar evidence and corporate-action
+statements dated after a label's window are no longer counted for it. Target builds made before this change give
+later (more conservative) `resolved_at` values than a rebuild now would; rebuild them before training. In KNOWN,
+imported history still resolves at the import's time (by design); train on AVAILABLE eras.
+
+### 2026-11-19: MF-8 accepted; the branch review's Blocker is closed (C-0105)
+
+The MF-8 audit found no Blocker. Three Majors (an event's availability time moving on a resume; a missing captured
+value recorded as agreeing with the import; test gaps) are being fixed before `main`.
+
 ### 2026-11-18: M5-6 re-audit Majors fixed (C-0104)
 
 All seven are fixed. **Changed for you as the owner:** a protocol declaration now needs `policies` (ids of policies

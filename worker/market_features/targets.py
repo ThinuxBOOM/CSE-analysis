@@ -85,7 +85,7 @@ def _latest(*groups):
 
 
 def label(row: ReferenceRow, horizon: int, series: Series, references, *, session_instants, statement_instants=None,
-          extra_instants=(), policy: TargetPolicy = TargetPolicy()) -> Label:
+          extra_instants=(), policy: TargetPolicy = TargetPolicy(), calendar_upto=None) -> Label:
     """One label at a target build.
 
     series             the security's series as the target build sees it (its sequence, bars, factors, moves)
@@ -98,6 +98,15 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
                         statement of the security (corporate action or `no_action_confirmed`) that no longer
                         applies because it was withdrawn or superseded, with the withdrawing or superseding
                         statement, whatever its ex-date or session pair (audits 4 and 6: the conservative rule)
+    calendar_upto      a function of a date: the latest admission instant of the build's calendar evidence about dates
+                       up to it (task "label resolution granularity", branch review M1). When given, calendar evidence
+                       is read per label, up to the last session the label read; when None, `extra_instants` carries
+                       it whole, as before.
+
+    Factor and move statements (branch review M1): those of factors with an ex-date, and of moves starting, at or
+    before the last session the label read. A factor after it cannot change what the label read (returns and the
+    volatility are taken on F's price basis, B-T7's root fix); a move starting after it lies wholly outside the
+    window. `tests/test_mf6_fuzz.py` checks it with the factor itself perturbed.
     """
     if horizon not in HORIZONS:
         raise ValueError(f"horizon must be one of {HORIZONS}")
@@ -147,13 +156,14 @@ def label(row: ReferenceRow, horizon: int, series: Series, references, *, sessio
         lo.extend(bisect.bisect_left(sessions, m.session_from) for m in series.moves
                   if m.session_to > sessions[j])
     hi = [d]
-    all_ids = tuple(sorted({i for x in series.factors for i in x.statement_ids}
-                           | {m.statement_id for m in series.moves if m.statement_id}))
-
     def instants(upto, ids=()):
         top = max(upto, max(hi))
+        last = sessions[min(top, len(sessions) - 1)]
+        read = ({i for x in series.factors if x.ex_date <= last for i in x.statement_ids}
+                | {m.statement_id for m in series.moves if m.statement_id and m.session_from <= last})
+        cal = calendar_upto(last) if calendar_upto is not None else None
         return _latest([session_instants.get(sessions[i]) for i in range(min(lo), top + 1)],
-                       [statement_instants.get(x) for x in set(ids) | set(all_ids)], extra_instants)
+                       [statement_instants.get(x) for x in set(ids) | read], extra_instants, [cal])
 
     def done(state, upto, ids=(), **more):
         vol_state = more.pop("volatility_state", state)

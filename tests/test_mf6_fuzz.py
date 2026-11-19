@@ -116,3 +116,56 @@ def test_every_input_that_changes_a_label_is_covered_by_resolved_at(mode, seed):
                     break
     assert trials > 200
     assert leaks == []
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3, 4])
+def test_a_factor_that_changes_a_label_is_covered_by_resolved_at(seed):
+    """Branch review M1: only the statements of factors at or before the last session a label read enter its
+    resolved_at. Before its statement is admitted the build has no such factor, so the leak test compares the build
+    with the factor against the build without it: if the label differs, its resolved_at must cover the statement.
+    (A factor at another session is another statement, covered where it falls.)"""
+    rng = random.Random(100 + seed)
+    leaks, trials, changed = [], 0, 0
+    for _ in range(800):
+        n = rng.randint(4, 14)
+        s = days(n)
+        bars = [rng.choice(CHOICES)() for _ in range(n)]
+        d, h = rng.randrange(1, n - 1), rng.choice((1, 5))
+        rights_at = rng.randrange(1, n)
+        policy = tg.TargetPolicy(grace_sessions=rng.choice((2, 3)))
+        sb, refs = full(bars, s, rights_at)
+        r = refs[s[d]]
+        if r.ref_session is None:
+            continue
+        row = tg.ReferenceRow(SYM, s[d], r.px_ref, r.ref_session, "r", r.source_quality)
+        flat = {x: at(1) for x in s}
+        base = tg.label(row, h, sb, refs, session_instants=flat, statement_instants={"rt": at(1)}, policy=policy)
+        if base.state == "pending":
+            continue
+        trials += 1
+        for other in (None,):
+            sb2, refs2 = full(bars, s, other)
+            l2 = tg.label(row, h, sb2, refs2, session_instants=flat, statement_instants={"rt": at(1)}, policy=policy)
+            if key(l2) != key(base) and l2.state != "pending":
+                changed += 1
+                cov = tg.label(row, h, sb, refs, session_instants=flat, statement_instants={"rt": at(999)},
+                               policy=policy)
+                if cov.resolved_at != at(999):
+                    leaks.append((d, h, rights_at, other))
+                break
+    assert trials > 200 and changed > 10
+    assert leaks == []
+
+
+def test_a_factor_after_the_window_does_not_delay_the_label():
+    """The point of M1: a factor well after F leaves resolved_at alone."""
+    s = days(12)
+    bars = [bar(100) for _ in range(12)]
+    sb, refs = full(bars, s, 10)
+    row = tg.ReferenceRow(SYM, s[2], refs[s[2]].px_ref, refs[s[2]].ref_session, "r", "fresh")
+    lab = tg.label(row, 1, sb, refs, session_instants={x: at(1) for x in s}, statement_instants={"rt": at(999)})
+    assert lab.state == "resolved" and lab.resolved_at == at(1)
+    seen = []
+    tg.label(row, 1, sb, refs, session_instants={x: at(1) for x in s}, statement_instants={},
+             calendar_upto=lambda last: seen.append(last) or at(2))
+    assert seen and max(seen) == s[3]                       # calendar evidence is read up to F only

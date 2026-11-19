@@ -947,3 +947,35 @@ run, which is recorded after the import), `test_u5` (finality and the security's
 Mutation check: 5 mutants (finality without captured instants, the bar instant, both, events in the date instants,
 observations in the bar instant); 4 killed, and the last is recorded as defensive: under P2's own ordering an
 observation is always admitted no later than its run's terminal event, so it cannot raise a bar's instant today.
+
+---
+
+## Label resolution on real data (branch review M1)
+
+**Problem.** On imported history every label's `resolved_at` came out at about the build's T, which would leave Phase
+5 no training rows. Two conservative rules read evidence from far outside a label's own window: calendar evidence
+entered `extra_instants` whole (an import range up to the build's D\*, every declared closure whatever its date;
+audit 8's broad reading), and every factor and move statement of the security entered, whatever its date.
+
+**Change.** Both are now read per label, up to the last session the label read:
+- `targets.label(..., calendar_upto=f)`: f(last) is the latest admission instant of the calendar evidence about dates
+  up to `last`; `targets_store.calendar_instant` counts an import range up to that date and a declared closure only
+  if it is about such a date.
+- Factor statements of factors with an ex-date at or before that session, and move statements of moves starting at
+  or before it (each label still passes the statement ids it used, as before).
+Evidence about later dates cannot change what the label read: whether a later date is a session does not change the
+sessions up to it, and a factor after F changes nothing on F's price basis (B-T7's root fix).
+
+**Evidence.** `tests/test_mf6_fuzz.py` gains a property test that perturbs the factor itself (present against absent,
+since before its statement is admitted the build has no such factor): 4 seeds x 800 cases, 0 leaks; and a test that a
+factor after the window no longer delays the label and that calendar evidence is read up to F only. `test_l18` now
+asserts the new rule (a factor after F no longer delays; one inside the window still does). `tests/test_mf7_ops_postgres.py`
+`test_o8b`: an AVAILABLE build over imported history with a calendar range over the whole batch, a bonus announced
+after the window and a closure notice after the window: the 1-day label resolves at the end of its own F, the 5-day
+at the end of its F. Each part fails that test when reverted to the old rule (3 mutants). A finding stated plainly:
+removing the factor-statement set altogether also passes every test, because each label already passes the
+statement ids it used; the narrowed set is kept as a defensive superset within the window.
+
+**Not changed, by design:** in KNOWN, an imported row is admitted only once its batch is recorded (§4.1), so labels
+over imported history in KNOWN resolve at the import's own time. Training on imported history uses AVAILABLE eras
+(labelled `reconstructed`), which is the design's intent.

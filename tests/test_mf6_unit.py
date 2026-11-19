@@ -288,7 +288,10 @@ def test_l18_resolved_at_reaches_every_session_and_statement_that_decided_the_la
     lab, _ = label([bar(p) for p in prices], h=5, factors=after_f, statement_instants={"r9": at(900)})
     plain, _ = label([bar(p) for p in prices], h=5)
     assert lab.volatility == plain.volatility is not None              # a factor after F changes nothing (F basis)
-    assert lab.resolved_at == at(900)                                  # and its statement is still covered
+    assert lab.resolved_at != at(900)        # branch review M1: so its statement no longer delays the label
+    before_f = [act.Factor(SYM, act.RIGHTS, s[4], None, None, act.UNRESOLVED, (), ("r5",))]
+    inside, _ = label([bar(p) for p in prices], h=5, factors=before_f, statement_instants={"r5": at(900)})
+    assert inside.resolved_at == at(900)                               # one inside the window still is
     gone, _ = label([bar(100)] + [None] * 10, h=10, policy=policy)
     assert (gone.state, gone.resolved_at) == ("terminated", at(10))    # waits for F's finality (M0)
 
