@@ -17,7 +17,7 @@ path through them.
 5. Configuration ids that are content-addressed change when their parameters change. Any configuration you
    registered or designated earlier on a test database must be registered again (log entries say which).
 
-**Last fully green CI (both workflows):** `2795d59`, 18 Nov 2026. Later commits are tested in the cloud container;
+**Last fully green CI (both workflows):** `149e8e7`, 19 Nov 2026 (also `2795d59` and `71ba781`). Later commits are tested in the cloud container;
 check GitHub Actions for the newest head.
 
 ## Open items that need you
