@@ -37,7 +37,7 @@ def test_s2_the_wrapper_runs_owner_steps_as_the_migrator_and_everything_else_as_
     src = open(WRAPPER, encoding="utf-8").read()
     assert "[[ $EUID -eq 0 ]]" in src and "runuser -u \"$user\"" in src
     assert "user=cse-worker; role=cse_worker" in src
-    assert "designate|import-tradeiq) user=cse-migrator; role=cse_migrator" in src
+    assert "designate|import-tradeiq|action|withdraw|confirm-no-action) user=cse-migrator; role=cse_migrator" in src
     assert "python3 -m worker.market_feature_store" in src
 
 
@@ -47,4 +47,4 @@ def test_s3_every_cli_command_is_in_the_runbook():
     book = open(os.path.join(REPO, "docs", "ops", "P3_MARKET_FEATURES.md"), encoding="utf-8").read()
     for name in sub.choices:
         assert f"`{name}" in book, name
-    assert set(cli.OWNER) == {"designate", "import-tradeiq"}
+    assert set(cli.OWNER) == {"designate", "import-tradeiq", "action", "withdraw", "confirm-no-action"}

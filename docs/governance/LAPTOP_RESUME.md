@@ -54,6 +54,13 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-19: owner commands for corporate actions (C-0107)
+
+New owner commands on `ops/bin/cse-features` (they run as `cse-migrator`): `action`, `withdraw` and
+`confirm-no-action`. Examples and the rules are in `docs/ops/P3_MARKET_FEATURES.md`. A no-action confirmation counts
+only from when you enter it (it has no announcement date), so it shows up in builds made after that. There is no
+`identity` command yet: identity evidence is not read by the build (a task).
+
 ### 2026-11-19: labels on real data resolve in their own window (branch review M1, C-0105)
 
 Labels' `resolved_at` no longer jumps to the build's T on imported history: calendar evidence and corporate-action

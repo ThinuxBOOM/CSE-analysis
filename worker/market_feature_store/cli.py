@@ -10,6 +10,12 @@ CSE or any network.
     designate --configuration ID --note TEXT     OWNER decision: the canonical configuration
     import-tradeiq --archive DIR --work DIR --summary JSON --reconstructed CSV
                                                  OWNER step: the TradeIQ import (C-0035), one transaction
+    action --id ID --symbol S --kind KIND --ex-date DATE --terms JSON --announced DATE --source TEXT [--supersedes ID]
+                                                 OWNER step: a corporate-action statement (§7.1)
+    withdraw --id ID --withdraws ID --symbol S --announced DATE --source TEXT
+                                                 OWNER step: cancel a statement (§7.1)
+    confirm-no-action --id ID --symbol S --from DATE --to DATE --source TEXT
+                                                 OWNER step: a genuine move between two sessions (§11)
     calendar-sync                                copy trading_calendar's closures (append-only)
     snapshot --mode KNOWN|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID | --designated)
     targets  --mode KNOWN|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID | --designated)
@@ -28,7 +34,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from ..market_features.modes import AVAILABLE, KNOWN, Query, Refused
@@ -36,10 +42,10 @@ from ..market_features.universe import EligibilityPolicy
 from ..market_features.features import FeatureConfig
 from ..ops import settings as ops_settings
 from . import (EXIT_DATABASE_UNAVAILABLE, EXIT_OK, EXIT_REFUSED, calendar_sync, configuration, explain, jobs,
-               preflight, selection, targets_store, verify)
+               preflight, selection, statements, targets_store, verify)
 
 WRITING = ("register-configuration", "calendar-sync", "snapshot", "targets")
-OWNER = ("designate", "import-tradeiq")
+OWNER = ("designate", "import-tradeiq", "action", "withdraw", "confirm-no-action")
 OWNER_PATH_ROLE = "cse_migrator"
 
 
@@ -71,6 +77,28 @@ def parser():
     it = sub.add_parser("import-tradeiq")
     for k in ("--archive", "--work", "--summary", "--reconstructed"):
         it.add_argument(k, required=True)
+    _date = date.fromisoformat
+    a = sub.add_parser("action")
+    a.add_argument("--id", dest="statement_id", required=True)
+    a.add_argument("--symbol", required=True)
+    a.add_argument("--kind", required=True)
+    a.add_argument("--ex-date", dest="ex_date", type=_date, required=True)
+    a.add_argument("--terms", type=json.loads, required=True)
+    a.add_argument("--announced", type=_date, required=True)
+    a.add_argument("--source", required=True)
+    a.add_argument("--supersedes")
+    w = sub.add_parser("withdraw")
+    w.add_argument("--id", dest="statement_id", required=True)
+    w.add_argument("--withdraws", required=True)
+    w.add_argument("--symbol", required=True)
+    w.add_argument("--announced", type=_date, required=True)
+    w.add_argument("--source", required=True)
+    c = sub.add_parser("confirm-no-action")
+    c.add_argument("--id", dest="statement_id", required=True)
+    c.add_argument("--symbol", required=True)
+    c.add_argument("--from", dest="session_from", type=_date, required=True)
+    c.add_argument("--to", dest="session_to", type=_date, required=True)
+    c.add_argument("--source", required=True)
     sub.add_parser("calendar-sync")
     for name in ("snapshot", "targets"):
         s = sub.add_parser(name)
@@ -199,6 +227,22 @@ def run(args, connect):
         if args.command == "import-tradeiq":
             _print({"state": "imported", **import_tradeiq(conn, args)})
             return EXIT_OK
+        op = os.environ.get("CSE_OPERATOR")
+        if args.command == "action":
+            if not isinstance(args.terms, dict):
+                raise ValueError("--terms is a JSON object")
+            _print({"state": "entered", **statements.enter_action(
+                conn, args.statement_id, args.symbol, args.kind, args.ex_date, args.terms, args.announced,
+                args.source, args.supersedes, op)})
+            return EXIT_OK
+        if args.command == "withdraw":
+            _print({"state": "entered", **statements.withdraw(conn, args.statement_id, args.withdraws, args.symbol,
+                                                              args.announced, args.source, op)})
+            return EXIT_OK
+        if args.command == "confirm-no-action":
+            _print({"state": "entered", **statements.confirm_no_action(
+                conn, args.statement_id, args.symbol, args.session_from, args.session_to, args.source, op)})
+            return EXIT_OK
         if args.command in WRITING or args.command == "preflight":
             found = preflight.problems(conn)
             if args.command == "preflight":
@@ -240,7 +284,8 @@ def run(args, connect):
         if args.command == "status":
             _print(status(conn))
             return EXIT_OK
-    except (OwnerPathRequired, configuration.ConfigurationError, Refused, LookupError, ValueError) as exc:
+    except (OwnerPathRequired, statements.OwnerPathRequired, configuration.ConfigurationError, Refused, LookupError,
+            ValueError) as exc:
         conn.rollback()
         _print({"state": "refused", "reason": str(exc)})
         return EXIT_REFUSED

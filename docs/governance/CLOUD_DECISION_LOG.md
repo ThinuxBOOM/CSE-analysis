@@ -1007,3 +1007,10 @@ which its earlier evidence counted as available no longer changes, so stored rec
 reproducible. Where the import has a value and the capture has none, or the import disagrees with itself, the
 snapshot no longer records an agreement that never happened. And the rules this rests on now have tests that fail
 when the rule is removed; the few that cannot be exercised with the test data are listed.
+
+## C-0107: owner commands for corporate-action statements ([delegated], 2026-11-19)
+
+The owner can now enter corporate actions, withdraw them, and confirm that a large price move was genuine, through
+three commands on the owner path. Every statement is checked by exactly the rules the market-feature build applies
+before it is stored. A command for identity links is deliberately not provided yet, because the build does not read
+identity evidence; that wiring is a separate task before `main`.

@@ -1010,3 +1010,28 @@ raises instead of becoming 0); **F5**, **F6** and **F8** recorded in the code (o
 two read transactions, exact for a settled T; `snapshot_hash`, not `row_hash`, binds `company_id`); **F9** stale
 docstrings fixed. The static network guard allows exactly P2's JSON path `summary -> requests -> attempts` in
 `captured.py`; its import check is unchanged.
+
+---
+
+## Owner statement tooling (branch review M4)
+
+`worker/market_feature_store/statements.py` and three owner commands of `cse-features` (owner path: cse_migrator
+acting as cse_owner; `docs/ops/P3_MARKET_FEATURES.md`):
+- `action`: one corporate-action statement (kind, ex-date, terms, announcement date, source; optionally the row it
+  supersedes), available from the end of the announcement's Colombo day (§4.1);
+- `withdraw`: a `withdrawn` statement naming the row it cancels;
+- `confirm-no-action`: a `no_action_confirmed` statement for a security and two sessions; its `available_at` is its
+  `recorded_at`, both the database's now() (§4.1).
+Each statement passes the build's own validation (`actions.statement`) before it is written, so a row the build would
+refuse is never stored; a superseded or withdrawn row must exist and be of the same security; the operator who ran
+`sudo` is kept in the source reference. **A consequence of the design, stated for the owner:** a confirmation has no
+announcement date, so it counts only from its entry: a build at an earlier T still sees the move open (nobody knew
+then); a later target build (T after the entry) resolves the labels (§11). Test: `test_o10` (the commands through the
+CLI; the worker refused; three invalid statements refused and not written; a withdrawal of another security's row
+refused; the confirmation leaves an old-T build's move open and confirms it in a build after the entry). Mutation
+check: 6 mutants, 5 killed; the owner-path check in Python survives because the database refuses the worker as well
+(owner-only table; the worker cannot act as cse_owner): defence in depth.
+
+**Not built, and why:** an `identity` command. `mf_identity_observations` is written by the TradeIQ import but the
+snapshot build does not read it yet (`universe.series_segments` is not called), so a command would store evidence no
+build uses. Wiring identity evidence into the build, then the command, is a task before `main`.

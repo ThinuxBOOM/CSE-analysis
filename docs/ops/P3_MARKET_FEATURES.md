@@ -17,6 +17,9 @@ All through `sudo bash /opt/cse/app/ops/bin/cse-features <command>`. A JSON repo
 | `register-configuration [--min-history-sessions N] [--min-constituents N] [--min-median-turnover LKR]` | worker | `mf_configurations` | Inserts the content-addressed configuration (provisional) if absent; prints its id |
 | `designate --configuration ID --note TEXT` | **owner** (cse-migrator → cse_owner) | `mf_designations` | **Owner decision:** the canonical configuration from now on. Consumers read the one in force at their instant (ML-15) |
 | `import-tradeiq --archive DIR --work DIR --summary JSON --reconstructed CSV` | **owner** | the import tables | **Owner step (C-0035):** the TradeIQ import in one transaction. The inputs are a local archive checkout and the validation outputs (`scripts/research/tradeiq/run_validation.py`, `run_ca_reconstruct.py`); needs `xlrd` |
+| `action --id ID --symbol S --kind KIND --ex-date DATE --terms JSON --announced DATE --source TEXT [--supersedes ID]` | **owner** | `mf_corporate_action_observations` | **Owner step (§7.1; branch review M4):** one corporate-action statement, checked by the build's own validation before it is written. KIND is `subdivision`, `consolidation` (terms `old_shares`, `new_shares`), `bonus`, `scrip_dividend` (`held`, `new`), `rights` (`held`, `new`, `subscription_price`), `cash_dividend`, `merger`, `delisting` or `suspension`. It is available from the end of the announcement's Colombo day. `--supersedes` names an earlier row of the same security that this one corrects. Example: `action --id own:JKH:2026-03 --symbol JKH.N0000 --kind subdivision --ex-date 2026-03-10 --terms '{"old_shares":1,"new_shares":2}' --announced 2026-02-20 --source 'CSE notice 2026/41'` |
+| `withdraw --id ID --withdraws ID --symbol S --announced DATE --source TEXT` | **owner** | `mf_corporate_action_observations` | **Owner step:** cancels the named statement of the same security from the end of the announcement's day |
+| `confirm-no-action --id ID --symbol S --from DATE --to DATE --source TEXT` | **owner** | `mf_corporate_action_observations` | **Owner step (§11):** the move between the two sessions is genuine (no action). Labels built after it resolve with their real return instead of `unexplained_move_in_horizon`; it counts from the moment it is entered |
 | `calendar-sync` | worker | `mf_calendar_observations` | Copies `trading_calendar`'s `closed` rows as `declared_closed` evidence, available from the sync instant. Idempotent |
 | `snapshot --mode KNOWN\|AVAILABLE --cutoff ISO [--horizon ISO] (--configuration ID \| --designated)` | worker | the snapshot tables | One snapshot. A cutoff or horizon in the future is refused; `AVAILABLE` takes H = now unless given. `--designated` reads the designation in force at T (`KNOWN`) or H (`AVAILABLE`) |
 | `targets ... --reference SNAPSHOT_ID [...]` | worker | `mf_target_builds`, `mf_target_rows` | A target build: labels of the reference snapshots' rows at horizons 1, 5, 10, 21. A reference snapshot outside the build's information set is refused (in `KNOWN`: a `KNOWN` snapshot written by T; in `AVAILABLE`: T and H no later than the build's, written by H) |
@@ -60,6 +63,9 @@ There is no delete, reset or repair command. Every MF table is append-only for e
 - `CURRENT` results are never stored: `snapshot` and `targets` accept `KNOWN` and `AVAILABLE` only.
 
 ## 5. Known limits
+
+- Identity evidence (`mf_identity_observations`: links and reused symbols) is written by the TradeIQ import but not yet
+  read by the snapshot build, so there is deliberately no owner command to enter it yet (a task, before `main`).
 
 - The eligibility policy and the unexplained-move threshold are **provisional** (design §17); a configuration is
   `validated` only with a validation report.

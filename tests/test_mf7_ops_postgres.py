@@ -282,3 +282,61 @@ def test_o9_the_command_line(cluster, capsys):
     assert run(["verify"]) == 0 and run(["status"]) == 0
     assert run(["snapshot", "--mode", "AVAILABLE", "--cutoff", hb.available_at(DAYS[-1]).isoformat(),
                 "--designated"], user="cse_migrator") == 5                                  # preflight refuses
+
+
+def test_o10_review_m4_owner_statements_through_the_command_line(cluster, capsys, monkeypatch):
+    """Branch review M4: the owner enters corporate-action statements, withdrawals and no-action confirmations
+    through the owner path; each is checked by the build's own validation before it is written; a confirmation
+    clears an unexplained move for snapshots built after it."""
+    db = fs.fresh_db(cluster)
+    seed(cluster, db, split=False)                          # S0 halves at day 30 with no action entered
+    monkeypatch.setenv("CSE_OPERATOR", "owner-on-laptop")   # the wrapper sets it to the human who ran sudo
+
+    def run(argv, user="cse_migrator"):
+        return cli.run(cli.parser().parse_args(argv), lambda: fs.conn(cluster, db, user=user))
+    split = ["action", "--id", "own:S1:sp", "--symbol", "S1.N0000", "--kind", "subdivision", "--ex-date",
+             DAYS[35].isoformat(), "--terms", '{"old_shares": 1, "new_shares": 2}', "--announced",
+             DAYS[33].isoformat(), "--source", "CSE notice 1"]
+    assert run(split, user="cse_worker") == 5                                       # never the worker
+    assert run(split) == 0
+    row = sql(cluster, db, "select kind, ex_date, terms_json, available_at, source_reference, entered_by from "
+                           "mf_corporate_action_observations where statement_id = 'own:S1:sp'")[0]
+    assert row[:3] == ("subdivision", DAYS[35], '{"new_shares":2,"old_shares":1}')
+    assert row[3] == hb.available_at(DAYS[33]) and row[5] == "cse_migrator"
+    assert row[4] == "CSE notice 1 [entered by owner-on-laptop]"                    # the human behind the entry
+    bad = [("rights", '{"held": 4, "new": 1}'), ("subdivision", '{"old_shares": 0, "new_shares": 2}'),
+           ("no_such_kind", "{}")]
+    for kind, terms in bad:                                                          # the build's validation
+        assert run(["action", "--id", f"bad:{kind}", "--symbol", "S1.N0000", "--kind", kind, "--ex-date",
+                    DAYS[36].isoformat(), "--terms", terms, "--announced", DAYS[33].isoformat(), "--source",
+                    "x"]) == 5, kind
+    assert sql(cluster, db, "select count(*) from mf_corporate_action_observations where statement_id like %s",
+               ("bad:%",)) == [(0,)]
+    assert run(["withdraw", "--id", "own:S2:w", "--withdraws", "own:S1:sp", "--symbol", "S2.N0000", "--announced",
+                DAYS[34].isoformat(), "--source", "CSE notice 2"]) == 5              # another security's row
+    assert run(["withdraw", "--id", "own:S1:w", "--withdraws", "own:S1:sp", "--symbol", "S1.N0000", "--announced",
+                DAYS[34].isoformat(), "--source", "CSE notice 2"]) == 0
+    # the unexplained halving of S0 between days 29 and 30, then the owner's confirmation that it is genuine
+    cid = registered(cluster, db)
+    q1 = Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db))
+    sid1, _ = _snapshot(cluster, db, q1, cid)
+    moves = sql(cluster, db, "select status from mf_snapshot_move_flags where snapshot_id = %s and symbol = "
+                             "'S0.N0000'", (sid1,))
+    assert moves == [("open",)]
+    capsys.readouterr()
+    assert run(["confirm-no-action", "--id", "own:S0:c", "--symbol", "S0.N0000", "--from", DAYS[29].isoformat(),
+                "--to", DAYS[30].isoformat(), "--source", "checked against the CSE notice board"]) == 0
+    rec = sql(cluster, db, "select recorded_at, available_at from mf_corporate_action_observations where "
+                           "statement_id = 'own:S0:c'")[0]
+    assert rec[0] == rec[1]                                                         # no announcement date (§4.1)
+    # a confirmation has no announcement date: it counts from its entry (§4.1), so a build at the old T still sees
+    # the move open (nobody knew then), and a build whose T is after the entry sees it confirmed (§11)
+    sid_old, _ = _snapshot(cluster, db, Query(AVAILABLE, hb.available_at(DAYS[-1]), now(cluster, db)), cid)
+    assert sql(cluster, db, "select status from mf_snapshot_move_flags where snapshot_id = %s and symbol = "
+                            "'S0.N0000'", (sid_old,)) == [("open",)]
+    t = now(cluster, db)
+    sid2, _ = _snapshot(cluster, db, Query(AVAILABLE, t, t), cid)
+    assert sql(cluster, db, "select status from mf_snapshot_move_flags where snapshot_id = %s and symbol = "
+                            "'S0.N0000'", (sid2,)) == [("confirmed_no_action",)]
+    assert run(["confirm-no-action", "--id", "own:S0:c2", "--symbol", "S0.N0000", "--from", DAYS[30].isoformat(),
+                "--to", DAYS[29].isoformat(), "--source", "x"]) == 5                # the sessions in order
