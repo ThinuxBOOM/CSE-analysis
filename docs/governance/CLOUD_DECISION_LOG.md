@@ -999,3 +999,11 @@ market-feature snapshots now link every security to its company on captured data
 `main`. Separately, a label's "known from" time no longer jumps to the end of the whole build on imported history:
 calendar notices and corporate-action announcements dated after the label's own window are no longer counted for it.
 A property test that perturbs the corporate action itself found no case where this lets a label be used too early.
+
+## C-0106: MF-8 audit Majors fixed ([delegated], 2026-11-19)
+
+The three Majors of the captured-data audit are fixed. When a partly finished capture run is resumed, the time at
+which its earlier evidence counted as available no longer changes, so stored reconstructed snapshots stay
+reproducible. Where the import has a value and the capture has none, or the import disagrees with itself, the
+snapshot no longer records an agreement that never happened. And the rules this rests on now have tests that fail
+when the rule is removed; the few that cannot be exercised with the test data are listed.

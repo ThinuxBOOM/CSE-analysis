@@ -103,3 +103,73 @@ def test_c5_observations_are_admitted_by_the_query_and_events_need_a_received_re
             return [("r1", "market_capture", TD, "post_close", "succeeded", datetime.now(timezone.utc),
                      {"summary": {"B": {"status": "known"}}}, None)]
     assert captured.load_events(Rows(), known(datetime.now(timezone.utc))) == ()
+
+
+def _events(cap, run_id):
+    return [ev for ev in cap.events if str(ev.run_id) == str(run_id)]
+
+
+def test_c6_audit_f1_a_resume_never_moves_an_earlier_events_availability(env, pg):
+    from worker.market_capture import capture
+    e = env()
+    state, rep = e.capture(max_requests=4)                             # stops early: a partial run
+    assert state == "partial"
+    run = rep["run_id"]
+    first = _events(load(pg, known(datetime.now(timezone.utc))), run)
+    assert len(first) == 1
+    expect = q(conn(pg), "select max(observed_at) from market_source_responses where run_id = %s and outcome = 'ok' "
+                         "and sequence_no <= 4", (run,))[0][0]
+    assert first[0].available_at == expect                             # the latest ok response that event saw
+    capture.resume(e.ctl, e.work, e.cfg, run, rt=e.rt)                 # more responses, later
+    after = _events(load(pg, known(datetime.now(timezone.utc))), run)
+    assert len(after) == 2 and after[0].available_at == first[0].available_at
+    later = q(conn(pg), "select max(observed_at) from market_source_responses where run_id = %s and outcome = 'ok'",
+              (run,))[0][0]
+    assert later > first[0].available_at and after[1].available_at == later
+
+
+def _su(pg):
+    c = conn(pg, "postgres")
+    with c.cursor() as cur:
+        cur.execute("set session_replication_role = replica")           # test surgery below the guards
+    c.commit()
+    return c
+
+
+def test_c7_audit_f3_only_the_governing_pass_and_the_latest_member_company(env, pg):
+    e1 = env()
+    assert e1.capture()[0] == "succeeded"
+    e2 = env()
+    state, rep = e2.capture()
+    run = rep["run_id"]
+    su = _su(pg)
+    other = q(su, "insert into companies (ticker, company_name) values ('ZZTEST.N0000', 'z') returning id::text")[0][0]
+    sym = TRADED[0]
+    # a pass no terminal event names (a pass in progress, say): never read
+    q(su, "insert into market_capture_security_results (run_id, pass_no, pass_kind, symbol, company_id, in_universe, "
+          "in_trade_summary, role, raw_status, canonical_status) values (%s, 99, 'reprocess', %s, %s, true, true, "
+          "'traded', 'source_missing', 'not_attempted')", (run, sym, other))
+    cap = load(pg, known(datetime.now(timezone.utc)))
+    assert cap.bar_on(sym, TD).row == 1 and cap.company_ids[sym] != other
+    # the latest governing run's company id wins (first: earlier run; then the later run names another company)
+    q(su, "update market_capture_security_results set company_id = %s where run_id = %s and pass_no = %s and "
+          "symbol = %s", (other, run, rep["derivation"]["pass_no"], sym))
+    assert load(pg, known(datetime.now(timezone.utc))).company_ids[sym] == other
+    # a row of the governing pass that is not a member gives no bar and no company link
+    q(su, "update market_capture_security_results set in_universe = false, in_trade_summary = false where run_id = %s "
+          "and pass_no = %s and symbol = %s", (run, rep["derivation"]["pass_no"], sym))
+    cap = load(pg, known(datetime.now(timezone.utc)))
+    assert cap.bar_on(sym, TD) is None and cap.company_ids.get(sym) != other and sym not in cap.members[TD]
+
+
+def test_c8_audit_f3_an_admitted_observation_alone_proves_a_session(env, pg):
+    import uuid
+    before = datetime.now(timezone.utc)
+    su = _su(pg)
+    cid = q(su, "select id::text from companies where ticker = %s", (TRADED[1],))[0][0]
+    d = TD - timedelta(days=10)
+    q(su, "insert into raw_market_observations (request_attempt_id, company_id, observation_date, capture_window, "
+          "source, observed_at, closing_price, raw_payload) values (%s, %s, %s, 'manual', 'CSE_API', %s, 10, '{}')",
+      (str(uuid.uuid4()), cid, d, datetime(2026, 8, 25, 12, tzinfo=timezone.utc)))
+    assert d in load(pg, known(datetime.now(timezone.utc))).non_finals          # proven, not final
+    assert d not in load(pg, known(before)).non_finals                          # created after T: no proof

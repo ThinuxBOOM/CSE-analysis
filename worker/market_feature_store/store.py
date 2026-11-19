@@ -7,7 +7,11 @@ load()   reads the evidence admitted at (T, mode), in one REPEATABLE READ, READ 
            statements (returned whole: `actions.applying` admits them by the query inside the build)
 write()  stores a snapshot through the worker: mf_snapshots, mf_snapshot_rows, mf_snapshot_factors,
            mf_snapshot_move_flags; canonical JSON and SHA-256 hashes; one transaction.
-Captured (P2) evidence is not read yet: no capture era exists in this build (MF-7c third part).
+Captured (P2) evidence is read by `captured.load` (MF-8) in its own read-only transaction; `jobs.build_all` combines
+the two. The two reads are separate snapshots of the database: for a settled T (§4.1) they see the same evidence, so
+a replay is exact; a live snapshot at an unsettled T is proved from its stored rows, as before (MF-8 audit F6).
+A row's `row_hash` does not bind `company_id`; the snapshot's `snapshot_hash` does (MF-8 audit F8: DE-4 reads the
+row together with its snapshot, whose hash covers every row's company_id).
 """
 import collections
 import json

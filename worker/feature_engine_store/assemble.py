@@ -10,8 +10,9 @@ F8 result per linked issuer. Output: the F7 panel batches and the DE run batch t
      every linked line; fund_valuation_eps ranks lines within the issuer's group; market engines rank the
      market-data-eligible lines. A line or issuer outside an engine's group gets not_applicable.
 
-market_cap_reported is not stored in an MF snapshot row (C-0079): the loader passes it as absent, so the market-value
-features are missing (incomplete_lines) until MF stores it.
+market_cap_reported: the loader reads MF's stored feature `market_cap_reported` (CSE's reported figure, captured data
+only; MF-8 and branch review m7) when its state is fresh, stale or partial; otherwise it is absent and the market-value
+features are missing (incomplete_lines). Its values are untrusted while that input is provisional (P4-D4).
 """
 from dataclasses import dataclass, field
 from decimal import Decimal

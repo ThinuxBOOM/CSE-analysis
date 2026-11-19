@@ -79,7 +79,13 @@ def _capture(b):
     c = b.get("capture")
     if not isinstance(c, dict):
         raise ConfigurationError("configuration has no capture parameters (written before MF-8): register it again")
-    return CaptureConfig(Decimal(c["min_coverage"]), tuple(sorted((k, Decimal(v)) for k, v in c["tolerances"].items())))
+    tol = c.get("tolerances")
+    if not isinstance(tol, dict) or set(tol) != {k for k, _v in DEFAULT_TOLERANCES}:      # MF-8 audit F7
+        raise ConfigurationError("the capture block names exactly the tolerances this code reads")
+    cov = Decimal(c["min_coverage"])
+    if not Decimal(0) < cov <= Decimal(1):
+        raise ConfigurationError("min_coverage is in (0, 1]")
+    return CaptureConfig(cov, tuple(sorted((k, Decimal(v)) for k, v in tol.items())))
 
 
 def parse(configuration_json):

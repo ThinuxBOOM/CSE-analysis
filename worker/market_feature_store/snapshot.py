@@ -58,8 +58,12 @@ def build(imported_by_symbol, statements, query, *, calendar_observations=(), th
         symbols |= set(captured.bars)
     for sym in sorted(symbols):
         imp = imported_by_symbol.get(sym)
+        captured_finals = captured.members if captured is not None else {}
         bars = {s: combined.bar(captured.bar_on(sym, s) if captured is not None else None,
-                                hb.bar_on(sym, imp, s) if imp is not None and imp.rows else None, tolerances or {})
+                                # F4: on a captured final session membership is the governing run's
+                                None if (imp is None or not imp.rows or (s in captured_finals and
+                                                                        sym not in captured_finals[s]))
+                                else hb.bar_on(sym, imp, s), tolerances or {})
                 for s in sessions}
         if all(b is None for b in bars.values()):
             continue

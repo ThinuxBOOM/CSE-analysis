@@ -63,8 +63,9 @@ imported history still resolves at the import's time (by design); train on AVAIL
 
 ### 2026-11-19: MF-8 accepted; the branch review's Blocker is closed (C-0105)
 
-The MF-8 audit found no Blocker. Three Majors (an event's availability time moving on a resume; a missing captured
-value recorded as agreeing with the import; test gaps) are being fixed before `main`.
+The MF-8 audit found no Blocker. Its three Majors are fixed (C-0106): an event's availability time no longer moves
+when a partial run is resumed; a missing captured value is no longer recorded as agreeing with the import; and the
+test gaps are closed. The MF configuration's capture block must now name every tolerance.
 
 ### 2026-11-18: M5-6 re-audit Majors fixed (C-0104)
 

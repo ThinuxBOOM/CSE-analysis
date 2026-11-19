@@ -18,6 +18,12 @@ From P2 (migrations 0001, 0012):
                                                      `bars.feature_bar` then keeps only capture runs' and, of
                                                      post_close, only the governing run's (MFB-7)
 
+Observations are found by (company_id, date) and filtered by `bars.select_observations` (capture runs only; of
+post_close, only the governing run's), not through the governing pass's `raw_observation_id` (MF-8 audit F5): an
+observation a later, unnamed reprocess pass added for the governing run is read too, which can only turn a
+`no_observation` bar into one with an observation of that same run (row 3 instead of row 4), never import another
+run's values.
+
 `load` returns `Captured`: per final session its governing event and feature bars, the non-final sessions, each
 symbol's company_id (from the latest governing run naming it with one; §13.1), and the evidence ids for the
 snapshot's input digest. Nothing is written; nothing contacts CSE.
@@ -77,9 +83,15 @@ def _last_day(query):
 
 
 def load_events(cur, query):
+    """MF-8 audit F1: an event's available_at is the latest observed_at of the ok responses THAT EVENT SAW: P2's
+    summary counts the run's request attempts when it is written (`summary.requests.attempts`), and attempts are
+    numbered in order across resumes (`sequence_no`), so a later resume of a partial run never moves an earlier
+    event's availability (and the bound needs no comparison of the capture host's clock with the database's). An
+    event without that count, or whose attempts include no ok response, is not evidence."""
     cur.execute("select r.id, r.run_kind, r.trading_date, r.capture_mode, e.state, e.occurred_at, e.details, "
                 "(select max(s.observed_at) from market_source_responses s where s.run_id = r.id and "
-                "s.outcome = 'ok') from market_capture_run_events e join market_capture_runs r on r.id = e.run_id "
+                "s.outcome = 'ok' and s.sequence_no <= (e.details -> 'summary' -> 'requests' ->> 'attempts')::int) "
+                "from market_capture_run_events e join market_capture_runs r on r.id = e.run_id "
                 "where e.state = any(%s) and r.trading_date <= %s order by r.trading_date, e.occurred_at, r.id, "
                 "e.seq", (list(TERMINAL), _last_day(query)))
     out = []

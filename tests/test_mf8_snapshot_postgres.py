@@ -105,7 +105,8 @@ def test_s2_captured_and_imported_bars_are_compared_never_silently_preferred(env
     assert rows[TRADED[0]][2] == "conflicting"                             # the bar that printed px_ref
     bar = snap2.captured.bar_on(TRADED[0], TD)
     assert bar is not None and rows[TRADED[0]][3] == captured_close        # the captured record carries both values
-    merged = combined.bar(bar, history_bars.from_row(TRADED[0], {"close": captured_close * 2, "shares": 100}), {})
+    merged = combined.bar(bar, history_bars.from_row(TRADED[0], {"close": captured_close * 2, "shares": 100}),
+                          configuration.CaptureConfig().tolerance_dict())
     assert merged.quality == "conflicting" and f"imported_differs:px_close={captured_close * 2}" in merged.flags
     _import(pg, TRADED[1], stored_rows(w, sid2)[TRADED[1]][3])             # same close, no volume: agrees
     w, sid3, snap3, _t = snapshot_now(pg)
@@ -152,3 +153,42 @@ def test_s3_labels_over_captured_sessions_resolve_no_earlier_than_their_evidence
     cc = configuration.CaptureConfig()
     cap = captured_.load(conn(pg), Query(KNOWN, datetime.now(timezone.utc)), cc.min_coverage, cc.tolerance_dict())
     assert cap.bar_instants[(sym, TD)] >= governing and cap.date_instants[TD] >= governing
+
+
+def test_s4_audit_pending_sessions_stored_and_verified_company_replayed_explain_proves_captured(env, pg):
+    """MF-8 audit F3: a session proven after D* (an observation, no final run) is stored as pending and bound by the
+    snapshot hash; verify's replay compares each row's company_id with Phase 2's evidence; explain re-derives the
+    provenance of a captured security."""
+    import uuid
+    from worker.market_feature_store import explain
+    e = env()
+    assert e.capture()[0] == "succeeded"
+    su = conn(pg, "postgres")
+    with su.cursor() as cur:
+        cur.execute("set session_replication_role = replica")
+        cur.execute("select id::text from companies where ticker = %s", (TRADED[3],))
+        cid = cur.fetchone()[0]
+        cur.execute("insert into raw_market_observations (request_attempt_id, company_id, observation_date, "
+                    "capture_window, source, observed_at, closing_price, raw_payload) values (%s, %s, %s, 'manual', "
+                    "'CSE_API', '2026-09-08T12:00Z', 10, '{}')", (str(uuid.uuid4()), cid, TD + timedelta(days=4)))
+    su.commit()
+    w, sid, snap, t = snapshot_now(pg)
+    assert snap.d_star < TD + timedelta(days=4) and snap.pending == (TD + timedelta(days=4),)   # (an earlier test
+    # of this module made Monday, TD + 3, an imported final session)
+    assert q(w, "select pending_sessions from mf_snapshots where snapshot_id = %s", (sid,))[0][0] == \
+        json.dumps([(TD + timedelta(days=4)).isoformat()])
+    head = q(w, "select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, input_digest, "
+                "adjustment_set_hash, row_count, recorded_at, result_label, code_version, imported_inputs, "
+                "snapshot_hash, created_by, pending_sessions from mf_snapshots where snapshot_id = %s", (sid,))[0]
+    assert verify.snapshot_report(w, head, margin=timedelta(0))["problems"] == []
+    ex = explain.explain(conn(pg), sid, TRADED[3])                       # captured only: no earlier import
+    assert ex["provenance_ok"] and any(isinstance(i, str) for i in ex["window_observation_ids"])   # captured ids
+    # Phase 2's evidence changes the company of a security after the snapshot: the replay notices
+    with su.cursor() as cur:
+        cur.execute("set session_replication_role = replica")
+        cur.execute("insert into companies (ticker, company_name) values ('ZZS4.N0000', 'z') returning id::text")
+        other = cur.fetchone()[0]
+        cur.execute("update market_capture_security_results set company_id = %s where symbol = %s", (other, TRADED[2]))
+    su.commit()
+    rep = verify.snapshot_report(w, head, margin=timedelta(0))
+    assert any("replay company_id differs" in p for p in rep["problems"]), rep

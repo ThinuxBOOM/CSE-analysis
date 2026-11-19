@@ -19,8 +19,13 @@ def test_s1_only_calendar_sync_names_trading_calendar_and_nothing_reaches_a_netw
         src, c = code(os.path.join(PACKAGE, name))
         if name != "calendar_sync.py":
             assert "trading_calendar" not in c, name
+        # MF-8 audit F1: captured.py reads P2's stored completeness count, the JSON path summary -> requests ->
+        # attempts; that one exact SQL fragment is data, not a network library (the import check below still holds)
+        allowed = "'summary' -> 'requests' ->> 'attempts'" if name == "captured.py" else None
+        assert allowed is None or c.count(allowed) == 1, name
+        checked = c.replace(allowed, "") if allowed else c
         for word in ("requests", "urllib", "socket", "http.client", "cse.lk", "subprocess"):
-            assert word not in c, (name, word)
+            assert word not in checked, (name, word)
         for node in ast.walk(ast.parse(src)):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 mods = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module or ""]

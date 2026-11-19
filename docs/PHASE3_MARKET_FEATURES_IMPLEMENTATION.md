@@ -979,3 +979,34 @@ statement ids it used; the narrowed set is kept as a defensive superset within t
 **Not changed, by design:** in KNOWN, an imported row is admitted only once its batch is recorded (§4.1), so labels
 over imported history in KNOWN resolve at the import's own time. Training on imported history uses AVAILABLE eras
 (labelled `reconstructed`), which is the design's intent.
+
+## MF-8 audit (fresh-context agent, at 1b2a2be): accepted
+
+No Blocker (C-0105): point-in-time admission in KNOWN, the mapping of P2's terminal events, the overlap tolerances,
+`resolved_at`, DE-4's market-cap read and the configuration change were verified; an import-only snapshot is byte for
+byte what it was before MF-8. Three Majors, all fixed:
+- **F1** an event's `available_at` was the latest `observed_at` of all the run's ok responses, so resuming a partial
+  run moved an earlier event's availability and an AVAILABLE snapshot stopped replaying. Now only the responses that
+  event saw: attempts numbered up to the count P2's summary records when the event is written
+  (`summary.requests.attempts`; attempts are numbered in order across resumes), which needs no comparison of clocks.
+  Tested with P2's real resume (`test_c6`).
+- **F2** an empty comparison was recorded as agreement: a missing captured bar against an imported close, or a
+  quarantined or zero-price import, showed `imported_agrees`. Now agreement needs at least one compared field (else
+  `imported_not_compared`), an imported-only value is kept (`imported_only:<field>=<value>`), and an import that
+  disagrees with itself makes the bar `conflicting`.
+- **F3** 22 of the audit's 36 mutants survived. New tests: `tests/test_mf8_audit_unit.py` (8: the summary mapping, the
+  merge edge cases and the tolerance edge, non-final sessions as gaps and as pending, pending in the hash, the digest
+  rule, provenance, DE-4's state filter, the capture block), `test_c6` to `test_c8` (resume, the governing pass only,
+  the latest member's company, a session proven by an observation alone), `test_s4` (a stored pending session that
+  verifies; verify's replay notices a company changed in P2's evidence; explain proves a captured security).
+  Re-run of the audit's mutants plus 7 on the fixes (43): 36 killed. Survivors, recorded: m09 (responses of any
+  outcome: P2's archive gives no non-ok response with a later time inside a run in the fake CSE), m10 (the first
+  company wins: equivalent while every capture is of one date, the fake CSE's), m12 and m29 (defensive instants),
+  m19 (a captured non-final session is a gap either way unless calendar evidence says the date was closed), m34
+  (equivalent).
+Minors: **F4** fixed (on a captured final session, an imported bar of a security the governing run does not list is
+not used); **F7** fixed (the capture block must name every tolerance; `min_coverage` in (0, 1]; a missing tolerance
+raises instead of becoming 0); **F5**, **F6** and **F8** recorded in the code (observations by company and date;
+two read transactions, exact for a settled T; `snapshot_hash`, not `row_hash`, binds `company_id`); **F9** stale
+docstrings fixed. The static network guard allows exactly P2's JSON path `summary -> requests -> attempts` in
+`captured.py`; its import check is unchanged.

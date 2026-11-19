@@ -10,6 +10,11 @@ evidence. Pure.
   record because it holds the raw provenance (observation ids), never because its values win.
 - Only the imported side knows the security is not a member (no bar) while the captured governing run lists it: the
   captured bar stands (membership is the governing run's evidence for a captured session, §8.2).
+- On a captured final session, an imported bar of a security the governing run does not list is not used (MF-8
+  audit F4; `snapshot.build`): membership there is the governing run's.
+- MF-8 audit F2: agreement is recorded only when at least one field was compared (else `imported_not_compared`); a
+  value only the import has is kept in `imported_only:<field>=<value>`; an imported quarantine or zero-price row
+  makes the bar `conflicting` (`imported_quarantined`, `imported_zero_price`).
 """
 from dataclasses import replace
 from decimal import Decimal
@@ -25,28 +30,44 @@ def _pct(a, b):
     return Decimal(0) if base == 0 else abs(a - b) / base * 100
 
 
+FIELDS = PRICE_FIELDS + VOLUME_FIELDS + ("turnover",)
+IMPORT_DISAGREES_WITH_ITSELF = ("quarantined", "zero_price")     # C-0063 / F6: the imports disagree or print 0
+
+
+def compare(captured_bar, imported_bar, tolerances):
+    """(differences {field: imported value}, compared fields, imported-only fields {field: value}). A field present
+    on one side only is not a comparison: an imported-only value is reported, never treated as agreement or dropped
+    (MF-8 audit F2); whether the security traded is compared exactly when both say."""
+    diff, compared, only = {}, [], {}
+    if captured_bar.traded is not None and imported_bar.traded is not None:
+        compared.append("traded")
+        if captured_bar.traded != imported_bar.traded:
+            diff["traded"] = imported_bar.traded
+    price_tol = Decimal(str(tolerances["reconciliation_price_tolerance_pct"]))
+    turnover_tol = Decimal(str(tolerances["reconciliation_turnover_tolerance_pct"]))
+    volume_tol = Decimal(str(tolerances["reconciliation_volume_tolerance"]))
+    for name in FIELDS:
+        a, b = getattr(captured_bar, name), getattr(imported_bar, name)
+        if b is not None and a is None:
+            only[name] = b
+            continue
+        if a is None or b is None:
+            continue
+        compared.append(name)
+        if name in PRICE_FIELDS:
+            bad = _pct(a, b) > price_tol
+        elif name == "turnover":
+            bad = _pct(a, b) > turnover_tol
+        else:
+            bad = abs(a - b) > volume_tol
+        if bad:
+            diff[name] = b
+    return diff, compared, only
+
+
 def differences(captured_bar, imported_bar, tolerances):
-    """{field: imported value} where the two disagree beyond tolerance. A field missing on either side is not
-    compared; whether the security traded is compared exactly."""
-    out = {}
-    if captured_bar.traded is not None and imported_bar.traded is not None and \
-            captured_bar.traded != imported_bar.traded:
-        out["traded"] = imported_bar.traded
-    price_tol = Decimal(str(tolerances.get("reconciliation_price_tolerance_pct", 0)))
-    turnover_tol = Decimal(str(tolerances.get("reconciliation_turnover_tolerance_pct", 0)))
-    volume_tol = Decimal(str(tolerances.get("reconciliation_volume_tolerance", 0)))
-    for name in PRICE_FIELDS:
-        a, b = getattr(captured_bar, name), getattr(imported_bar, name)
-        if a is not None and b is not None and _pct(a, b) > price_tol:
-            out[name] = b
-    for name in VOLUME_FIELDS:
-        a, b = getattr(captured_bar, name), getattr(imported_bar, name)
-        if a is not None and b is not None and abs(a - b) > volume_tol:
-            out[name] = b
-    a, b = captured_bar.turnover, imported_bar.turnover
-    if a is not None and b is not None and _pct(a, b) > turnover_tol:
-        out["turnover"] = b
-    return out
+    """{field: imported value} where the two disagree beyond tolerance."""
+    return compare(captured_bar, imported_bar, tolerances)[0]
 
 
 def bar(captured_bar, imported_bar, tolerances):
@@ -54,8 +75,14 @@ def bar(captured_bar, imported_bar, tolerances):
         return imported_bar
     if imported_bar is None:
         return captured_bar
-    diff = differences(captured_bar, imported_bar, tolerances)
-    if not diff:
-        return replace(captured_bar, flags=tuple(captured_bar.flags) + ("imported_agrees",))
-    return replace(captured_bar, quality=CONFLICTING,
-                   flags=tuple(captured_bar.flags) + tuple(f"imported_differs:{k}={v}" for k, v in sorted(diff.items())))
+    flags = tuple(captured_bar.flags)
+    self_disagree = [f for f in imported_bar.flags if f in IMPORT_DISAGREES_WITH_ITSELF]
+    if self_disagree:
+        # the import itself has no value for this (security, session): never an agreement, never hidden
+        return replace(captured_bar, quality=CONFLICTING, flags=flags + tuple(f"imported_{f}" for f in self_disagree))
+    diff, compared, only = compare(captured_bar, imported_bar, tolerances)
+    flags += tuple(f"imported_only:{k}={v}" for k, v in sorted(only.items()))
+    if diff:
+        return replace(captured_bar, quality=CONFLICTING,
+                       flags=flags + tuple(f"imported_differs:{k}={v}" for k, v in sorted(diff.items())))
+    return replace(captured_bar, flags=flags + (("imported_agrees",) if compared else ("imported_not_compared",)))
