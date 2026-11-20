@@ -1055,3 +1055,25 @@ It reproduces its own hash. A world with no planted signal is not rejected, and 
 recorded model can never be validated, because its dataset is synthetic. The carried MLK-20 Major is closed at the
 dataset: rows recorded after a dataset was built change nothing in it. Each upstream leakage plant remains shown at
 its own module. Audit pending.
+
+## C-0112: designs for Phases 8 to 12 and milestone 14 ([delegated], 2026-11-20)
+
+Six design documents, revision 1 each, not yet audited:
+- forecast presentation (Phase 8);
+- outcome evaluation (Phase 9);
+- the backtesting laboratory (Phase 10);
+- adaptation (Phase 11);
+- the dashboard (Phase 12);
+- the move to the server (milestone 14).
+
+They follow the earlier designs' rules:
+- both routes are shown side by side, never blended into one number;
+- the actual outcome is the market-feature label, so a forecast and its training labels mean the same event;
+- nothing is overwritten;
+- a backtest is valid only when every check of the architecture's definition passes;
+- adaptation proposes candidates, and only the owner promotes or retires a model;
+- the dashboard is read-only and for the owner alone (G-1);
+- the server starts from the locally proven database, with one writer at a time.
+
+The reserved choices are listed in each document. The migrations they name (0024 to 0028) are proposals; none is
+written.

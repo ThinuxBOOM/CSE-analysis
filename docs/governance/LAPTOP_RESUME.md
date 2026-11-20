@@ -54,6 +54,21 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-20: designs for Phases 8 to 12 and milestone 14 (C-0112)
+
+Six new design documents, not yet audited, nothing built:
+- `docs/PHASE8_FORECAST_PRESENTATION_DESIGN.md`
+- `docs/PHASE9_OUTCOME_EVALUATION_DESIGN.md`
+- `docs/PHASE10_BACKTESTING_LAB_DESIGN.md`
+- `docs/PHASE11_ADAPTATION_DESIGN.md`
+- `docs/PHASE12_DASHBOARD_DESIGN.md`
+- `docs/ops/SERVER_DEPLOYMENT_DESIGN.md`
+
+Each has a "Reserved for the owner" table. The ones worth a first look:
+- whether Route 2's uncalibrated probabilities are shown at all (P8-R1);
+- the dashboard's network exposure (P12-R1, default: this computer only);
+- the move to the server (SD-R1 to SD-R5).
+
 ### 2026-11-19: M5-7 accepted and fixed; M5-8 rehearsal built (C-0110, C-0111)
 
 - **M5-7** passed its audit with no Blocker. Its six Majors are fixed (C-0110). **Pending migration 0021 changed:** a
