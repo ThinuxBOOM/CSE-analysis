@@ -69,6 +69,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | `2795d59` | success | **success** (all Linux groups with PostgreSQL 17, all Windows groups) | first fully green pair since the review |
 | `71ba781` | success | **success** | M5-6 re-audit fixes |
 | `149e8e7` | success | **success** | MF-8 and its audit fixes, label timing |
+| `8c1f5a6` | success | **success** | M5-7 audit fixes, M5-8 rehearsal (later MF statements and identity commits included) |
 
 ## Before `main` (all of these; the merge itself is the owner's)
 
