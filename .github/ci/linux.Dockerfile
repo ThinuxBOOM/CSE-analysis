@@ -25,11 +25,13 @@ RUN apt-get -o Acquire::Retries=3 update \
 RUN pdftotext -v 2>&1 | head -1 | grep -qx "pdftotext version 24.02.0" \
     || { echo "poppler-utils is not Poppler 24.02.0: $(pdftotext -v 2>&1 | head -1)" >&2; exit 1; }
 # Phase 5 (M5-4): the pinned ML libraries (requirements-ml.txt), installed at build time because tests run with
-# --network none. libgomp1 is LightGBM's OpenMP runtime; models run with one thread (§7.1).
+# --network none. libgomp1 is LightGBM's OpenMP runtime; models run with one thread (§7.1). --require-hashes: every
+# wheel must match a SHA-256 in requirements-ml.txt (C-0116).
 COPY requirements-ml.txt /tmp/requirements-ml.txt
 RUN apt-get -o Acquire::Retries=3 update \
     && apt-get -o Acquire::Retries=3 install -y --no-install-recommends python3-pip libgomp1 \
     && rm -rf /var/lib/apt/lists/* \
-    && python3 -m pip install --break-system-packages --no-cache-dir --only-binary=:all: -r /tmp/requirements-ml.txt \
+    && python3 -m pip install --break-system-packages --no-cache-dir --only-binary=:all: --require-hashes \
+       -r /tmp/requirements-ml.txt \
     && python3 -c "import numpy, scipy, sklearn, lightgbm; print(sklearn.__version__, lightgbm.__version__)"
 RUN useradd -m tester

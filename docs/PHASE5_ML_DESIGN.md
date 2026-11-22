@@ -296,10 +296,12 @@ A protocol below them can run, labelled `exploratory`; nothing under it can pass
 | Fit slice | 504 | 504 |
 | Three inner slices | 3 × 43 = 129 | 3 × 147 = 441 |
 | Five validation folds | 5 × 85 = 425 | 5 × 210 = 1 050 |
-| Test period | 148 | 210 |
-| **Total sessions** | **about 1 590** | **about 2 590** |
+| Test period (20 blocks of L: L = 10 at h = 1, L = 21 at h = 21) | 200 + 22 = 222 | 420 + 42 = 462 |
+| **Total sessions** | **about 1 660** | **about 2 840** |
 
-At roughly 240 sessions a year (an assumption about CSE's calendar) that is about seven and eleven years. Even then
+*(Corrected under C-0117: the earlier figures, 148 and 210 test sessions and totals of 1 590 and 2 590, predate
+revision 5's 20-block rule.)* At roughly 240 sessions a year (an assumption about CSE's calendar) that is about seven
+and twelve years. Even then
 the one-month folds hold eight non-overlapping label windows each, which is thin evidence. The levers are the owner's
 (P5-R2): fewer folds, a shorter first fit, or accepting `exploratory` status for the long horizons. None changes the
 conclusion that forward capture alone cannot support this phase.

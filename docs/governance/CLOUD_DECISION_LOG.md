@@ -1157,3 +1157,22 @@ The owner, in the session, agreed with the recommended decisions ("Agree with se
 - **Survivorship on the snapshot (0019)**: to be stored on the snapshot, in 0019, before the merge. This replaces
   C-0089's departure (survivorship read from the import headers).
 - **Commit trailers**: kept as they are. History is not rewritten.
+
+## C-0117: the last branch items before `main` closed ([delegated], 2026-11-22)
+
+- **The ML libraries are hash-pinned.** `.github/ci/requirements-ml.txt` lists, for each pinned version, the SHA-256
+  of every wheel PyPI publishes. The CI image installs them with `--require-hashes`, so a changed or substituted
+  wheel is refused. A real download for CI's platform passed every hash. CI's environment report now prints the ML
+  library versions. A static test keeps all three in place.
+- **The PostgreSQL 17 CI run of DE-4 and M5 is done.** Group L14 runs the DE-4 PostgreSQL tests and group L16 runs
+  every M5 PostgreSQL test; both passed on PostgreSQL 17 at `84c436d` (and earlier).
+- **Record corrections.**
+  - C-0085 said "all of Phase 4 is now accepted". That is true of the code as tested. It was not usable on captured
+    data until the branch review's Blocker B1 was closed by MF-8 (C-0105).
+  - Phase 4 design §7.4 now lists the fields the engine output actually carries (`engine_id`, `engine_version`,
+    `member`) and the `security_class:<cls>` evidence of non-equity lines.
+  - Phase 4 design §10.1 and its Q14 name the `code_version` column on panels and runs.
+  - Phase 5 design §5.5's worked table is recomputed under revision 5's 20-block rule: the test period is 222 and 462
+    sessions; the totals are about 1,660 and 2,840 sessions, about seven and twelve years.
+- What remains for the merge itself: moving 0019 to 0021 into the migration chain, and the change control for the
+  three guards that state a migration range. Both are part of the owner's merge (`docs/governance/MERGE_CANDIDATE.md`).

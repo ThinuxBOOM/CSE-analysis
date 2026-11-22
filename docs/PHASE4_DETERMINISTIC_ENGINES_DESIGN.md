@@ -524,7 +524,9 @@ Scores of members with different component sets are not strictly comparable. The
 
 | Field | Meaning |
 |---|---|
-| `state` | `scored`, `insufficient_inputs`, `not_applicable` (wrong group or security class), `blocked_quality` |
+| `engine_id`, `engine_version` | The engine and its version (the registry's) *(listed under C-0117; implemented since DE-1)* |
+| `member` | The security (the line) the output is for |
+| `state` | `scored`, `insufficient_inputs`, `not_applicable` (wrong group or security class: a non-equity line, such as rights, warrants or debentures, carries `security_class:<cls>` in its evidence, branch review M3), `blocked_quality` |
 | `score` | In (−1, 1); positive means more favourable **on this engine's own definition**. Null unless `scored` |
 | `components` | For each component: feature id and version, value, quality state and reason, n_c, p, s_c, weight, contribution; or absent with its reason |
 | `components_present` | The ids actually used |
@@ -602,10 +604,10 @@ method for; every other field is null with reason `not_provided_by_baseline`. No
 | Table | Contents |
 |---|---|
 | `f7_configurations` | Canonical JSON and SHA-256: feature registry version, `f7.scope`, `f7.currency`, `f7.sign`, `f7.security_link`, `f7.eps_basis`, `f7.industry`, `f7.cashflow_sign`, period rules, `financial_eligibility_policy` and its status, `N_min` |
-| `f7_panels` | One per (issuer, T, mode, **H where the mode has one**, F7 configuration, `f8_configuration_id`): the F8 `result_hash`, chosen scope and currency, newest and anchor period, panel state, counts by fact state, label class |
+| `f7_panels` | One per (issuer, T, mode, **H where the mode has one**, F7 configuration, `f8_configuration_id`): the F8 `result_hash`, chosen scope and currency, newest and anchor period, panel state, counts by fact state, label class, and the `code_version` tuple (branch review M4, migration 0020; listed under C-0117) |
 | `f7_feature_rows` | One per (panel, MF snapshot, security or issuer): the feature vector as canonical JSON with per-value state, reason, rules and `ef_key`s; the link decision id; the MF snapshot row hash used for valuation; `row_hash` |
 | `de_configurations` | Engine registry version and constants |
-| `de_runs` | One per (T, mode, H where the mode has one, MF snapshot, F7 configuration, DE configuration): universe digests, counts, label class |
+| `de_runs` | One per (T, mode, H where the mode has one, MF snapshot, F7 configuration, DE configuration): universe digests, counts, label class, and the `code_version` tuple (branch review M4) |
 | `de_outputs` | One per (run, security, engine or baseline): the output as canonical JSON; `output_hash` |
 | `f7_designations`, `de_designations` | Owner-only: the configuration in force per purpose (the F8 pattern) |
 
@@ -787,7 +789,7 @@ F7-1, F7-2 and F7-4 depend only on F8. F7-3's valuation part and all of DE need 
 | 11 | Later evaluation | Baselines and calibrated engines are scored by Phase 9 against MF's labels, beside ML |
 | 12 | After downtime | Nothing is scheduled in Phase 4. A late filing appears in `KNOWN` from when it was recorded, never earlier |
 | 13 | Failure representation | Panel states, fact treatments, value states with reason codes, engine states, eligibility reasons |
-| 14 | Versions | Registries, rules, policies and constants in configuration hashes; code version tuple per run |
+| 14 | Versions | Registries, rules, policies and constants in configuration hashes; the code version tuple stored on every panel and run (`f7_panels.code_version`, `de_runs.code_version`; C-0117) |
 | 15 | Grounded reasoning | `components` lists each input value, its state, its rank and its contribution (§7.4) |
 
 ## 17. Audit record

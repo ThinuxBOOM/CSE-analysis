@@ -81,15 +81,15 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | Owner statement tooling | **done** (C-0107, C-0108) |
 | A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |
-| PostgreSQL 17 CI run of DE-4 and M5 | branch work |
+| PostgreSQL 17 CI run of DE-4 and M5 | **done** (groups L14 and L16, green on PostgreSQL 17; C-0117) |
 | Phase 5 registry amendments for Phase 11 (re-audit N1 to N3): a designation check in every transaction; the unspent-interval check by label window plus grace; gate 9 by reference for roll-forwards; a list-promotion owner command | **done** (C-0116, Phase 5 record) |
 | MLK-20 through to a built dataset (Phase 5 carried Major) | **done at the dataset** (M5-8, `test_l9`); the raw-to-dataset run of every plant at the owner's staging run |
-| ML versions in CI's environment report; hash-pinned wheels | branch work |
+| ML versions in CI's environment report; hash-pinned wheels | **done** (C-0117) |
 | 0019 decisions: market aggregates, survivorship on the snapshot, market cap | **done** (owner decision C-0116: market cap already stored since MF-8; aggregates and survivorship now stored) |
-| P4-R3 | **owner** |
+| P4-R3 | approved in principle (C-0116); the merge and re-staging are the owner's act |
 | Change control for the guards that state a migration range (`ops/staging/inner/stage_checks.sh:132`, `ops/staging/inner/stage_scenarios.sh:156`, `tests/test_rf4_runbook_rehearsal.py:471`) | at the merge |
 | Commit trailers name a model; keep or rewrite | **decided: kept** (C-0116) |
-| Design records: C-0085's "all Phase 4 accepted" read with B1; design §7.4, §10.1 and Q14 drift; §5.5's table against revision 5's 20-block rule | branch work |
+| Design records: C-0085's "all Phase 4 accepted" read with B1; design §7.4, §10.1 and Q14 drift; §5.5's table against revision 5's 20-block rule | **done** (C-0117) |
 
 ## Verification of this commit
 

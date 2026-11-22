@@ -9,7 +9,7 @@ path through them.
 
 1. `git fetch origin integration/cloud` and check it out. **Nothing here is merged into `main`.** The merge is
    yours (C-0004).
-2. Read `docs/governance/BRANCH_REVIEW_2026-11-18.md` (the list of items to close before `main`) and this file's log.
+2. Read `docs/governance/MERGE_CANDIDATE.md` (the merge, step by step), `docs/governance/BRANCH_REVIEW_2026-11-18.md` (the items closed before `main`) and this file's log.
 3. Run the offline suite and the PostgreSQL suite as the CI image does (`docs/CI_TEST_STRATEGY.md`). Check that the
    latest GitHub CI run of both workflows on the branch head is green (the log below names the last known result).
 4. Pending migrations `supabase/migrations_pending/0019`, `0020` and `0021` are **outside the chain**. They have
@@ -53,6 +53,12 @@ imported data cover the same day they are compared field by field and a disagree
   **MF code version is now `mf.3`**: snapshots written by `mf.2` code show as a different code version in `verify`.
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
+
+### 2026-11-22: the branch is ready for your merge (C-0117)
+
+Every item on the branch review's "Before `main`" list is closed, apart from the merge itself. Read
+**`docs/governance/MERGE_CANDIDATE.md`**: what merges, the last green checks, and your steps, including moving
+0019 to 0021 into the chain and the change control for three guards. The ML libraries are now hash-pinned in CI.
 
 ### 2026-11-22: your merge-preparation decisions carried out (C-0116)
 
