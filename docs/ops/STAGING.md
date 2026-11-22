@@ -2,7 +2,9 @@
 
 **Status:** T1 (the staging harness and its shakedown) is implemented under the owner's authorization of 2026-11-02.
 Staging is **not accepted**: REG-G01 stays OPEN (`docs/R_F4_IMPLEMENTATION.md` section 25.4), and nothing here is
-production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.**
+production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.** *(2026-11-23: staging of build
+`af1fdd1` is accepted by the owner (ST-33, 2026-11-10) and REG-G01 is CLOSED WITH EVIDENCE; the merged build is to
+be re-staged. See the note of 2026-11-23 below.)*
 
 *2026-11-04: the procedures for ST-27 to ST-29 (section 9) and a development run of them on the T2 build, campaign t2s1
 (section 10, **development evidence only; REG-G01 OPEN**), were added. The runner no longer deselects the nine
@@ -33,10 +35,21 @@ restore authorizations RA-0001 and RA-0002 (section 13). Both PASSED. R2 include
 **REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** Nothing was armed or contacted, and
 production was never a target; staging is not accepted.*
 
-*2026-11-10 (later): the isolated-restore procedure is audited and owner-approved; with R2's evidence, REG-B01, REG-B04,
-REG-B06 and REG-B34 are CLOSED WITH EVIDENCE, REG-B27 is IN PROGRESS (it closes in the record of the owner's ST-33,
-after this change's audit), and runbook §6's checkpoint block is lifted (`docs/R_F4_IMPLEMENTATION.md`
-§25.6). Harness finding H-7 is recorded in section 13.*
+*2026-11-10 (later): the isolated-restore procedure is audited and owner-approved, and REG-B34 is CLOSED WITH EVIDENCE
+(`docs/R_F4_IMPLEMENTATION.md` §25.6). Harness finding H-7 is recorded in section 13. (Corrected on 2026-11-23: before
+the merge of `main` at `5ff46c7`, this note also recorded REG-B01, REG-B04 and REG-B06 as closed, REG-B27 as in
+progress and runbook §6's block as lifted; those are withdrawn, see the next note.)*
+
+*2026-11-23: **ST-33: staging ACCEPTED by the owner on 2026-11-10, for build `af1fdd1`** ("I accept both", answering
+DR-0003; effective once AR-0012-1 passed with no Blocker or Major: PASS WITH FINDINGS, 2026-11-10): Phase B (section
+12) and Phase C (section 13) on `main` at `af1fdd16cc40`. REG-G01, REG-A05 and REG-A06 are CLOSED WITH EVIDENCE
+(`docs/R_F4_IMPLEMENTATION.md` §25.6). **The merged build must be re-staged** before milestone 10: `main` after pull
+request #13 (Phases 3 to 5, the restore tool's AR-C-0001 fixes, and the pending migrations once they enter the chain)
+is a changed build (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5). The cloud session's audit
+of the isolated-restore procedure, AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`), found defects in the
+`af1fdd1` tool's globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open, so REG-B01, REG-B04,
+REG-B06 and REG-B27 stay OPEN and runbook §6 stays BLOCKED. Section 13 records ST-33. Nothing is armed or contacted:
+ST-33 authorizes no arming, capture, CSE contact or live run.*
 
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
@@ -626,7 +639,9 @@ T2's `t2s1` objects, `cse-p1-test` and supoclip's objects were not touched.
 
 ## 13. Phase C: ST-30 (R1) and ST-31 (R2) on p3b1 (2026-11-10)
 
-**Status: REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** ST-30 and ST-31 each ran
+**Status: REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** *(2026-11-23: ST-33 is
+recorded at the end of this section: accepted by the owner on 2026-11-10 for this build; REG-G01 CLOSED WITH
+EVIDENCE.)* ST-30 and ST-31 each ran
 once, through `staging.sh restore R1|R2 <RA>` (section 11), and both PASSED. This is staging evidence for the restore
 step of milestone 8; it is not the owner's acceptance (ST-33), and it authorizes nothing in production.
 
@@ -757,7 +772,8 @@ below 5 %: no event occurred.
    dump by design, and R2's source record selected the same run.
 3. **R2 recorded differences** (section 11): no systemd in the R2 container, the backup root is a directory (D-02), and
    P1's units are not installed there.
-4. **Not run:** ST-33, the owner's review and acceptance. Milestone 12's checkpoint and any production restore are out of
+4. **Not run:** ST-33, the owner's review and acceptance *(2026-11-23: now recorded, at the end of this section)*.
+   Milestone 12's checkpoint and any production restore are out of
    scope.
 5. **Docker objects kept:** every object section 12 lists. `cse-stg-p3b1-r2` existed only during ST-31 and was deleted.
 6. **Harness finding H-7 (open; to be fixed in a later brief).** `staging.sh canary` writes fixed file names
@@ -765,3 +781,27 @@ below 5 %: no event occurred.
    `history-host.txt`, `history-runner.txt`), so a second canary run in the same campaign overwrites the earlier run's
    outputs. It must not overwrite an earlier run's outputs (for example, a new directory or file name per run, as
    `new_log` does for `results\`). The harness is unchanged at `af1fdd16cc40`; this record does not change it.
+
+### ST-33: the owner's acceptance (2026-11-10; recorded 2026-11-23)
+
+**ACCEPTED for build `af1fdd1`.** The owner's words, 2026-11-10, answering DR-0003: "I accept both" (Q1, ST-33: staging
+of the integrated build is accepted; Q2, milestone 9: the integrated frozen build, code tree `af1fdd16cc40` with later
+commits documentation only, is accepted as the build that runs next). The acceptance took effect once AR-0012-1, the
+audit of Phase C and its record, passed with no Blocker or Major (PASS WITH FINDINGS, 2026-11-10).
+- **What it accepts:** campaign p3b1 on `main` at `af1fdd16cc40`: Phase B (section 12) and Phase C (this section).
+- **The register** (`docs/R_F4_IMPLEMENTATION.md` §25.4, §25.6): REG-G01, REG-A05 and REG-A06 CLOSED WITH EVIDENCE.
+  REG-A05's and REG-A06's closures state AR-0012-1 N-2's limitation: on the copy, the superuser's count of the two
+  R-F4 tables was not read directly; the equality holds through the source superuser's reading (300/300, ST-28) and
+  the copy's manifest digests (command 5).
+- **What it does not settle:** the isolated-restore items. R2 ran with the tool at `af1fdd1`; the cloud session's audit
+  AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`, approve with conditions) found defects in that tool's
+  globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open (the provenance rests on an
+  unauthenticated `source.json`; the tool has no environment guard; the verification gate's zero rule). REG-B01,
+  REG-B04, REG-B06 and REG-B27 stay OPEN until those are resolved and R2 is re-run with the fixed tool, and runbook §6
+  stays BLOCKED. R2's results above stand as the staging results of the `af1fdd1` tool.
+- **Re-staging:** the merged build (`main` after pull request #13: Phases 3 to 5, the restore tool's AR-C-0001 fixes,
+  and the pending migrations once they enter the chain) is a changed build. It must be re-staged before milestone 10,
+  and milestone 9 re-accepted on it (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5;
+  `docs/R_F4_DESIGN.md` §10).
+- **It authorizes nothing operational:** no arming, capture, CSE contact or live run, and no design or provisioning of
+  the local production environment (CSE Decision Log, 2026-11-10).

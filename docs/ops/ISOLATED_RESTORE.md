@@ -230,9 +230,12 @@ stderr.
   That is weaker than an identifier taken inside the dump's snapshot, which needs P1 change control (16-I's
   P1-CC-PROV). *2026-11-04, decided [delegated] within OD-10 (CSE Decision Log, "B-0006 scope questions"): this
   ledger binding satisfies REG-B06 for this project, and P1-CC-PROV is not authorized. REG-B06 stays OPEN until Phase
-  C's R2 evidence shows the check working.* *(2026-11-10: ST-31 showed it working; REG-B06 CLOSED WITH EVIDENCE.)*
+  C's R2 evidence shows the check working.* *(2026-11-10: ST-31 showed it working, with the tool at `af1fdd1`. 2026-11-23: REG-B06 stays OPEN, because
+  AR-C-0001's finding 6, that the provenance rests on an unauthenticated `source.json`, is open; see the status
+  above.)*
 - **Root inside the isolated environment** could start another cluster between two identity checks. The environment
   holds nothing else and is short-lived; production is not reachable from it.
 - **At milestone 12** the isolated environment and the dump's transfer are the owner's to provide. Runbook §6 stays
-  blocked until this procedure is audited and approved, and changed under REG-B27. *(2026-11-10: audited, approved and changed: runbook §6's
-  block is lifted; REG-B27 is IN PROGRESS, and closes in the record of the owner's ST-33, after this change's audit.)*
+  blocked until this procedure is audited and approved, and changed under REG-B27. *(2026-11-10: audited (AR-0006-1 to AR-0006-3,
+  AR-0009-1) and approved by the owner. 2026-11-23: runbook §6 stays blocked, and REG-B27 OPEN, until AR-C-0001's
+  findings 6 to 8 are resolved and the owner re-approves; see the status above.)*
