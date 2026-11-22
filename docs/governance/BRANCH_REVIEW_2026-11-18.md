@@ -70,6 +70,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | `71ba781` | success | **success** | M5-6 re-audit fixes |
 | `149e8e7` | success | **success** | MF-8 and its audit fixes, label timing |
 | `8c1f5a6` | success | **success** | M5-7 audit fixes, M5-8 rehearsal (later MF statements and identity commits included) |
+| `84c436d` | success | **success** | M5-8 audit fixes, the MLK-23 grid, designs for Phases 8 to 12 and milestone 14 |
 
 ## Before `main` (all of these; the merge itself is the owner's)
 
