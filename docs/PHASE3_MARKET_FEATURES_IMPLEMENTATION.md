@@ -1060,3 +1060,25 @@ bars; a link without a predecessor refused; the worker refused) and `test_o12` (
 the series; the digest lists the admitted link and only when admitted; a label resting on a link announced late
 resolves no earlier than the notice). Mutation check: 9 mutants, 8 killed; the survivor (a session's own instant taken
 from the security's own symbol) is equivalent while one batch holds both symbols' rows, as in these tests.
+
+---
+
+## Snapshot market features and survivorship stored (owner decision C-0116)
+
+Pending migration 0019 gains two columns on `mf_snapshots`:
+- `market_json`: the market-wide features at D\* (`mkt_ret_ew_1/5/21/63`, `mkt_breadth_1`), canonical JSON in the
+  rows' feature format;
+- `survivorship`: the survivorship of the imported history the snapshot read.
+
+`store.snapshot_survivorship` is the rule, moved unchanged from the ML loader. A snapshot that read no import is
+`complete`. Otherwise it takes the worst survivorship of the admitted raw `row_absent` batches that have a bar in the
+400 days before D\*; with no such batch in reach, `unknown`.
+
+Both values are bound into `snapshot_hash`, and `verify`'s replay recomputes and compares them. The ML loader reads
+them, which closes C-0089's departure, and the dataset's market-trend tag is no longer `undefined`.
+
+**MF code version `mf.4`**: snapshots written by `mf.3` show a different code version in `verify`.
+
+Tests:
+- `test_mf8_snapshot_postgres` (both stored, equal to the build, tampering refused);
+- `test_m52_loader_postgres` (l1, l2 and l6 to l9: the rule at MF, the column at the loader, the trend tag).

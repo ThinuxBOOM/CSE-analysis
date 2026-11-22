@@ -5,7 +5,7 @@
 #
 # Who runs what (all reached only through sudo, i.e. by root/the owner):
 #   every command                  OS cse-worker   -> PostgreSQL cse_worker (peer)
-#   retire, validate-policy, waive, flag, promote (owner)
+#   retire, validate-policy, waive, flag, promote, promote-list (owner)
 #                                  OS cse-migrator -> PostgreSQL cse_migrator, acting as cse_owner - the owner path
 #
 #   sudo bash /opt/cse/app/ops/bin/cse-ml preflight
@@ -18,7 +18,7 @@ APP="${CSE_APP_DIR:-/opt/cse/app}"
 [[ $EUID -eq 0 ]] || { echo "run with sudo" >&2; exit 2; }
 user=cse-worker; role=cse_worker
 case "$1" in
-  retire|validate-policy|waive|flag|promote) user=cse-migrator; role=cse_migrator ;;
+  retire|validate-policy|waive|flag|promote|promote-list) user=cse-migrator; role=cse_migrator ;;
 esac
 operator="${SUDO_USER:-root}"                   # the human who ran sudo, recorded on an owner decision
 exec runuser -u "$user" -- bash -c '

@@ -182,13 +182,18 @@ def check_manifest(conn, manifest):
     return True
 
 
-def check_rows_outside_unspent(conn, protocol_id, instants):
-    """MLK-5: no row of a training or validation set (its T) inside another protocol's declared, unspent interval."""
+def check_rows_outside_unspent(conn, protocol_id, instants, grace=timedelta(0)):
+    """MLK-5: no row of a training or validation set inside another protocol's declared, unspent interval. Each item
+    of `instants` is a row's T, or (T, window_end): then the row's whole label window [T, window_end], extended by
+    `grace`, must miss every such interval (Phase 11 re-audit N3: a row at P_start - 1 whose label reaches into the
+    interval reads its labels)."""
     periods = unspent_periods(conn, exclude_protocol=protocol_id)
-    for t in instants:
+    for item in instants:
+        t, end_w = (item, item) if not isinstance(item, (tuple, list)) else (item[0], item[1] + grace)
         for pid, prot, start, end in periods:
-            if start <= t <= end:
-                raise Refused("unspent_interval", f"a row at {t} lies in protocol {prot}'s unspent test period {pid}")
+            if t <= end and end_w >= start:
+                raise Refused("unspent_interval", f"a row at {t} (label window to {end_w}) meets protocol {prot}'s "
+                                                  f"unspent test period {pid}")
     return True
 
 
@@ -512,10 +517,36 @@ def promotion_evidence(conn, model_id, external):
                             "and (metrics_json::jsonb ->> 'access_id')::bigint = %s", (aid,))
             if res is not None and model_id in json.loads(res[0]).get("nominees_passed", []):
                 passed = True
+        # Phase 11 re-audit N2 (Phase 5 §5.6): a roll-forward inherits gate 9 by reference, through its
+        # rollforward_of chain, from the version that was its protocol's tested nominee
+        ref = None
+        if not access_done and rollforward_of is not None:
+            seen, target = set(), rollforward_of
+            while target is not None and target not in seen and len(seen) < 64:
+                seen.add(target)
+                t_prot, t_parent = _one(cur, "select protocol_id, rollforward_of from ml_models where model_id = %s",
+                                        (target,))
+                cur.execute("select a.access_id, a.nominees_json, p.timing, p.previously_scored from "
+                            "ml_test_accesses a join ml_test_periods p on p.period_id = a.period_id where "
+                            "a.protocol_id = %s", (t_prot,))
+                for aid, nominees, tm, prev in cur.fetchall():
+                    if target not in [n["model_id"] for n in json.loads(nominees)]:
+                        continue
+                    res = _one(cur, "select metrics_json from ml_model_metrics where scope = 'test' and stratum = "
+                                    "'access' and (metrics_json::jsonb ->> 'access_id')::bigint = %s", (aid,))
+                    access_done = True
+                    timing |= {"retrospective"} if tm == "retrospective" else set()
+                    timing |= {"previously_scored"} if prev else set()
+                    if res is not None and target in json.loads(res[0]).get("nominees_passed", []):
+                        passed, ref = True, target
+                if access_done:
+                    break
+                target = t_parent
         row = _one(cur, "select checks_json from ml_gate_reports where model_id = %s and kind = 'validation' and "
                         "passed order by report_id desc limit 1", (model_id,))
         labels = set(json.loads(row[0])["labels"]) if row else set()
         labels |= timing | ({"rollforward_of"} if rollforward_of is not None else set()) | (
+            {f"gate9_by_reference:{ref}"} if ref is not None else set()) | (
             {"reconstructed_evidence"} if evidence_class != "point_in_time" else set())
         waiver = external.get("reconstructed_waiver")
         if waiver is not None and _one(cur, "select kind from ml_waivers where waiver_id = %s", (waiver,)) != \
@@ -576,6 +607,56 @@ def promote(owner_conn, model_id, evidence, *, purpose, output, horizon, list_id
                     (prod, f"promoted from {model_id}"))
         return prod
     return _write(owner_conn, work), report
+
+
+def promote_list(owner_conn, positions, evidence, *, purpose, output, horizon, note, code_version, components=()):
+    """Phase 11 re-audit N2: the owner promotes a whole designation list in ONE transaction, so no mixed old/new list
+    is ever in force. `positions`: the validated research versions, in list order (the combinations the list
+    designates); `components`: validated versions promoted with them (production copies, so the production record
+    names production artifacts) but never designated on their own; `evidence`: {model_id: the owner's statement}.
+    Every version's promotion report is written; if any fails, nothing else is written and the reports say why.
+    Returns ({research id: production id} or None, {research id: report})."""
+    everyone = list(positions) + [c for c in components if c not in positions]
+    if not positions or len(set(everyone)) != len(everyone):
+        raise Refused("designation", "a list names at least one position and no version twice")
+    reports = {}
+    for mid in everyone:
+        if mid not in evidence:
+            raise Refused("evidence", f"no owner statement for model {mid}")
+        reports[mid] = gt.promotion_report(promotion_evidence(owner_conn, mid, evidence[mid]))
+
+    def work(cur):
+        if _one(cur, "select session_user")[0] != "cse_migrator":
+            raise Refused("owner_path", "promotion runs through the owner path (cse_migrator as cse_owner)")
+        cur.execute("set local role cse_owner")
+        for mid in everyone:
+            _report(cur, mid, reports[mid], code_version)
+        if not all(r["passed"] for r in reports.values()):
+            return None
+        prod = {}
+        for mid in everyone:
+            src = _one(cur, "select kind, configuration_id, output, horizon, dataset_id, protocol_id, training_cutoff, "
+                            "validation_json, test_period_id, evidence_label_class, environment_json, artifact_sha256, "
+                            "domain_json, rollforward_of from ml_models where model_id = %s", (mid,))
+            if (src[2], src[3]) != (output, horizon):
+                raise Refused("designation", f"model {mid} is not of {output}/{horizon}")
+            prod[mid] = _one(cur, "insert into ml_models (kind, configuration_id, output, horizon, dataset_id, "
+                                  "protocol_id, training_cutoff, validation_json, test_period_id, evidence_label_class, "
+                                  "environment_json, artifact_sha256, domain_json, rollforward_of, environment, "
+                                  "promoted_from) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+                                  "'production', %s) returning model_id", src + (mid,))[0]
+        labels = sorted({lb for r in reports.values() for lb in r["labels"]})
+        lifetime = _one(cur, "select count(*) from ml_test_accesses")[0]
+        cur.execute("insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
+                    "(%s, %s, %s, %s, %s, %s)", (purpose, output, horizon, canonical([prod[m] for m in positions]),
+                                                 canonical({"labels": labels, "lifetime_test_accesses": lifetime,
+                                                            "components": [prod[c] for c in everyone
+                                                                           if c not in positions]}), note))
+        for mid in everyone:
+            cur.execute("insert into ml_model_events (model_id, seq, status, reason) values (%s, 1, 'production', %s)",
+                        (prod[mid], f"promoted from {mid} with its list"))
+        return prod
+    return _write(owner_conn, work), reports
 
 
 def alerts(conn):

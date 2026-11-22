@@ -1,28 +1,24 @@
 """
 M5-2 part 2: read the stored rows of Phases 3 and 4 into the builder's inputs (read-only, one repeatable-read
 transaction). ML reads only `mf_snapshots` and their rows, factors aside, `mf_target_rows`, `f7_feature_rows` and
-`de_outputs` (§3), plus the import headers for survivorship. No raw observation, economic fact or F8 result.
+`de_outputs` (§3). No raw observation, economic fact or F8 result.
 
 Per snapshot in the manifest's range and mode:
   - the DE run of that snapshot under the manifest's F7 and DE configurations (the latest, if it was run twice); its
     outputs give each line's engine scores and its industry group, and its evidence names the F7 rows the run read,
     so the line's F7 features are exactly those rows (the issuer's row and the line's own);
-  - survivorship: `complete` for a snapshot that read no imported history; otherwise the worst survivorship of the
-    import batches MF admits (raw, `row_absent`) recorded by the snapshot's governing time (T in KNOWN, H in
-    AVAILABLE) that hold a bar within the 400 days before the session, the reach of its longest feature window.
-    This reads the import headers and bar dates, never a price: a recorded departure from §3 (C-0089) until MF
-    stores the survivorship it admitted on the snapshot itself;
+  - survivorship and the market-wide features, as MF stored them on the snapshot (C-0116, closing C-0089's departure:
+    the rule is MF's `store.snapshot_survivorship`, applied when the snapshot is written);
   - the header of the manifest's one target build, and its labels for the chosen snapshots.
 A snapshot with no DE run under the manifest's configurations is loaded without F7 and DE inputs and marked, so the
 builder records the loss (first M5-2 audit, M4).
 """
 import json
-from datetime import timedelta, timezone
+from datetime import timezone
 from decimal import Decimal
 
 from . import dataset as ds
 
-FEATURE_WINDOW_DAYS = 400
 GROUP_ENGINES = ("fund_leverage", "fund_bank_strength", "fund_growth", "fund_growth_bank")
 
 
@@ -46,16 +42,6 @@ def _triples(obj, reason_index):
     return out
 
 
-def _survivorship(cur, snap):
-    if not snap["imported_inputs"]:
-        return "complete"
-    governing = snap["knowledge_horizon"] if snap["mode"] == "AVAILABLE" else snap["cutoff"]
-    rows = _rows(cur, "select distinct i.survivorship from mf_history_imports i where i.price_basis = 'raw' and "
-                      "i.no_trade_convention = 'row_absent' and i.recorded_at <= %s and exists (select 1 from mf_history_bars b where b.import_id = i.import_id "
-                      "and b.trade_date between %s and %s)",
-                 (governing, snap["d_star"] - timedelta(days=FEATURE_WINDOW_DAYS), snap["d_star"]))
-    found = [r["survivorship"] for r in rows]
-    return max(found, key=ds.SURVIVORSHIP_ORDER.index) if found else "unknown"
 
 
 def _detail(engine_id, js):
@@ -159,7 +145,7 @@ def load(conn, manifest):
         with conn.cursor() as cur:
             cur.execute("set transaction isolation level repeatable read, read only")
             snaps = _rows(cur, "select snapshot_id, mode, result_label, cutoff, knowledge_horizon, d_star, "
-                               "configuration_id, imported_inputs from mf_snapshots where mode in ('KNOWN', "
+                               "configuration_id, imported_inputs, market_json, survivorship from mf_snapshots where mode in ('KNOWN', "
                                "'AVAILABLE') and configuration_id = %s and d_star between %s and %s "
                                "order by snapshot_id",
                           (manifest.mf_configuration_id, manifest.date_from, manifest.date_to))
@@ -178,10 +164,11 @@ def load(conn, manifest):
                 out.append(ds.SnapshotIn(
                     s["snapshot_id"], s["d_star"], s["cutoff"].astimezone(timezone.utc), s["mode"],
                     None if s["knowledge_horizon"] is None else s["knowledge_horizon"].astimezone(timezone.utc),
-                    s["configuration_id"], s["result_label"], _survivorship(cur, s), lines,
+                    s["configuration_id"], s["result_label"], s["survivorship"], lines,
                     manifest.f7_configuration_id if run_id is not None else None,
                     manifest.de_configuration_id if run_id is not None else None, de_run=run_id is not None,
-                    imported=bool(s["imported_inputs"])))
+                    imported=bool(s["imported_inputs"]),
+                    market=_triples(json.loads(s["market_json"]), 1) if s["market_json"] != "{}" else None))
             ids = [s.snapshot_id for s in out]
             head = _rows(cur, "select build_id, mode, knowledge_horizon, configuration_id, target_definition_version, "
                               "recorded_at from mf_target_builds where build_id = %s", (manifest.target_build_id,))

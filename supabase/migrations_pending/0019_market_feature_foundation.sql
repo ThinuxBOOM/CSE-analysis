@@ -206,6 +206,8 @@ create table mf_snapshots (
   adjustment_set_hash text not null,
   row_count integer not null,
   imported_inputs boolean not null default false,   -- section 4.2: an imported batch was read
+  market_json text not null default '{}',              -- the market-wide features at D* (C-0116): canonical JSON
+  survivorship text not null default 'unknown',        -- the survivorship of the imported history read (C-0116)
   snapshot_hash text not null,                         -- SHA-256 binding this header, its rows, factors, move flags
   created_by text not null default session_user,
   recorded_at timestamptz not null default now(),
@@ -216,7 +218,9 @@ create table mf_snapshots (
     and (knowledge_horizon is null or cutoff is null or knowledge_horizon >= cutoff)),
   constraint chk_mfn_hex check (input_digest ~ '^[0-9a-f]{64}$' and adjustment_set_hash ~ '^[0-9a-f]{64}$'
     and snapshot_hash ~ '^[0-9a-f]{64}$'),
-  constraint chk_mfn_rows check (row_count >= 0)
+  constraint chk_mfn_rows check (row_count >= 0),
+  constraint chk_mfn_surv check (survivorship in ('complete', 'survivors_only', 'unknown')),
+  constraint chk_mfn_market check (market_json ~ '^[ -~]+$')
 );
 
 create table mf_snapshot_factors (

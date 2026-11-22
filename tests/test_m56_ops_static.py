@@ -26,10 +26,10 @@ def test_s2_the_wrapper_runs_owner_acts_as_the_migrator_and_everything_else_as_t
     src = open(WRAPPER, encoding="utf-8").read()
     assert "[[ $EUID -eq 0 ]]" in src and "runuser -u \"$user\"" in src
     assert "user=cse-worker; role=cse_worker" in src
-    assert "retire|validate-policy|waive|flag|promote) user=cse-migrator; role=cse_migrator" in src
+    assert "retire|validate-policy|waive|flag|promote|promote-list) user=cse-migrator; role=cse_migrator" in src
     assert "python3 -m worker.ml_registry" in src
     from worker.ml_registry import cli
-    assert set(cli.OWNER) == {"retire", "validate-policy", "waive", "flag", "promote"}
+    assert set(cli.OWNER) == {"retire", "validate-policy", "waive", "flag", "promote", "promote-list"}
 
 
 def test_s3_every_cli_command_is_in_the_runbook():

@@ -225,7 +225,7 @@ def test_audit_survivors_first_events_production_artifact_and_designation(cluste
     with o.cursor() as cur:                                              # M16: an earlier designation does not do
         cur.execute("set role cse_owner")
         cur.execute("insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
-                    "('route1', 'direction', 5, '[1000]', '{}', 'an earlier designation')")
+                    "('route1', 'direction', 5, '[]', '{}', 'an earlier designation')")   # lists nothing (C-0116)
     o.commit()
     with o.cursor() as cur:
         cur.execute("set role cse_owner")

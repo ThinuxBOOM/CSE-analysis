@@ -1145,3 +1145,15 @@ four new Majors:
 - The registry amendments that promoting a roll-forward list needs are specified, and carried before `main`.
 - Training rows are checked by label window, not by date alone.
 - How a long test period interacts with model ageing is stated, and reported at declaration.
+
+## C-0116: the owner's merge-preparation decisions (owner decision, 2026-11-22)
+
+The owner, in the session, agreed with the recommended decisions ("Agree with section 1, go ahead"):
+- **The merge into `main`**: approved in principle (P3-R6, P4-R3, P5-R3), once the branch items before `main` are
+  closed. The merge itself, and the re-staging after it, stay the owner's act.
+- **Market cap (0019)**: closed. Since MF-8, every snapshot row stores `market_cap_reported` (provisional) and DE-4
+  reads it.
+- **Market aggregates (0019)**: to be stored on the snapshot, in pending migration 0019, before the merge.
+- **Survivorship on the snapshot (0019)**: to be stored on the snapshot, in 0019, before the merge. This replaces
+  C-0089's departure (survivorship read from the import headers).
+- **Commit trailers**: kept as they are. History is not rewritten.

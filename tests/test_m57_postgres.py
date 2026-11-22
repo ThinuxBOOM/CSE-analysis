@@ -53,12 +53,12 @@ def test_p2_mlk19_the_designation_in_force_at_the_cutoff(cluster):
         cur.execute("set role cse_owner")
     o.commit()
     first = mp.one(o, "insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
-                      "('route1', 'return', 5, '[1]', '{}', 'the first designation') returning designation_id")
+                      "('route1', 'return', 5, '[]', '{}', 'the first designation') returning designation_id")
     o.commit()
     t_between = mp.one(o, "select now()")
     o.commit()
     later = mp.one(o, "insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
-                      "('route1', 'return', 5, '[2]', '{}', 'a later designation') returning designation_id")
+                      "('route1', 'return', 5, '[]', '{}', 'a later designation') returning designation_id")
     o.commit()
     w = fs.conn(cluster, db, user="cse_worker")
     assert rc.designation_in_force(w, "route1", "return", 5, t_between)[0] == first
@@ -92,7 +92,7 @@ def test_p3_m6_a_row_is_its_record_and_its_hash(cluster):
         cur.execute("set role cse_owner")
     o.commit()
     d21 = mp.one(o, "insert into ml_designations (purpose, output, horizon, list_json, labels_json, note) values "
-                    "('route1', 'return', 21, '[1]', '{}', 'a designation for h 21') returning designation_id")
+                    "('route1', 'return', 21, '[]', '{}', 'a designation for h 21') returning designation_id")
     o.commit()
     rec21 = rc.build("S.N0000", date(2026, 1, 2), mu.T0, 5, d21, "predicted", **mu.PARTS)
     assert mp.refused(w, ins, ("S.N0000", date(2026, 1, 2), mu.T0, 5, d21, "predicted", rc.canonical(rec21),

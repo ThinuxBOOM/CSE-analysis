@@ -587,7 +587,9 @@ scored dates:
 
 9. The protocol's one access has happened, and this nominee passed the test criterion.
 10. A laboratory backtest (Phase 10) exists for it, valid by MA §62, ending at the last V_end or labelled
-    post-access.
+    post-access. *(C-0116: for a roll-forward, Phase 10 §4.2's roll-forward schedule: the configuration's
+    fold-model backtest plus a `rollforward_shadow` run over its shadow window. Gate 9 for a roll-forward is met by
+    reference, through `rollforward_of`, from the tested nominee (§5.6).)*
 11. Validation holds `point_in_time` rows in at least the protocol's declared share, or an `ml_waivers` row accepts
     `reconstructed`-only evidence.
 12. The designation cites every label the model carries: `survivorship_waived`, `retrospective`,

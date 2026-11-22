@@ -150,8 +150,10 @@ def test_l2_configurations_and_imports(cluster, monkeypatch):
                         "values (%s, 'S01.N0000', %s, 10, 'Sheet1', 7)", (imp, day))
     su.commit()
     su.close()
+    assert rule(cluster, db, sid) == "survivors_only"                         # the 2020 batch is out of reach
+    sql(cluster, db, [("update mf_snapshots set survivorship = 'survivors_only'", ())], disable=("mf_snapshots",))
     snaps, labels, build, _sc = loader.load(c, manifest(cid, builds[0]))
-    assert snaps[0].survivorship == "survivors_only"                          # the 2020 batch is out of reach
+    assert snaps[0].survivorship == "survivors_only"
     assert ds.build(manifest(cid, builds[0]), snaps, labels, build).survivorship == "survivors_only"
 
 
@@ -249,6 +251,21 @@ def imports(cluster, db, batches):
                            (day,))], role="cse_owner")
 
 
+def rule(cluster, db, sid):
+    """MF's survivorship rule (store.snapshot_survivorship, C-0116) for a stored snapshot's own query."""
+    from worker.market_feature_store import store as mfs
+    from worker.market_features.modes import Query
+    c = fs.conn(cluster, db, user="cse_worker")
+    with c.cursor() as cur:
+        cur.execute("select mode, cutoff, knowledge_horizon, d_star, imported_inputs from mf_snapshots where "
+                    "snapshot_id = %s", (sid,))
+        mode, cutoff, horizon, d_star, imp = cur.fetchone()
+        out = mfs.snapshot_survivorship(cur, Query(mode, cutoff, horizon), d_star, imp)
+    c.rollback()
+    c.close()
+    return out
+
+
 def test_l6_survivorship_only_from_batches_mf_admits_by_the_governing_time(cluster, monkeypatch):
     db = fs.fresh_db(cluster)
     c, sid, builds, cid = built(cluster, db, monkeypatch)
@@ -257,6 +274,9 @@ def test_l6_survivorship_only_from_batches_mf_admits_by_the_governing_time(clust
                           ("unknown", "raw", "volume_zero", "2024-01-01T00:00:00Z", "2024-03-01"),
                           ("unknown", "raw", "row_absent", "2024-07-15T00:00:00Z", "2024-03-01"),     # after T
                           ("survivors_only", "raw", "row_absent", "2024-01-01T00:00:00Z", "2024-03-01")])
+    assert rule(cluster, db, sid) == "survivors_only"
+    # the dataset reads what MF stored on the snapshot, never the import headers (C-0116)
+    sql(cluster, db, [("update mf_snapshots set survivorship = 'survivors_only'", ())], disable=("mf_snapshots",))
     snaps, _l, _b, _sc = loader.load(c, manifest(cid, builds[0]))
     assert snaps[0].survivorship == "survivors_only"
 
@@ -267,10 +287,7 @@ def test_l7_available_survivorship_is_governed_by_h(cluster, monkeypatch):
     sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
     imports(cluster, db, [("survivors_only", "raw", "row_absent", "2024-01-01T00:00:00Z", "2024-03-01"),
                           ("unknown", "raw", "row_absent", "2024-07-15T00:00:00Z", "2024-03-01")])   # T < rec <= H
-    h = datetime(2024, 7, 31, tzinfo=timezone.utc)
-    m = manifest(cid, builds[0], eras=(ds.Era(date(2024, 1, 1), date(2024, 12, 31), "AVAILABLE", h),))
-    snaps, _l, _b, _sc = loader.load(c, m)
-    assert snaps[0].survivorship == "unknown"
+    assert rule(cluster, db, sid) == "unknown"
 
 
 def test_l8_an_available_dataset_end_to_end_and_imports_out_of_reach(cluster, monkeypatch):
@@ -294,6 +311,8 @@ def test_l8_an_available_dataset_end_to_end_and_imports_out_of_reach(cluster, mo
     assert len(d.rows) == 13 and d.labels and d.label_class == "reconstructed"
     sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
     imports(cluster, db, [("complete", "raw", "row_absent", "2024-01-01T00:00:00Z", "2019-01-02")])   # out of reach
+    assert rule(cluster, db, sid) == "unknown"                                # never `complete`
+    sql(cluster, db, [("update mf_snapshots set survivorship = 'unknown'", ())], disable=("mf_snapshots",))
     snaps, _l, _b, _sc = loader.load(c, m)
     assert snaps[0].survivorship == "unknown" and snaps[0].imported
 
@@ -307,11 +326,15 @@ def test_l9_mlk20_rows_recorded_after_the_build_change_no_dataset_row(cluster, m
     F7/DE's suites; this shows the dataset reads nothing but those stored rows and the build's own instants."""
     db = fs.fresh_db(cluster)
     c, sid, builds, cid = built(cluster, db, monkeypatch)
-    sql(cluster, db, [("update mf_snapshots set imported_inputs = true", ())], disable=("mf_snapshots",))
+    sql(cluster, db, [("update mf_snapshots set imported_inputs = true, survivorship = 'complete', market_json = %s",
+                       (json.dumps({"mkt_ret_ew_21": {"value": "0.04", "state": "fresh", "reasons": []}}),))],
+        disable=("mf_snapshots",))
     imports(cluster, db, [("complete", "raw", "row_absent", "2024-01-01T00:00:00Z", "2024-06-03")])
     m = manifest(cid, builds[0])
     before = ds.build(m, *loader.load(c, m))
     assert before.survivorship == "complete"
+    # C-0116: the stored market aggregates reach the dataset: the trend tag is no longer `undefined`
+    assert {r.meta["regime_trend"] for r in before.rows} != {"undefined"}
     now = datetime.now(timezone.utc).isoformat()
     imports(cluster, db, [("survivors_only", "raw", "row_absent", now, "2024-06-04")])           # ML-9
     sql(cluster, db, [("insert into mf_candidate_actions (candidate_id, symbol, kind, window_from, window_to, reason, "

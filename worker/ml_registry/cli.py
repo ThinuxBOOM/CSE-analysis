@@ -20,6 +20,8 @@ line is for inspection and for the owner's decisions.
                                                  OWNER decision: a waiver (gates 7 and 11)
     flag --from TS --to TS --note TEXT           OWNER decision: an incident flag over an interval
     promote --model ID --purpose TEXT --list ID[,ID...] --evidence FILE --note TEXT --code-version TEXT
+    promote-list --purpose TEXT --list ID[,ID...] [--components ID[,ID...]] --evidence FILE --note TEXT
+                 --code-version TEXT   (FILE: {"<model id>": {statement}, ...}, one per version)
                                                  OWNER decision: gates 9 to 12 and, on a pass, the production copy and
                                                  its designation. The registry supplies the access, its result, the
                                                  labels and the access count; FILE states only the backtest and the
@@ -41,7 +43,7 @@ from . import preflight, store
 
 EXIT_OK, EXIT_DATABASE_UNAVAILABLE, EXIT_REFUSED = 0, 4, 5
 OWNER_PATH_ROLE = "cse_migrator"
-OWNER = ("retire", "validate-policy", "waive", "flag", "promote")
+OWNER = ("retire", "validate-policy", "waive", "flag", "promote", "promote-list")
 WRITING = ("transition",)
 TABLES = ("ml_configurations", "ml_datasets", "ml_protocols", "ml_test_periods", "ml_runs", "ml_run_events",
           "ml_trials", "ml_artifacts", "ml_fold_models", "ml_models", "ml_model_metrics", "ml_gate_reports",
@@ -83,6 +85,13 @@ def parser():
     m.add_argument("--evidence", required=True)
     m.add_argument("--note", required=True)
     m.add_argument("--code-version", dest="code_version", required=True)
+    pl = sub.add_parser("promote-list")
+    pl.add_argument("--purpose", required=True)
+    pl.add_argument("--list", dest="list_ids", required=True)
+    pl.add_argument("--components", default="")
+    pl.add_argument("--evidence", required=True)
+    pl.add_argument("--note", required=True)
+    pl.add_argument("--code-version", dest="code_version", required=True)
     return p
 
 
@@ -150,6 +159,28 @@ def promote(conn, model_id, purpose, list_ids, evidence_path, note, code_version
     prod, report = store.promote(conn, model_id, external, purpose=purpose, output=row[0], horizon=row[1],
                                  list_ids=ids, note=_noted(note, operator), code_version=code_version)
     return prod, report
+
+
+def promote_list(conn, purpose, list_ids, components, evidence_path, note, code_version, operator=None):
+    """Phase 11 re-audit N2 (C-0116): every version of a designation list, and its components, in one owner
+    transaction with one designation."""
+    _owner_path(conn)
+    with open(evidence_path, encoding="utf-8") as fh:
+        external = json.load(fh)
+    if not isinstance(external, dict) or not all(isinstance(v, dict) for v in external.values()):
+        raise ValueError("the evidence file is a JSON object of {model id: statement}")
+    evidence = {int(k): v for k, v in external.items()}
+    ids = [int(x) for x in list_ids.split(",") if x.strip()]
+    comps = [int(x) for x in components.split(",") if x.strip()]
+    with conn.cursor() as cur:
+        cur.execute("set local role cse_owner")
+        cur.execute("select distinct output, horizon from ml_models where model_id = any(%s)", (ids + comps,))
+        rows = cur.fetchall()
+    conn.rollback()
+    if len(rows) != 1:
+        raise ValueError("every version of a list is of one output and horizon")
+    return store.promote_list(conn, ids, evidence, purpose=purpose, output=rows[0][0], horizon=rows[0][1],
+                              note=_noted(note, operator), code_version=code_version, components=comps)
 
 
 def status(conn):
@@ -243,6 +274,11 @@ def run(args, connect):
             prod, report = promote(conn, args.model, args.purpose, args.list_ids, args.evidence, args.note,
                                    args.code_version, operator)
             _print({"state": "promoted" if prod else "refused", "production_model_id": prod, "report": report})
+            return EXIT_OK if prod else EXIT_REFUSED
+        if args.command == "promote-list":
+            prod, reports = promote_list(conn, args.purpose, args.list_ids, args.components, args.evidence, args.note,
+                                         args.code_version, operator)
+            _print({"state": "promoted" if prod else "refused", "production_model_ids": prod, "reports": reports})
             return EXIT_OK if prod else EXIT_REFUSED
         if args.command in WRITING or args.command == "preflight":
             found = preflight.problems(conn)

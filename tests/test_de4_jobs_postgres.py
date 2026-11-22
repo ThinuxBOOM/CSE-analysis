@@ -43,9 +43,9 @@ def seed(cluster, db, mode="KNOWN", late=False):
                     "(%s, %s, 'provisional')", (cid, js))
         h = None if mode == "KNOWN" else "2024-07-31T00:00:00+00:00"
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, "
-                    "configuration_id, code_version, input_digest, adjustment_set_hash, row_count, snapshot_hash) "
-                    "values (%s, %s, %s, %s, '2024-06-28', %s, 'mf.1', repeat('c',64), repeat('d',64), %s, "
-                    "repeat('e',64)) returning snapshot_id",
+                    "configuration_id, code_version, input_digest, adjustment_set_hash, row_count, snapshot_hash, "
+                    "survivorship) values (%s, %s, %s, %s, '2024-06-28', %s, 'mf.1', repeat('c',64), repeat('d',64), "
+                    "%s, repeat('e',64), 'complete') returning snapshot_id",
                     (mode, {"KNOWN": "point_in_time", "AVAILABLE": "reconstructed", "CURRENT":
                             "retrospective_current"}[mode], None if mode == "CURRENT" else w.T, h, cid, len(rows)))
         sid = cur.fetchone()[0]

@@ -16,7 +16,7 @@ row together with its snapshot, whose hash covers every row's company_id).
 import collections
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -261,10 +261,37 @@ def _num(v):
     return None if v is None else str(int(v)) if v == int(v) else str(v)
 
 
-def snapshot_hash(header, rows, factors, moves, written=None):
+SURVIVORSHIP_ORDER = ("complete", "survivors_only", "unknown")
+FEATURE_WINDOW_DAYS = 400              # the longest feature window, in calendar days (survivorship's reach)
+
+
+def market_payload(market):
+    """The snapshot's market-wide features as canonical JSON (C-0116), in the rows' feature format."""
+    return canonical_json({k: {"value": _value(v.value), "state": v.state, "reasons": [list(x) for x in v.reasons]}
+                           for k, v in sorted(market.items())})
+
+
+def snapshot_survivorship(cur, query, d_star, imported_inputs):
+    """C-0116 (replacing C-0089's departure): the survivorship of the imported history a snapshot read. A snapshot that
+    read no imported batch is `complete` (captured data is the whole universe). Otherwise the worst survivorship of
+    the raw `row_absent` batches admitted by the governing time (T in KNOWN, H in AVAILABLE) with a bar in the
+    longest feature window before D*; none in reach is `unknown`. Never prices: headers and bar dates only."""
+    if not imported_inputs:
+        return "complete"
+    governing = query.horizon if query.mode == AVAILABLE else query.cutoff
+    cur.execute("select distinct i.survivorship from mf_history_imports i where i.price_basis = 'raw' and "
+                "i.no_trade_convention = 'row_absent' and i.recorded_at <= %s and exists (select 1 from "
+                "mf_history_bars b where b.import_id = i.import_id and b.trade_date between %s and %s)",
+                (governing, d_star - timedelta(days=FEATURE_WINDOW_DAYS), d_star))
+    found = [r[0] for r in cur.fetchall()]
+    return max(found, key=SURVIVORSHIP_ORDER.index) if found else "unknown"
+
+
+def snapshot_hash(header, rows, factors, moves, written=None, market="{}", survivorship="unknown"):
     """SHA-256 binding a snapshot's header, its rows (by row_hash), factors and move flags (audit of MF-7c third
     part, M2): a live snapshot, which is not replayed, still proves every stored column. header: (mode, label, cutoff,
     horizon, d_star, configuration_id, code_version, input_digest, adjustment_set_hash, row_count, imported_inputs);
+    market: the stored market_json; survivorship: the stored survivorship (C-0116);
     rows: [(symbol, row_hash)]; factors: [(symbol, kind, ex_date, numerator, denominator, status, flags,
     statement_ids_json)]; moves: [(symbol, session_from, session_to, close_from, close_to, status)]."""
     mode, label, cutoff, horizon, d_star, cid, code, digest, adj, n, imp = header
@@ -272,6 +299,7 @@ def snapshot_hash(header, rows, factors, moves, written=None):
     return sha256_hex(canonical_json({
         "header": [mode, label, _utc(cutoff), _utc(horizon), _value(d_star), cid, code, digest, adj, n, bool(imp)],
         "written": [_utc(recorded), by, pending],          # recorded_at, created_by, pending_sessions (re-audit M-b)
+        "market": market, "survivorship": survivorship,       # C-0116
         "rows": sorted([s, h, _value(c)] for s, h, c in rows),         # symbol, row_hash, company_id
         "factors": sorted([s, k, _value(d), _num(a), _num(b), st, fl, ids] for s, k, d, a, b, st, fl, ids in factors),
         "moves": sorted([s, _value(f), _value(t), _value(cf), _value(ct), st] for s, f, t, cf, ct, st in moves)}))
@@ -301,11 +329,14 @@ def write(conn, snap, query, *, configuration_id, code_version, evidence, import
         cur.execute("select now(), session_user")             # the column defaults of this transaction's inserts
         recorded, by = cur.fetchone()
         pending = canonical_json([d.isoformat() for d in getattr(snap, "pending", ())])
-        h = snapshot_hash(header, [(r[1], r[11], r[12]) for r in rows], factors, moves, (recorded, by, pending))
+        market = market_payload(snap.market)
+        surv = snapshot_survivorship(cur, query, snap.d_star, bool(evidence["imports"])) if snap.d_star else "unknown"
+        h = snapshot_hash(header, [(r[1], r[11], r[12]) for r in rows], factors, moves, (recorded, by, pending),
+                          market, surv)
         cur.execute("insert into mf_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, configuration_id, "
                     "code_version, input_digest, adjustment_set_hash, row_count, imported_inputs, snapshot_hash, "
-                    "pending_sessions) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning snapshot_id",
-                    header + (h, pending))
+                    "pending_sessions, market_json, survivorship) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) "
+                    "returning snapshot_id", header + (h, pending, market, surv))
         sid = cur.fetchone()[0]
         for r in rows:
             cur.execute("insert into mf_snapshot_rows (snapshot_id, security_id, symbol, eligibility, features_json, "

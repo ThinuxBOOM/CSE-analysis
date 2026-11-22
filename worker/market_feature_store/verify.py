@@ -55,7 +55,7 @@ def _factor_rows(factors):
 
 def snapshot_report(conn, header, margin=MARGIN):
     (sid, mode, cutoff, horizon, d_star, cid, digest, adj_hash, row_count, recorded, label, code, imp_inputs,
-     stored_hash, created_by, pending) = header
+     stored_hash, created_by, pending, market_json, survivorship) = header
     problems = []
     with conn.cursor() as cur:
         rows, factors, moves, raw_factors = _stored(cur, sid)
@@ -64,8 +64,9 @@ def snapshot_report(conn, header, margin=MARGIN):
     conn.rollback()
     if store.snapshot_hash((mode, label, cutoff, horizon, d_star, cid, code, digest, adj_hash, row_count, imp_inputs),
                            [(r[0], r[11], r[12]) for r in rows], raw_factors, moves,
-                           (recorded, created_by, pending)) != stored_hash:
-        problems.append("snapshot_hash does not match the stored header, rows, factors and move flags")
+                           (recorded, created_by, pending), market_json, survivorship) != stored_hash:
+        problems.append("snapshot_hash does not match the stored header, rows, factors, move flags, market features "
+                        "and survivorship")
     if len(rows) != row_count:
         problems.append(f"row_count {row_count} but {len(rows)} rows stored")
     for sym, sec, el, fj, px, rs, stale, adj, rsq, dj, wd, h, _company in rows:
@@ -95,6 +96,13 @@ def snapshot_report(conn, header, margin=MARGIN):
                 problems.append("replay input digest differs (evidence changed after a settled time)")
             if snap.adjustment_set_hash != adj_hash:
                 problems.append("replay adjustment set differs")
+            if store.market_payload(snap.market) != market_json:          # C-0116
+                problems.append("replay market features differ")
+            with conn.cursor() as cur:
+                again_surv = store.snapshot_survivorship(cur, q, snap.d_star, bool(evidence["imports"]))
+            conn.rollback()
+            if again_surv != survivorship:
+                problems.append(f"replay survivorship {again_surv} differs from stored {survivorship}")
             stored = {r[0]: r[11] for r in rows}
             again = {}
             for r in snap.rows:
@@ -163,7 +171,7 @@ def verify(conn, sample=None, margin=MARGIN):
     with conn.cursor() as cur:
         cur.execute("select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, input_digest, "
                     "adjustment_set_hash, row_count, recorded_at, result_label, code_version, imported_inputs, "
-                    "snapshot_hash, created_by, pending_sessions from mf_snapshots order by snapshot_id desc"
+                    "snapshot_hash, created_by, pending_sessions, market_json, survivorship from mf_snapshots order by snapshot_id desc"
                     + (" limit %s" % int(sample) if sample else ""))
         headers = cur.fetchall()
         cur.execute("select build_id from mf_target_builds order by build_id desc"

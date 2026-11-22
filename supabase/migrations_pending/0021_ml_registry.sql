@@ -474,7 +474,8 @@ begin
   -- at commit: a production model's first event and a designation naming it were written in the same transaction
   if new.status = 'production' and not exists (
       select 1 from ml_designations d join ml_models m on m.model_id = new.model_id
-      where d.recorded_at = now() and (d.list_json::jsonb) @> to_jsonb(new.model_id)
+      where d.recorded_at = now() and ((d.list_json::jsonb) @> to_jsonb(new.model_id)
+             or coalesce(d.labels_json::jsonb -> 'components', '[]'::jsonb) @> to_jsonb(new.model_id))
         and d.output = m.output and d.horizon = m.horizon) then
     raise exception 'ml_model_events: production model % has no designation naming it in this transaction',
       new.model_id using errcode = 'check_violation';
@@ -486,6 +487,29 @@ begin
       where d.recorded_at = now() and not exists (
         select 1 from ml_models m where m.model_id = (x.id)::text::bigint and m.environment = 'production'
           and m.output = d.output and m.horizon = d.horizon
+          and (select e.status from ml_model_events e where e.model_id = m.model_id order by e.seq desc limit 1)
+              = 'production')) then
+    raise exception 'ml_designations: a designation lists only production models of its output and horizon'
+      using errcode = 'check_violation';
+  end if;
+  return null;
+end;
+$$;
+
+-- C-0116 (Phase 11 re-audit N1): in EVERY transaction, at commit, each model a designation lists, and each
+-- component its labels name, is a production model of its output and horizon whose latest status is production.
+-- Before this, the check ran only in a transaction with a production event, so an owner designation of research
+-- models was unchecked. An empty list designates nothing for the purpose.
+create function ml_designation_list_check() returns trigger
+language plpgsql as $$
+begin
+  if exists (
+      select 1 from (select jsonb_array_elements(new.list_json::jsonb) as id
+                     union all
+                     select jsonb_array_elements(coalesce(new.labels_json::jsonb -> 'components', '[]'::jsonb))) x
+      where jsonb_typeof(x.id) <> 'number' or not exists (
+        select 1 from ml_models m where m.model_id = (x.id)::text::bigint and m.environment = 'production'
+          and m.output = new.output and m.horizon = new.horizon
           and (select e.status from ml_model_events e where e.model_id = m.model_id order by e.seq desc limit 1)
               = 'production')) then
     raise exception 'ml_designations: a designation lists only production models of its output and horizon'
@@ -580,6 +604,8 @@ create trigger trg_mlm_guard before insert on ml_models for each row execute fun
 create trigger trg_mle_guard before insert on ml_model_events for each row execute function ml_model_event_guard();
 create constraint trigger trg_mle_designation after insert on ml_model_events deferrable initially deferred
   for each row execute function ml_production_designation_check();
+create constraint trigger trg_mlz_list after insert on ml_designations deferrable initially deferred
+  for each row execute function ml_designation_list_check();
 create trigger trg_mlg_guard before insert on ml_gate_reports for each row execute function ml_gate_report_guard();
 -- M5-6 re-audit B: one result per test access (the first written is the result; it is never rewritten)
 create unique index uq_mlmm_access_result on ml_model_metrics (((metrics_json::jsonb) ->> 'access_id'))
@@ -615,6 +641,7 @@ end $$;
 -- =============================================================================
 revoke all on function ml_configuration_guard(), ml_protocol_guard(), ml_test_period_guard(), ml_run_guard(),
   ml_test_access_guard(), ml_model_guard(), ml_model_event_guard(), ml_production_designation_check(),
+  ml_designation_list_check(), r1_prediction_guard(),
   ml_owner_only_guard(), ml_stamp_guard(), ml_gate_report_guard() from public;
 grant insert on ml_configurations, ml_datasets, ml_protocols, ml_test_periods, ml_runs, ml_run_events, ml_trials,
   ml_artifacts, ml_fold_models, ml_models, ml_model_metrics, ml_gate_reports, ml_test_accesses, ml_model_events,

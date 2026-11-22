@@ -238,3 +238,22 @@ def test_c9_retire_is_for_production_and_a_policy_keeps_its_cutoff(cluster, caps
     capsys.readouterr()
     assert call(cluster, db, "cse_migrator", *args, "2019-01-01T00:00:00+00:00") == cli.EXIT_REFUSED
     assert "never changes" in out(capsys)["reason"]
+
+
+def test_c10_promote_list_is_an_owner_command_with_one_designation(cluster, capsys, tmp_path):
+    """C-0116: `promote-list` promotes every version of a list in one owner transaction and one designation."""
+    db = fs.fresh_db(cluster)
+    w, pid, mid = registry_world(cluster, db)
+    store.access(w, pid, sp.period_of(w, pid), [{"model_id": mid, "predictions_sha256": "d" * 64}],
+                 lambda: {"nominees_passed": [mid]})
+    base = ("promote-list", "--purpose", "route1", "--list", str(mid), "--note", "the owner promotes the list",
+            "--code-version", "code.1", "--evidence", evidence_file(tmp_path, {str(mid): EVIDENCE}))
+    assert call(cluster, db, "cse_worker", *base) == cli.EXIT_REFUSED and "owner step" in out(capsys)["reason"]
+    assert call(cluster, db, "cse_migrator", *base) == cli.EXIT_OK
+    r = out(capsys)
+    prod = r["production_model_ids"][str(mid)]
+    assert store.status(w, prod) == "production"
+    with w.cursor() as cur:
+        cur.execute("select list_json from ml_designations")
+        assert json.loads(cur.fetchone()[0]) == [prod]
+    w.rollback()

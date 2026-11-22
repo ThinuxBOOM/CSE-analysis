@@ -68,7 +68,7 @@ def test_s1_a_captured_session_becomes_a_snapshot_with_company_links_that_replay
         assert json.loads(rows[s][1]) and rows[s][3] is not None           # D* observation ids; a price
     head = q(w, "select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, input_digest, "
                 "adjustment_set_hash, row_count, recorded_at, result_label, code_version, imported_inputs, "
-                "snapshot_hash, created_by, pending_sessions from mf_snapshots where snapshot_id = %s", (sid,))[0]
+                "snapshot_hash, created_by, pending_sessions, market_json, survivorship from mf_snapshots where snapshot_id = %s", (sid,))[0]
     _snap, _imp, evidence = jobs.build(conn(pg), Query(KNOWN, t), configuration.Configuration())
     assert evidence["captured"]["runs"] and evidence["captured"]["observations"]      # in the input digest
     rep = verify.snapshot_report(w, head, margin=timedelta(0))
@@ -179,8 +179,18 @@ def test_s4_audit_pending_sessions_stored_and_verified_company_replayed_explain_
         json.dumps([(TD + timedelta(days=4)).isoformat()])
     head = q(w, "select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, input_digest, "
                 "adjustment_set_hash, row_count, recorded_at, result_label, code_version, imported_inputs, "
-                "snapshot_hash, created_by, pending_sessions from mf_snapshots where snapshot_id = %s", (sid,))[0]
+                "snapshot_hash, created_by, pending_sessions, market_json, survivorship from mf_snapshots where snapshot_id = %s", (sid,))[0]
     assert verify.snapshot_report(w, head, margin=timedelta(0))["problems"] == []
+    # C-0116: the market-wide features and the survivorship are stored, hashed and replayed
+    market, surv = json.loads(head[16]), head[17]
+    assert set(market) >= {"mkt_ret_ew_1", "mkt_ret_ew_21", "mkt_breadth_1"} and surv in ("complete", "unknown",
+                                                                                           "survivors_only")
+    assert market == {k: {"value": None if v.value is None else str(v.value), "state": v.state,
+                          "reasons": [list(x) for x in v.reasons]} for k, v in snap.market.items()}
+    for tampered in (head[:16] + ('{}', surv), head[:16] + (head[16], "survivors_only" if surv != "survivors_only"
+                                                                     else "complete")):
+        rep = verify.snapshot_report(w, tampered, margin=timedelta(0))
+        assert any("snapshot_hash does not match" in p for p in rep["problems"]), rep
     ex = explain.explain(conn(pg), sid, TRADED[3])                       # captured only: no earlier import
     assert ex["provenance_ok"] and any(isinstance(i, str) for i in ex["window_observation_ids"])   # captured ids
     # Phase 2's evidence changes the company of a security after the snapshot: the replay notices

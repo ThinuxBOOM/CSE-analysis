@@ -383,7 +383,7 @@ def test_o11_identity_links_join_series_reuses_split_them_and_admission_holds(cl
     assert ret21(sid, "NEW.N0000") is not None                         # the joined series reaches back
     head = sql(cluster, db, "select snapshot_id, mode, cutoff, knowledge_horizon, d_star, configuration_id, "
                             "input_digest, adjustment_set_hash, row_count, recorded_at, result_label, code_version, "
-                            "imported_inputs, snapshot_hash, created_by, pending_sessions from mf_snapshots where "
+                            "imported_inputs, snapshot_hash, created_by, pending_sessions, market_json, survivorship from mf_snapshots where "
                             "snapshot_id = %s", (sid,))[0]
     assert verify.snapshot_report(worker(cluster, db), head, margin=timedelta(0))["problems"] == []
     ex = explain.explain(worker(cluster, db), sid, "NEW.N0000")

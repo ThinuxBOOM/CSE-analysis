@@ -563,6 +563,26 @@ How to read it:
 - **These worlds are the rehearsal's size**, below §5.5's minimums. A protocol's own minimum sizes are run by passing a
   larger `World` through `cases`. **Before gate 5 is passed on real data**, the grid is run at the real protocol's
   sizes and its result cited (destination: the first real protocol).
+
+## Registry amendments before `main` (C-0116; Phase 11 re-audit N1 to N3)
+
+- **A designation is checked in every transaction.** `ml_designation_list_check`, a deferred constraint trigger on
+  `ml_designations` in 0021, runs at commit. Every listed model, and every component named in the labels'
+  `components`, must be a production model of the designation's output and horizon, with latest status
+  `production`. Before this, the check ran only alongside a production event, so an owner designation of research
+  models went unchecked. An empty list designates nothing. Tests that designated placeholder ids now use `[]`.
+- **The unspent-interval check by label window.** `check_rows_outside_unspent` accepts `(T, window_end)` and a
+  `grace`. A row whose label window meets another protocol's unspent interval is refused.
+- **Gate 9 by reference.** `promotion_evidence` follows a roll-forward's `rollforward_of` chain to the version that
+  passed its protocol's access, and adds the label `gate9_by_reference:<id>`.
+- **`promote_list` and `cse-ml promote-list`.** These promote every version of a list, and its components, in one
+  owner transaction with one designation; if any version fails, only the reports are written. The production
+  designation check accepts a component named in the designation's labels.
+- The preflight now also checks `trg_mlz_list` and the M5-7 guard `trg_r1p_guard`, and their functions are revoked
+  from `public`.
+
+Tests: `tests/test_registry_amendments_postgres.py` (4), `tests/test_m56_cli_postgres.py::test_c10`, and the static
+tests updated.
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings

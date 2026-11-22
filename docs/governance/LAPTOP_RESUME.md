@@ -54,6 +54,16 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-22: your merge-preparation decisions carried out (C-0116)
+
+- **Pending migration 0019 changed**: snapshots now store their market-wide features and their survivorship. MF's
+  code version is now `mf.4`. Snapshots built by earlier code show as a different code version in `verify`;
+  rebuild them before training.
+- **Pending migration 0021 changed**: every designation is checked when it is written. A designation that lists an
+  unpromoted model is refused. New owner command: `cse-ml promote-list`, which promotes a whole list in one step
+  (runbook `docs/ops/P5_ML_REGISTRY.md`).
+- Commit trailers are kept, and market cap is closed (already stored since MF-8).
+
 ### 2026-11-22: M5-8 accepted; adaptation accepted (C-0115)
 
 - **M5-8:** the rehearsal passed its audit, and the three Majors are fixed. It now records only what it actually
