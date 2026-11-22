@@ -51,6 +51,11 @@ class Domain:
     training_cutoff: object = None               # C_train of the model (§11.2), recorded with it
 
     def __post_init__(self):
+        if not self.eligibility_policy:
+            raise ValueError("a domain names its eligibility policy version")
+        missing = [f for f in self.critical if f not in self.feature_versions]
+        if not self.feature_versions or missing:
+            raise ValueError(f"a domain records the version of every schema feature, critical ones included: {missing}")
         for f in self.critical:
             if f in self.rank_features:
                 continue

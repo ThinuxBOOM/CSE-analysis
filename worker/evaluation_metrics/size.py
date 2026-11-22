@@ -3,8 +3,8 @@ MLK-23 (design §9.3, §12.3, §13; revision 5): the gate test's size at a proto
 and 9 can pass (`size_shown`).
 
 The dependence is estimated on TRAINING rows only: the lag-1 autocorrelation of the date-level series (serial
-dependence, including what a common date factor and overlapping horizons leave in it) and of its squares (volatility
-clustering). Null series of the protocol's length are simulated with those parameters and mean zero (an AR(1) with
+dependence, including what a common date factor and overlapping horizons leave in it) and of the squares of its AR(1)
+residuals (volatility clustering). Null series of the protocol's length are simulated with those parameters and mean zero (an AR(1) with
 GARCH-like variance), the gate test is run on each at the protocol's level and block length, and the share of
 rejections among the tested series is compared with the binomial acceptance region (0.1 % to 99.9 %) around the
 nominal level. Outside it, the configuration of the method is unreliable, and gate 5 fails as `size_not_shown`.
@@ -36,10 +36,13 @@ class Dependence:
 
 
 def estimate(training_series):
-    """The dependence of a date-level series computed on training rows only."""
-    m = math.fsum(training_series) / len(training_series) if training_series else 0.0
-    sq = [(x - m) ** 2 for x in training_series]
-    return Dependence(max(-0.95, min(0.95, _acf1(training_series))), max(0.0, min(0.9, _acf1(sq))))
+    """The dependence of a date-level series computed on training rows only. `arch` is measured on the AR(1)
+    residuals' squares: the series' own squares already carry phi squared (M5-8 audit Minor 4)."""
+    xs = list(training_series)
+    m = math.fsum(xs) / len(xs) if xs else 0.0
+    phi = max(-0.95, min(0.95, _acf1(xs)))
+    resid = [(xs[i] - m) - phi * (xs[i - 1] - m) for i in range(1, len(xs))]
+    return Dependence(phi, max(0.0, min(0.9, _acf1([e * e for e in resid]))))
 
 
 def simulate(dep, n, rng):

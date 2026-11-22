@@ -81,6 +81,7 @@ ML library versions in CI's environment report and hash-pinned wheels → before
 | A source for `scoring.1`'s flags | **done** (`mf_candidate_actions`, `ml_dataset.5`; Phase 5 record) |
 | Link decisions checked as settled at T (DE-4) | **done** (`942dfc7`, `jobs.check_settled`) |
 | PostgreSQL 17 CI run of DE-4 and M5 | branch work |
+| Phase 5 registry amendments for Phase 11 (re-audit N1 to N3): a designation check in every transaction (today an owner designation of research models is unchecked without a production event); the unspent-interval check by label window plus grace; gate 9 by reference for roll-forwards; a list-promotion owner command | branch work, before Phase 11 is built and before `main` |
 | MLK-20 through to a built dataset (Phase 5 carried Major) | **done at the dataset** (M5-8, `test_l9`); the raw-to-dataset run of every plant at the owner's staging run |
 | ML versions in CI's environment report; hash-pinned wheels | branch work |
 | 0019 decisions: market aggregates, survivorship on the snapshot, market cap | **owner** |

@@ -109,6 +109,10 @@ V_end, so it cannot predict any T up to V_end. Gate 10's backtest therefore uses
 which together end at the last V_end; and, after the protocol's access, the final fit from V_end + embargo on, labelled
 post-access.
 
+**The roll-forward schedule** (Phase 11 §5). A roll-forward version has no V_end of its own: its gate-10 evidence is
+the configuration's gate-10 schedule above, plus a run over its shadow window with the roll-forward's own models,
+whose window starts at or after their C_train + embargo, labelled `rollforward_shadow`.
+
 **Selection in sample.** The configuration under test was nominated, and its policies and features chosen, using
 validation folds that contain these T. A replay over the validation periods is therefore labelled
 `selection_in_sample`: it shows what the pipeline would have produced, not out-of-sample evidence. Only periods after

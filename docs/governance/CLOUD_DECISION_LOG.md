@@ -1124,3 +1124,24 @@ The server move:
 Two choices are new for the owner:
 - the server's outbound rule (SD-R6), because P1 restricts no outbound traffic today;
 - the owner's own G-1 determination of the server (part of SD-R2).
+
+## C-0115: M5-8 accepted; Phase 11 accepted at its re-audit ([delegated], 2026-11-22)
+
+**M5-8.** The M5-8 audit found no Blocker, so M5-8 is accepted. It confirmed that all six M5-7 Majors are closed. Its
+three Majors are fixed:
+- The registry record now claims only what the rehearsal showed. The leakage suite is not claimed, reliability and
+  coverage are checked against their tolerances, and the real validated domain and the real ages are recorded.
+- The size study estimates its dependence from the series the gate actually tests: loss differences on fold 1's
+  training rows that were not used to fit the model, all dated before any validation date.
+- MLK-23's grid of cases (serial dependence, date factor, volatility clustering, regime change, unbalanced
+  coverage, liquidity mix) is built. For each case it reports measured coverage and type-I error, and marks the
+  method unreliable where either fails.
+
+The Minors are fixed, and a test now kills each surviving mutant that was checked.
+
+**Phase 11.** The re-audit closed the Blocker and found no new one, so Phase 11 is accepted. Revision 3 answers its
+four new Majors:
+- A shadow's designation is now its assignment, never a live designation.
+- The registry amendments that promoting a roll-forward list needs are specified, and carried before `main`.
+- Training rows are checked by label window, not by date alone.
+- How a long test period interacts with model ageing is stated, and reported at declaration.

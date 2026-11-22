@@ -39,10 +39,20 @@ def test_r1_the_rehearsal_recorded_and_never_validated(cluster):
     w = fs.conn(cluster, db, user="cse_worker")
     world = rh.World()
     kept = {}
-    report = rh.run(world, size_seeds=20, keep=kept)
+    report = rh.run(world, size_seeds=200, keep=kept)
     out = rh.record(w, report, kept, world, policy)
     assert out["sufficiency"] == "exploratory" and any("securities" in r for r in out["sufficiency_reasons"])
     assert out["refused"] is None and not out["validation"]["passed"] and out["status"] == "candidate"
+    gates = out["validation"]["gates"]
+    gate = lambda n: gates.get(n) or gates.get(str(n))                         # noqa: E731
+    assert not gate(3)["pass"]                         # the rehearsal runs no leakage suite: never claimed
+    assert not gate(4)["pass"]                         # fold 2's reliability is outside its tolerance
+    assert gate(8)["pass"]                             # the real domain is recorded
+    with w.cursor() as cur:
+        cur.execute("select domain_json from ml_models where model_id = %s", (out["model"],))
+        import json
+        assert json.loads(cur.fetchone()[0]) == report["domain"]
+    w.rollback()
     with w.cursor() as cur:
         cur.execute("select synthetic from ml_datasets where dataset_id = %s", (out["dataset"],))
         assert cur.fetchone() == (True,)

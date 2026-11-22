@@ -61,6 +61,26 @@ def test_mlk15_refusals_in_validation_and_by_regime(base):
 def test_mlk23_size_shown_at_the_protocols_dependence(base):
     sz = base["size_study"]
     assert sz["tested"] == 20 and sz["region"] == list(size.acceptance_region(20, 0.05)) and sz["shown"]
+    # the dependence of the gate's own series (loss differences), from training rows out of sample for the fit, all
+    # before the first validation date: no validation row can influence it (M5-8 audit Major 2)
+    first_c_train = base["folds"][0]["c_train"]
+    assert sz["estimated_from"][1] < first_c_train and sz["estimated_dates"] >= 100
+
+
+def test_the_report_binds_its_content_and_scores_only_predicted_rows(base):
+    body = {k: v for k, v in base.items() if k != "report_hash"}
+    assert rh._hash(body) == base["report_hash"]
+    assert sum(f["scored"] for f in base["folds"]) == base["refusals"]["predicted"]
+    assert base["gate_test"]["dates"] == 323                       # two incident-blocked days have no scored row
+    assert base["ages"] == [1, 65]                                 # sessions since each fold's cutoff, evaluated
+    d = base["domain"]
+    assert d["critical"] == ["mf.x"] and set(d["envelope"]) == {"mf.x", "mf.z"} and d["horizon"] == 5
+    assert [f["ece_within_tolerance"] for f in base["folds"]] == [f["ece"] <= rh.ECE_TOLERANCE for f in base["folds"]]
+
+
+def test_mlk7_a_signal_is_rejected_across_seeds():
+    for seed in (2, 3):
+        assert rh.run(rh.World(seed=seed), **SMALL)["gate_test"]["rejects"], seed
 
 
 def test_mlk23_the_size_study_itself():
@@ -70,7 +90,10 @@ def test_mlk23_the_size_study_itself():
     assert size._binom_cdf(b - 1, 200, 0.05) < 0.999 <= size._binom_cdf(b, 200, 0.05)
     rng = random.Random(4)
     ar = size.simulate(size.Dependence(0.5, 0.0), 4000, rng)
-    assert abs(size.estimate(ar).phi - 0.5) < 0.05
+    est = size.estimate(ar)
+    assert abs(est.phi - 0.5) < 0.05 and est.arch < 0.1          # arch from the residuals, not phi squared
+    clustered = size.simulate(size.Dependence(0.0, 0.5), 4000, rng)
+    assert size.estimate(clustered).arch > 0.3                    # the simulation clusters and the estimate sees it
     assert size.estimate([1.0] * 50).phi == 0.0
     iid = [rng.gauss(0, 1) for _ in range(300)]
     ok = size.size_study(iid, 325, h=5, level=0.05, seeds=100, seed=3)
@@ -81,3 +104,19 @@ def test_mlk23_the_size_study_itself():
     assert not bad.shown and bad.rejected > bad.region[1]
     few = size.size_study(iid, 5, h=5, level=0.05, seeds=10, seed=3)     # too short to test: not shown
     assert few.tested == 0 and not few.shown
+    # the region's lower edge counts: too FEW rejections is not shown either (an over-conservative method)
+    assert not size.SizeResult(ok.dependence, 325, 0.05, 10, 200, 200, 0, size.acceptance_region(200, 0.05)).shown
+    # the simulation runs at the protocol's level: at 0.2 the rejections lie in 0.2's region
+    hi = size.size_study(iid, 325, h=5, level=0.2, seeds=200, seed=5)
+    assert hi.shown and hi.region == size.acceptance_region(hi.tested, 0.2)
+
+
+def test_mlk23_the_grid_reports_coverage_and_type_1_per_case():
+    g = rh.mlk23_grid({"base": {}, "date_factor": {"date_factor": 1.5}}, size_seeds=20)
+    base, df = g["cases"]["base"], g["cases"]["date_factor"]
+    assert set(base) >= {"coverage", "coverage_within_tolerance", "size_study", "empirical_type_1", "unreliable"}
+    assert len(base["coverage"]) == 5 and not base["unreliable"]
+    # a strong common date factor breaks the per-row conformal interval's coverage: the case is marked unreliable
+    assert not df["coverage_within_tolerance"] and df["unreliable"]
+    assert g["grid_hash"] == rh.mlk23_grid({"base": {}, "date_factor": {"date_factor": 1.5}},
+                                           size_seeds=20)["grid_hash"]

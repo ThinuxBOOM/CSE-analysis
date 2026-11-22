@@ -20,7 +20,7 @@ import hashlib
 import json
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
@@ -32,6 +32,7 @@ from worker.ml_route1 import domain as dm
 
 COLOMBO = timezone(timedelta(hours=5, minutes=30))
 CLASSES = ("rise", "flat", "fall")
+ECE_TOLERANCE = 0.05          # the rehearsal's stated reliability tolerance (gate 4); coverage uses §8.2's 0.05
 LIQ = ("low", "mid", "high")
 
 
@@ -44,6 +45,10 @@ class World:
     signal: float = 0.6            # the planted effect of mf.x on the latent return (0: no signal)
     date_factor: float = 0.5       # a common shock per date
     persistence: float = 0.3       # serial dependence of the common shock
+    vol_cluster: float = 0.0       # ARCH(1) weight of the common shock's variance (volatility clustering)
+    regime_break: float = 0.0      # from the middle session on, every security's volatility times (1 + this)
+    coverage: float = 1.0          # the share of sessions on which odd-numbered securities have a row
+    low_share: float = None        # the share of securities in the `low` liquidity class (None: one in three)
 
 
 def _sessions(n):
@@ -63,24 +68,33 @@ def world(w: World):
     """(Dataset, calendar of T instants, sessions)."""
     rnd = random.Random(w.seed)
     days = _sessions(w.sessions)
-    shock, shocks = 0.0, []
+    shock, shocks, e_prev = 0.0, [], 0.0
     for _ in days:
-        shock = w.persistence * shock + rnd.gauss(0, 1)
+        e = rnd.gauss(0, 1) * math.sqrt((1 - w.vol_cluster) + w.vol_cluster * e_prev * e_prev)
+        shock = w.persistence * shock + e
         shocks.append(shock)
-    sec_vol = {i: 0.008 + 0.004 * (i % 3) for i in range(w.securities)}
+        e_prev = e
+    if w.low_share is None:
+        liq = {i: LIQ[i % 3] for i in range(w.securities)}
+    else:
+        n_low = round(w.low_share * w.securities)
+        liq = {i: "low" if i < n_low else LIQ[1 + (i - n_low) % 2] for i in range(w.securities)}
+    base_vol = {"low": 0.008, "mid": 0.012, "high": 0.016}
     rows, labels = [], {}
     for j, d in enumerate(days):
         for i in range(w.securities):
             sym = f"S{i:02d}.N0000"
             x, z = rnd.gauss(0, 1), rnd.gauss(0, 1)
-            vol = sec_vol[i]
+            vol = base_vol[liq[i]] * (1 + w.regime_break if j >= len(days) // 2 else 1)
+            if w.coverage < 1 and i % 2 and rnd.random() > w.coverage:
+                continue                                    # unbalanced coverage: no row for this security today
             lat = w.signal * x + rnd.gauss(0, 1) + w.date_factor * shocks[j]
             ret = vol * lat
             feats = {"mf.x": (Decimal(str(round(x, 6))), "fresh", None),
                      "mf.z": (Decimal(str(round(z, 6))), "fresh", None),
                      "mf.vol_21": (Decimal(str(round(vol, 6))), "fresh", None)}
             regime = "stress" if abs(shocks[j]) > 1.5 else "calm"
-            rows.append(ds.Row(sym, d, _t(d), j, feats, {"liquidity_class": LIQ[i % 3], "regime": regime},
+            rows.append(ds.Row(sym, d, _t(d), j, feats, {"liquidity_class": liq[i], "regime": regime},
                                (f"{j:032x}{i:032x}",)))
             if j + w.horizon < len(days):
                 direction = "rise" if lat > 0.5 else "fall" if lat < -0.5 else "flat"
@@ -126,7 +140,8 @@ def run(w: World = World(), *, folds_n=5, level=0.05, size_seeds=200, keep=None)
     # long after (those rows are predicted, flagged `incident_recorded_later`: no hindsight removal)
     incidents = ((S[400], S[403], S[399]), (S[500], S[503], S[600]))
     decisions, regimes = [], []
-    diffs, dates, train_series, artifacts = [], [], None, []
+    diffs, dates, dep_series, dep_dates, artifacts = [], [], None, None, []
+    ages, domain_record = [], None
     for k, fold in enumerate(folds, start=1):
         roles, unused = fold.assign(frows, cal)
         train = roles[fd.TRAINING]
@@ -159,7 +174,7 @@ def run(w: World = World(), *, folds_n=5, level=0.05, size_seeds=200, keep=None)
         val = [by_key[r.key] for r in roles[fd.VALIDATION]]
         decided = []
         for r in val:
-            st, reason, flags, _c = dm.decide(dm.Row({f: float(r.features[f][0]) for f in ("mf.x", "mf.z")},
+            st, reason, flags, clipped = dm.decide(dm.Row({f: float(r.features[f][0]) for f in ("mf.x", "mf.z")},
                                                      label_class="reconstructed", industry_group="synthetic",
                                                      eligibility_policy="elig.1",
                                                      feature_versions={"mf.x": "1", "mf.z": "1"}),
@@ -172,7 +187,20 @@ def run(w: World = World(), *, folds_n=5, level=0.05, size_seeds=200, keep=None)
             decisions.append((st, reason, flags))
             regimes.append(r.meta["regime"])
             if st == "predicted":
+                ages.append(pos[r.t] - pos[fold.c_train])
+                # predict from the CLIPPED features, as prediction does (MLK-15: the same logic in validation)
+                if any(float(r.features[f][0]) != v for f, v in clipped.items()):
+                    feats = dict(r.features)
+                    for f, v in clipped.items():
+                        feats[f] = (Decimal(str(round(v, 6))), feats[f][1], feats[f][2])
+                    r = replace(r, features=feats)
                 decided.append(r)
+        domain_record = {"label_classes": list(domain.label_classes), "eligibility_policy": domain.eligibility_policy,
+                         "feature_versions": domain.feature_versions, "horizon": domain.horizon,
+                         "industry_groups": list(domain.industry_groups),
+                         "envelope": {f: list(v) for f, v in domain.envelope.items()},
+                         "bounds": {f: list(v) for f, v in domain.bounds.items()}, "critical": list(domain.critical),
+                         "max_age_sessions": domain.max_age_sessions, "training_cutoff": str(fold.c_train)}
         p = predict(decided)
         calibrated = calibration.apply_scaling(scaling, p.probs, horizon=h)
         ivals, _flags = calibration.intervals(conformal, decided, p.ret, horizon=h)
@@ -183,11 +211,17 @@ def run(w: World = World(), *, folds_n=5, level=0.05, size_seeds=200, keep=None)
         per_date = metrics.by_date([r.session for r in decided], [m - b for m, b in zip(model_loss, base_loss)])
         diffs += list(per_date.values())
         dates += list(per_date)
-        if train_series is None:                   # MLK-23: dependence estimated on training rows only
-            tr = [by_key[r.key] for r in train]
-            tr_ret = metrics.by_date([r.session for r in tr],
-                                     [float(dataset.labels[(r.symbol, r.session, h)].values["ret"]) for r in tr])
-            train_series = list(tr_ret.values())
+        if dep_series is None:
+            # MLK-23: the dependence of THE SERIES THE GATE TESTS (date-level loss differences against base_prior),
+            # estimated on fold 1's training rows that are out of sample for its fit: the select, calibrate and
+            # conformal slices, all before fold 1's cutoff and so before every validation date. Raw probabilities
+            # (vector scaling was fitted on the calibrate slice)
+            inner = rows_of(fd.SELECT) + cal_rows + conf_rows
+            act_in = [dataset.labels[(r.symbol, r.session, h)].values["direction"] for r in inner]
+            m_in = [_loss(q, a) for q, a in zip(predict(inner).probs, act_in)]
+            b_in = [_loss(q, a) for q, a in zip(baselines.predict(prior, inner, h)["base_prior"].probs, act_in)]
+            dep = metrics.by_date([r.session for r in inner], [m - b for m, b in zip(m_in, b_in)])
+            dep_series, dep_dates = list(dep.values()), (str(min(dep)), str(max(dep)))
         cov = calibration.coverage_report(dataset, decided, ivals, h, 0.9, 0.05)
         rel = calibration.reliability_report(dataset, decided, calibrated, h)
         report["folds"].append({
@@ -199,17 +233,22 @@ def run(w: World = World(), *, folds_n=5, level=0.05, size_seeds=200, keep=None)
             "log_loss": round(math.fsum(model_loss) / len(model_loss), 9),
             "base_log_loss": round(math.fsum(base_loss) / len(base_loss), 9),
             "coverage": {g: None if v["coverage"] is None else round(v["coverage"], 6) for g, v in cov.items()},
-            "ece": round(rel["overall"][0], 9)})
+            "scored": len(decided),
+            "coverage_within_tolerance": all(v["within_tolerance"] for v in cov.values()),
+            "ece": round(rel["overall"][0], 9),
+            "ece_within_tolerance": rel["overall"][0] <= ECE_TOLERANCE})
     report["refusal_rates"] = {g: {k: round(v, 9) for k, v in d.items()}
                                for g, d in sorted(dm.refusal_rates(decisions, regimes).items())}
     test = bootstrap.gate_test(diffs, delta=0.0, h=h, level=level, seed=w.seed)
     report["gate_test"] = {"state": test.state, "rejects": test.rejects, "p_value": test.p_value,
                            "block_length": test.block_length, "replicates": test.replicates, "dates": len(diffs)}
-    sz = size.size_study(train_series, len(diffs), h=h, level=level, seeds=size_seeds, block=test.block_length,
+    sz = size.size_study(dep_series, len(diffs), h=h, level=level, seeds=size_seeds, block=test.block_length,
                          seed=w.seed)
     report["size_study"] = {"phi": round(sz.dependence.phi, 9), "arch": round(sz.dependence.arch, 9),
                             "tested": sz.tested, "rejected": sz.rejected, "region": list(sz.region),
-                            "shown": sz.shown}
+                            "shown": sz.shown, "estimated_from": list(dep_dates), "estimated_dates": len(dep_series)}
+    report["ages"] = [min(ages), max(ages)] if ages else None
+    report["domain"] = domain_record
     report["report_hash"] = _hash({k: v for k, v in report.items()})
     if keep is not None:
         keep.update(artifacts=artifacts, folds=folds, dataset=dataset, test=test, sz=sz)
@@ -263,16 +302,19 @@ def record(conn, report, kept, w: World, policy_id, code_version="rehearsal.1"):
                                dataset_id=did, protocol_id=pid, training_cutoff=folds[-1].c_train,
                                evidence_label_class="reconstructed", artifact=kept["artifacts"][-1],
                                environment_json={"rehearsal": report["report_hash"]},
-                               domain={"features": ["mf.x", "mf.z"]})
+                               domain=report["domain"])
+    # only what the rehearsal itself showed (M5-8 audit Major 1): the leakage suite is not run by the rehearsal, so
+    # gate 3's evidence is False; reliability and coverage are checked against their tolerances; the domain recorded
+    # is the real one (stored with the model, below); the ages are those actually evaluated
     evidence = gt.ValidationEvidence(
-        protocol_sufficiency=sufficiency, declared_before_first_run=True, in_family=True, leakage_suite_passed=True,
+        protocol_sufficiency=sufficiency, declared_before_first_run=True, in_family=True, leakage_suite_passed=False,
         code_version=code_version,
-        folds=tuple(gt.FoldEvidence(fr["fold"], True, fr["ece"] is not None,
-                                    all(v is not None for v in fr["coverage"].values()), True)
-                    for fr in report["folds"]),
+        folds=tuple(gt.FoldEvidence(fr["fold"], True, fr["ece_within_tolerance"], fr["coverage_within_tolerance"],
+                                    True) for fr in report["folds"]),
         declared_folds=len(folds), baseline_results={"base_prior": kept["test"]}, required_baselines=("base_prior",),
         size_shown=kept["sz"].shown, policy_status={}, survivorship="complete", survivorship_waiver=None,
-        domain_recorded=True, ages_evaluated=(0, 70), multiplicity=1, horizon=w.horizon)
+        domain_recorded=report["domain"] is not None, ages_evaluated=tuple(report["ages"]), multiplicity=1,
+        horizon=w.horizon)
     try:
         rep = store.validate(conn, mid, evidence, code_version)
         refused = None
@@ -281,3 +323,49 @@ def record(conn, report, kept, w: World, policy_id, code_version="rehearsal.1"):
     return {"configuration": cid, "dataset": did, "protocol": pid, "sufficiency": sufficiency,
             "sufficiency_reasons": reasons, "run": rid, "model": mid, "validation": rep, "refused": refused,
             "status": store.status(conn, mid)}
+
+
+# ------------------------------------------------------------------------------------------------ MLK-23's grid
+
+CASES = {
+    "base": {},
+    "serial_dependence": {"persistence": 0.8},
+    "date_factor": {"date_factor": 1.5},
+    "volatility_clustering": {"vol_cluster": 0.6},
+    "regime_change": {"regime_break": 1.0},
+    "unbalanced_coverage": {"coverage": 0.6},
+    "liquidity_composition": {"low_share": 0.7},
+}
+
+
+def mlk23_grid(cases=None, *, seed=1, size_seeds=200, null_seeds=0, level=0.05):
+    """MLK-23 (design §13): for each case, a world with NO signal, run through the whole protocol; reported per case:
+    - the conformal interval's measured coverage (§8.2's estimand: per liquidity class, averaged over dates) in every
+      fold, and whether each lies within tolerance;
+    - the gate test's type-I error: the size study at the case's own estimated dependence (`size_study`), and, when
+      `null_seeds` > 0, the empirical rejection count of the gate test over that many independent null worlds with
+      its binomial acceptance region;
+    - `unreliable`: a coverage outside tolerance, or a type-I count outside its region. That configuration of the
+      method is then unreliable in every report that uses it.
+    The worlds are the rehearsal's size (24 securities, 640 sessions), below §5.5's minimums: this measures the method
+    on these cases at this size; a protocol's own minimum sizes are run by passing a larger World through `cases`."""
+    out = {}
+    for name, params in sorted((cases or CASES).items()):
+        w = World(seed=seed, signal=0.0, **params)
+        rep = run(w, size_seeds=size_seeds, level=level)
+        cov = {f["fold"]: f["coverage"] for f in rep["folds"]}
+        cov_ok = all(f["coverage_within_tolerance"] for f in rep["folds"])
+        empirical = None
+        if null_seeds:
+            rej = sum(bool(run(World(seed=seed + 1000 + k, signal=0.0, **params), size_seeds=1,
+                               level=level)["gate_test"]["rejects"]) for k in range(null_seeds))
+            region = list(size.acceptance_region(null_seeds, level))
+            empirical = {"worlds": null_seeds, "rejected": rej, "region": region,
+                         "within": region[0] <= rej <= region[1]}
+        sz = rep["size_study"]
+        out[name] = {"params": params, "coverage": cov, "coverage_within_tolerance": cov_ok,
+                     "size_study": {k: sz[k] for k in ("phi", "arch", "tested", "rejected", "region", "shown")},
+                     "empirical_type_1": empirical,
+                     "unreliable": (not cov_ok) or (not sz["shown"]) or (empirical is not None and
+                                                                          not empirical["within"])}
+    return {"cases": out, "grid_hash": _hash(out)}

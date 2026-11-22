@@ -55,6 +55,9 @@ def test_combine_mean_needs_every_component_and_probabilities_for_direction():
     wide = cb.apply(art, [cp("a", ("S", 0), 2, ret=1.0), cp("b", ("S", 0), 2, ret=3.0)], horizon=4, fold=2,
                     meta=cb.RowMeta(0.04, "mid"))
     assert wide["interval"] == (pytest.approx(1.8), pytest.approx(2.2))     # scale-normalised: twice the width
+    tiny = cb.apply(art, [cp("a", ("S", 0), 2, ret=1.0), cp("b", ("S", 0), 2, ret=3.0)], horizon=4, fold=2,
+                    meta=cb.RowMeta(1e-9, "mid"))
+    assert tiny["interval"] == (pytest.approx(1.95), pytest.approx(2.05))  # below the floor: the floor's scale
     low = cb.apply(art, [cp("a", ("S", 0), 2, ret=1.0), cp("b", ("S", 0), 2, ret=3.0)], horizon=4, fold=2,
                    meta=cb.RowMeta(None, "low"))
     assert low["interval"] is None and low["flags"] == ["vol_21_null", "insufficient_rows"]
@@ -301,6 +304,10 @@ def test_conformal_index_and_age_boundary():
 
 
 def test_m3_the_domain_fails_closed():
+    with pytest.raises(ValueError, match="eligibility"):
+        dm.Domain(**{**DOM.__dict__, "eligibility_policy": ""})
+    with pytest.raises(ValueError, match="version"):
+        dm.Domain(**{**DOM.__dict__, "feature_versions": {}})
     with pytest.raises(ValueError, match="envelope"):
         dm.Domain(**{**DOM.__dict__, "envelope": {"ret_21": (-0.5, 0.5)}})          # vol_21 critical, no envelope
     with pytest.raises(ValueError, match="envelope"):
