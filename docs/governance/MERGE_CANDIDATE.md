@@ -22,8 +22,9 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
 
 ## The last green checks
 
-- **CI:** `84c436d` was green on both workflows (offline; Linux on PostgreSQL 17; Windows). The commits after it are
-  run again on the branch head before the merge (the newest entry in the branch review's CI table).
+- **CI:** `21804c1`, the merge candidate, is green on both workflows: offline; Linux on PostgreSQL 17, with the
+  image built with hash-pinned ML wheels; and Windows. Any later commit is run again before the merge (the newest
+  entry in the branch review's CI table).
 - **The cloud container:** the offline suite passed (2,593 tests). The PostgreSQL suites for MF, DE-4, M5 and the
   registry passed.
 
