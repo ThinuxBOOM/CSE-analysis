@@ -1,6 +1,7 @@
 # Phase 8: forecast presentation (design)
 
-**Status: DESIGN, revision 1 (2026-11-20). Not audited. Not implemented.** Written by the cloud session on the branch
+**Status: DESIGN, revision 2 (2026-11-22). Revision 1 ACCEPTED [delegated] (C-0113): its audit found no Blocker;
+revision 2 answers its four Majors and seven Minors (§13). Not implemented.** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no CSE contact, no
 provider call and no change to `main`.
 
@@ -57,7 +58,7 @@ MF row at T (px_ref), data flags  ─┘        agreement (agreement.1) · warni
 ## 3. Boundary
 
 - **Reads:** `r1_predictions` (Phase 5), `r2_runs`, `r2_predictions`, `r2_failures` (Phase 7), MF snapshot rows (for
-  `px_ref` and its session), the designations in force at A (`ml_designations`, `r2_designations`).
+  `px_ref` and its session), the designations in force at T (`ml_designations`, `r2_designations`).
 - **Writes:** its own tables only (§7). No other phase reads them as input; Phase 9 reads them to evaluate, Phase 12
   to display.
 - **Does not:** predict, calibrate, combine routes, call a provider, contact CSE, or change any upstream row.
@@ -66,7 +67,11 @@ MF row at T (px_ref), data flags  ─┘        agreement (agreement.1) · warni
 
 ## 4. The forecast record (FP-1)
 
-One forecast per (security, session D, cutoff T, horizon h, presentation policy). For each of h ∈ {1, 5, 10, 21}:
+Each forecast has its own `forecast_id` (MA §23). Its key is (security, session D, cutoff T, horizon h, purpose,
+presentation policy, sequence): sequence 1 is the forecast as first assembled; a later assembly for the same key
+(§8) has sequence 2, 3, … and `supersedes` the previous one. The first is the forecast that was made; the latest is
+the one displayed as current, with its sequence shown. The Route 1 record is the one of the purpose's designation in
+force at T (Phase 5 §11.1 keys `r1_predictions` by designation). For each of h ∈ {1, 5, 10, 21}:
 
 ### 4.1 States (MA §22)
 
@@ -78,15 +83,21 @@ The forecast carries each route's state separately, and an overall state:
 | `blocked`, `insufficient_data`, `invalid_input`, `not_applicable` | Route 1's own state and reason (Phase 5 §11.2) |
 
 Route 2's states are its own (`predicted`, `insufficient_evidence`, a failed run with its reason, `late`,
-`not_requested`). The overall state follows Route 1 because only Route 1 is a production prediction under a gated,
-designated model; a Route 2 prediction without a Route 1 one is shown, labelled, and the overall state is Route 1's.
+`not_requested`, which carries its reason and marks the forecast as not meeting MA §60's "Route 2 result or
+explicit failure"). The overall state follows Route 1 because only Route 1 is a production prediction under a gated,
+designated model; a Route 2 prediction without a Route 1 one is shown, labelled, and the overall state is Route 1's. A forecast row is written for every (security, T, h) that has a bound Route 2 run, even when Route 1 has no
+record for it (overall state `not_applicable`, reason `no_route1_record`), so that every Route 2 run is evaluated
+(Phase 9 §4).
 
 ### 4.2 Values per route
 
-Probabilities, direction, expected return, interval, expected volatility, and the **derived price**: `px_ref ×
-(1 + expected return)` with the interval mapped the same way, `px_ref` and its session taken from the MF row at T
-(Phase 3: the last printed close, never a carried price). Where `px_ref` is undefined (`spans_unknown`), no price is
-shown and the warning says why.
+Probabilities, direction, expected return, interval, expected volatility, and the **price**, as Phase 5 §6 defines
+it: `reference_close × (1 + expected return)` **on the share basis of the reference close's own session**. For
+Route 1 it is the predicted price stored in its record; for Route 2 it is derived from the same reference close
+by the same rule. The page shows `ref_session` and `stale_sessions` beside it (Phase 3 §5.3: `px_ref` is the latest
+printed close and may be carried), and warns `basis_changed` when an ex-date lies in (`ref_session`, D\*], since the
+shown price is then on the earlier session's basis. Where `px_ref` is undefined (`price_unknown`, Phase 3 §5.3,
+ML-24), no price is shown and the warning says why; `spans_unknown` on the row is shown as a warning only.
 
 ### 4.3 Uncertainty
 
@@ -108,7 +119,7 @@ Computed only when both routes are `predicted`. Otherwise `not_comparable` with 
 | `probability_difference` | Total variation distance ½ Σ\|p₁ − p₂\| over the three classes, in [0, 1] |
 | `return_difference` | r₁ − r₂ (Route 1 minus Route 2), in return units |
 | `interval_overlap` | Whether the two return intervals intersect |
-| `volatility_difference` | v₁ − v₂ |
+| `volatility_difference` | v₁ − v₂, only where both routes state the same quantity for the horizon (Phase 5's volatility label per h; the R2 specification fixes the same units); otherwise `not_comparable` |
 | `overall_divergence` | `agree`, `partial` or `diverge` (below) |
 
 `overall_divergence` is a categorical summary with stated rules, not a score: `diverge` if the directions differ and
@@ -151,9 +162,16 @@ evidence ids resolved to the pack entries they cite (Phase 7 §7.3). Nothing is 
 - Every row is stamped by the database (`recorded_at`, `created_by`), append-only for every role (the trigger pattern of
   0021), and checked against its record and hash (the guard of 0021's M5-7 fix).
 - **Warnings** (`warnings.1`): the union of the routes' flags and the data flags at T: `reconstructed_evidence`,
-  `no_engine_component`, `incident_recorded_later`, `stale_sessions > 0`, `spans_unknown`, `survivorship` not
-  `complete`, Route 2 failed or late, Route 2 contamination label not `clean` (only possible in replay), the R1
-  designation older than its model-age limit. Each warning names its source.
+  `no_engine_component`, `incident_recorded_later`, `stale_sessions > 0`, `basis_changed`, `price_unknown`,
+  `spans_unknown`, `survivorship` not `complete`, Route 2 failed, late or `not_requested`, Route 2 contamination label
+  not `clean` (only possible in replay), and the model's age stratum (the share of its service age evaluated in
+  validation; a stale model is already blocked, Phase 5 §11.2). Each warning names its source.
+- **Cutoffs.** `fc_forecasts` stores MA §11's cutoffs explicitly: the forecast timestamp (A), the information cutoff
+  T, the market cutoff (T, D\*), and the financial, news and sentiment cutoffs of the bound rows.
+- **Hash.** `row_hash` covers the record including A, the bound row ids and hashes and the policy versions; a
+  re-assembly at the same A from the same rows reproduces it.
+- Phase 3 §13.3's range-stating guards and the migration-text guards apply to 0024. The tables hold CSE-derived
+  values and fall under G-1 §6's owner-controlled purge, like every append-only table.
 
 ---
 
@@ -163,7 +181,13 @@ evidence ids resolved to the pack entries they cite (Phase 7 §7.3). Nothing is 
   purpose's deadline passes (Phase 7 §9: before the next session's open). A is the database's `now()` at the
   assembly transaction.
 - **Read rule.** Every row read has `recorded_at ≤ A`, and the designations used are those in force at T (MLK-19). A
-  replay at (T, A) returns the stored forecast; a re-assembly with the same rows reproduces its `row_hash`.
+  replay at (T, A) returns the stored forecast; a re-assembly with the same rows reproduces its `row_hash`. The read
+  rule is a parameter of the assembly code: live, it is `recorded_at ≤ A`; in the laboratory, it is Phase 10's
+  (§4.4 there).
+- **Route 2 binding.** The Route 2 run bound is the purpose's R2 designation's run for (security, T), its latest
+  successful attempt **received before the purpose's deadline** (Phase 7 §9). A response received after the
+  deadline is a late run whatever A is: it goes to `fc_late_r2` and is never bound as the live Route 2 prediction,
+  including after downtime. An `independent`-pack run for the same T, if one exists, is shown beside it.
 - **No hindsight.** A Route 1 or Route 2 row recorded after A never changes the forecast. A corrected upstream row
   produces a new forecast only through a new Route 1 record, under a new forecast row with a `supersedes` link; the
   old one stays (MA §24: predictions are never overwritten).
@@ -218,7 +242,9 @@ evidence ids resolved to the pack entries they cite (Phase 7 §7.3). Nothing is 
 | FPL-4 | A later MF row with a different close | `px_ref` and the price unchanged |
 | FPL-5 | Route 2 failed; Route 1 blocked; both predicted with opposite directions | The states, `not_comparable` reasons, `diverge` |
 | FPL-6 | A reasoning template citing a feature absent from the record | Refused at render |
-| FPL-7 | `spans_unknown` at T | No price; the warning names the source |
+| FPL-7 | `price_unknown` at T; `spans_unknown` on a row whose `px_ref` is defined; an ex-date in (`ref_session`, D\*] | No price, warning named; price shown with a `spans_unknown` warning; `basis_changed` |
+| FPL-8 | A Route 2 response received after the deadline, then a late assembly after downtime | Not bound; `fc_late_r2` |
+| FPL-9 | A second assembly of the same key | Sequence 2 with `supersedes`; sequence 1 unchanged |
 
 ---
 
@@ -237,4 +263,16 @@ evidence.
 
 ## 13. Audit record
 
-None yet.
+### Audit 1 (revision 1; fresh-context agent, 2026-11-22): ACCEPT
+
+No Blocker. Four Majors, fixed in revision 2:
+
+| ID | Finding | Fix |
+|---|---|---|
+| F8-1 | The key collided with `supersedes` and lacked the purpose | `forecast_id`; key with purpose and sequence; first versus current (§4) |
+| F8-2 | A late Route 2 response could be bound after downtime | Binding by receipt before the deadline (§8) |
+| F8-3 | `spans_unknown` named instead of `price_unknown` | Corrected; FPL-7 |
+| F8-4 | "Never a carried price" contradicted Phase 3 §5.3; share basis not stated | Phase 5 §6's rule, `ref_session`, `stale_sessions`, `basis_changed` (§4.2) |
+
+Minors fixed: designations at T throughout; MA §11's cutoffs stored; which R2 run is bound; `not_requested` with a
+reason; the age warning replaced; volatility units per horizon; the hash covers A; the guards and G-1 §6 named.

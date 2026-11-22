@@ -54,6 +54,11 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-22: Phases 8 to 10 designs accepted, revision 2 (C-0113)
+
+Their audit found no Blocker. Its Majors are fixed in each document's revision 2, listed in its audit record (§13).
+Nothing for you to run. The Phase 11, Phase 12 and server-move designs and the M5-8 code are still being audited.
+
 ### 2026-11-20: designs for Phases 8 to 12 and milestone 14 (C-0112)
 
 Six new design documents, not yet audited, nothing built:

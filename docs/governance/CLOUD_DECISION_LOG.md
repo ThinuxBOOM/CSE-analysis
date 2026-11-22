@@ -1077,3 +1077,19 @@ They follow the earlier designs' rules:
 
 The reserved choices are listed in each document. The migrations they name (0024 to 0028) are proposals; none is
 written.
+
+## C-0113: Phases 8 to 10 designs accepted; revision 2 fixes their Majors ([delegated], 2026-11-22)
+
+A fresh-context audit of the forecast-presentation, outcome-evaluation and backtesting designs found no Blocker, so
+all three are accepted. Its 17 Majors are fixed in revision 2 of each document. The main changes:
+- each forecast has its own identity, and the first assembly is the one evaluated;
+- a late AI answer is never attached to a forecast, even after downtime;
+- prices follow Phase 5's rule, with the right flag for an unknown price;
+- an outcome is matched through the forecast's own reference row;
+- no machine-learning outcome is computed inside a reserved test period before its single access;
+- the backtesting lab has its own read rule;
+- availability is checked with both of Phase 3's time conditions;
+- a backtest whose universe misses delisted securities is not valid without a waiver;
+- the backtest the promotion gate needs can now actually be run.
+
+The Minors are fixed with them.

@@ -1,11 +1,12 @@
 # Phase 9: outcome evaluation (design)
 
-**Status: DESIGN, revision 1 (2026-11-20). Not audited. Not implemented.** Written by the cloud session on the branch
+**Status: DESIGN, revision 2 (2026-11-22). Revision 1 ACCEPTED [delegated] (C-0113): its audit found no Blocker;
+revision 2 answers its five Majors and six Minors (§13). Not implemented.** Written by the cloud session on the branch
 `integration/cloud` (`docs/governance/CLOUD_DECISION_LOG.md`, C-0002, C-0003). It authorizes no CSE contact, no
 provider call and no change to `main`.
 
 **Governing records:** Master Architecture (MA) §4, §24 to §26, §37, §55 (Phase 9), §56, §60, §62, §68; the Phase 3
-design (§7 to §9: targets, `targets.1`, `resolved_at`, label states); the Phase 5 design (§6: the scoring population
+design (§11: targets, `targets.1`, `resolved_at`, label states; §4.3 non-final sessions); the Phase 5 design (§6: the scoring population
 and `scoring.1`; §12: metrics, strata, the date-level bootstrap; §9.3: the gate test); the Phase 7 design (§7.4
 `as_stated`, §9 contamination); the Phase 8 design (`fc_forecasts`). Where this document and those differ, they win.
 
@@ -22,7 +23,7 @@ fc_forecasts (T, h) ── wait until the label resolves ──▶ MF target bui
 ```
 
 1. **The actual comes from one place.** Realised direction, return and volatility are MF's labels (`targets.1`),
-   computed point-in-time with corporate actions and the session calendar (Phase 3 §7 to §9). Phase 9 never computes
+   computed point-in-time with corporate actions and the session calendar (Phase 3 §11). Phase 9 never computes
    its own return from prices, so a forecast and its training labels mean the same event.
 2. **Evaluated when the label is resolved, recorded as it was known.** An outcome row binds the label row (build id,
    row hash, `resolved_at`) it used. A later label build that changes the label (an action entered late, Phase 3
@@ -63,18 +64,35 @@ fc_forecasts (T, h) ── wait until the label resolves ──▶ MF target bui
 ## 4. Outcomes (OE-1, OE-2)
 
 - **When.** A daily job after the target build for the latest session: for each forecast whose horizon has elapsed,
-  it looks for the label of (symbol, D, h) in the designated evaluation build (KNOWN, `targets.1`, the latest build
-  recorded at the job's instant).
-- **States** follow the label: `resolved` (evaluated); `unresolvable_*` and `terminated` (recorded with the label's
-  state, scored by `scoring.1` exactly as Phase 5 scores them, e.g. a delisting is not silently dropped);
-  `unexplained_move_in_horizon` (recorded as `provisional`, never as resolved); not yet resolved (no row; retried
-  daily).
-- **What is recorded per forecast and route:** the actual class, return and volatility; the derived actual price; for
-  direction: hit, the class confusion cell, Brier and log loss; for return: signed and absolute error, inside the
-  interval or not; for price: absolute and percentage error; for volatility: error and ratio; the label row's build
+  it looks for the label in the latest KNOWN `targets.1` build recorded at the job's instant. **The label is found
+  through the forecast's own reference row** (Phase 3 §11 keys labels by build, reference snapshot row and h):
+  `fc_forecasts → r1_predictions → the MF snapshot row (id and row hash) the prediction read`. A label of another
+  snapshot of the same D (an early and a final capture) is never used.
+- **Which forecasts.** In the `live` population, each (security, D, T, h, purpose) is evaluated once, on its forecast
+  **as first assembled** (sequence 1, Phase 8 §4): a superseding assembly used information recorded later. Superseding
+  assemblies are evaluated in their own population, `superseded`, and are counted, never pooled with `live`.
+- **States**, every state of Phase 3 §11, each terminal one with an outcome row:
+  - `resolved` and `resolved_carried` (a carried price on F is a real outcome for a holder; `scoring.1` puts both in
+    the headline, Phase 5 §6) are evaluated;
+  - `unresolvable_missing_price`, `unresolvable_quality`, `terminated` and `unknown_session_in_horizon` (which can be
+    permanent, Phase 3 §4.3) are recorded with the label's state and scored by `scoring.1` exactly as Phase 5 scores
+    them (a delisting is not dropped);
+  - `unexplained_move_in_horizon` is recorded as `provisional`, never as resolved;
+  - `pending` alone means no row yet; it is retried daily.
+- **What is recorded per forecast and route:** the actual class, return and volatility; the actual price
+  `reference_close × (1 + actual return)` on the reference close's own share basis (the forecast's basis, Phase 5 §6);
+  for direction: hit, the class confusion cell, Brier and log loss; for return: signed and absolute error, inside the
+  interval or not; for price: absolute and percentage error; for volatility: error, and the ratio only when the
+  actual is positive (a window without trading has volatility 0: the ratio is undefined and recorded as such); for a
+  label with no return (`terminated`, `unresolvable_*`), only the state and `scoring.1`'s score, no error; the label row's build
   id, row hash and `resolved_at`; the metric code version.
 - **Revision.** Each run compares the label it would use with the one bound to the latest outcome row of that
-  forecast; a different row hash makes a new outcome row with `revises` set and the reason (`label_changed`). Reports
+  forecast, on its **content** (state, values, `resolved_at` and adjustment set), not on the build's identity, so a new
+  daily build with the same label revises nothing; a different content makes a new outcome row with `revises` set
+  and the reason (`label_changed`).
+- **Route 2 without Route 1.** Phase 8 writes a forecast row for every (security, T, h) with a bound Route 2 run,
+  even when Route 1 has no record (overall state `not_applicable` or Route 1's own), so every Route 2 run is evaluated
+  (MA §26). Reports
   use the latest outcome per forecast and show how many were revised.
 
 ---
@@ -97,12 +115,16 @@ nominal level and its validated coverage; Route 2's `as_stated` probabilities sc
 
 ## 6. Route comparison (OE-4)
 
+- Each route's refusal and failure rates (including `r2_failures`) are reported beside every comparison, because a
+  comparison over "both predicted" selects on each route's choice to decline.
 - Per (horizon, period), on the forecasts where both routes predicted: the date-level loss difference (log loss for
   direction, absolute error for return) with its bootstrap interval and the number of blocks.
 - Reported per Route 2 pack policy: comparisons under the default pack (Route 2 saw Route 1) are labelled as such;
   only `independent`-pack results support a claim that the routes carry different information (Phase 7 §10).
 - The agreement categories are evaluated too: the error of each route when the routes `agree` versus `diverge`.
-- These reports inform the owner. They change no designation by themselves (MA §26, §27).
+- These reports inform the owner. They change no designation by themselves (MA §26, §27). Many strata and periods
+  are reported; no correction for multiplicity is made, so they are labelled **descriptive**. Only Phase 5's
+  protocol (one access, corrected) is a test.
 
 ---
 
@@ -112,10 +134,16 @@ nominal level and its validated coverage; Route 2's `as_stated` probabilities sc
 
 | Table | Contents |
 |---|---|
-| `ev_outcomes` | One row per (forecast, route, evaluation): the `population` (`live`, `late`, `simulated`) and exactly one of `fc_forecast_id` or `bt_forecast_id` (Phase 10, P10-D5); the label binding (build id, row hash, `resolved_at`), the state, the actual values, every per-row error of §4, `revises`, the metric code version, `row_hash` |
-| `ev_reports` | A period report: its population (live, late, simulated run id), period, strata, metrics with intervals and block counts, the outcome ids it read (or their hash), the code version, `report_hash` |
+| `ev_outcomes` | One row per (forecast, route, evaluation): the `population` (`live`, `late`, `superseded`, `late_r2`, `simulated`); the subject, exactly one of `fc_forecast_id`, `fc_late_r2_id` or `bt_forecast_id` (a `subject_kind` and a `subject_id`, checked by a trigger: 0025 checks `fc_*` subjects, 0026 adds the `bt_forecasts` check; no ALTER of the table); the label binding (build id, row hash, `resolved_at`), the state, the actual values, every per-row error of §4, `revises`, the metric code version, `row_hash` |
+| `ev_reports` | A period report of the live-side populations (simulated runs report in `bt_reports`, Phase 10): its population, period, strata, metrics with intervals and block counts, the outcome ids it read (or their hash), the code version, `report_hash` |
 
 Stamped by the database, append-only, hash-guarded as 0021. A report is reproducible from the outcome rows it names.
+The tables hold CSE-derived values and fall under G-1 §6's owner-controlled purge.
+
+**Populations.** `live`: forecasts as first assembled before the next session's open. `late`: forecasts first
+assembled after it (Phase 8 §8). `superseded`: later assemblies of a key. `late_r2`: Route 2 results received after the
+deadline (`fc_late_r2`), which Phase 7 §9 says are "evaluated as a simulated one": they are evaluated, and kept out of
+every live report, like simulated runs. `simulated`: Phase 10's forecasts.
 
 ---
 
@@ -123,12 +151,15 @@ Stamped by the database, append-only, hash-guarded as 0021. A report is reproduc
 
 - An outcome's instant is its `recorded_at`; the label it binds must have been recorded at or before it. Evaluation
   needs data after the forecast by definition: what it must not do is let an outcome reach a forecast or a model.
-  Nothing upstream reads `ev_*`, except Phase 11's monitoring (drift and alerts, which change nothing by themselves)
-  and Phase 5's protocol when the owner declares a new protocol whose test period lies after these outcomes.
-- **Test periods.** A live period that an ML protocol has declared as its test period (`ml_test_periods`) is not
-  reported per model before that protocol's single access: Phase 9's reports for models of that protocol exclude it
-  and say so (MLK-4/MLK-5 at the reporting layer). Route-level reports that do not name the protocol's models are
-  not affected.
+  Nothing upstream reads `ev_*`, except Phase 11's monitoring (drift and alerts, which change nothing by themselves).
+  Phase 5's datasets read MF labels only (Phase 5 §4), never `ev_*`.
+- **Test periods.** Joining Route 1 predictions to labels inside a declared, unspent test period is itself an access
+  (Phase 5 §5.4). So **inside any unspent declared interval, no Route 1 outcome row is computed**, for any model and
+  any report: the job skips those forecasts and records them as `sealed_test_period`. They are evaluated after the
+  protocol's access, labelled post-access. Route 2 outcomes are computed (Route 2 is never a Route 1 component,
+  Phase 7 §10). As a second line, a protocol may not declare a family containing the configuration that serves live
+  while its test period lies in the serving period (P9-D6), so the owner is never shown that configuration's
+  test-period performance before the access.
 
 ---
 
@@ -142,7 +173,9 @@ Stamped by the database, append-only, hash-guarded as 0021. A report is reproduc
 | P9-D2 | A changed label makes a new outcome row; nothing is overwritten | MA §24 |
 | P9-D3 | Reporting minimum: 30 dates and 20 blocks for an interval; below it counts only | Phase 5 §12.3 |
 | P9-D4 | Live, late and simulated populations never pooled | Different information sets |
-| P9-D5 | Unspent test periods are hidden from per-model reports of their protocol | MLK-4 |
+| P9-D5 | No Route 1 outcome row inside an unspent declared test period; evaluated after the access, post-access | Phase 5 §5.4: the join is an access |
+| P9-D6 | A protocol's family may not contain the live-serving configuration over a serving test period | The owner would otherwise see test-period performance |
+| P9-D7 | The first assembly is the live forecast; later assemblies are their own population | No hindsight, no double count |
 
 ### Reserved for the owner
 
@@ -174,8 +207,11 @@ Stamped by the database, append-only, hash-guarded as 0021. A report is reproduc
 | OEL-3 | A delisting in the horizon | Scored per `scoring.1`, not dropped |
 | OEL-4 | Simulated and live forecasts of the same key | Separate populations; no report pools them |
 | OEL-5 | A Route 2 `contaminated` simulated result | Excluded from every clean report |
-| OEL-6 | A declared, unspent test period | Absent from the protocol's models' reports, with the reason |
-| OEL-7 | A forecast whose label never resolves | No outcome row; counted as pending |
+| OEL-6 | A declared, unspent test period | No Route 1 outcome row computed (`sealed_test_period`); computed after the access, post-access |
+| OEL-7 | A forecast whose label stays `pending`; one whose label is `unknown_session_in_horizon` | No row and counted as pending; an outcome row with that state |
+| OEL-8 | Two KNOWN snapshots for D with different closes | The label of the forecast's own reference row |
+| OEL-9 | A superseded forecast | Sequence 1 in `live`; the later one in `superseded` |
+| OEL-10 | A new daily build with an unchanged label | No revision |
 
 ---
 
@@ -192,4 +228,17 @@ code, policies. 15. Reasoning: reports show their counts and intervals.
 
 ## 13. Audit record
 
-None yet.
+### Audit 1 (revision 1; fresh-context agent, 2026-11-22): ACCEPT
+
+No Blocker. Five Majors, fixed in revision 2:
+
+| ID | Finding | Fix |
+|---|---|---|
+| F9-1 | The label was looked up by (symbol, D, h), not by the reference row | Through the forecast's own snapshot row (§4) |
+| F9-2 | `resolved_carried` and permanent `unknown_session_in_horizon` missing | Every Phase 3 state enumerated (§4) |
+| F9-3 | Outcome rows inside an unspent test period are an access | None computed there; P9-D5, P9-D6 (§8) |
+| F9-4 | Late Route 2 results had no population | `late_r2` (§7) |
+| F9-5 | Superseded forecasts double-counted or hindsighted | The first assembly is `live`; `superseded` population |
+
+Minors fixed: the Phase 3 citation; revisions compare label content; the price basis, the zero-volatility ratio and
+no-return labels; refusal rates and "descriptive" on comparisons; the Phase 5 sentence; Route 2 without Route 1.
