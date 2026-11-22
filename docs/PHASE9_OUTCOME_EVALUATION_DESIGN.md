@@ -134,7 +134,7 @@ nominal level and its validated coverage; Route 2's `as_stated` probabilities sc
 
 | Table | Contents |
 |---|---|
-| `ev_outcomes` | One row per (forecast, route, evaluation): the `population` (`live`, `late`, `superseded`, `late_r2`, `simulated`); the subject, exactly one of `fc_forecast_id`, `fc_late_r2_id` or `bt_forecast_id` (a `subject_kind` and a `subject_id`, checked by a trigger: 0025 checks `fc_*` subjects, 0026 adds the `bt_forecasts` check; no ALTER of the table); the label binding (build id, row hash, `resolved_at`), the state, the actual values, every per-row error of §4, `revises`, the metric code version, `row_hash` |
+| `ev_outcomes` | One row per (forecast, route, evaluation): the `population` (`live`, `late`, `superseded`, `late_r2`, `simulated`, `shadow`); the subject, exactly one of `fc_forecast_id`, `fc_late_r2_id`, `bt_forecast_id` or `ad_shadow_prediction_id` (a `subject_kind` and a `subject_id`, checked by a trigger: 0025 checks `fc_*` subjects, 0026 adds `bt_forecasts`, 0027 adds `ad_shadow_predictions`; no ALTER of the table); the label binding (build id, row hash, `resolved_at`), the state, the actual values, every per-row error of §4, `revises`, the metric code version, `row_hash` |
 | `ev_reports` | A period report of the live-side populations (simulated runs report in `bt_reports`, Phase 10): its population, period, strata, metrics with intervals and block counts, the outcome ids it read (or their hash), the code version, `report_hash` |
 
 Stamped by the database, append-only, hash-guarded as 0021. A report is reproducible from the outcome rows it names.
@@ -143,7 +143,7 @@ The tables hold CSE-derived values and fall under G-1 §6's owner-controlled pur
 **Populations.** `live`: forecasts as first assembled before the next session's open. `late`: forecasts first
 assembled after it (Phase 8 §8). `superseded`: later assemblies of a key. `late_r2`: Route 2 results received after the
 deadline (`fc_late_r2`), which Phase 7 §9 says are "evaluated as a simulated one": they are evaluated, and kept out of
-every live report, like simulated runs. `simulated`: Phase 10's forecasts.
+every live report, like simulated runs. `simulated`: Phase 10's forecasts. `shadow`: Phase 11's shadow predictions, compared once per assignment and never in a live report.
 
 ---
 

@@ -54,6 +54,14 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-22: dashboard and server-move designs accepted; adaptation revised (C-0114)
+
+- The dashboard and the server move passed their audit; revision 2 of each fixes its Majors.
+- Adaptation (Phase 11) had a Blocker. It is fixed in revision 2, which waits for a re-audit.
+- Two new choices for you in the server design:
+  - **SD-R6:** whether to add a rule limiting the server's outbound traffic to CSE. P1 has none today.
+  - **SD-R2:** your own judgement that the server counts as "your own server" under G-1.
+
 ### 2026-11-22: Phases 8 to 10 designs accepted, revision 2 (C-0113)
 
 Their audit found no Blocker. Its Majors are fixed in each document's revision 2, listed in its audit record (§13).

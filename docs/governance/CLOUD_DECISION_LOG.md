@@ -1093,3 +1093,34 @@ all three are accepted. Its 17 Majors are fixed in revision 2 of each document. 
 - the backtest the promotion gate needs can now actually be run.
 
 The Minors are fixed with them.
+
+## C-0114: Phase 12 and server-move designs accepted; Phase 11 not yet ([delegated], 2026-11-22)
+
+The audit of the last three designs found one Blocker, in Phase 11 (adaptation). A shadow comparison of a candidate
+model could have looked at a reserved test period before its single access. Phase 11 is therefore **not accepted**.
+Its revision 2 answers the Blocker and all seven Majors and needs a re-audit:
+- one test-period rule now applies to every comparison and every training slice;
+- a candidate is a whole designation list;
+- a recalibration is no longer treated as a roll-forward;
+- each shadow is compared once, on a window fixed in advance, and counted;
+- the model-age warning comes early enough to finish a shadow.
+
+The dashboard (Phase 12) and the server move (milestone 14) had no Blocker and are accepted. Revision 2 of each fixes
+its Majors.
+
+The dashboard:
+- uses its own login instead of the existing read-only group, which would have exposed raw data;
+- states how it is reached in local production and on the server;
+- arrives in a later accepted build.
+
+The server move:
+- removes the workstation's means to capture at the freeze, not only its arming;
+- proves that nothing was written after the final dump;
+- compares the copy with the dump's own manifest;
+- follows P1's recovery steps exactly;
+- does all the work that needs no data before the freeze, in a window planned over non-trading days, because missed
+  market sessions cannot be recovered.
+
+Two choices are new for the owner:
+- the server's outbound rule (SD-R6), because P1 restricts no outbound traffic today;
+- the owner's own G-1 determination of the server (part of SD-R2).
