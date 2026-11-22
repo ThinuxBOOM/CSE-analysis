@@ -235,7 +235,13 @@ def identity_problems(found, recorded, source_id):
 
 # ------------------------------------------------------------------------------------------------ globals (REG-B04)
 
-IDENT = r'("(?:[^"]|"")+"|[^\s;,"]+)'
+IDENT = r'("(?:[^"]|"")+"|[^\s;,"\'$\\]+)'
+ATTRIBUTES = ("SUPERUSER", "INHERIT", "CREATEROLE", "CREATEDB", "LOGIN", "REPLICATION", "BYPASSRLS")
+# The three SET lines pg_dumpall 17 writes in a globals-only dump, with exactly these values. Any other SET is an
+# unknown statement: an open-ended value could hold an unterminated quote and hide what follows (AR-C-0001 finding 2),
+# or change lc_messages so that errors are no longer printed as "ERROR:" (finding 12).
+SET_LINE = re.compile(r"SET default_transaction_read_only = off;|SET client_encoding = '[A-Za-z0-9_]+';|"
+                      r"SET standard_conforming_strings = on;")
 
 
 def unquote(name):
@@ -248,8 +254,14 @@ def parse_globals(text):
     roles, attrs, grants, unknown = [], {}, [], []
     for n, raw in enumerate(text.splitlines(), 1):
         line = raw.strip()
-        if not line or line.startswith("--") or re.fullmatch(r"\\(restrict|unrestrict) \S+", line) \
-                or re.fullmatch(r"SET [a-z_]+ = [^;]+;", line):
+        if not line or re.fullmatch(r"\\(restrict|unrestrict) [A-Za-z0-9]+", line) or SET_LINE.fullmatch(line):
+            continue
+        if line.startswith("--"):
+            # A comment line is skipped by this parser but is still read by psql inside a string or a dollar quote that
+            # an earlier line left open. The SET rule above admits no quote that could stay open; a comment that
+            # carries a statement terminator or a quote is refused all the same (AR-C-0001 finding 2).
+            if any(c in line for c in (";", "'", "$", "/*", "\\")):
+                unknown.append(f"line {n}: comment with statement characters: {line[:120]}")
             continue
         m = re.fullmatch(r"CREATE ROLE " + IDENT + ";", line)
         if m:
@@ -257,7 +269,12 @@ def parse_globals(text):
             continue
         m = re.fullmatch(r"ALTER ROLE " + IDENT + r" WITH ([A-Z ]+);", line)
         if m:
-            attrs[unquote(m.group(1))] = m.group(2).split()
+            words = m.group(2).split()
+            names = [w[2:] if w.startswith("NO") and w[2:] in ATTRIBUTES else w for w in words]
+            if sorted(names) != sorted(ATTRIBUTES):        # exactly the seven attributes, each once (finding 4)
+                unknown.append(f"line {n}: ALTER ROLE attribute list {words!r} is not the seven attributes, each once")
+                continue
+            attrs[unquote(m.group(1))] = words
             continue
         m = re.fullmatch(r"GRANT " + IDENT + " TO " + IDENT + r"(?: WITH ([A-Z ,]+?))?(?: GRANTED BY " + IDENT + ")?;",
                          line)
@@ -296,12 +313,20 @@ def globals_errors(stderr, bootstrap_superuser):
     return out
 
 
-ATTRIBUTES = ("SUPERUSER", "INHERIT", "CREATEROLE", "CREATEDB", "LOGIN", "REPLICATION", "BYPASSRLS")
-
-
 def globals_proof(spec, roles_now, members_now):
-    """Proof that every role, attribute and membership of globals.sql exists on the copy as the file states it."""
+    """Proof, in BOTH directions, that the copy's roles, role attributes and memberships are exactly those globals.sql
+    states: everything the file states exists as stated, and nothing else exists (AR-C-0001 finding 3). Predefined
+    roles (pg_*) and memberships among them are PostgreSQL's own and are not compared."""
     problems = list(f"unrecognized statement in globals.sql: {u}" for u in spec["unknown"])
+    own = lambda name: not name.startswith("pg_")
+    for r in sorted(set(filter(own, roles_now)) - set(spec["roles"])):
+        problems.append(f"role {r} exists on the copy but globals.sql does not create it")
+    for r in sorted(set(spec["roles"]) - set(spec["attributes"])):
+        problems.append(f"role {r} is created by globals.sql without its attributes (no ALTER ROLE ... WITH)")
+    stated = {(g["role"], g["member"]) for g in spec["grants"]}
+    for g, m, *_ in members_now:
+        if own(m) and (g, m) not in stated:
+            problems.append(f"membership {m} in {g} exists on the copy but globals.sql does not grant it")
     for r in spec["roles"]:
         if r not in roles_now:
             problems.append(f"role {r} was not created")
@@ -321,9 +346,9 @@ def globals_proof(spec, roles_now, members_now):
             problems.append(f"membership {g['member']} in {g['role']} was not created")
             continue
         for k, idx in (("admin", 0), ("inherit", 1), ("set", 2)):
-            if k in g["options"] and got[idx] is not g["options"][k]:
-                problems.append(f"membership {g['member']} in {g['role']}: {k} {got[idx]}, globals.sql says "
-                                f"{g['options'][k]}")
+            want = g["options"].get(k, False) if k == "admin" else g["options"].get(k)   # ADMIN unstated = not granted
+            if want is not None and got[idx] is not want:
+                problems.append(f"membership {g['member']} in {g['role']}: {k} {got[idx]}, globals.sql says {want}")
     return problems
 
 
@@ -504,6 +529,11 @@ class Procedure:
         with open(globals_sql, encoding="utf-8") as f:
             spec = parse_globals(f.read())
         su = m["bootstrap_superuser"]
+        self.record["globals"] = {"roles": spec["roles"], "memberships": len(spec["grants"]),
+                                  "unknown": spec["unknown"]}
+        self.save()
+        if spec["unknown"]:        # BEFORE psql runs the file: an unknown statement is never executed (finding 1)
+            self.fail("globals.sql: refused before it ran, unrecognized statement(s): " + "; ".join(spec["unknown"]))
 
         def globals_gate(code, _out, err):
             errors = globals_errors(err, su)
@@ -547,6 +577,13 @@ class Procedure:
     def teardown(self, stop_argv, data_directory):
         """Stop ONLY the copy: its identity is checked again, and the stop command must name the recorded data
         directory."""
+        copy = self.record.get("copy") or {}
+        if copy.get("problems") != [] or not isinstance(copy.get("identity"), dict):
+            self.fail("teardown: refused, this procedure did not accept the cluster as its copy "
+                      f"(problems: {copy.get('problems')})")
+        restored = [e for e in self.record.get("steps", []) if e.get("label") == "restore-database" and e.get("ran")]
+        if not restored:
+            self.fail("teardown: refused, no restore ran into this cluster, so it is not known to be the copy")
         if data_directory != self.recorded["data_directory"]:
             self.fail(f"teardown: {data_directory} is not the copy's data directory {self.recorded['data_directory']}")
         self.run_step(Step("teardown-stop-the-copy", stop_argv, gate_exit0, route=self.target.route))
@@ -702,6 +739,11 @@ def main(argv=None):
         except ProcedureError as exc:
             print(f"FAIL isolated restore: {exc}")
             return 1
+        except Exception as exc:  # noqa: BLE001 - a timeout, an OS error or a malformed answer is a failed procedure
+            proc.record["result"] = {"ok": False, "stopped": f"{type(exc).__name__}: {exc}", "at": now()}
+            proc.save()
+            print(f"FAIL isolated restore: {type(exc).__name__}: {exc}")
+            return 1
         for s in proc.record["steps"]:
             print(f"PASS {s['label']}: identity checked ({'yes' if isinstance(s['identity_check'], dict) else 'n/a'}), "
                   f"{s['gate']['detail']}")
@@ -713,11 +755,14 @@ def main(argv=None):
         rec = json.load(f)
     proc = Procedure(target, rec["dump"], rec["source"], args.evidence)
     proc.record = rec
-    proc.recorded = rec["copy"]["identity"]
+    proc.recorded = (rec.get("copy") or {}).get("identity")
     try:
         proc.teardown(["pg_ctlcluster", PG_VERSION, "main", "stop"], f"/var/lib/postgresql/{PG_VERSION}/main")
     except ProcedureError as exc:
         print(f"FAIL teardown: {exc}")
+        return 1
+    except Exception as exc:  # noqa: BLE001
+        print(f"FAIL teardown: {type(exc).__name__}: {exc}")
         return 1
     print("PASS teardown: only the copy was stopped (its identity checked first)")
     return 0

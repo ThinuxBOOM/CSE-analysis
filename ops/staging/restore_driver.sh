@@ -136,6 +136,10 @@ r2_finish() {  # r2_finish TARGET LOG RDIR RC: evidence out, teardown, stop; the
     docker cp "$target:$R2_STATE/evidence/." "$(winpath "$rdir/evidence")" >> "$log" 2>&1 \
       && [[ -s "$rdir/evidence/procedure.json" ]] || { saved=0; echo "FAIL R2: the procedure's evidence could not be saved" >> "$log"; }
     docker exec "$target" bash "$RESTORE_TOOLS/stage_restore.sh" r2-teardown >> "$log" 2>&1 || rc=1
+    # the evidence again, AFTER the teardown: procedure.json now holds the teardown's own identity check and the
+    # copy's state afterwards (AR-C-0001 finding 10). The first copy above stays the fallback if this one fails.
+    docker cp "$target:$R2_STATE/evidence/." "$(winpath "$rdir/evidence")" >> "$log" 2>&1 \
+      || echo "NOTE R2: the evidence after teardown could not be copied; the copy taken before teardown is kept" >> "$log"
   fi
   docker inspect "$target" > "$rdir/inspect-after.json" 2>> "$log" || saved=0
   docker stop "$target" > /dev/null 2>> "$log"
