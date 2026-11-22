@@ -54,6 +54,17 @@ imported data cover the same day they are compared field by field and a disagree
 - Part 2b done: target builds over captured sessions; labels' `resolved_at` takes the captured evidence's instants.
 - Part 3, the audit of MF-8, is next.
 
+### 2026-11-22: M5-8 accepted; adaptation accepted (C-0115)
+
+- **M5-8:** the rehearsal passed its audit, and the three Majors are fixed. It now records only what it actually
+  showed. The new robustness grid (MLK-23) finds real weak spots: a strong market-wide daily shock, strong serial
+  dependence, or uneven coverage breaks the uncertainty ranges' coverage. The results are in
+  `docs/PHASE5_ML_IMPLEMENTATION.md`, "M5-8 audit". **Before a model passes gate 5 on real data**, the grid must be
+  run at the real protocol's sizes.
+- **Phase 11 (adaptation):** accepted at its re-audit; now at revision 3.
+- **New carried item before `main`:** registry changes (branch review). Today an owner designation of unpromoted
+  models is not checked unless a promotion happens in the same transaction.
+
 ### 2026-11-22: dashboard and server-move designs accepted; adaptation revised (C-0114)
 
 - The dashboard and the server move passed their audit; revision 2 of each fixes its Majors.

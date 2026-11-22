@@ -483,8 +483,8 @@ Design §15's last step. **Exit:** the whole chain, reproducible.
 | `worker/ml_rehearsal/rehearsal.py` | One synthetic world: a planted signal in `mf.x`, an irrelevant `mf.z`, a persistent common date factor with calm and stress regimes, and three liquidity classes with their volatilities. It runs dataset → 5 expanding walk-forward folds and inner slices → `linear` on each fold's fit slice → vector scaling and §8.2 conformal intervals → the domain from the fit slice and §11.2's refusals on every validation row, with two incident flags (one recorded before the days it covers, one long after) → per-fold metrics, coverage and reliability → the gate test of the pooled date-level loss differences against `base_prior` → the size study → `report_hash`. `record` writes it to the registry as a synthetic dataset and validates it with the rehearsal's own evidence |
 
 **Recorded result** (default world, seed 1, 200 size seeds):
-- The gate test rejects: p = 0.0001 over 325 dates, block 10, B 9 999.
-- The size study is shown: 14 rejections out of 200 at the training rows' dependence (φ ≈ 0.20), inside [2, 21].
+- The gate test rejects: p = 0.0001 over 323 dates (two incident-blocked days have no scored row), block 10, B 9 999.
+- The size study is shown: 14 rejections out of 200 at the training rows' dependence (φ ≈ 0.20), inside [2, 21]. *(Superseded by the audit fixes below.)*
 - Fold coverage is about 0.9 per class. `report_hash` `ac22048d…`.
 - Refusals in validation: `outside_validated_domain` 8, `incident` 48, `incident_recorded_later` 72. By regime, the stress days are all predicted, and the incidents fall on calm days.
 - In the registry the protocol is `exploratory` (24 securities < 50, a 106-date fit slice < 504, no test dates), so validation writes a failing report. A `validated` event written directly is refused by the database's gate 1 (synthetic).
@@ -510,6 +510,59 @@ The plants ML-1 to ML-24 and FL-1 to FL-22 remain shown at their own stored rows
 **Not here:**
 - a combination inside the rehearsal (the world has one model kind; the combiner is tested in M5-7);
 - the test-period access (the rehearsal declares a test period but never opens it).
+
+## M5-8 audit (fresh-context agent, at `8c1f5a6`): accepted
+
+No Blocker (C-0037), so M5-8 is accepted (C-0115). The audit also confirmed that all six M5-7 Majors are closed.
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | `record()` claimed passes the rehearsal never showed: the leakage suite, reliability and coverage meaning only "not None", a stub domain, ages (0, 70) | Only what was shown is claimed. Gate 3's evidence is False, because the rehearsal runs no leakage suite. Reliability uses ECE ≤ 0.05 and coverage uses §8.2's `within_tolerance`. The real `Domain` is stored with the model, and the real ages are recorded. The PostgreSQL test checks the stored gates |
+| Major 2 | The dependence came from training returns, not from the series the gate tests | Estimated on the date-level loss differences against `base_prior`, over fold 1's select, calibrate and conformal slices (out of sample for its fit, all before any validation date; raw probabilities). The test asserts the dates |
+| Major 3 | Only one point of MLK-23 was built | `rehearsal.mlk23_grid`: seven cases. Each reports the measured §8.2 coverage per fold, the size study at the case's own dependence, the empirical type-I count over independent null worlds, and `unreliable` |
+
+**Minors fixed:**
+- `arch` is estimated on the AR(1) residuals;
+- tests kill each surviving mutant that was checked: the region's lower edge, the level, volatility clustering in the simulation and the estimate, the hash binding the report, only predicted rows scored, the ages, the signal rejected across seeds, and the §8.2 floor;
+- the recorded size studies use 200 seeds;
+- 323 dates, not 325;
+- validation predicts from the clipped features;
+- `Domain` requires a policy and every schema feature's version.
+
+**Open:** `Component.gated` is stated by the caller, not read from the registry. Destination: the production pipeline,
+which builds components from `ml_model_events`.
+
+**Recorded result after the fixes** (default world, seed 1, 200 size seeds):
+- `report_hash` `e7e9ac75…`.
+- The gate test rejects: p = 0.0001, 323 dates.
+- The dependence of the gate's own series is φ = 0.035 and arch = 0.011, estimated over 135 dates (2022-06-07 to 2022-12-26).
+- The size study is shown: 12 of 200 rejections, region [2, 21].
+- Evaluated ages: 1 to 65 sessions.
+- Fold 2's ECE is 0.080, outside the tolerance, so gate 4 fails. Gate 2 also fails, because the protocol is `exploratory`.
+
+**The MLK-23 grid** (no signal; 200 size seeds; 20 independent null worlds per case; `grid_hash` `34b77722…`):
+
+| Case | Coverage within tolerance in every fold | Size study (rejected of 200, region [2, 21]) | Empirical type-I (of 20, region [0, 5]) | Unreliable |
+|---|---|---|---|---|
+| base | yes | 14, shown | 0 | no |
+| serial dependence (persistence 0.8) | **no** (per-class coverage down to 0.83) | **not testable**: block 27 leaves fewer than 20 blocks in 323 dates | 1 | **yes** |
+| date factor 1.5 | **no** (fold 3 overall 0.81) | 14, shown | 0 | **yes** |
+| volatility clustering 0.6 | yes | 11, shown | 0 | no |
+| regime change (volatility doubles at mid-sample) | yes | 14, shown | 0 | no |
+| unbalanced coverage (odd securities on 60 % of days) | **no** (a class outside tolerance) | 13, shown | 0 | **yes** |
+| liquidity composition (70 % low) | yes | 13, shown | 0 | no |
+
+How to read it:
+- **A strong common date factor, or strong serial dependence, breaks the per-row conformal interval's coverage.** That
+  is what MLK-23 exists to show. So is a short protocol under strong dependence, which cannot be tested at all.
+- **The empirical type-I counts are near 0** because a model fitted to noise is worse than `base_prior`. The null
+  worlds' mean loss difference is therefore above 0, so they sit inside H0, not at its boundary. The size study, run
+  at the boundary (mean 0), is the type-I measurement that matters, and it is shown in every testable case.
+- **The regime change does not move the direction classes**, which depend on the latent variable and not on the
+  return's scale. Its effect is on coverage, which stays within tolerance because the scale uses `vol_21`.
+- **These worlds are the rehearsal's size**, below §5.5's minimums. A protocol's own minimum sizes are run by passing a
+  larger `World` through `cases`. **Before gate 5 is passed on real data**, the grid is run at the real protocol's
+  sizes and its result cited (destination: the first real protocol).
 ---
 
 ## Branch-wide review (2026-11-18), Phase 5 findings
