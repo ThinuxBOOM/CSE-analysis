@@ -116,9 +116,43 @@ Sri Lankan law (IP Act No. 36 of 2003, Computer Crime Act No. 24 of 2007) was re
 consequences are an IP block, a cessation/deletion request, or (unlikely for private non-commercial use) legal
 action.
 
+## 9. Extension E1: third-party copies of CSE historical data (2026-11-14)
+
+**Decided by the project owner on 2026-11-14** (cloud decision log C-0035). The status stays **`accepted_risk`**. This
+is not CSE permission and not a licence.
+
+**What is extended.** The accepted risk of §1 to §3 now also covers obtaining CSE historical market data (daily
+prices, corporate actions, indices, security lists and related files) from a **third party's public copy**, first
+the public GitHub repository `TradeIQ-CSE/cse-dataset`, and storing and using it privately in the project:
+downloading it, keeping it in the project's own database and backups, deriving features and labels from it, and
+training and evaluating models on it.
+
+**What the owner accepts, knowingly:**
+- the underlying data is CSE's, and the published CSE terms (§2) restrict storing it without written permission;
+- the third party's publication, and the MIT licence on its code, do not show that it had the right to republish
+  the data, or that the project may store it;
+- the data's provenance and correctness are not established by its publication; it is validated before use (below).
+
+**Scope and controls.** Unchanged from §3 and §4, and in particular:
+- personal, non-commercial, private local analysis only; no redistribution or publication of the data or of raw
+  files from the copy, in whole or in part;
+- **none of the copy's data files are committed to Git.** Only scripts, reports with counts and hashes, and
+  documents are committed;
+- obtaining the copy sends **no request to CSE**: it is fetched from GitHub. This extension authorizes no CSE request;
+- copies held in a cloud working container for validation are temporary, are never committed, and go with the
+  container;
+- data from the copy enters project tables only through the Phase 3 import path, with its provenance (repository,
+  commit, file and SHA-256) recorded per batch, and only after the validation in
+  `docs/research/TRADEIQ_VALIDATION.md` reports no blocker for that data family;
+- the purge procedure of §6 covers imported data as well as captured data.
+
+**Escalation.** In addition to §5: use of the copy stops pending owner review if CSE or the third party objects, if
+the copy is withdrawn, or if the project's use changes as described in §5.
+
 ## 8. Change log
 
 | Date | Change |
 |---|---|
 | 2026-09-27 | G-1 raised as a blocker for P3/live capture (P0.5) |
 | 2026-09-28 | Investigation completed; owner decision recorded: `accepted_risk` |
+| 2026-11-14 | Extension E1 (§9): third-party copies of CSE historical data, starting with `TradeIQ-CSE/cse-dataset`; owner decision, recorded by the cloud session (C-0035) |

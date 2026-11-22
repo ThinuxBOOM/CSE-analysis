@@ -1,5 +1,15 @@
 # The isolated-restore procedure (REG-B01)
 
+*(2026-11-12, cloud session: **audited, APPROVE WITH CONDITIONS; not approved by the owner.** The audit is
+`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`. Its findings 1 to 5, 10 and 11 are fixed in the tool and the staging
+driver on the branch `integration/cloud`; findings 6 to 8 block any production checkpoint. Corrections to this
+document from that audit: an unknown statement in `globals.sql` is now refused **before** the file is run, and the
+proof of the globals is two-directional; `cse-financial verify` runs with its default sample of 3 and is a sample,
+not a full re-proof; the teardown's stop command names cluster `17/main`, not the data directory, which the tool
+compares separately; and the copy's identity is in effect its system identifier, since source and copy share port
+and data directory by construction and a physical clone would share the identifier. REG-B01 stays OPEN and runbook
+§6 stays BLOCKED.)*
+
 **Status (2026-11-04): written, NOT YET AUDITED OR APPROVED.** This is the procedure that the R-F4 register's REG-B01
 asks for (`docs/R_F4_IMPLEMENTATION.md` §25.4). It is pending its independent audit and the owner's approval. Until
 then:

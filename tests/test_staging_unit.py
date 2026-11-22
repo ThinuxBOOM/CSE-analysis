@@ -779,6 +779,7 @@ def test_h8_st29_requires_pass_for_the_verifier_checks_the_owner_members_check_a
 import argparse  # noqa: E402
 import datetime  # noqa: E402
 import importlib.util  # noqa: E402
+import inspect  # noqa: E402
 
 RESTORE_DIR = os.path.join(REPO, "ops", "restore")
 TOOL_FILE = os.path.join(RESTORE_DIR, "isolated_restore.py")
@@ -1959,3 +1960,48 @@ def test_r14_links_are_resolved_before_any_path_comparison(tmp_path):
     ok, why = verdict(good, os.path.join(roots["vault"], "RA-0001.md"), ra_args(roots), roots)
     assert ok, why
     assert "os.path.realpath(path)" in read("restore_gate.py")
+
+
+def test_r13_audit_ar_c_0001_globals_refused_before_execution_reverse_proof_and_teardown_only_of_an_accepted_copy(tmp_path):
+    """AR-C-0001 (the cloud audit of the isolated-restore procedure, 2026-11-12), findings 1 to 5 and 11."""
+    # finding 2: a SET with an open quote hides the next line from a line parser; psql would still run it
+    hidden = "SET application_name = ';\n--'; CREATE ROLE evil SUPERUSER LOGIN; COPY (select 1) TO PROGRAM 'id'; --\n"
+    assert len(IR.parse_globals(GLOBALS_PG17 + hidden)["unknown"]) == 2
+    for line in ("SET lc_messages = 'de_DE.UTF-8';", "SET client_encoding = 'UTF8' ;", "SET search_path = public;",
+                 "\\! id", "COPY (select 1) TO PROGRAM 'id';", "ALTER SYSTEM SET listen_addresses = '*';",
+                 "-- a comment; DROP ROLE cse_reader;", "-- it's a comment"):
+        assert IR.parse_globals(GLOBALS_PG17 + line + "\n")["unknown"], line
+    assert IR.parse_globals(GLOBALS_PG17)["unknown"] == []                      # the real PostgreSQL 17 shape still parses
+    # finding 4: an ALTER ROLE word that is not one of the seven attributes is refused, and so is a missing attribute
+    assert IR.parse_globals("CREATE ROLE x;\nALTER ROLE x WITH PASSWORD NULL FROBNICATE;\n")["unknown"]
+    assert IR.parse_globals("CREATE ROLE x;\nALTER ROLE x WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN "
+                            "NOREPLICATION;\n")["unknown"]
+    # finding 3: the proof is two-directional
+    spec = IR.parse_globals(GLOBALS_PG17)
+    attrs = lambda login: {"SUPERUSER": False, "INHERIT": True, "CREATEROLE": False, "CREATEDB": False, "LOGIN": login,
+                           "REPLICATION": False, "BYPASSRLS": False}
+    roles = {"cse_backup": attrs(True), "cse_migrator": attrs(True), "cse_owner": attrs(False), "cse_reader": attrs(False),
+             "cse_verifier": attrs(True), "postgres": {k: True for k in attrs(True)}, "pg_monitor": attrs(False)}
+    members = [["cse_owner", "cse_migrator", False, False, True], ["cse_reader", "cse_verifier", False, True, False],
+               ["pg_read_all_data", "cse_backup", False, True, True], ["pg_read_all_settings", "pg_monitor", False, True, True]]
+    assert IR.globals_proof(spec, roles, members) == []                          # PostgreSQL's own pg_ roles are not compared
+    assert any("evil" in x for x in IR.globals_proof(spec, dict(roles, evil=attrs(True)), members))       # an extra role
+    assert IR.globals_proof(spec, roles, members + [["cse_owner", "cse_worker_x", False, True, True]])    # an extra membership
+    assert IR.globals_proof(spec, roles, [["cse_owner", "cse_migrator", True, False, True]] + members[1:])  # ADMIN not stated
+    # finding 1: restore() refuses an unknown statement BEFORE any command runs; finding 5: teardown refuses a cluster the
+    # procedure did not accept, or one it never restored into
+    src = inspect.getsource(IR.Procedure.restore)
+    assert src.index('if spec["unknown"]') < src.index('"restore-globals"')
+    proc = IR.Procedure.__new__(IR.Procedure)
+    proc.dir, proc.target = str(tmp_path), None
+    ident = {"data_directory": "/var/lib/postgresql/17/main", "system_identifier": "1", "port": 5432, "unix_socket": True}
+    for record in ({"steps": [], "copy": {"identity": ident, "problems": ["not a fresh cluster: databases x"]}},
+                   {"steps": [], "copy": {"identity": ident, "problems": []}},
+                   {"steps": [{"label": "restore-database", "ran": False}], "copy": {"identity": ident, "problems": []}},
+                   {"steps": []}):
+        proc.record, proc.recorded = dict(record), ident
+        with pytest.raises(IR.ProcedureError, match="teardown: refused"):
+            proc.teardown(["false"], "/var/lib/postgresql/17/main")
+    # finding 11: main() records and reports every failure, not only ProcedureError
+    main_src = inspect.getsource(IR.main)
+    assert main_src.count("except Exception") == 2
