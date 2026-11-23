@@ -435,3 +435,14 @@ The fix:
 - re-scoring uses the listed item's text;
 - a failure to write the failed run row never hides the original error;
 - a failure before any progress keeps the earlier resume point.
+
+**Second re-check, at `4d7c9f9`: accepted, no Blocker or Major.** The auditor ran 12 hourly passes against a
+realistic fake: an exclusive end date and 15-minute `seendate` buckets. The backlog was worked through and every
+article in the window was stored.
+
+Its Minors are fixed:
+- `oldest_seen` takes every entry whose `seendate` parses, dropped ones included, so a page of dropped entries is
+  paged past.
+- When more than a page shares one second, the pass steps past it (whether the end is inclusive or exclusive) and
+  counts it in `skipped_seconds`. Tested both ways with 300 articles in one second; the articles beyond are reached.
+- The runbook notes the overlap's cost in pages and the day-level meaning of `ran` after a backlog.

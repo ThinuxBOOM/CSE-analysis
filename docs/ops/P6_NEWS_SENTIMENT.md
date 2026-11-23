@@ -112,6 +112,10 @@ Worker (`cse-worker`):
   - **Cadence and budget:** at most hourly. Each run reads robots.txt and lists 1 to 4 pages: a normal day is about
     48 requests, and the worst case (4 pages every hour) is 120, both under the record's 200. Scheduling it is the
     owner's act on the laptop; each run contacts the source.
+  - **Rare cases:** if more than a page of articles share one second, the pass steps past that second and counts it
+    in the run's `skipped_seconds`. A page of only dropped entries is paged past. Each fresh window re-lists the
+    last 6 hours, which costs pages at high volume; any rate under about 1,000 articles an hour still catches up.
+    A pass that finishes a backlog writes `ran` for its day; that day's newer articles come in the next pass.
   - **`start-ingestion --at`:** use about now. A start in the past is a backlog, which `ingest` works through at
     about 1,000 articles an hour. GDELT keeps only 3 months.
 

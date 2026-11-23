@@ -77,6 +77,7 @@ class GdeltDocAdapter(Adapter):
         self.dropped_cse = 0
         self.duplicates = 0
         self.truncated = False
+        self._oldest_any = None
         self.last_outcome = None                 # the transport's outcome of the latest listing ("ok", ...)
         self.last_body = None                    # its body, for the owner's inspection only
 
@@ -126,8 +127,9 @@ class GdeltDocAdapter(Adapter):
             return ("malformed",)
 
     def oldest_seen(self):
-        """The oldest first-seen time in the latest listing (None when it was empty): where the next page ends."""
-        return min((i["seen_at"] for i in self._items.values()), default=None)
+        """The oldest first-seen time in the latest listing, over EVERY entry whose `seendate` parses (kept, dropped
+        as CSE, or malformed otherwise), so paging moves on past a page of dropped entries (None: none parsed)."""
+        return self._oldest_any
 
     def list_new(self, since=None, until=None):
         """References in the listing, newest first. The previous listing's items are forgotten (the cache is one
@@ -135,6 +137,7 @@ class GdeltDocAdapter(Adapter):
         caller narrows the window or overlaps the next `since` (deduplication is by reference)."""
         self._items = {}
         self.truncated = False
+        self._oldest_any = None
         r = self.transport.get(self.listing_url(since, until), "listing")
         self.last_outcome = r.outcome
         self.last_body = r.response.body if r.outcome == "ok" else None
@@ -150,6 +153,13 @@ class GdeltDocAdapter(Adapter):
             self.malformed += 1
             return []
         self.truncated = len(entries) >= self.max_records
+        times = []
+        for e in entries:
+            try:
+                times.append(parse_seendate(e.get("seendate")) if isinstance(e, dict) else None)
+            except (ValueError, TypeError):
+                pass
+        self._oldest_any = min((x for x in times if x is not None), default=None)
         now = self.transport.clock()
         refs = []
         for e in entries:

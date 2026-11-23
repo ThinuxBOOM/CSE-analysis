@@ -47,7 +47,8 @@ CONFIRM_SPACING = timedelta(hours=24)
 REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 RECORDS = os.path.join(REPO, "docs", "governance")
 DETAIL = ("since", "upper", "resume", "listed_at", "complete", "pages", "listing", "listed", "new_articles",
-          "revisions", "confirmed", "processed", "unprocessed", "malformed", "dropped_cse", "processing_errors", "error")
+          "revisions", "confirmed", "processed", "unprocessed", "malformed", "dropped_cse", "processing_errors",
+          "skipped_seconds", "error")
 
 
 def _source(cur, source_id):
@@ -193,8 +194,17 @@ def _pass(conn, adapter, t, source_id, storage, since, upper, until, out):
         if not adapter.truncated or (oldest is not None and oldest <= since):
             out["complete"] = True                   # a page not full, or one reaching back to `since`: covered
             break
-        if oldest is None or not fresh:
-            break                                    # no progress: incomplete; the next pass resumes here
+        if oldest is None:
+            break                                    # nothing parsed: incomplete; the next pass resumes here
+        if not fresh and until is not None and oldest + timedelta(seconds=1) >= until:
+            # a full page with nothing new at the same boundary: more than a page shares one second. Step past it
+            # and say so, rather than repeating the same request for ever (second re-check, Minor 1)
+            # first at `oldest` (an exclusive end drops that second); if the same page comes back (an inclusive
+            # end), one second earlier
+            out["skipped_seconds"] = out.get("skipped_seconds", 0) + 1
+            until = oldest if until > oldest else oldest - timedelta(seconds=1)
+            resume = until - timedelta(seconds=1)
+            continue
         # the next page ends one second after the oldest: an inclusive or exclusive `enddatetime` both keep the
         # articles sharing that time (repeats are dropped by `seen`) (re-audit Minor 1)
         until = oldest + timedelta(seconds=1)

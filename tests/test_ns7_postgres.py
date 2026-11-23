@@ -690,3 +690,51 @@ def test_p8_ns10_reaudit_a_backlog_is_worked_through_and_never_wedges(cluster, t
         passes.append(run())
         new += passes[-1]["new_articles"]
     assert new == 1 and passes[-1]["status"] == "ran"
+
+
+
+@pytest.mark.parametrize("inclusive", [True, False])
+def test_p8_ns10_more_than_a_page_sharing_one_second_never_stops_progress(cluster, tmp_path, inclusive):
+    from worker.news_store import ingest
+    db = fs.fresh_db(cluster)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    w = fs.conn(cluster, db, user="cse_worker")
+    api = "api.gdelt.test"
+    body = n1.record_bytes(source_id="gdelt_doc", allowed_hosts=[api], request_discipline={
+        "min_interval_seconds": 1.0, "daily_budget": 1000, "max_retries": 0, "backoff_base_seconds": 1.0,
+        "backoff_max_seconds": 5.0, "retry_after_max_seconds": 5.0, "max_consecutive_failures": 4,
+        "max_body_bytes": 5_000_000})
+    (tmp_path / "NS-R.md").write_bytes(body)
+    store.register_source(o, body, "NS-R.md")
+    now = datetime.now(UTC).replace(microsecond=0)
+    store.start_ingestion(o, "gdelt_doc", now - timedelta(hours=2), "the owner starts GDELT (test)")
+    crowded = now - timedelta(minutes=30)
+    corpus = [(crowded, f"https://news.example.test/x{k}", f"Item x{k}") for k in range(300)] + \
+             [(crowded - timedelta(minutes=5), f"https://news.example.test/y{k}", f"Item y{k}") for k in range(10)]
+    fake = _CorpusApi(api, corpus)
+    fake_send = fake.send if inclusive else (lambda url, *a: _exclusive(fake, url, *a))   # an exclusive end
+    sender = type("S", (), {"send": staticmethod(fake_send)})()
+    out = ingest.run_ingest(w, "gdelt_doc", sender=sender, records_dir=str(tmp_path), clock=lambda: now)
+    assert out["skipped_seconds"] >= 1 and out["complete"]
+    with w.cursor() as cur:
+        cur.execute("select count(*) from ns_articles where source_id = 'gdelt_doc' and reference in (%s)" %
+                    ",".join(["%s"] * 10), [gd_ref(f"https://news.example.test/y{k}") for k in range(10)])
+        assert cur.fetchone()[0] == 10               # the articles past the crowded second are reached
+    w.rollback()
+
+
+def _exclusive(fake, url, *a):
+    from urllib.parse import parse_qs, urlencode, urlsplit
+    parts = urlsplit(url)
+    if not parts.query:
+        return fake.send(url, *a)
+    q = {k: v[0] for k, v in parse_qs(parts.query).items()}
+    if "enddatetime" in q:
+        end = datetime.strptime(q["enddatetime"], "%Y%m%d%H%M%S") - timedelta(seconds=1)
+        q["enddatetime"] = end.strftime("%Y%m%d%H%M%S")
+    return fake.send(f"{parts.scheme}://{parts.netloc}{parts.path}?{urlencode(q)}", *a)
+
+
+def gd_ref(url):
+    from worker.news_ingest import gdelt
+    return gdelt.reference_of(url)
