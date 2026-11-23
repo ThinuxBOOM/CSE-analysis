@@ -6,9 +6,12 @@ recorded the attempt. Nothing configures it with a real host in v1: no source ex
 
 The session ignores proxy environment variables (`trust_env=False`; no proxies), stores no cookie (so none is ever
 sent), never follows a redirect (`allow_redirects=False`: the transport decides), and reads at most the record's
-byte limit (a larger body is `too_large`, never truncated into a result).
+byte limit (a larger body is `too_large`, never truncated into a result). `timeout` bounds each read; the whole
+request also has a total deadline (`TOTAL_FACTOR` x timeout), so a server that drips bytes cannot hold it open.
+Only `wiring.py` may construct it (a static test enforces it).
 """
 import http.cookiejar
+import time
 
 from .transport import Response
 
@@ -29,6 +32,9 @@ class _NoCookies(http.cookiejar.CookiePolicy):
         return False
 
 
+TOTAL_FACTOR = 4
+
+
 class RequestsSender:
     def __init__(self):
         import requests
@@ -40,6 +46,7 @@ class RequestsSender:
 
     def send(self, url, headers, timeout, max_body_bytes):
         r = self._requests
+        deadline = time.monotonic() + TOTAL_FACTOR * timeout
         try:
             resp = self._session.get(url, headers=headers, timeout=timeout, allow_redirects=False, stream=True,
                                      proxies={})
@@ -50,6 +57,8 @@ class RequestsSender:
         try:
             body = bytearray()
             for chunk in resp.iter_content(65536):
+                if time.monotonic() > deadline:
+                    return Response(None, {}, None, "timeout")
                 body.extend(chunk)
                 if len(body) > max_body_bytes:
                     return Response(resp.status_code, dict(resp.headers), None, "too_large")

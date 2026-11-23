@@ -59,15 +59,15 @@ def transport(script, rec=None, ledger=None, start=T0):
 def test_refuse_without_record_or_on_a_hash_mismatch(tmp_path):
     p = tmp_path / "NS-SYNTHETIC.md"
     with pytest.raises(gv.RecordRefused, match="record_missing"):
-        gv.load(str(p), "0" * 64)
+        gv.load(str(p), "0" * 64, [HOST, OTHER])
     p.write_bytes(record_bytes())
     pinned = gv.sha256_of(record_bytes())
     assert gv.load(str(p), pinned, [OTHER, HOST]).source_id == "synthetic_news"
     with pytest.raises(gv.RecordRefused, match="record_hash"):
-        gv.load(str(p), "a" * 64)
+        gv.load(str(p), "a" * 64, [HOST, OTHER])
     p.write_bytes(record_bytes() + b" ")                                     # one byte changed after approval
     with pytest.raises(gv.RecordRefused, match="record_hash"):
-        gv.load(str(p), pinned)
+        gv.load(str(p), pinned, [HOST, OTHER])
     p.write_bytes(record_bytes())
     with pytest.raises(gv.RecordRefused, match="allowed_hosts_mismatch"):   # Minor 11: ns_sources must equal it
         gv.load(str(p), pinned, [HOST])
@@ -77,7 +77,7 @@ def test_the_record_refuses_cse_credentials_relays_and_incomplete_fields():
     for over, code in ((dict(allowed_hosts=[HOST, "www.cse.lk"]), "cse_refused"),
                        (dict(allowed_hosts=["cdn.cse.lk"]), "cse_refused"),
                        (dict(credentials={"key": "x"}), "credentials"),
-                       (dict(allowed_hosts=[HOST, "web.archive.org"]), "fetch_on_behalf"),
+                       (dict(allowed_hosts=[HOST, "archive.org"]), "fetch_on_behalf"),
                        (dict(fetch_on_behalf_hosts=["elsewhere.example.test"]), "fetch_on_behalf"),
                        (dict(storage_level="everything"), "storage_level"),
                        (dict(onward_disclosure="all"), "onward_disclosure"),
@@ -92,8 +92,25 @@ def test_the_record_refuses_cse_credentials_relays_and_incomplete_fields():
         assert e.value.code == code, (over, e.value.code)
     with pytest.raises(gv.RecordRefused, match="record_block"):
         gv.parse(b"# no block")
-    rec = record(allowed_hosts=[HOST, "web.archive.org"], fetch_on_behalf_hosts=["web.archive.org"])
-    assert "web.archive.org" in rec.allowed_hosts                            # only by the owner's naming
+    rec = record(allowed_hosts=[HOST, "archive.org"], fetch_on_behalf_hosts=["archive.org"])
+    assert "archive.org" in rec.allowed_hosts                                # only by the owner's naming
+    # NS-1 audit minors: finite numbers, no booleans, bounds, no unknown keys, no control characters, nested
+    # credentials
+    disc = {"min_interval_seconds": 2.0, "daily_budget": 5}
+    for rd in ({**disc, "daily_budget": float("nan")}, {**disc, "daily_budget": True},
+               {**disc, "max_body_bytes": float("inf")}, {**disc, "retry_after_max_seconds": float("nan")},
+               {**disc, "daily_budget": "5"}, {**disc, "daily_budget": 10 ** 9}, {**disc, "surprise": 1},
+               {"daily_budget": 5}):
+        with pytest.raises(gv.RecordRefused, match="request_discipline"):
+            record(request_discipline=rd)
+    for ident in ({"user_agent": "ok\r\nX-Injected: 1"}, {"user_agent": "ok", "contact": 5},
+                  {"user_agent": "ok", "contact": "a\nb"}, {"user_agent": "ok", "extra": "x"}):
+        with pytest.raises(gv.RecordRefused, match="identification"):
+            record(identification=ident)
+    with pytest.raises(gv.RecordRefused, match="unknown_keys"):
+        record(surprise=True)
+    with pytest.raises(gv.RecordRefused, match="credentials"):
+        record(identification={"user_agent": "ok", "contact": None, "session_cookie": "x"})
 
 
 # ----------------------------------------------------------------------------------------------- CSE and hosts
@@ -110,6 +127,13 @@ def test_cse_refused_before_any_socket(url):
 
 
 @pytest.mark.parametrize("url", [f"https://{HOST}/fetch?u=https%3A%2F%2Fwww.cse.lk%2Fapi",
+                                 f"https://{HOST}/fetch?u=www%2Ecse%2Elk",                    # the dots encoded
+                                 f"https://{HOST}/fetch?u=www%252Ecse%252Elk",                # twice
+                                 f"https://{HOST}/fetch?u=www%25252Ecse%25252Elk",            # three times
+                                 f"https://{HOST}/fetch?u=cse\u3002lk",                       # ideographic full stop
+                                 f"https://{HOST}/fetch?u=\uff43\uff53\uff45.lk",            # fullwidth letters
+                                 f"https://{HOST}/fetch?u=cse\u200b.lk",                      # zero-width split
+                                 f"https://{HOST}/fetch?u=cse%26%2346%3Blk",                  # an HTML reference
                                  f"https://{HOST}/fetch?u=https%253A%252F%252Fcdn.cse.lk%252Fa.pdf",
                                  f"https://{HOST}/proxy/www.cse.lk/announcements",
                                  f"https://{HOST}/r#https://www.CSE.lk/",
@@ -118,6 +142,16 @@ def test_a_cse_host_in_the_path_or_query_is_refused(url):
     t, sender, _ = transport({})
     r = t.get(url, "article")
     assert (r.outcome, r.code) == ("refused", "cse_in_url") and sender.sent == []
+
+
+def test_decoding_is_bounded_and_refuses_when_still_changing():
+    from worker.news_ingest import hosts as h
+    from urllib.parse import quote
+    nested = "/"
+    for _ in range(h.MAX_DECODE_ROUNDS + 2):
+        nested = quote(nested, safe="")
+    assert h.carries_cse(f"https://{HOST}/q?u={nested}")         # still changing after the bound: refused
+    assert not h.carries_cse(f"https://{HOST}/q?u=%2541")        # settles quickly, no CSE
 
 
 def test_lookalikes_are_not_cse_but_still_need_the_allow_list():
@@ -132,7 +166,10 @@ def test_the_allow_list_is_exact():
         r = t.get(url, "article")
         assert r.outcome == "refused" and sender.sent == [], url
     t, sender, _ = transport({})
-    assert t.get("https://web.archive.org/save/x", "article").code == "fetch_on_behalf"
+    assert t.get("https://archive.org/save/x", "article").code == "fetch_on_behalf"
+    for bad in ("http://[cse.lk]/", "https://[::1", "http://news.example.test:notaport/"):
+        r = t.get(bad, "article")
+        assert (r.outcome, r.code) == ("refused", "bad_url") and t.ledger.attempts[-1]["state"] == "refused"
 
 
 # ----------------------------------------------------------------------------------------------- robots, spacing,
@@ -283,3 +320,105 @@ def test_a_body_over_the_limit_is_failed_never_truncated():
     assert (r.outcome, r.code) == ("failed", "too_large") and r.response.body is None
     assert t.ledger.events[-1] == {"attempt_id": t.ledger.attempts[-1]["id"], "kind": "failed", "at": T0 +
                                    timedelta(seconds=2), "error_kind": "too_large"}
+
+
+# ----------------------------------------------------------------------------------------------- NS-1 audit
+
+
+def test_a_stop_holds_across_processes_until_the_owner_clears_it():
+    a = f"https://{HOST}/a"
+    led = tp.MemoryLedger()
+    t1, s1, _ = transport({ROBOTS: robots_open(), a: [tp.Response(403)]}, ledger=led)
+    assert t1.get(a, "article").outcome == "stopped"
+    t2, s2, _ = transport({ROBOTS: robots_open(), a: [ok()]}, ledger=led)          # another process, same ledger
+    assert t2.stopped == "http_403" and t2.get(a, "article").outcome == "stopped" and s2.sent == []
+    with pytest.raises(ValueError):
+        led.owner_clear_stop("synthetic_news", " ", T0)
+    led.owner_clear_stop("synthetic_news", "the owner reviewed the block and resumed", T0)
+    assert t2.stopped is None and t2.get(a, "article").outcome == "ok"
+
+
+def test_robots_is_the_transports_own_purpose():
+    t, sender, _ = transport({})
+    with pytest.raises(ValueError, match="robots"):
+        t.get(f"https://{HOST}/private/x", "robots")
+    script = {ROBOTS: [tp.Response(200, {}, b"User-agent: *\nDisallow: /private\n")]}
+    for purpose in ("listing", "refetch", "article"):
+        t, sender, _ = transport(dict(script))
+        assert t.get(f"https://{HOST}/private/x", purpose).outcome == "robots_disallowed", purpose
+
+
+def test_robots_is_per_host_and_port():
+    p8 = f"https://{HOST}:8443/a"
+    t, sender, _ = transport({ROBOTS: robots_open(), f"https://{HOST}:8443/robots.txt": robots_open(),
+                              f"https://{HOST}/a": [ok()], p8: [ok()]})
+    t.get(f"https://{HOST}/a", "article")
+    t.get(p8, "article")
+    assert [u for u, _h in sender.sent].count(f"https://{HOST}:8443/robots.txt") == 1
+
+
+def test_an_in_flight_attempt_counts_as_ending_now():
+    led = tp.MemoryLedger()
+    led.open_attempt("synthetic_news", "article", f"https://{HOST}/z", HOST, T0 - timedelta(seconds=30), "sent")
+    t, sender, slept = transport({ROBOTS: robots_open(), f"https://{HOST}/a": [ok()]}, ledger=led)
+    t.get(f"https://{HOST}/a", "article")
+    assert slept and slept[0] == pytest.approx(2.0)                # waited the full interval from "now"
+
+
+def test_a_sender_exception_is_recorded_never_left_open():
+    class Boom(tp.ScriptedSender):
+        def send(self, url, headers, timeout, max_body_bytes):
+            if url.endswith("/a"):
+                raise RuntimeError("socket gone")
+            return super().send(url, headers, timeout, max_body_bytes)
+    clock, sleep, _ = tp.fake_clock(T0)
+    led = tp.MemoryLedger()
+    t = tp.GovernedTransport(record(), Boom({ROBOTS: robots_open()}), led, clock=clock, sleep=sleep)
+    with pytest.raises(RuntimeError):
+        t.get(f"https://{HOST}/a", "article")
+    assert led.events[-1]["kind"] == "failed" and led.events[-1]["error_kind"] == "exception"
+
+
+def test_headers_are_read_without_regard_to_case_and_429_without_retry_after_stops():
+    a, b = f"https://{HOST}/a", f"https://{HOST}/b"
+    t, sender, _ = transport({ROBOTS: robots_open(), a: [tp.Response(302, {"LOCATION": b}, b"")], b: [ok()]})
+    assert t.get(a, "article").url == b
+    t, sender, slept = transport({ROBOTS: robots_open(), a: [tp.Response(429, {"RETRY-AFTER": "30"}), ok()]})
+    assert t.get(a, "article").outcome == "ok" and 30.0 in slept
+    t, sender, _ = transport({ROBOTS: robots_open(), a: [tp.Response(429)]})
+    assert t.get(a, "article").outcome == "stopped" and t.stopped == "rate_limited"
+
+
+def test_the_budget_day_is_colombo_not_utc():
+    rec = record(request_discipline={"min_interval_seconds": 1, "daily_budget": 2})
+    late = datetime(2026, 9, 1, 18, 20, tzinfo=UTC)              # 23:50 Colombo, 1 Sep
+    t, sender, _ = transport({ROBOTS: robots_open() * 2, **{f"https://{HOST}/{i}": [ok()] for i in range(3)}},
+                             rec=rec, start=late)
+    assert t.get(f"https://{HOST}/0", "article").outcome == "ok"            # robots + 0: the budget of 1 Sep
+    t.clock = lambda: datetime(2026, 9, 1, 18, 35, tzinfo=UTC)               # 00:05 Colombo, 2 Sep (same UTC day)
+    assert t.get(f"https://{HOST}/1", "article").outcome == "ok"
+
+
+def test_the_redirect_limit_is_exact():
+    urls = [f"https://{HOST}/r{i}" for i in range(5)]
+    script = {ROBOTS: robots_open(), **{urls[i]: [tp.Response(302, {"Location": urls[i + 1]}, b"")] for i in range(4)},
+              urls[4]: [ok()]}
+    t, sender, _ = transport(dict(script))
+    assert t.get(urls[1], "article").outcome == "ok"                       # 3 hops: r1 -> r2 -> r3 -> r4
+    t, sender, _ = transport(dict(script))
+    assert t.get(urls[0], "article").outcome == "redirect_limit"           # 4 hops: refused at the fourth
+
+
+def test_a_failed_attempt_also_ends_the_spacing_interval():
+    a, b = f"https://{HOST}/a", f"https://{HOST}/b"
+    t, sender, slept = transport({ROBOTS: robots_open(), a: [tp.Response(None, {}, None, "timeout")] * 3, b: [ok()]})
+    t.get(a, "article")
+    before = len(slept)
+    t.get(b, "article")
+    assert slept[before] == pytest.approx(2.0)
+
+
+def test_the_real_sender_is_built_only_by_the_wiring_module(tmp_path):
+    from worker.news_ingest import wiring
+    with pytest.raises(gv.RecordRefused, match="record_missing"):           # nothing runs without a record
+        wiring.real_transport(str(tmp_path / "none.md"), "0" * 64, [HOST], tp.MemoryLedger())

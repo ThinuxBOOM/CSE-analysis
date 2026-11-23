@@ -23,6 +23,7 @@ Clocks and sleeping are injected; tests use `ScriptedSender` and never touch a n
 import email.utils
 import hashlib
 import itertools
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -87,13 +88,42 @@ class MemoryLedger:
         return sum(1 for a in self.attempts if a["source_id"] == source_id and a["state"] == "sent"
                    and a["at"].astimezone(COLOMBO).date() == day)
 
-    def last_end(self, source_id):
+    def last_end(self, source_id, now=None):
+        """The end of the source's previous request; an attempt sent with no outcome yet (in flight, perhaps in
+        another process) counts as ending `now` (NS-1 audit)."""
+        done = {e["attempt_id"] for e in self.events if e["kind"] in ("completed", "failed")}
+        if now is not None and any(a["source_id"] == source_id and a["state"] == "sent" and a["id"] not in done
+                                   for a in self.attempts):
+            return now
         ends = [e["at"] for e in self.events if e["kind"] in ("completed", "failed")
                 and self._source_of(e["attempt_id"]) == source_id]
         return max(ends) if ends else None
 
+    def record_stop(self, source_id, reason, at):
+        """A stopped source stays stopped across processes until the owner clears it (NS-1 audit, G-1's rule)."""
+        self.stops = getattr(self, "stops", [])
+        self.stops.append({"source_id": source_id, "kind": "stopped", "reason": reason, "at": at})
+
+    def owner_clear_stop(self, source_id, note, at):
+        """The owner's act (the store requires the owner path)."""
+        if not note or not note.strip():
+            raise ValueError("clearing a stop states why")
+        self.stops = getattr(self, "stops", [])
+        self.stops.append({"source_id": source_id, "kind": "cleared", "reason": note, "at": at})
+
+    def stopped(self, source_id):
+        """The reason the source is stopped, or None: the latest stop row decides."""
+        rows = [r for r in getattr(self, "stops", []) if r["source_id"] == source_id]
+        return rows[-1]["reason"] if rows and rows[-1]["kind"] == "stopped" else None
+
     def _source_of(self, aid):
         return next(a["source_id"] for a in self.attempts if a["id"] == aid)
+
+
+def header(headers, name):
+    """A response header, looked up without regard to case."""
+    low = name.lower()
+    return next((v for k, v in (headers or {}).items() if str(k).lower() == low), None)
 
 
 def _retry_after(value, now):
@@ -116,18 +146,31 @@ class GovernedTransport:
         self.record, self.sender, self.ledger = record, sender, ledger
         self.clock, self.sleep = clock, sleep
         self.max_redirects, self.timeout = max_redirects, timeout_seconds
-        self.stopped: Optional[str] = None
         self.consecutive_failures = 0
-        self._robots = {}                         # (host, Colombo day) -> RobotFileParser or "deny"
+        self._robots = {}                         # (scheme://host:port, Colombo day) -> RobotFileParser or "deny"
+        self._lock = threading.Lock()             # one request at a time (the store adds a per-source advisory lock)
 
     # ------------------------------------------------------------------------------------------- the public call
+    @property
+    def stopped(self) -> Optional[str]:
+        """Read from the ledger every time: a stop made by any process holds until the owner clears it."""
+        return self.ledger.stopped(self.record.source_id)
+
     def stop(self, reason):
-        """Stop the source (an objection, a cessation request, or one of the rules above)."""
-        self.stopped = self.stopped or reason
+        """Stop the source (an objection, a cessation request, or one of the rules above), recorded."""
+        if not self.stopped:
+            self.ledger.record_stop(self.record.source_id, reason, self.clock())
 
     def get(self, url, purpose, *, follow_redirects=True):
+        if purpose == "robots":
+            raise ValueError("the robots purpose is the transport's own")
         result = Result("failed")
-        self._get(url, purpose, follow_redirects, result, hops=0, redirect_of=None)
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("one request at a time: the transport is busy")
+        try:
+            self._get(url, purpose, follow_redirects, result, hops=0, redirect_of=None)
+        finally:
+            self._lock.release()
         return result
 
     # ------------------------------------------------------------------------------------------- the steps
@@ -151,7 +194,7 @@ class GovernedTransport:
         except hosts.HostRefused as e:
             return self._refuse(url, purpose, e.code, result, redirect_of,
                                 "redirect_refused" if redirect_of else "refused")
-        if purpose != "robots" and not self._robots_allow(url, host, result):
+        if purpose != "robots" and not self._robots_allow(url, result):
             if self.stopped:
                 return self._refuse(url, purpose, f"source_stopped:{self.stopped}", result, redirect_of, "stopped")
             return self._refuse(url, purpose, "robots_disallowed", result, redirect_of, "robots_disallowed")
@@ -161,7 +204,7 @@ class GovernedTransport:
             day = self.clock().astimezone(COLOMBO).date()
             if self.ledger.sent_on(self.record.source_id, day) >= disc.daily_budget:
                 return self._refuse(url, purpose, "daily_budget", result, redirect_of, "budget_exhausted")
-            last = self.ledger.last_end(self.record.source_id)
+            last = self.ledger.last_end(self.record.source_id, self.clock())
             if last is not None:
                 wait = (last + timedelta(seconds=disc.min_interval_seconds) - self.clock()).total_seconds()
                 if wait > 0:
@@ -172,7 +215,11 @@ class GovernedTransport:
             headers = {"User-Agent": self.record.user_agent}
             if self.record.contact:
                 headers["From"] = str(self.record.contact)
-            resp = self.sender.send(url, headers, self.timeout, disc.max_body_bytes)
+            try:
+                resp = self.sender.send(url, headers, self.timeout, disc.max_body_bytes)
+            except Exception:
+                self.ledger.event(aid, "failed", self.clock(), error_kind="exception")   # never left open
+                raise
             if resp.body is not None and len(resp.body) > disc.max_body_bytes:
                 resp = Response(resp.status, resp.headers, None, "too_large")
             now = self.clock()
@@ -197,7 +244,7 @@ class GovernedTransport:
                 self.stop(f"http_{status}")
                 return self._fail(result, "stopped", f"http_{status}")
             if status == 429:
-                wait = _retry_after(resp.headers.get("Retry-After") or resp.headers.get("retry-after"), now)
+                wait = _retry_after(header(resp.headers, "Retry-After"), now)
                 if wait is None or wait > disc.retry_after_max_seconds:
                     self.stop("rate_limited")
                     return self._fail(result, "stopped", "rate_limited")
@@ -207,7 +254,7 @@ class GovernedTransport:
                     continue
                 return self._fail(result, "failed", "rate_limited")
             if status is not None and 300 <= status < 400:
-                location = resp.headers.get("Location") or resp.headers.get("location")
+                location = header(resp.headers, "Location")
                 target = urljoin(url, location) if location else None
                 self.ledger.event(aid, "redirect", self.clock(), location=target, followed=bool(follow and target))
                 if not (follow and target):
@@ -239,13 +286,15 @@ class GovernedTransport:
         result.outcome, result.code = ("stopped" if self.stopped else outcome), code
         return result
 
-    def _robots_allow(self, url, host, result):
+    def _robots_allow(self, url, result):
         day = self.clock().astimezone(COLOMBO).date()
-        key = (host, day)
+        parts = urlsplit(url)
+        origin = f"{parts.scheme}://{(parts.hostname or '').rstrip('.')}:{parts.port or ''}"
+        key = (origin, day)
         if key not in self._robots:
-            parts = urlsplit(url)
             robots_url = urlunsplit((parts.scheme, parts.netloc, "/robots.txt", "", ""))
-            r = self.get(robots_url, "robots", follow_redirects=False)
+            r = Result("failed")
+            self._get(robots_url, "robots", False, r, hops=0, redirect_of=None)    # never redirected
             result.attempts.extend(r.attempts)
             if r.outcome == "ok":
                 p = RobotFileParser()

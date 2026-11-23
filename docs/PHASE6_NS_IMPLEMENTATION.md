@@ -42,6 +42,43 @@ Tests:
 **Note.** The fetch-on-behalf list in `hosts.py` names real relay services. They are refused constants, like CSE's
 domain, never hosts the code requests.
 
+
+### NS-1 audit (fresh-context agent, at `88cff17`): accepted
+
+No Blocker (C-0037). The auditor found no way for a request to reach a CSE host, after trying uppercase, trailing
+dots, userinfo tricks, fullwidth and ideographic dots, brackets, absolute, relative and scheme-relative redirects, a
+hop through another allowed host, and robots fetching. The attempt is always recorded before it is sent. Three
+Majors, all fixed:
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | A stopped source (a block, an objection, a long Retry-After, the circuit breaker) was stopped only in memory: a new process sent again | The stop is recorded in the ledger. `stopped` is read from it on every request, and only the owner clears it (`owner_clear_stop`, with a reason). Tested with two transports on one ledger |
+| Major 2 | The static guard did not walk subpackages, skipped relative imports (any module could use the real sender), missed P2's transport, `asyncio` and `ssl`, did not scan bytes, and exempted every subdomain of the relay list | It walks recursively. Only `wiring.py` may import the real sender. It forbids the project's other network layers, more network modules, and `__import__`, `exec`, `eval` and `import_module`. It scans bytes constants. Relay domains are exempt only as exact constants. The guard tests itself with planted cases |
+| Major 3 | The "encoded" CSE cases still held a literal `cse.lk`, so a mutant without any decoding survived | Cases with the dots encoded once, twice and three times, a nested encoding past the bound, an ideographic full stop, fullwidth letters, a zero-width split and an HTML reference |
+
+**Minors fixed:**
+- Decoding repeats until stable (percent-encoding and HTML references, NFKC, other full stops, invisible
+  characters). A URL still changing after 8 rounds is refused.
+- The record:
+  - allows finite numbers only, never booleans, within bounds;
+  - refuses unknown keys, credential keys at any depth, and control characters in the identification;
+  - requires `pinned_allowed_hosts`.
+- The transport:
+  - one request at a time (a lock);
+  - an in-flight attempt counts as ending now for spacing;
+  - `robots` is the transport's own purpose;
+  - a malformed URL is a recorded `bad_url` refusal, and a sender exception is recorded as `failed`;
+  - headers are read case-insensitively, and a 429 with no `Retry-After` stops the source;
+  - robots is cached per scheme, host and port.
+- The real sender has a total deadline as well as the per-read timeout.
+- The CSE-constant test skips real docstrings only.
+- New tests:
+  - the budget day at the Colombo, not UTC, boundary;
+  - the exact redirect limit;
+  - a failed attempt ending the spacing interval;
+  - the wiring module refusing without a record.
+
+**Open:** the per-source advisory lock across processes belongs to the store (NS-7).
 ---
 
 ## NS-2: the adapter interface, article versions and observations

@@ -20,12 +20,22 @@ The machine-readable part:
 """
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 
 STORAGE = ("metadata_only", "full_text")
 DISCLOSURE = ("none", "counts", "scores", "titles", "text")
 _BLOCK = re.compile(r"```ns-source\n(.*?)\n```", re.S)
+KEYS = {"source_id", "allowed_hosts", "fetch_on_behalf_hosts", "storage_level", "onward_disclosure",
+        "availability_policy", "identification", "request_discipline", "robots"}
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# (lower, upper) for each discipline value; finite numbers only, never a boolean (NS-1 audit)
+BOUNDS = {"min_interval_seconds": (1, 3600), "daily_budget": (1, 100_000), "max_retries": (0, 10),
+          "backoff_base_seconds": (0.1, 3600), "backoff_max_seconds": (0.1, 86_400),
+          "retry_after_max_seconds": (0, 86_400), "max_consecutive_failures": (1, 100),
+          "max_body_bytes": (1, 50_000_000)}
+INTEGERS = {"daily_budget", "max_retries", "max_consecutive_failures", "max_body_bytes"}
 _HOST = re.compile(r"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
 
@@ -79,9 +89,12 @@ def parse(data: bytes) -> GovernanceRecord:
         raise RecordRefused("record_json", f"the ns-source block is not JSON: {e}") from e
     if not isinstance(m, dict):
         raise RecordRefused("record_json", "the ns-source block is a JSON object")
-    if "credentials" in m or "api_key" in m or "token" in m:
+    if _names_credentials(m):
         raise RecordRefused("credentials", "a source that needs credentials is refused in v1 (no credentialed "
                                            "scraping; a licensed API needs its own design under P6-R1)")
+    unknown = sorted(set(m) - KEYS)
+    if unknown:
+        raise RecordRefused("unknown_keys", f"the ns-source block holds unknown keys {unknown}")
     sid = m.get("source_id")
     if not isinstance(sid, str) or not re.fullmatch(r"[a-z0-9_]{2,40}", sid):
         raise RecordRefused("source_id", "source_id is 2 to 40 characters of a-z, 0-9 and _")
@@ -107,34 +120,55 @@ def parse(data: bytes) -> GovernanceRecord:
     if disclosure not in DISCLOSURE:
         raise RecordRefused("onward_disclosure", f"onward_disclosure is one of {DISCLOSURE}")
     ident = m.get("identification")
-    if not isinstance(ident, dict) or not isinstance(ident.get("user_agent"), str) or not ident["user_agent"].strip():
-        raise RecordRefused("identification", "identification.user_agent is stated (P6-R8)")
+    if not isinstance(ident, dict) or set(ident) - {"user_agent", "contact"} or \
+            not isinstance(ident.get("user_agent"), str) or not ident["user_agent"].strip() or \
+            _CONTROL.search(ident["user_agent"]) or not (ident.get("contact") is None or (
+                isinstance(ident["contact"], str) and ident["contact"].strip() and not _CONTROL.search(ident["contact"]))):
+        raise RecordRefused("identification", "identification.user_agent is stated, contact is text or null, "
+                                              "neither holds a control character (P6-R8)")
     pol = m.get("availability_policy")
-    if not isinstance(pol, dict) or not isinstance(pol.get("time_zone_offset_minutes"), int) or \
+    if not isinstance(pol, dict) or set(pol) - {"time_zone_offset_minutes", "date_only_counts_from",
+                                                 "availability_lag_minutes"} or \
+            isinstance(pol.get("time_zone_offset_minutes"), bool) or \
+            not isinstance(pol.get("time_zone_offset_minutes"), int) or \
+            not -720 <= pol["time_zone_offset_minutes"] <= 840 or \
+            isinstance(pol.get("availability_lag_minutes", 0), bool) or \
             pol.get("date_only_counts_from") != "end_of_day" or \
             not isinstance(pol.get("availability_lag_minutes", 0), int) or pol.get("availability_lag_minutes", 0) < 0:
         raise RecordRefused("availability_policy", "availability_policy states time_zone_offset_minutes, "
                                                    "date_only_counts_from = end_of_day and a lag >= 0")
     rd = m.get("request_discipline")
-    if not isinstance(rd, dict):
-        raise RecordRefused("request_discipline", "request_discipline is stated")
-    try:
-        disc = Discipline(**rd)
-    except TypeError as e:
-        raise RecordRefused("request_discipline", str(e)) from e
-    if disc.min_interval_seconds < 1 or disc.daily_budget < 1 or disc.max_retries < 0 or \
-            disc.backoff_base_seconds <= 0 or disc.backoff_max_seconds < disc.backoff_base_seconds or \
-            disc.max_consecutive_failures < 1 or disc.max_body_bytes < 1:
-        raise RecordRefused("request_discipline", "spacing at least 1 s, a budget, bounded back-off")
+    if not isinstance(rd, dict) or set(rd) - set(BOUNDS) or not {"min_interval_seconds", "daily_budget"} <= set(rd):
+        raise RecordRefused("request_discipline", f"request_discipline states min_interval_seconds and "
+                                                  f"daily_budget, and only {sorted(BOUNDS)}")
+    for k, v in rd.items():
+        lo, hi = BOUNDS[k]
+        ok_type = isinstance(v, int) if k in INTEGERS else isinstance(v, (int, float))
+        if isinstance(v, bool) or not ok_type or not math.isfinite(v) or not lo <= v <= hi:
+            raise RecordRefused("request_discipline", f"{k} is a finite {'integer' if k in INTEGERS else 'number'} "
+                                                      f"in [{lo}, {hi}]")
+    disc = Discipline(**rd)
+    if disc.backoff_max_seconds < disc.backoff_base_seconds:
+        raise RecordRefused("request_discipline", "backoff_max_seconds is at least backoff_base_seconds")
     if m.get("robots") != "obey":
         raise RecordRefused("robots", "robots is 'obey' in v1")
     return GovernanceRecord(sid, sha256_of(data), tuple(allowed), tuple(behalf), storage, disclosure, dict(pol),
                             ident["user_agent"].strip(), ident.get("contact"), disc, "obey")
 
 
-def load(path, pinned_sha256, pinned_allowed_hosts=None) -> GovernanceRecord:
-    """The record at `path`, refused unless its SHA-256 equals the pinned one and, when given, its allowed_hosts equal
-    the ones `ns_sources` holds (Minor 11)."""
+def _names_credentials(obj):
+    """Any key, at any depth, that names a credential (no credentialed scraping in v1, Minor 12)."""
+    words = ("credential", "api_key", "apikey", "token", "password", "secret", "cookie", "authorization")
+    if isinstance(obj, dict):
+        return any(any(w in str(k).lower() for w in words) or _names_credentials(v) for k, v in obj.items())
+    if isinstance(obj, list):
+        return any(_names_credentials(x) for x in obj)
+    return False
+
+
+def load(path, pinned_sha256, pinned_allowed_hosts) -> GovernanceRecord:
+    """The record at `path`, refused unless its SHA-256 equals the pinned one and its allowed_hosts equal the ones
+    `ns_sources` holds (Minor 11; required)."""
     try:
         with open(path, "rb") as fh:
             data = fh.read()
@@ -143,6 +177,6 @@ def load(path, pinned_sha256, pinned_allowed_hosts=None) -> GovernanceRecord:
     if sha256_of(data) != pinned_sha256:
         raise RecordRefused("record_hash", "the governance record does not match its pinned SHA-256")
     rec = parse(data)
-    if pinned_allowed_hosts is not None and sorted(pinned_allowed_hosts) != sorted(rec.allowed_hosts):
+    if sorted(pinned_allowed_hosts) != sorted(rec.allowed_hosts):
         raise RecordRefused("allowed_hosts_mismatch", "ns_sources.allowed_hosts differs from the pinned record's")
     return rec
