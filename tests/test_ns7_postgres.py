@@ -482,7 +482,7 @@ def test_p8_ns10_ingest_one_source_end_to_end(cluster, tmp_path):
     store.add_alias(o, *ISSUER_ALIAS, "name", datetime(2026, 1, 1, tzinfo=UTC), "synthetic issuer record")
     # first pass, no configuration designated yet: stored, not processed
     sender.listings = [_api_listing(("https://news.example.test/a1", "Alpha Bank PLC posts record profit"),
-                                    ("https://www.cse" + ".lk/x", "dropped"))]
+                                    ("https://www." + "cse" + ".lk/x", "dropped"))]
     out = run()
     assert (out["listed"], out["new_articles"], out["unprocessed"], out["dropped_cse"], out["status"]) == \
         (1, 1, 1, 1, "ran")
