@@ -800,8 +800,11 @@ audit of Phase C and its record, passed with no Blocker or Major (PASS WITH FIND
   AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`, approve with conditions) found defects in that tool's
   globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open (the provenance rests on an
   unauthenticated `source.json`; the tool has no environment guard; the verification gate's zero rule). REG-B01,
-  REG-B04, REG-B06 and REG-B27 stay OPEN until those are resolved and R2 is re-run with the fixed tool, and runbook §6
-  stays BLOCKED. R2's results above stand as the staging results of the `af1fdd1` tool. The owner's approval of the
+  REG-B04, REG-B06 and REG-B27 stay OPEN, and runbook §6 stays BLOCKED. Findings 6 to 8 fixed and audited, and R2
+  re-run with the fixed tool, are required for them but not sufficient: each item closes only when its own closure
+  condition is met, including the owner's re-approval of the procedure (2026-11-23) and, for runbook §6 and the items
+  that gate it, AR-C-0001 §3's remaining conditions, among them a production form of the procedure, written and
+  audited. R2's results above stand as the staging results of the `af1fdd1` tool. The owner's approval of the
   procedure (2026-11-10) does not carry over to the fixed tool: it returns for approval after findings 6 to 8 are
   fixed and R2 is re-run with the fixed tool (owner, 2026-11-23).
 - **Re-staging:** the merged build (`main` after pull request #13: Phases 3 to 5, the restore tool's AR-C-0001 fixes,
