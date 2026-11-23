@@ -1387,3 +1387,22 @@ accepts:
 - the terms;
 - the residual risk on publishers' headlines;
 - where the citation goes. The recommendation is the dashboard's sources page and any exported report.
+
+## C-0125: the GDELT record signed (owner decision, entered by the cloud session, 2026-11-23)
+
+The owner's words (2026-11-23), after GDELT's terms were quoted at source (C-0124) and the four checks were listed:
+"accepted, do that for me".
+
+The owner accepts:
+- GDELT's terms;
+- the residual risk on publishers' headlines (titles and URLs only, internal use);
+- the citation's place: the dashboard's sources page (Phase 12) and any exported report, with the link;
+- that the JSON field names are unverified until the first live listing is inspected by hand.
+
+The cloud session entered the signature in `docs/governance/NS-GDELT-DOC.md`. The file's SHA-256 is now
+`6a9aa8bd77f15002aeede4b13588f22cec59a54b13d97dd689c3e19f7af06503`. `register-source` pins this; any later edit
+changes it and stops the source until it is registered again.
+
+**Not done here:** registering the source and starting ingestion. Both run against the production database on the
+laptop (`cse-news register-source`, then `start-ingestion`) after the merge. The first live listing is inspected by
+hand before ingestion starts.

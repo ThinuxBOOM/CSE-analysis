@@ -27,7 +27,7 @@ governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regres
 ## Open items that need you
 
 - **Phase 6:** the recommended decisions are taken (C-0121). Still yours:
-  - checking and signing the proposed first source's record, `docs/governance/NS-GDELT-DOC.md` (C-0122);
+  - registering the signed GDELT record (C-0125) after the merge, after inspecting the first live listing;
   - any third-party lexicon and its licence;
   - a contact mailbox, if a source needs one;
   - what a source is promised about backups after a purge.
@@ -39,6 +39,16 @@ governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regres
   owner" tables).
 
 ## Log (newest first)
+
+### 2026-11-23: the GDELT record signed on your instruction (C-0125)
+
+You accepted GDELT's terms, the headline risk and the citation's place. I entered your signature in
+`docs/governance/NS-GDELT-DOC.md`.
+
+**On the laptop, after the merge:**
+1. `cse-news register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`.
+2. Inspect the first live listing by hand.
+3. `start-ingestion`.
 
 ### 2026-11-23: GDELT's terms read at source (C-0124)
 

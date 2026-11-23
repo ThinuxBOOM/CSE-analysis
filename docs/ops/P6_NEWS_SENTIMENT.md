@@ -71,8 +71,10 @@ A rebuilt snapshot keeps the stored snapshot's subjects. An issuer that only the
 
 The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project becomes commercial or public.
 
-**The first source proposed:** GDELT's DOC 2.0 API, record `docs/governance/NS-GDELT-DOC.md`, a **draft**: a
-record containing `NOT SIGNED` is refused, so it cannot be registered until the owner signs it (C-0122).
+**The first source:** GDELT's DOC 2.0 API, record `docs/governance/NS-GDELT-DOC.md`, **signed by the owner on
+2026-11-23** (C-0125). A record still carrying the draft marker is refused (C-0122). Register it on the laptop after
+the merge: `register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`. Inspect the first live
+listing by hand before `start-ingestion`.
 
 **v1 has no ingest command.** The first real source's adapter (GDELT, NS-8) is built and tested on fakes only. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.

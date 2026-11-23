@@ -1,7 +1,7 @@
 # News source governance record: GDELT DOC 2.0 API (`gdelt_doc`)
 
-**Status: DRAFT, NOT SIGNED.** Drafted 2026-11-23 at the owner's request (C-0122). Nothing may register or run
-this source until the owner has done the checks below and signed. Signing changes this file, and so its SHA-256.
+**Status: SIGNED by the owner, 2026-11-23 (C-0125).** Drafted 2026-11-23 at the owner's request (C-0122). The
+owner accepted the checks below. Signing changed this file, and so its SHA-256.
 Registration (`cse-news register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`) pins
 the signed version. Any later edit stops the source until it is registered again.
 
@@ -13,7 +13,7 @@ query: each article's URL, title, the time GDELT first saw it, its domain, langu
 `sourcecountry:srilanka sourcelang:english`. It **never requests a publisher's page**: Sri Lankan publishers'
 sites are not contacted.
 
-## Terms (P6-R1): to be checked by the owner before signing
+## Terms (P6-R1): checked and accepted by the owner
 
 **Read at source on 2026-11-23** (C-0124), through a network environment the owner approved for it:
 - **Terms** (GDELT's About page, "Terms of Use"): *"all datasets released by the GDELT Project are available for
@@ -35,15 +35,16 @@ sites are not contacted.
   still be that publisher's copyright. This record stores titles and URLs only, never article text, uses them
   internally, and discloses nothing onward.
 
-**Owner checks before signing:**
+**Owner checks (accepted 2026-11-23):**
 1. Accept the terms above for this use.
 2. Accept the residual risk on the publishers' headlines (internal use, titles and URLs only).
-3. Decide where the citation GDELT requires goes. The recommendation is the dashboard's sources page (Phase 12) and
-   any exported report, with the link.
+3. The citation GDELT requires goes on the dashboard's sources page (Phase 12) and in any exported report, with
+   the link to https://www.gdeltproject.org/ (the recommendation, accepted).
 4. Know that the JSON field names are unverified. The first live listing is inspected by hand before anything is
    ingested.
 
-Signing means replacing every "not signed" in this file (any case): a record that still says it is refused.
+A record that still carries the draft marker the parser looks for (`governance.UNSIGNED`) is refused; this one
+carries none.
 
 ## The choices in this record (C-0121, unless the owner changes them)
 
@@ -81,5 +82,6 @@ Signing means replacing every "not signed" in this file (any case): a record tha
 
 ## Owner sign-off
 
-- Terms read and accepted (checks 1 to 4 above): **not signed**
-- Signed by / date: **—**
+- Terms read and accepted (checks 1 to 4 above): **accepted**
+- Signed by / date: **the owner, 2026-11-23**, by instruction in the cloud session ("accepted, do that for me",
+  after the terms were quoted at source, C-0124); entered by the cloud session (C-0125)

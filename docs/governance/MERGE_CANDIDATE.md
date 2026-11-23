@@ -52,7 +52,7 @@ CSE-derived news under G-1, `metadata_only`, the purge procedure, English only, 
 lexicon, the sector deviation accepted, and a User-Agent with no contact. Table: `docs/PHASE6_NS_IMPLEMENTATION.md`.
 
 **Still the owner's** (C-0004 keeps third-party terms, legal risk and personal data out of the delegation):
-- checking and signing the proposed first source's record, `NS-GDELT-DOC.md` (C-0122), and any later source's;
+- registering the signed GDELT record (C-0125) on the laptop, and checking and signing any later source's;
 - any third-party lexicon and its licence;
 - a non-personal contact mailbox, if a source requires one;
 - what a source is promised about purged data in backups, and any purge deadline;
