@@ -1,0 +1,16 @@
+{
+  "id": "ns.lexicon.handwritten.1",
+  "status": "provisional",
+  "provenance": "Hand-written in this repository for building and testing NS v1 (design P6-D3). No third-party terms; no download.",
+  "licence": "The project's own; replaced only by the owner's choice of lexicon (P6-R6).",
+  "language": "en",
+  "positive": ["gain", "gains", "growth", "grew", "higher", "increase", "increased", "profit", "profits", "record",
+               "strong", "stronger", "improve", "improved", "improvement", "upgrade", "upgraded", "rise", "rose",
+               "beat", "surge", "surged", "expansion", "dividend", "recovery", "robust", "outperform"],
+  "negative": ["loss", "losses", "lower", "decline", "declined", "decrease", "decreased", "weak", "weaker", "fall",
+               "fell", "drop", "dropped", "downgrade", "downgraded", "default", "fraud", "lawsuit", "penalty",
+               "miss", "missed", "slump", "slumped", "deficit", "impairment", "probe", "suspended", "underperform"],
+  "negators": ["not", "no", "never", "without", "neither", "nor", "hardly"],
+  "intensifiers": {"very": 1.5, "sharply": 1.5, "significantly": 1.5, "strongly": 1.5, "slightly": 0.5,
+                   "marginally": 0.5}
+}

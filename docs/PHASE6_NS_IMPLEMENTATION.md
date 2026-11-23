@@ -59,3 +59,26 @@ Tests: `tests/test_ns2_unit.py` (10).
 - The re-fetch plan.
 - NL-1 to NL-4, each with its converse. NL-4 also covers NL-14's shape in AVAILABLE.
 - The archive availability policy.
+
+---
+
+## NS-3 to NS-5: aliases, entities, relevance, events, sentiment and deduplication
+
+| Module | What it does |
+|---|---|
+| `worker/news_sentiment/config.py` | The NS configuration: processor versions (`ns.entity.1`, `ns.relevance.1`, `ns.event.1`, `ns.sentiment.1`, `ns.decay.1`), the twelve event types, weights, windows, thresholds, half-lives per event type, the policies and the lexicon's SHA-256, as one canonical document with a SHA-256 id. Every constant is `provisional`; `max_age_sessions` must be at least 21 |
+| `worker/news_sentiment/lexicon_v1.json` | **The hand-written provisional lexicon (P6-D3)**: positive and negative terms, negators and intensifiers, with provenance and licence recorded. No third-party terms and no download; the real lexicon and its licence are the owner's (P6-R6) |
+| `worker/news_sentiment/aliases.py` | Dated aliases (F5 names, MF tickers in their full form, owner aliases) and alias ends as new rows, each admitted by its own two clocks (§5.2; N2, NL-5, NL-13, NL-15); the alias-set hash |
+| `worker/news_sentiment/process.py` | The pure v1 processors. **Entity**: exact matching on normalised tokens (company suffixes normalised; a full ticker is one token; the longest overlapping match wins); an alias mapping to two issuers is kept as `ambiguous` and scores neither; a ticker that is also a word matches only in full form unless an owner alias adds the short form; positions are title, first paragraph and body; `market_wide` comes from a fixed list of terms. **Relevance**: the stated weights for position, the issuer's share of mentions and an attached event. **Events**: the fixed taxonomy by rule phrases within a window of a mention; the rule id always, an excerpt only under `full_text`. **Sentiment**: lexicon terms in a window around the mentions, with negation and intensifiers, normalised by the number of scored terms and clamped to [−1, 1]; `unscored` below the minimum, never `neutral`; the market-wide score the same way. Articles not in English are `language_unsupported` and score nothing |
+| `worker/news_sentiment/results.py` | §5.5: a stored result counts at T only if its own `recorded_at` is admitted (≤ T in KNOWN, ≤ H otherwise), every alias it used is admitted, and it is under the configuration in force. Otherwise `full_text` recomputes from what is admitted at T, and `metadata_only` has no result (N3) |
+| `worker/news_sentiment/dedup.py` | §6: the story key is the SHA-256 of the sorted title tokens (after a stop list) and the issuer set. Stories are grouped per snapshot from admitted articles only. A story's id is its key plus its earliest member's id, its instant is the earliest member's, and its sources are kept (NL-12) |
+
+Tests: `tests/test_ns3_unit.py` (23).
+- Matching: suffixes, positions, ambiguity, ticker as a word, word boundaries and no fuzzy matching.
+- NL-5, NL-13 and NL-15, with alias ends.
+- Relevance by hand; each event rule; proximity and excerpts; market events.
+- Sentiment by hand: plain, negation, intensifiers with clamping, a mixed case.
+- `unscored` and the language rule; market sentiment.
+- Story keys and ids; NL-12 and its converse.
+- NL-11: a result recorded after T, an alias recorded after T, recomputation under `full_text`, the stored result
+  in AVAILABLE, another configuration's result.
