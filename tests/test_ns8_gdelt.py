@@ -188,3 +188,10 @@ def test_minors_duplicates_truncation_cache_and_unsigned_case():
     draft = n1.record_bytes().replace(b"tests only.", b"tests only. Status: Draft, not signed.")
     with pytest.raises(gv.RecordRefused, match="unsigned"):
         gv.parse(draft)
+
+
+def test_the_cache_holds_one_listing():
+    a, t, sender, url = adapter(listing(entry()) + listing(entry(url="https://news.example.test/a/2")))
+    first = a.list_new()
+    second = a.list_new()
+    assert a.fetch(first[0]) is None and a.fetch(second[0]) is not None

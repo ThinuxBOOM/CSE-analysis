@@ -151,9 +151,10 @@ def stop_source(owner_conn, source_id, reason):
 
 # The tables a purge deletes from, in dependency order; their user triggers (the append-only and stamp guards) are
 # disabled inside the purge's one transaction and re-enabled before anything else is written (P2 §12's design).
-PURGE_TABLES = ("ns_snapshot_rows", "ns_snapshots", "ns_fetch_events", "ns_fetch_attempts", "ns_article_results",
+PURGE_TABLES = ("ns_snapshots", "ns_snapshot_rows", "ns_fetch_events", "ns_fetch_attempts", "ns_article_results",
                 "ns_article_observations", "ns_articles", "ns_archive_imports", "ns_ingestion_runs",
                 "ns_source_events")
+PURGE_LOCK_ORDER = PURGE_TABLES                 # ns_snapshots before ns_snapshot_rows: a worker's insert order
 
 
 class _InTransaction:
@@ -182,10 +183,13 @@ def _names_source(source_id, active_json, stories_jsons):
 
 
 def purge_source(owner_conn, source_id, request_ref, dry_run=False):
-    """P6-R3 (runbook, "Purge"): in ONE transaction on the owner path, delete everything the source contributed and
-    every snapshot that named it, keep `ns_sources` and the stop rows, add a `stopped` row with reason `purged`, and
-    rebuild the deleted snapshots at the same queries. Refused unless the source is stopped. Returns the manifest:
-    ids, hashes and counts only, never content. `dry_run` computes the manifest and changes nothing."""
+    """P6-R3 (runbook, "Purge"): in ONE transaction on the owner path, delete everything the source contributed,
+    keep `ns_sources` and the stop rows, add a `stopped` row with reason `purged`, and replace every snapshot the
+    source affected by a rebuild at the same query. A snapshot is affected when it names the source (active sources,
+    or a story's article id) **or** when rebuilding it without the source's rows changes its hash (counts and states
+    count every admitted article, named or not: NS-9 audit Major 1). Refused unless the source is stopped and its
+    advisory lock is free. Returns the manifest: ids, hashes and counts only, never content. `dry_run` runs the
+    whole computation and rolls it back."""
     if len((request_ref or "").strip()) < 3:
         raise Refused("request", "the purge request's reference (who asked, when, under what authority)")
 
@@ -194,30 +198,36 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
         cur.execute("select 1 from ns_sources where source_id = %s", (source_id,))
         if cur.fetchone() is None:
             raise Refused("unknown_source", f"no source {source_id!r}")
+        cur.execute("select pg_try_advisory_xact_lock(hashtext(%s))", (f"ns_source:{source_id}",))
+        if not cur.fetchone()[0]:
+            raise Refused("source_busy", "another session holds the source's lock (an ingest is running)")
+        for t in PURGE_LOCK_ORDER:                     # snapshots before their rows, as a worker writes them
+            cur.execute(f"lock table {t} in access exclusive mode")
         cur.execute("select kind from ns_source_events where source_id = %s and kind in ('stopped', 'stop_cleared') "
-                    "order by event_id desc limit 1", (source_id,))
+                    "order by event_id desc limit 1", (source_id,))      # checked under the locks (no race)
         last = cur.fetchone()
         if not last or last[0] != "stopped":
             raise Refused("not_stopped", "stop the source first (`stop-source`); a purge never races ingestion")
-        for t in PURGE_TABLES:                         # one lock order; nothing else writes these until commit
-            cur.execute(f"lock table {t} in access exclusive mode")
+        tx = _InTransaction(cur)
         cur.execute("select article_version_id, body_sha256 from ns_articles where source_id = %s order by 1",
                     (source_id,))
         arts = cur.fetchall()
         cur.execute("select snapshot_id, mode, cutoff, knowledge_horizon, sessions_json, configuration_id, "
                     "active_sources_json, snapshot_hash from ns_snapshots order by snapshot_id")
-        snaps = cur.fetchall()
-        named = []
-        for sid, mode, cutoff, horizon, sessions_json, cid, active, h in snaps:
+        specs, cfgs = [], {}
+        for sid, mode, cutoff, horizon, sessions_json, cid, active, h in cur.fetchall():
             cur.execute("select subject, stories_json from ns_snapshot_rows where snapshot_id = %s order by subject",
                         (sid,))
             rows = cur.fetchall()
-            if _names_source(source_id, active, [r[1] for r in rows]):
-                named.append(dict(snapshot_id=sid, mode=mode, cutoff=cutoff, horizon=horizon,
-                                  sessions=[date_.fromisoformat(d) for d in json.loads(sessions_json)],
-                                  configuration_id=cid, snapshot_hash=h,
-                                  issuers=[r[0] for r in rows if r[0] != "market"]))
-        counts = {}
+            if cid not in cfgs:
+                cur.execute("select configuration_json from ns_configurations where configuration_id = %s", (cid,))
+                cfgs[cid] = config_from_json(cur.fetchone()[0])
+            spec = dict(snapshot_id=sid, query=Query(mode, cutoff, horizon), configuration_id=cid, snapshot_hash=h,
+                        sessions=[date_.fromisoformat(d) for d in json.loads(sessions_json)],
+                        issuers=[r[0] for r in rows if r[0] != "market"],
+                        named=_names_source(source_id, active, [r[1] for r in rows]), rows=len(rows))
+            spec["before"] = _rebuilt_hash(tx, spec, cfgs[cid])
+            specs.append(spec)
         where = {
             "ns_fetch_events": "attempt_id in (select attempt_id from ns_fetch_attempts where source_id = %s)",
             "ns_fetch_attempts": "source_id = %s",
@@ -229,46 +239,54 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
             "ns_ingestion_runs": "source_id = %s",
             "ns_source_events": "source_id = %s and kind = 'ingestion_started'",
         }
+        counts = {}
         for t, w in where.items():
             cur.execute(f"select count(*) from {t} where {w}", (source_id,))
             counts[t] = cur.fetchone()[0]
-        ids = [n["snapshot_id"] for n in named]
-        counts["ns_snapshots"] = len(ids)
-        manifest = {"source_id": source_id, "request": request_ref, "counts": counts,
-                    "article_version_ids": [a[0] for a in arts], "body_sha256s": [a[1] for a in arts],
-                    "snapshots_replaced": [{"snapshot_id": n["snapshot_id"], "snapshot_hash": n["snapshot_hash"]}
-                                           for n in named]}
-        manifest["manifest_sha256"] = hashlib.sha256(_js(manifest).encode()).hexdigest()
-        if dry_run:
-            raise _DryRun(manifest)
         for t in PURGE_TABLES:
             cur.execute(f"alter table {t} disable trigger user")
+        for t, w in where.items():
+            cur.execute(f"delete from {t} where {w}", (source_id,))
+        affected = [sp for sp in specs if sp["named"] or _rebuilt_hash(tx, sp, cfgs[sp["configuration_id"]])
+                    != sp["before"]]
+        ids = [sp["snapshot_id"] for sp in affected]
+        counts["ns_snapshots"] = len(ids)
+        counts["ns_snapshot_rows"] = sum(sp["rows"] for sp in affected)
         if ids:
             cur.execute("delete from ns_snapshot_rows where snapshot_id = any(%s)", (ids,))
             cur.execute("delete from ns_snapshots where snapshot_id = any(%s)", (ids,))
-        for t, w in where.items():
-            cur.execute(f"delete from {t} where {w}", (source_id,))
         for t in PURGE_TABLES:
             cur.execute(f"alter table {t} enable trigger user")
+        manifest = {"source_id": source_id, "request": request_ref, "counts": counts,
+                    "article_version_ids": [x[0] for x in arts], "body_sha256s": [x[1] for x in arts],
+                    "snapshots_replaced": [{"snapshot_id": sp["snapshot_id"], "snapshot_hash": sp["snapshot_hash"],
+                                            "named": sp["named"]} for sp in affected]}
+        manifest["manifest_sha256"] = hashlib.sha256(_js(manifest).encode()).hexdigest()
         # with every guard back on: the stop that keeps the purged source stopped, stamped and checked as usual
         cur.execute("insert into ns_source_events (source_id, kind, effective_at, reason) values (%s, 'stopped', "
                     "now(), %s)", (source_id, f"purged: {request_ref}"))
-        tx = _InTransaction(cur)
-        for n in named:                                # post-purge reconstructions, at the same queries
-            cur.execute("select configuration_json from ns_configurations where configuration_id = %s",
-                        (n["configuration_id"],))
-            cfg = config_from_json(cur.fetchone()[0])
-            q = Query(n["mode"], n["cutoff"], n["horizon"])
-            new_id, _snap = build_snapshot(tx, q, n["sessions"], n["issuers"], cfg,
-                                           configuration_id=n["configuration_id"])
-            n["replaced_by"] = new_id
-        manifest["replaced_by"] = {str(n["snapshot_id"]): n["replaced_by"] for n in named}
+        replaced = {}
+        for sp in affected:                            # post-purge reconstructions, at the same queries
+            new_id, _snap = build_snapshot(tx, sp["query"], sp["sessions"], sp["issuers"],
+                                           cfgs[sp["configuration_id"]], configuration_id=sp["configuration_id"])
+            replaced[str(sp["snapshot_id"])] = new_id
+        manifest["replaced_by"] = replaced
+        if dry_run:
+            raise _DryRun(manifest)
         return manifest
 
     try:
         return _write(owner_conn, work)
     except _DryRun as d:
-        return dict(d.manifest, dry_run=True)
+        return dict(d.manifest, dry_run=True, replaced_by={})
+
+
+def _rebuilt_hash(tx, spec, cfg):
+    q = spec["query"]
+    rows = load(tx, q)
+    snap = sn.build(q, spec["sessions"], articles_at(rows, q, cfg), rows["sources"], rows["runs"], cfg,
+                    spec["issuers"])
+    return snapshot_hash(snap, spec["sessions"])
 
 
 class _DryRun(Exception):

@@ -146,6 +146,9 @@ def run(args, connect):
         elif c == "designate":
             store.designate(conn, args.purpose, args.configuration, _noted(args.note, op))
             _print({"state": "designated", "configuration_id": args.configuration})
+        elif c in ("stop-source", "purge-source") and len((getattr(args, "reason", None) or
+                                                            getattr(args, "request", None) or "").strip()) < 3:
+            raise store.Refused("reason", "say why, in your own words (at least 3 characters)")
         elif c == "stop-source":
             store.stop_source(conn, args.source, _noted(args.reason, op))
             _print({"state": "stopped", "source_id": args.source})

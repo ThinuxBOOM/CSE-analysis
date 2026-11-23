@@ -312,7 +312,7 @@ No Blocker. Two Majors, both fixed:
 - the item cache holds one listing;
 - unmapped languages are `und`;
 - `seendate` must be ASCII;
-- titles are capped at 1,000 characters;
+- an entry with a title over 1,000 characters is dropped as malformed;
 - the stale texts are updated;
 - the draft record now says the adapter's API assumptions were never checked live, and the first live listing is
   inspected by hand.
@@ -338,3 +338,31 @@ Tests:
   - the snapshot that named it is replaced and an earlier one is kept;
   - afterwards the preflight is clean, append-only holds again, and `verify` is clean.
 - `test_p7_the_source_match_is_exact`: `ft` never matches `ftx`.
+
+### NS-9 audit (fresh-context agent, at `e81a696`, with the NS-8 fixes): accepted
+
+No Blocker. **Major 1, fixed: a purge missed snapshots that counted the source without naming it.** A snapshot's
+counts and states count every admitted article. In the auditor's reproduction, an archive article of a source never
+started was not selected, and `verify` failed after the purge.
+
+Snapshots are now selected exactly:
+- `purge-source` rebuilds every snapshot in memory before the deletion and again after it, inside the transaction;
+- it replaces every snapshot whose hash changes, and every snapshot that names the source.
+
+That costs two in-memory builds per stored snapshot. The test reproduces the case, checks that `verify` is clean,
+and checks that the rebuilt snapshot keeps its subjects.
+
+**Minors fixed:**
+- The CLI checks the reason or request text before the operator's name is appended.
+- The purge takes the source's advisory lock and refuses while an ingest holds it (tested).
+- The stop is checked under the table locks.
+- The lock order matches a worker's writes (snapshots before rows).
+- The manifest counts the snapshot rows.
+- The runbook's commit point is fixed.
+- The runbook names what the tool does not purge (an owner alias's reference, other sources' fetch details) and the
+  issuer-id trace a rebuild keeps.
+- A test of the adapter's one-listing cache.
+- The title-cap wording.
+
+**Recorded:** the IDNA branch of `hosts._canonical_host` is not a protection. Python's codec refuses an `xn--` label
+that would flatten to a CSE name. The fullwidth, full-stop and invisible-character cases are what it protects.

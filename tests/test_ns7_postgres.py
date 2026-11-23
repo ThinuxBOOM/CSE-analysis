@@ -398,3 +398,40 @@ def test_p7_the_source_match_is_exact():
     assert not store._names_source("ft", json.dumps(["ftx"]), stories)
     assert store._names_source("ftx", json.dumps([]), stories)
     assert store._names_source("ft", json.dumps(["ft"]), [])
+
+
+def test_p7_ns9_audit_a_snapshot_that_counted_the_source_without_naming_it(cluster):
+    db = fs.fresh_db(cluster)
+    o, w, rec, cfg, _recorded = _ingest_and_process(cluster, db)
+    b = store.register_source(o, n1.record_bytes(source_id="synthetic_b"), "NS-SYNTHETIC-B.md")      # never started
+    today = datetime.now(UTC).astimezone(store.COLOMBO).date()
+    pol = {"time_zone_offset_minutes": 330, "date_only_counts_from": "end_of_day", "availability_lag_minutes": 0}
+    iid = store.declare_archive(o, b.source_id, "synthetic archive terms", "original", "as_published", "complete",
+                                today - timedelta(days=5), today, "a" * 64)
+    v = ar.archive_version(b.source_id, "b1", "Alpha Bank PLC in another language", today - timedelta(days=3),
+                           "date", "si", "x", "metadata_only", pol)
+    store.write_version(w, v, archive_import_id=iid)
+    sessions = [today - timedelta(days=k) for k in range(25, -1, -1)]
+    later = datetime.now(UTC) + timedelta(seconds=1)
+    sid, snap = store.build_snapshot(w, Query(KNOWN, later), sessions, ["iss_alpha", "iss_quiet"], cfg)
+    assert snap.counts["unsupported_language"] == 1 and b.source_id not in snap.active_sources
+    store.stop_source(o, b.source_id, "the publisher asked for deletion")
+    m = store.purge_source(o, b.source_id, "deletion request (synthetic)")
+    assert [x["snapshot_id"] for x in m["snapshots_replaced"]] == [sid] and not m["snapshots_replaced"][0]["named"]
+    assert m["counts"]["ns_snapshot_rows"] == len(snap.rows)
+    rep = verify.verify(w, margin=timedelta(0))
+    assert rep["ok"], rep
+    new = m["replaced_by"][str(sid)]
+    with w.cursor() as cur:
+        cur.execute("select counts_json from ns_snapshots where snapshot_id = %s", (new,))
+        assert json.loads(cur.fetchone()[0])["unsupported_language"] == 0
+        cur.execute("select subject from ns_snapshot_rows where snapshot_id = %s order by subject", (new,))
+        assert [r[0] for r in cur.fetchall()] == sorted(r.subject for r in snap.rows)   # the same subjects
+    w.rollback()
+    # a busy source (its lock held by an ingest session) is refused
+    store.stop_source(o, "synthetic_news", "another request")
+    held = fs.conn(cluster, db, user="cse_worker")
+    assert store.DbLedger(held).lock("synthetic_news")
+    with pytest.raises(store.Refused, match="source_busy"):
+        store.purge_source(o, "synthetic_news", "deletion request (synthetic)")
+    held.close()

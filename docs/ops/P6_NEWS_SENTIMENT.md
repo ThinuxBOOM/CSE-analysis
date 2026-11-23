@@ -36,13 +36,16 @@ commands `stop-source` and `purge-source` (NS-9):
       - `ns_article_results`, `ns_article_observations`, `ns_articles`, `ns_archive_imports`;
       - `ns_ingestion_runs`;
       - its `ingestion_started` rows in `ns_source_events`;
-      - every snapshot, with its rows, whose `active_sources_json` or `stories_json` names the source.
+      - every snapshot, with its rows, that names the source (active sources, or a story's article id) **or**
+        whose rebuild without the source's rows has a different hash. Counts and states count every admitted
+        article, so a snapshot can depend on a source it never names (NS-9 audit).
    3. Re-enable the triggers. Keep `ns_sources` and the stop rows, and add a `stopped` row with reason `purged`
-      (with the triggers back on, so it is stamped and checked). Commit.
+      (with the triggers back on, so it is stamped and checked).
    4. Write the purge record as a file in `docs/governance/`: the request, the manifest's hash, the counts deleted,
       the snapshot ids replaced. 0022 has no purge table.
    A source's articles are matched by the exact `<source_id>:` prefix of their ids.
-4. **Rebuild** (inside the same transaction, by `purge-source`). Build the deleted snapshots again at the same queries. They are post-purge reconstructions with new
+4. **Rebuild and commit** (inside the same transaction, by `purge-source`). Build the deleted snapshots again at the
+   same queries, then commit; any failure rolls everything back, the triggers included. They are post-purge reconstructions with new
    ids, no longer what was known at T. Re-pin or invalidate anything that pinned the old ids or hashes, and list
    them in the purge record. The source is absent from them, never shown as zero news.
 5. **Check.** Run `preflight` and `verify`.
@@ -53,6 +56,15 @@ commands `stop-source` and `purge-source` (NS-9):
    - crypto-shredding.
 
 **The owner's:** what a source is promised about its backups, any residual retention, and any deadline.
+
+**Not purged by the tool, checked by hand:**
+- an owner alias's `source_reference`, which the owner wrote and may cite an article;
+- another source's fetch-event details.
+
+A rebuilt snapshot keeps the stored snapshot's subjects. An issuer that only the purged source mentioned keeps a
+`missing` row: its id stays, but nothing of the article does.
+
+`purge-source` refuses while another session holds the source's lock (an ingest running).
 
 The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project becomes commercial or public.
 
