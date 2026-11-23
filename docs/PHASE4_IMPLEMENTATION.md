@@ -218,6 +218,7 @@ unrealistic (retrieved before T, published after T); it is recorded here, not ch
 Pending migration `supabase/migrations_pending/0020_financial_features_and_engines.sql` (after 0019, outside the
 chain until the owner's merge decision): the eight tables of design §10.1, append-only for every role, the worker's
 inserts, owner-only designations (guard plus grant), configuration ids that must be the SHA-256 of their JSON.
+*(2026-11-23, C-0118: 0020 is now in the chain, `supabase/migrations/`, unchanged.)*
 
 `worker/feature_engine_store/`:
 

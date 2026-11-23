@@ -14,6 +14,7 @@ path through them.
    latest GitHub CI run of both workflows on the branch head is green (the log below names the last known result).
 4. Pending migrations `supabase/migrations_pending/0019`, `0020` and `0021` are **outside the chain**. They have
    changed since you last saw them (log). Moving them into `supabase/migrations/` is part of the merge decision.
+   *(2026-11-23, C-0118: they are now in the chain, `supabase/migrations/`, unchanged.)*
 5. Configuration ids that are content-addressed change when their parameters change. Any configuration you
    registered or designated earlier on a test database must be registered again (log entries say which).
 

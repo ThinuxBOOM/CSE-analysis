@@ -29,7 +29,7 @@ def cluster(tmp_path_factory):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path_factory.mktemp("m56a"))
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(sp.PENDING), log=lambda m: None)
+    mig.apply(c, mig.discover(fs.MIGDIR), log=lambda m: None)
     c.close()
     yield ec
     ec.stop()

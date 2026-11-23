@@ -17,7 +17,6 @@ import f64_support as fs
 
 BINDIR = os.environ.get("P1_PG_BINDIR")
 pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR (PostgreSQL binaries) not set")
-PENDING = os.path.join(fs.REPO, "supabase", "migrations_pending")
 TABLES = ["ml_configurations", "ml_datasets", "ml_protocols", "ml_test_periods", "ml_runs", "ml_run_events",
           "ml_trials", "ml_artifacts", "ml_fold_models", "ml_models", "ml_model_metrics", "ml_gate_reports",
           "ml_test_accesses", "ml_model_events", "ml_waivers", "ml_incident_flags", "ml_designations",
@@ -29,7 +28,7 @@ def cluster(tmp_path_factory):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path_factory.mktemp("m56"))
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(PENDING), log=lambda m: None)
+    mig.apply(c, mig.discover(fs.MIGDIR), log=lambda m: None)
     c.close()
     yield ec
     ec.stop()
@@ -99,7 +98,7 @@ def test_g1_applies_after_0020_append_only_everywhere(cluster):
                     "on p.oid = t.tgfoid where p.proname = 'f5_reject_mutation' and c.relname = any(%s) group by 1",
                     (TABLES,))
         assert dict(cur.fetchall()) == {t: 2 for t in TABLES}
-    assert not any(n.startswith("0021") for n in os.listdir(fs.MIGDIR))
+    assert [n for n in os.listdir(fs.MIGDIR) if n.startswith("0021")] == ["0021_ml_registry.sql"]   # in the chain
     w, ids = world(cluster, db)
     o = owner(cluster, db)
     for t in ("ml_models", "ml_model_events", "ml_artifacts", "ml_configurations"):

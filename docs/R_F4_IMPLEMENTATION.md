@@ -170,6 +170,10 @@ fallback.
 *Rows naming later tests (p27, p47, p48, p50, p51, p52) were updated after control I and are not part of it: their
 evidence is in the sections they name.*
 
+*(2026-11-23, change control B-0015 (C-0118): with migrations 0019 to 0021 in the chain, p9 and p48 apply the chain after 0017 with `target=18`, as the rehearsal's step 1 does (§23.1), so each still applies exactly 0018 and stays about the 0017 to 0018 upgrade.)*
+
+*(2026-11-23, correction (B-0015 round 2, AR-0015-1 MJ-1; C-0118): p1 also pinned the chain's end. It asserted that the ledger ends with 0017 and 0018. It now asserts that 0017 immediately precedes 0018 and that exactly 0019, 0020 and 0021 follow it, by name; its intent, 0018 applied at its pin, is unchanged.)*
+
 **Result (control I, `82b7a3e`):** every test above passed on Linux: the two R-F4 files gave 269 passed, none failed
 or skipped (cluster L16: 532 passed against B's 263, exactly the 35 + 234 collected R-F4 IDs, and no R-F4 test in any
 failure or skip list). On Windows the unit file passed (234) and the PostgreSQL file skipped (35; it needs Linux), as
@@ -2787,6 +2791,8 @@ once it has run, not assumed here.
 | Step 3 | The gate: continue only on exit 0 with `"clean": true` | `preflight_accepted` |
 | Step 4 | `python -m worker.financial_f4_store verify`, with no `--limit` | `DATABASE_URL` for `rf4_rehearsal_reader` |
 | Step 5 | The gate: accept only exit 0, `"clean": true` and `"scope": {"complete": true, …}` | `verify_accepted` |
+
+*(2026-11-23, change control B-0015: migrations 0019 to 0021 are in the chain, so step 1 runs `python -m worker.ops.migrate apply --to 18` and still applies exactly 0018 (r1): the rehearsal stays about 0018. The checkpoint source (§24.3) applies the whole chain, now 0001–0021.)*
 
 **Every command runs in its own process,** with only its route's `CSE_DB_*` or `DATABASE_URL` settings. Nothing is
 mocked. The command, its settings, its exit code, its parsed JSON, its stdout and its stderr are all recorded.

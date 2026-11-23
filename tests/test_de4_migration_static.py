@@ -4,12 +4,13 @@ import os
 import re
 
 REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), ".."))
-PENDING = os.path.join(REPO, "supabase", "migrations_pending", "0020_financial_features_and_engines.sql")
+PENDING = os.path.join(REPO, "supabase", "migrations", "0020_financial_features_and_engines.sql")
 
 
 def test_s1_pending_not_in_the_chain_and_meets_the_migration_guards():
     assert os.path.exists(PENDING)
-    assert not any(n.startswith("0020") for n in os.listdir(os.path.join(REPO, "supabase", "migrations")))
+    assert [n for n in os.listdir(os.path.join(REPO, "supabase", "migrations")) if n.startswith("0020")] == \
+        ["0020_financial_features_and_engines.sql"]                              # in the chain (B-0015)
     sql = open(PENDING, encoding="utf-8").read().lower()
     assert "bytea" not in sql
     assert not re.search(r"\b\w*(blob|file_path|document_path|storage_path|local_path)\w*\s+(text|varchar)", sql)

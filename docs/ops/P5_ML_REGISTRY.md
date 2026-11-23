@@ -3,6 +3,7 @@
 Design: `docs/PHASE5_ML_DESIGN.md` §5.4, §5.5 and §9. Implementation record: `docs/PHASE5_ML_IMPLEMENTATION.md`.
 Storage: pending migration `supabase/migrations_pending/0021_ml_registry.sql` (applied after 0019 and 0020; moving
 it into the chain is part of the owner's merge decision).
+*(2026-11-23, change control B-0015: 0021 moved, unchanged, into the chain, as `supabase/migrations/0021_ml_registry.sql`.)*
 
 Nothing here contacts CSE or any network. The registry reads and writes only PostgreSQL. Training, validation and
 the one test access are done by the research code through `worker/ml_registry/store.py`; this command line is for

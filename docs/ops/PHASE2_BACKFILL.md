@@ -274,6 +274,7 @@ cannot meet as written are recorded differences there, verified at the server de
 
 - The local Ubuntu 24.04 server; native PostgreSQL 17; P1 provisioning (roles, peer authentication, backups and the
   off-site destination); migrations 0001–0017 through P1's runner, or 0001–0018 for a build that includes R-F4.
+  *(2026-11-23, change control B-0015: migrations 0019 to 0021 are in the chain, so a build of `main` from this date applies 0001–0021; P1's runner applies them in order after 0018.)*
 - **R-F4 (`docs/R_F4_DESIGN.md`, `docs/R_F4_IMPLEMENTATION.md`).** Only for a build that includes R-F4. R-F4 is
   implemented (Stages 1 and 2) on the branch `claude/rf4-implementation` and is **not** yet independently audited after
   Stage 2, accepted, frozen or part of any deployable build; per its release sequence Q1 it is frozen before Docker

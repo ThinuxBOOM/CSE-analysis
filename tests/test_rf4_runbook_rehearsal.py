@@ -11,7 +11,7 @@ At deployment (r1-r5), on one cluster:
     set-up   P1's bootstrap_cluster.sql (roles, database `cse`, its grants); 0001-0017 through P1's runner
              (python -m worker.ops.migrate apply --to 17); a login, rf4_rehearsal_reader, that inherits cse_reader
              (the runbook's reader route; no such login is provisioned in production: section 20.6)
-    step 1   0018 through P1's runner: python -m worker.ops.migrate apply
+    step 1   0018 through P1's runner: python -m worker.ops.migrate apply --to 18
     data     synthetic F3, F4 and F5 evidence for three filings, saved through F5's own _persist as cse_worker, so that
              verify has rows to check (at a first deployment there are none; at a checkpoint there are)
     step 2   python -m worker.financial_f4_store preflight --migration-role, with CSE_DB_HOST, CSE_DB_PORT and
@@ -250,7 +250,8 @@ class Rehearsal:
     def prepare(self):
         """The set-up, step 1 (0018 through P1's runner) and the synthetic evidence."""
         self.set_up("migrate-0001-0017", ["--to", "17"])
-        step1 = self.run("steps", "step1-migrate-0018", ["worker.ops.migrate", "apply"], self.migration_route())
+        step1 = self.run("steps", "step1-migrate-0018", ["worker.ops.migrate", "apply", "--to", "18"],
+                         self.migration_route())
         self.seed()
         return step1
 

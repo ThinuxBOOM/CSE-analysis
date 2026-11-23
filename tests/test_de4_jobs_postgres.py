@@ -16,7 +16,6 @@ from worker.feature_engine_store import jobs, loader, verify
 
 BINDIR = os.environ.get("P1_PG_BINDIR")
 pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR (PostgreSQL binaries) not set")
-PENDING = os.path.join(fs.REPO, "supabase", "migrations_pending")
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +23,7 @@ def cluster(tmp_path_factory):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path_factory.mktemp("de4j"))
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(PENDING), log=lambda m: None)
+    mig.apply(c, mig.discover(fs.MIGDIR), log=lambda m: None)
     c.close()
     yield ec
     ec.stop()

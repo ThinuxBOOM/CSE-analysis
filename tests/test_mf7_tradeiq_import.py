@@ -178,7 +178,7 @@ def _cluster(tmp_path):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path / "pg")
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(os.path.join(fs.REPO, "supabase", "migrations_pending")),
+    mig.apply(c, mig.discover(fs.MIGDIR),
               log=lambda m: None)
     c.close()
     return fs, ec

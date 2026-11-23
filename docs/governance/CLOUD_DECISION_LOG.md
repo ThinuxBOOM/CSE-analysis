@@ -1176,3 +1176,45 @@ The owner, in the session, agreed with the recommended decisions ("Agree with se
     sessions; the totals are about 1,660 and 2,840 sessions, about seven and twelve years.
 - What remains for the merge itself: moving 0019 to 0021 into the migration chain, and the change control for the
   three guards that state a migration range. Both are part of the owner's merge (`docs/governance/MERGE_CANDIDATE.md`).
+
+## C-0118: migrations 0019 to 0021 moved into the chain ([delegated], laptop orchestrator, 2026-11-23)
+
+Under the owner's go of 2026-11-23 ("merge the checkpoint and do what is needed on the laptop before Phase 6; change
+control [delegated]"), the merge's steps 2 and 3 (`docs/governance/MERGE_CANDIDATE.md`), as one change (brief B-0015):
+- **The move.** `0019_market_feature_foundation.sql`, `0020_financial_features_and_engines.sql` and
+  `0021_ml_registry.sql` moved by `git mv` from `supabase/migrations_pending/` into `supabase/migrations/`, their
+  contents unchanged (the same Git blobs). P1's runner needs no change: gaps are allowed (0006 stays unused) and the
+  hash ledger records each file at apply. The chain now reaches 0021.
+- **The three guards that state the range** (MF design §13.3; frozen, so change controlled):
+  - `ops/staging/inner/stage_checks.sh` `ledger` (ST-07) expects `1 … 18 19 20 21`, 0006 unused;
+  - `ops/staging/inner/stage_scenarios.sh` `migrate_lock` (ST-14) checks that 0021, the newest migration, is recorded
+    exactly once;
+  - `tests/test_rf4_runbook_rehearsal.py`: step 1 runs `migrate apply --to 18`, so it still applies exactly 0018.
+- **Two more frozen R-F4 tests that pinned the chain's end**, found by running them with the migrations in the chain:
+  `tests/test_rf4_postgres.py` p9 and p48 apply the chain after 0017 and expect exactly 0018. Both now pass
+  `target=18`, as the rehearsal does, so they stay about the 0017 to 0018 upgrade.
+- **The tests that read the pending directory** (MF, DE-4, M5 and the registry; not frozen) apply the chain alone;
+  MF-8's snapshot test applies it up to 0019. No reference to `migrations_pending` is left in code or tests. The
+  designs for Phases 6 to 12 still plan their own migrations in that directory; they are unchanged.
+- **Records.** Dated notes in Master Architecture §51, `docs/ops/STAGING.md`, `docs/R_F4_IMPLEMENTATION.md` (§3.2,
+  §23.1), `docs/ops/PHASE2_BACKFILL.md`, the P3, P4 and P5 runbooks, `MERGE_CANDIDATE.md`, `LAPTOP_RESUME.md` and the
+  Phase 3, 4 and 5 implementation records.
+- **Still the owner's:** the re-staging on the laptop (ST-33 / REG-G01, MA §43.1). `test_mf8_captured_postgres`'s
+  c5 fails intermittently on the baseline as well; it is recorded, and CI decides.
+
+**Correction, 2026-11-23** (B-0015 round 2, after audit AR-0015-1, FAIL; [delegated] under the orchestrator's
+disposition of the same day):
+- **A third frozen R-F4 line pinned the chain's end (MJ-1).** `tests/test_rf4_postgres.py` p1 asserted that the
+  ledger ends with 0017 and 0018 (`names[-2:]`), and it failed with 0019 to 0021 in the chain. Under the same change
+  control it now asserts that 0017 immediately precedes 0018 and that exactly 0019, 0020 and 0021 follow, by name;
+  0018 at its pin, the test's intent, is unchanged. R-F4 §3.2 records it.
+- **Withdrawn:** the statement above, and in B-0015's first commit (`9e7fc8e`), that p9 and p48 (with the
+  rehearsal's step 1) were the only tests pinning the chain's end. A search of `tests/` and `ops/` for assertions on
+  the ledger's or the migration list's end or length found p1 as well, and no other line.
+- **The docstring (M-1).** `tests/test_mf7_migration_postgres.py` still named `migrations_pending` in its module
+  docstring; it is corrected, so the statement that no reference is left now holds for code and tests. The headers
+  of migrations 0019 to 0021 still say they were kept in `supabase/migrations_pending/`: migration content is
+  frozen, and they are left as they are.
+- **Two comment lines under the guard change control (N-2):** the usage line of `ops/staging/inner/stage_checks.sh`
+  (line 9, `ledger` now "0001-0021") and the step-1 line of `tests/test_rf4_runbook_rehearsal.py`'s docstring
+  (line 14, `apply --to 18`). Each describes the guard beside it.

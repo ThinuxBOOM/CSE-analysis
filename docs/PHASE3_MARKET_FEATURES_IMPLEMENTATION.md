@@ -525,6 +525,7 @@ were verified (hand-computed with a split inside the horizon and a bonus after F
 0019 into `supabase/migrations/` on this branch would need a change-control edit to each, and a re-staging. Kept in
 `supabase/migrations_pending/`, it changes no frozen file; moving it into the chain is part of the owner's merge
 decision (P3-R6). The tests apply it explicitly after the chain.
+*(2026-11-23, C-0118: 0019 is now in the chain, `supabase/migrations/`, unchanged, with the three guards changed under change control; the tests apply the chain.)*
 
 Choices for the audit: `company_id` is `uuid` (as `companies.id`); a configuration's `status` must equal its JSON's
 `eligibility_policy_status`; the worker may insert a `declared_closed` row only as a `trading_calendar:` copy (the

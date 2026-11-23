@@ -3,6 +3,7 @@
 Design: `docs/PHASE4_DETERMINISTIC_ENGINES_DESIGN.md` §10. Implementation record: `docs/PHASE4_IMPLEMENTATION.md`.
 Storage: pending migration `supabase/migrations_pending/0020_financial_features_and_engines.sql` (applied after
 0019; moving it into the chain is part of the owner's merge decision).
+*(2026-11-23, change control B-0015: 0020 moved, unchanged, into the chain, as `supabase/migrations/0020_financial_features_and_engines.sql`.)*
 
 Nothing here contacts CSE or any network. F7 and DE read only what PostgreSQL already holds: a stored MF snapshot,
 the F8 evidence and the issuer link decisions.
