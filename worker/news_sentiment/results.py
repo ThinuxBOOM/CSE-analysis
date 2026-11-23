@@ -2,8 +2,10 @@
 §5.5: which result of an article version counts at T.
 
 **Stored results are admitted by their own clock** (revision 2, M4): a stored `ns_article_results` row is used as it
-is only if its own `recorded_at` is admitted (<= T in KNOWN, <= H in AVAILABLE and CURRENT) **and** every alias it
-used is admitted at T (§5.2), under the configuration in force (named or designated, NL-6).
+is only if its own `recorded_at` is admitted (<= T in KNOWN, <= H in AVAILABLE and CURRENT) **and** the whole alias
+context it was computed under (every alias admitted to it, ends applied) EQUALS the context admitted at T, under the
+configuration in force (named or designated, NL-6). The design's "every alias it used is admitted" is not enough: an
+alias end announced after T, or an alias added since, changes what is ambiguous (NS-2..5 audit, Major 1).
 
 **Recomputation** (revision 3, N3): a processor is pure, so under `full_text` the result may instead be recomputed
 at query time from inputs admitted at T (the article version, the aliases admitted at T, the configuration); it is
@@ -42,7 +44,7 @@ def admitted_result(version, stored, aliases, ends, query, cfg, lexicon=None):
     cid = cfg.configuration_id()
     usable = [r for r in stored if (r.source_id, r.reference, r.version_no) ==
               (version.source_id, version.reference, version.version_no) and r.configuration_id == cid
-              and _result_admitted(query, r.recorded_at) and set(r.result.alias_ids) <= ok_ids]
+              and _result_admitted(query, r.recorded_at) and set(r.result.context_alias_ids) == ok_ids]
     if usable:
         return max(usable, key=lambda r: r.recorded_at).result, "stored"
     if version.extracted_text is not None:                                  # full_text: recompute at T

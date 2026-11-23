@@ -213,3 +213,68 @@ def test_nl11_results_by_their_own_clock_and_their_aliases():
     # another configuration's result is not used (NL-6's pinning)
     other = rs.StoredResult("s1", "a1", 1, "0" * 64, late_result.result, T - timedelta(hours=1))
     assert rs.admitted_result(meta, [other], [], [], Query(KNOWN, T), cfg) == (None, "none")
+
+
+# ----------------------------------------------------------------------------------------------- NS-2..5 audit
+
+
+def test_major1_a_stored_result_needs_the_same_alias_context_as_t():
+    cfg = cf.Config()
+    g4, g5 = alias(4, "Gamma", "iss_gamma"), alias(5, "Gamma", "iss_gamma2")
+    end5 = al.AliasEnd(5, T - timedelta(days=1), T + timedelta(days=1))       # recorded before T, announced after
+    v = ar.Version("s1", "a1", 1, None, "Gamma posts record profit", None, "none", "en", "x", "y", None,
+                   T - timedelta(days=2), T - timedelta(days=2), T - timedelta(days=2), recorded_at=T - timedelta(days=2))
+    # computed (before T) when alias 5 was already ended in KNOWN: only alias 4 in its context
+    computed = pr.process(v.title, "Gamma reported strong growth.", "en",
+                          al.admitted([g4, g5], [end5], Query(KNOWN, T - timedelta(hours=1))), cfg)
+    assert computed.context_alias_ids == (4,) and "iss_gamma" in computed.issuers
+    stored = rs.StoredResult("s1", "a1", 1, cfg.configuration_id(), computed, T - timedelta(hours=1))
+    # in AVAILABLE at T the end is not yet announced: both aliases in force, "Gamma" ambiguous; the stored result
+    # (context {4}) must not be reused
+    assert rs.admitted_result(v, [stored], [g4, g5], [end5], Query(AVAILABLE, T, H), cfg) == (None, "none")
+    # in KNOWN at T the context is the same ({4}): reused
+    got, how = rs.admitted_result(v, [stored], [g4, g5], [end5], Query(KNOWN, T), cfg)
+    assert how == "stored" and "iss_gamma" in got.issuers
+
+
+def test_major2_a_result_recorded_after_t_is_not_used_whatever_its_aliases():
+    cfg = cf.Config()
+    v = ar.Version("s1", "a1", 1, None, "Alpha Bank PLC record profit", None, "none", "en", "x", "y", None,
+                   T - timedelta(days=1), T - timedelta(days=1), T - timedelta(days=1), recorded_at=T - timedelta(days=1))
+    res = pr.process(v.title, "Alpha Bank PLC posted strong growth.", "en", al.admitted(ALIASES, [], Query(KNOWN, T)),
+                     cfg)
+    late = rs.StoredResult("s1", "a1", 1, cfg.configuration_id(), res, T + timedelta(minutes=1))
+    assert rs.admitted_result(v, [late], ALIASES, [], Query(KNOWN, T), cfg) == (None, "none")
+    got, how = rs.admitted_result(v, [late], ALIASES, [], Query(KNOWN, T + timedelta(minutes=1)), cfg)
+    assert how == "stored" and got is res                                          # converse
+
+
+def test_major3_negation_ends_at_clause_punctuation_and_at_a_scored_term():
+    r = run("x", "Alpha Bank PLC: no loss, strong growth.")
+    # "no loss" -> +1 (negated); "strong", "growth" -> +1 each (not negated across the comma): 3 / 3
+    assert (r.issuers["iss_alpha"]["sentiment"], r.issuers["iss_alpha"]["label"]) == (1.0, "positive")
+    r = run("x", "Alpha Bank PLC profit did not fall; revenue rose strongly.")
+    # profit +1, "not fall" +1, "rose" +1 (the semicolon ends the scope): 3 / 3
+    assert r.issuers["iss_alpha"]["sentiment"] == 1.0
+    r = run("x", "Alpha Bank PLC did not post strong growth.")             # reach 3: "not post strong" negates
+    assert r.issuers["iss_alpha"]["sentiment"] == 0.0                      # -1 (strong) + 1 (growth, after a scored term)
+
+
+def test_minors_title_ticker_spans_lexicon_threshold():
+    v1, _ = ar.ingest("s1", [], [], ar.RawItem("a", "u", "Old title", None, "none", "en", "b", "same text", T), "metadata_only")
+    v2, obs = ar.ingest("s1", [v1], [], ar.RawItem("a", "u", "New title", None, "none", "en", "b", "same text",
+                                                   T + timedelta(days=1)), "metadata_only")
+    assert v2 is not None and v2.version_no == 2                             # a changed title is a revision
+    assert ar.normalise_text("profit​­able") == "profitable"       # invisible format characters removed
+    with pytest.raises(ValueError, match="full form"):
+        al.admitted([alias(30, "LION", "iss_lion", "ticker")], [], Query(KNOWN, T))
+    r = run("x", "Alpha Bank PLC met Strong Growth Holdings.",
+            aliases=ALIASES + [alias(31, "Strong Growth Holdings", "iss_sg")])
+    assert r.issuers["iss_alpha"]["label"] == "unscored"                     # another issuer's name is not sentiment
+    with pytest.raises(ValueError, match="lexicon"):
+        pr.process("x", "y", "en", ALIASES, cf.Config(), lexicon=({"positive": [], "negative": [], "negators": [],
+                                                                    "intensifiers": {}}, "0" * 64))
+    # exactly the positive threshold (0.2): positive. 3 positive and 2 negative terms: 1 / 5 = 0.2
+    r = run("x", "Alpha Bank PLC profit growth gains, weak, loss.")
+    assert (r.issuers["iss_alpha"]["sentiment"], r.issuers["iss_alpha"]["label"]) == (0.2, "positive")
+    assert cf.Config().configuration_id() == cf.Config().configuration_id()

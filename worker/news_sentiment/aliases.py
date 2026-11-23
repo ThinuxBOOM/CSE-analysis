@@ -13,11 +13,13 @@ otherwise: tickers enter as their full form; a short form is only ever an owner 
 """
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
 KINDS = ("name", "ticker", "owner")
+TICKER = re.compile(r"[A-Z0-9]+\.[A-Z][0-9]{4}")
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,9 @@ def admitted(aliases, ends, query):
     for a in aliases:
         if a.kind not in KINDS:
             raise ValueError(f"alias kind is one of {KINDS}")
+        if a.kind == "ticker" and not TICKER.fullmatch(a.text.strip().upper()):
+            raise ValueError(f"a ticker alias is the full form (ABC.N0000), not {a.text!r}: a short form is an owner "
+                             f"alias")
         if a.alias_id not in ended and query.admits(a.recorded_at, a.available_at):
             out.append(a)
     return sorted(out, key=lambda a: a.alias_id)

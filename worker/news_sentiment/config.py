@@ -62,7 +62,13 @@ class Config:
         return dict(self.half_lives)[event_type]
 
     def body(self):
+        from . import dedup, process
+        rules = {"event_rules": {k: list(v) for k, v in process.EVENT_RULES.items()},
+                 "market_terms": [list(t) for t in process.MARKET_TERMS], "suffix": process._SUFFIX,
+                 "sequences": [[list(a), list(b)] for a, b in process._SEQUENCES], "token": process._TOKEN.pattern,
+                 "stop": sorted(dedup.STOP)}
         return {"processors": [ENTITY, RELEVANCE, EVENT, SENTIMENT, DECAY], "event_types": list(EVENT_TYPES),
+                "rules": rules,
                 **{k: (list(map(list, v)) if k == "half_lives" else v) for k, v in self.__dict__.items()}}
 
     def configuration_id(self):

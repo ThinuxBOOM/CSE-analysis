@@ -19,7 +19,7 @@ STOP = frozenset({"the", "a", "an", "of", "in", "on", "for", "to", "and", "is", 
 
 
 def story_key(title, issuer_ids):
-    toks = sorted(t for t in tokens(title) if t not in STOP)
+    toks = sorted(t for t in tokens(title) if t not in STOP and t != "|")
     return hashlib.sha256(json.dumps([toks, sorted(set(issuer_ids))]).encode()).hexdigest()
 
 

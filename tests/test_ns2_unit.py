@@ -190,3 +190,51 @@ def test_archive_availability_policy():
         datetime(2026, 9, 1, 2, 30, tzinfo=UTC)
     with pytest.raises(ValueError):
         ar.archive_available_at(None, "none", pol)
+
+
+# ----------------------------------------------------------------------------------------------- NS-2..5 audit
+
+
+def test_major4_a_same_text_reappearance_resets_a_pending_absence():
+    v1, _ = ar.ingest(SRC, [], [], raw(), "metadata_only")
+    d1 = T0 + timedelta(days=1)
+    _v, o1 = ar.ingest(SRC, [v1], [], ar.Gone("a1", d1, 404), "metadata_only")
+    _v, o2 = ar.ingest(SRC, [v1], o1, raw(at=d1 + timedelta(hours=12)), "metadata_only")       # back, same text
+    assert [o.kind for o in o2] == ["confirmed"]
+    _v, o3 = ar.ingest(SRC, [v1], o1 + o2, ar.Gone("a1", d1 + timedelta(days=1), 404), "metadata_only")
+    assert [o.kind for o in o3] == ["gone_first"]                       # the count started again
+
+
+def test_major5_a_date_only_publication_is_never_shifted_by_a_time_zone():
+    west = {"time_zone_offset_minutes": -300, "date_only_counts_from": "end_of_day", "availability_lag_minutes": 0}
+    as_utc_midnight = datetime(2026, 9, 2, tzinfo=UTC)                   # how the adapter carries a date-only value
+    got = ar.archive_available_at(as_utc_midnight, "date", west)
+    assert got == datetime(2026, 9, 2, 23, 59, 59, tzinfo=timezone(timedelta(minutes=-300)))
+    assert ar.archive_available_at(date(2026, 9, 2), "date", west) == got
+    v = ar.archive_version(SRC, "c", "t", date(2026, 9, 2), "date", "en", "x", "metadata_only", west)
+    assert v.published_at is not None and v.published_at.date() == date(2026, 9, 2)      # the date is kept
+
+
+def test_the_plan_confirms_after_24_hours_once_and_reports_overflow():
+    sessions = [date(2026, 9, d) for d in (1, 2, 3, 4, 7, 8, 9)]
+    v = ar.Version(SRC, "old", 1, None, "t", None, "none", "en", "x", "y", None, datetime(2026, 9, 1, 4, tzinfo=UTC),
+                   datetime(2026, 9, 1, 4, tzinfo=UTC), datetime(2026, 9, 1, 4, tzinfo=UTC))
+    gone = [ar.Observation(SRC, "old", "gone_first", datetime(2026, 9, 3, 9, 30, tzinfo=UTC),       # 15:00 Colombo
+                           datetime(2026, 9, 3, 9, 30, tzinfo=UTC))]
+    early = datetime(2026, 9, 4, 3, 30, tzinfo=UTC)                     # 09:00 Colombo next day: under 24 h
+    assert ar.plan([], [v], gone, sessions, date(2026, 9, 4), 5, now=early)[1] == []
+    late = datetime(2026, 9, 4, 10, tzinfo=UTC)
+    assert ar.plan([], [v], gone, sessions, date(2026, 9, 4), 5, now=late)[1] == [("old", "confirm_gone")]
+    back = [ar.Observation(SRC, "old", "confirmed", datetime(2026, 9, 3, 20, tzinfo=UTC),
+                           datetime(2026, 9, 3, 20, tzinfo=UTC))]
+    assert ar.plan([], [v], gone + back, sessions, date(2026, 9, 4), 5, now=late)[1] == []      # reappeared
+    f, r, s = ar.plan(["n1", "n2", "n2", "n3"], [], [], sessions, date(2026, 9, 2), 2)
+    assert f == ["n1", "n2"] and s == [("n3", "new_over_budget")]
+    # the first observation's day is the Colombo day (23:00 UTC on 1 Sep is 2 Sep in Colombo)
+    v2 = ar.replace(v, observed_at=datetime(2026, 9, 1, 23, tzinfo=UTC))
+    assert ar.plan([], [v2], [], sessions, date(2026, 9, 3), 5)[1] == [("old", "session_1")]
+
+
+def test_a_row_not_yet_recorded_is_never_admitted():
+    v, _ = ar.ingest(SRC, [], [], raw(at=T - timedelta(days=1)), "metadata_only")
+    assert v.recorded_at is None and ar.in_force([v], [], Query(KNOWN, T)) == {}

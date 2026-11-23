@@ -120,6 +120,40 @@ Tests: `tests/test_ns3_unit.py` (23).
 - NL-11: a result recorded after T, an alias recorded after T, recomputation under `full_text`, the stored result
   in AVAILABLE, another configuration's result.
 
+
+### NS-2 to NS-5 audit (fresh-context agent, at `3d01c40`): accepted
+
+No Blocker (C-0037). Five Majors, all fixed:
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | Leakage through stored results. Take an alias end recorded before T but announced after T. A result computed under that end still passed "every alias it used is admitted", so in AVAILABLE "Gamma" was clear although both aliases were in force | A result records its whole alias context: every alias admitted to it, ends applied. A stored result is reused only when that context equals the one admitted at T; otherwise it is recomputed (`full_text`) or there is none. **The design's rule (N3) is not enough as written, and this note supersedes it** |
+| Major 2 | NL-11 never tested the result's own clock on its own | A result recorded after T, with all its aliases early: not used at T; used once T passes its `recorded_at` |
+| Major 3 | Negation crossed clauses and scored terms ("no loss, strong growth" read as negative) | Clause punctuation is kept as a boundary token; the negation scope ends at a boundary or at an earlier scored term. Hand cases for both sentences and for the reach |
+| Major 4 | A same-text reappearance (a `confirmed` observation) did not reset a pending absence | The count restarts after the latest sighting, a new version or a `confirmed` observation |
+| Major 5 | A date-only archive date carried as UTC midnight moved to the previous day in a source time zone west of UTC, so an article became available a day early | The calendar date is taken as stated, never converted. Tested with −05:00 |
+
+**Minors fixed:**
+- The title is part of the revision hash: a changed title is a revision.
+- A `ticker` alias must have the full form.
+- Every matched alias span, including other issuers', is left out of sentiment windows.
+- The lexicon must match the configuration's hash, and the rule tables (events, market terms, suffixes, tokeniser,
+  stop list) are hashed into the configuration id.
+- The plan:
+  - confirms once 24 hours have passed;
+  - drops a confirmation after a reappearance;
+  - re-fetches an article at most once a day;
+  - reports new references over the budget as skipped;
+  - uses the Colombo first day.
+- An archive's date-only publication is kept.
+- Invisible format characters are stripped before hashing.
+- A row with no `recorded_at` is never admitted (tested).
+
+The tests kill the surviving mutants for the result clock, the first day, the negation reach, the threshold boundary
+and the alias spans.
+
+**Open, for the first real adapter:** `SyntheticAdapter` keeps its URL map in memory, and malformed items raise
+instead of failing.
 ---
 
 ## NS-6: decay and the snapshot

@@ -36,15 +36,19 @@ _WS = re.compile(r"\s+")
 
 
 def normalise_text(text):
-    """The fixed rule behind a revision's identity: NFKC, typographic quotes and dashes to ASCII, whitespace
-    collapsed, ends stripped. Case and wording are kept: a changed word is a revision."""
+    """The fixed rule behind a revision's identity: NFKC, typographic quotes and dashes to ASCII, invisible format
+    characters (Unicode Cf: zero-width, soft hyphen) removed, whitespace collapsed, ends stripped. Case and wording
+    are kept: a changed word is a revision."""
     t = unicodedata.normalize("NFKC", text or "")
-    t = "".join(_QUOTES.get(c, c) for c in t)
+    t = "".join(_QUOTES.get(c, c) for c in t if unicodedata.category(c) != "Cf")
     return _WS.sub(" ", t).strip()
 
 
-def text_sha256(text):
-    return hashlib.sha256(normalise_text(text).encode("utf-8")).hexdigest()
+def text_sha256(text, title=None):
+    """The revision hash: the normalised title (when given) and the normalised extracted text. A changed title is a
+    revision too: it drives entities, sentiment and the story key (NS-2..5 audit, minor)."""
+    body = normalise_text(text) if title is None else normalise_text(title) + "\n" + normalise_text(text)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -121,14 +125,17 @@ def ingest(source_id, versions, observations, item, storage_level):
             raise ValueError("only 404, 410 or an explicit signal is evidence of removal")
         firsts = [o for o in observations if (o.source_id, o.reference, o.kind) == (source_id, item.reference,
                                                                                    "gone_first")]
-        last_version_seen = mine[-1].observed_at or mine[-1].available_at
-        firsts = [o for o in firsts if o.observed_at >= last_version_seen]     # a reappearance resets the count
+        seen = [mine[-1].observed_at or mine[-1].available_at] + [
+            o.observed_at for o in observations if (o.source_id, o.reference, o.kind) ==
+            (source_id, item.reference, "confirmed")]
+        last_seen = max(seen)                                  # the article seen again, same text or not (Major 4)
+        firsts = [o for o in firsts if o.observed_at > last_seen]              # a reappearance resets the count
         if firsts and item.observed_at - min(o.observed_at for o in firsts) >= CONFIRM_AFTER:
             return None, [Observation(source_id, item.reference, "withdrawn", item.observed_at, item.observed_at,
                                       f"http_{item.status}_confirmed")]
         return None, [Observation(source_id, item.reference, "gone_first", item.observed_at, item.observed_at,
                                   f"http_{item.status}")]
-    h = text_sha256(item.extracted_text)
+    h = text_sha256(item.extracted_text, item.title)
     keep = item.extracted_text if storage_level == "full_text" else None
     if not mine:
         return Version(source_id, item.reference, 1, None, item.title, item.published_at, item.published_precision,
@@ -174,8 +181,9 @@ def archive_available_at(published_at, precision, policy):
     lag = timedelta(minutes=policy.get("availability_lag_minutes", 0))
     if precision == "date":
         tz = timezone(timedelta(minutes=policy["time_zone_offset_minutes"]))
-        d = published_at if isinstance(published_at, date) and not isinstance(published_at, datetime) else \
-            published_at.astimezone(tz).date()
+        # the calendar date AS STATED: never converted between time zones (a date-only value carried as UTC midnight
+        # would land on the previous day west of UTC; NS-2..5 audit, Major 5)
+        d = published_at.date() if isinstance(published_at, datetime) else published_at
         return datetime.combine(d, time(23, 59, 59), tz) + lag
     if published_at.tzinfo is None:
         raise ValueError("a publication instant has a time zone")
@@ -186,22 +194,24 @@ def archive_version(source_id, reference, title, published_at, precision, langua
                     body_sha256=None):
     """Version 1 of an archive article (§9): no observed_at; available from its declared publication."""
     avail = archive_available_at(published_at, precision, policy)
-    h = text_sha256(text)
-    return Version(source_id, reference, 1, None, title, published_at if isinstance(published_at, datetime) else None,
-                   precision, language, body_sha256 or h, h, text if storage_level == "full_text" else None, None,
-                   avail, avail, origin="archive")
+    h = text_sha256(text, title)
+    stated = published_at if isinstance(published_at, datetime) else datetime.combine(published_at, time(0), timezone.utc)
+    return Version(source_id, reference, 1, None, title, stated, precision, language, body_sha256 or h, h,
+                   text if storage_level == "full_text" else None, None, avail, avail, origin="archive")
 
 
 # ----------------------------------------------------------------------------------------------- re-fetch policy
 
 
-def plan(new_refs, versions, observations, sessions, today, budget):
+def plan(new_refs, versions, observations, sessions, today, budget, now=None):
     """The day's work for one source, within its budget: new references first, then the scheduled re-fetches (at 1
     and 5 sessions after first observation, and a confirming re-fetch a day after a first 404/410). Returns
     (fetches [ref], refetches [(ref, reason)], skipped [(ref, reason)]). `sessions` are the final sessions known,
     ascending; a re-fetch is due on the first session at or after its target. Skipped re-fetches are recorded and
     dropped, never queued indefinitely."""
-    fetches = list(new_refs)[:budget]
+    new_refs = list(dict.fromkeys(new_refs))
+    fetches = new_refs[:budget]
+    overflow = [(r, "new_over_budget") for r in new_refs[budget:]]
     left = budget - len(fetches)
     due = []
     firsts = {}
@@ -218,10 +228,19 @@ def plan(new_refs, versions, observations, sessions, today, budget):
         for n in REFETCH_SESSIONS:
             if len(later) >= n and later[n - 1] == today:
                 due.append((ref, f"session_{n}"))
-        gone = [o for o in observations if (o.source_id, o.reference, o.kind) == (sid, ref, "gone_first")]
+        seen = [o.observed_at for o in observations if (o.source_id, o.reference, o.kind) == (sid, ref, "confirmed")]
+        seen += [v.observed_at for v in versions if (v.source_id, v.reference) == (sid, ref) and v.observed_at]
+        gone = [o for o in observations if (o.source_id, o.reference, o.kind) == (sid, ref, "gone_first")
+                and o.observed_at > max(seen)]                 # a reappearance cancels the pending confirmation
         if gone:
-            g = max(o.observed_at for o in gone)
-            if (g + CONFIRM_AFTER).astimezone(timezone(timedelta(hours=5, minutes=30))).date() == today:
+            g = min(o.observed_at for o in gone)
+            when = now or datetime.combine(today, time(23, 59, 59), timezone(timedelta(hours=5, minutes=30)))
+            if when - g >= CONFIRM_AFTER:                      # due once 24 h have passed (ingest needs them)
                 due.append((ref, "confirm_gone"))
-    refetches, skipped = due[:max(0, left)], due[max(0, left):]
-    return fetches, refetches, skipped
+    seen_refs, unique = set(), []
+    for ref, why in due:                                       # one re-fetch per article a day
+        if ref not in seen_refs:
+            seen_refs.add(ref)
+            unique.append((ref, why))
+    refetches, skipped = unique[:max(0, left)], unique[max(0, left):]
+    return fetches, refetches, overflow + skipped
