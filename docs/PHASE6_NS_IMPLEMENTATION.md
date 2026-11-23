@@ -397,3 +397,22 @@ Tests: `tests/test_ns7_postgres.py`:
   - every sent request is in the ledger;
   - a snapshot from the ingested rows has stories, and `verify` is clean.
 - `test_p8_ns10_inspect_writes_nothing`.
+
+### NS-10 audit (fresh-context agent, at `9bac7c3`): accepted
+
+No Blocker. Two Majors, both fixed:
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | A full (truncated) listing lost its oldest articles for good. The cursor advanced anyway, and a later `ran` the same day cleared the `partial` | The cursor is the latest *complete* pass's time, kept in the run's details; an incomplete pass does not move it. A full page is followed by a page ending at its oldest article (`enddatetime`), up to 8. A page that is not full, or one that reaches back to the cursor, completes the pass. Tested: two pages complete; 8 full pages give `partial` and the next pass lists from the last complete cursor |
+| Major 2 | `inspect` got around a registered source's stop, budget, interval and ledger | `inspect` refuses a registered source (the CLI checks the database), so it serves only the check before `register-source`. Tested |
+
+**Minors fixed:**
+- A version without a result under the configuration in force is scored when listed again, and the runbook says to
+  designate first.
+- A pass that raises writes a `failed` run with the error's type and re-raises; the lock is released (tested). The
+  run details hold the listing outcome, the cursor, the pages and the counts.
+- The source's versions and observations are read directly, with no admission filter.
+- A confirmation is written only after 24 hours unseen.
+- The runbook's exit codes and budget arithmetic are corrected.
+- Tests cover the cursor, paging, the spacing, re-scoring and failures.

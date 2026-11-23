@@ -497,13 +497,16 @@ def test_p8_ns10_ingest_one_source_end_to_end(cluster, tmp_path):
     assert (out["new_articles"], out["revisions"], out["processed"], out["status"]) == (1, 1, 2, "ran")
     sender.listings = [_api_listing(("https://news.example.test/a2", "Alpha Bank PLC strong growth"))]
     out = run()
-    assert out["confirmed"] == 1 and out["new_articles"] == out["revisions"] == 0
+    assert out["confirmed"] == 0 and out["new_articles"] == out["revisions"] == 0      # seen recently: no confirmation
     # the listing failing is a failed run; the ledger recorded every attempt before sending it
     sender.listings = [tp.Response(503, {}, b"")]
     assert run()["status"] == "failed"
     with w.cursor() as cur:
         cur.execute("select status from ns_ingestion_runs where source_id = 'gdelt_doc' order by run_id")
         assert [r[0] for r in cur.fetchall()] == ["ran", "ran", "ran", "failed"]
+        cur.execute("select detail_json from ns_ingestion_runs where source_id = 'gdelt_doc' order by run_id")
+        details = [json.loads(r[0]) for r in cur.fetchall()]
+        assert details[-1]["listing"] != "ok" and not details[-1]["complete"] and details[0]["complete"]
         cur.execute("select count(*) from ns_fetch_attempts where source_id = 'gdelt_doc' and state = 'sent'")
         assert cur.fetchone()[0] == len(sender.sent)
     w.rollback()
@@ -537,3 +540,86 @@ def test_p8_ns10_inspect_writes_nothing(tmp_path):
     out = ingest.inspect(str(tmp_path / "R.md"), sender=sender)
     assert out["outcome"] == "ok" and out["listed"] == 1 and "seendate" in out["fields"]
     assert out["first"][0]["title"] == "Alpha Bank PLC record" and len(sender.sent) == 2
+
+
+
+def test_p8_ns10_audit_paging_cursor_spacing_reprocessing_and_failures(cluster, tmp_path):
+    from urllib.parse import parse_qs, urlsplit
+    from worker.news_store import ingest
+    db = fs.fresh_db(cluster)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    w = fs.conn(cluster, db, user="cse_worker")
+    api = "api.gdelt.test"
+    body = n1.record_bytes(source_id="gdelt_doc", allowed_hosts=[api], request_discipline={
+        "min_interval_seconds": 1.0, "daily_budget": 100, "max_retries": 0, "backoff_base_seconds": 1.0,
+        "backoff_max_seconds": 5.0, "retry_after_max_seconds": 5.0, "max_consecutive_failures": 4,
+        "max_body_bytes": 2_000_000})
+    (tmp_path / "NS-R.md").write_bytes(body)
+    store.register_source(o, body, "NS-R.md")
+    start = datetime.now(UTC) - timedelta(days=3)
+    store.start_ingestion(o, "gdelt_doc", start, "the owner starts GDELT (test)")
+    store.add_alias(o, *ISSUER_ALIAS, "name", datetime(2026, 1, 1, tzinfo=UTC), "synthetic issuer record")
+    clock_now = [datetime.now(UTC)]
+
+    def page(n, first):                              # n entries, newest first: item k seen k minutes before now
+        return tp.Response(200, {}, json.dumps({"articles": [
+            {"url": f"https://news.example.test/p{first + i}", "title": f"Alpha Bank PLC item {first + i}",
+             "seendate": (clock_now[0] - timedelta(minutes=first + i)).strftime("%Y%m%dT%H%M%SZ"),
+             "language": "English"} for i in range(n)]}).encode())
+    sender = _ApiSender(api, [])
+    def page_s(n, first):                            # the same, k SECONDS before now: 8 full pages stay inside 6 h
+        return tp.Response(200, {}, json.dumps({"articles": [
+            {"url": f"https://news.example.test/s{first + i}", "title": f"Alpha Bank PLC item s{first + i}",
+             "seendate": (clock_now[0] - timedelta(seconds=first + i)).strftime("%Y%m%dT%H%M%SZ"),
+             "language": "English"} for i in range(n)]}).encode())
+
+    def run(**kw):
+        return ingest.run_ingest(w, "gdelt_doc", sender=sender, records_dir=str(tmp_path),
+                                 clock=lambda: clock_now[0], **kw)
+    # Major 1: a full first page is followed by a page ending at its oldest entry; complete when a page is not full
+    sender.listings = [page(250, 0), page(10, 250)]
+    out = run()
+    assert (out["pages"], out["listed"], out["complete"], out["status"]) == (2, 260, True, "ran")
+    q2 = parse_qs(urlsplit(sender.sent[-1]).query)
+    assert "enddatetime" in q2 and q2["startdatetime"] == [max(start, clock_now[0] - gd_window()).astimezone(UTC)
+                                                            .strftime("%Y%m%d%H%M%S")]
+    # with no designation the 260 are unprocessed; a full listing that cannot finish keeps the cursor
+    sender.listings = [page_s(250, 250 * k) for k in range(ingest.MAX_PAGES)]
+    out = run()
+    assert (out["complete"], out["status"], out["pages"]) == (False, "partial", ingest.MAX_PAGES)
+    sender.listings = [page(1, 9000)]
+    out = run()
+    assert out["since"] == (clock_now[0] - ingest.OVERLAP).isoformat()           # from the last COMPLETE pass
+    # Minor 1: designated later, a version is scored when it is listed again
+    cfg = cf.Config()
+    store.designate(o, "sentiment", store.register_configuration(w, cfg), "the owner designates (test)")
+    clock_now[0] = datetime.now(UTC) + timedelta(seconds=1)          # the designation is in force from here
+    sender.listings = [page(3, 0)]
+    out = run()
+    assert out["processed"] == 3 and out["confirmed"] == 0
+    # Minor 4: a confirmation only after the spacing
+    clock_now[0] += ingest.CONFIRM_SPACING + timedelta(hours=1)
+    sender.listings = [page(3, 0)]
+    assert run()["confirmed"] == 3
+    # Minor 2: a pass that raises writes a failed run, re-raises, and releases the lock
+    class Boom:
+        def send(self, *a):
+            raise RuntimeError("the network fell over")
+    sender_saved, sender = sender, Boom()
+    with pytest.raises(RuntimeError):
+        run()
+    sender = sender_saved
+    with w.cursor() as cur:
+        cur.execute("select status, detail_json from ns_ingestion_runs order by run_id desc limit 1")
+        st, dj = cur.fetchone()
+        assert st == "failed" and json.loads(dj)["error"] == "RuntimeError"
+    w.rollback()
+    assert store.DbLedger(fs.conn(cluster, db, user="cse_worker")).lock("gdelt_doc")      # released
+    # Major 2: inspect refuses a registered source
+    with pytest.raises(store.Refused, match="registered"):
+        ingest.inspect(str(tmp_path / "NS-R.md"), conn=w, sender=_ApiSender(api, []))
+
+
+def gd_window():
+    from worker.news_ingest import gdelt
+    return gdelt.WINDOW - timedelta(hours=1)

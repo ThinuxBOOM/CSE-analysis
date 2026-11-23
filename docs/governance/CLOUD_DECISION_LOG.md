@@ -1429,3 +1429,14 @@ describes them, and the runbook gives the cadence.
   - scheduling `ingest`.
 
   Each makes live requests to GDELT or depends on one. Nothing here ran against the live API.
+
+**Correction to C-0126, 2026-11-23** (after its fresh-context audit: no Blocker, two Majors, fixed).
+- **Withdrawn:** "`since` overlaps the last article seen by 6 hours". `since` is now the latest complete pass's time
+  minus 6 hours, and a full listing is paged back (`enddatetime`) up to 8 pages, so a truncated listing loses
+  nothing.
+- **Withdrawn:** the order "`register-source`, `inspect`". `inspect` refuses a registered source, because it bypasses
+  the ledger, stop and budget. The order is `inspect`, `register-source`, `designate`, `start-ingestion`, then the
+  schedule.
+- **Withdrawn:** "with no configuration designated, articles are stored and left unprocessed". They are scored when
+  listed again under a designated configuration.
+- **Added:** a confirmation is written only after 24 hours unseen.

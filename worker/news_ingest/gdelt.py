@@ -80,7 +80,9 @@ class GdeltDocAdapter(Adapter):
         self.last_outcome = None                 # the transport's outcome of the latest listing ("ok", ...)
         self.last_body = None                    # its body, for the owner's inspection only
 
-    def listing_url(self, since=None):
+    def listing_url(self, since=None, until=None):
+        """`since` -> startdatetime (raised into the API's 3-month window); `until` -> enddatetime, to page back
+        through a full listing (articles before it)."""
         q = {"query": self.query, "mode": "artlist", "format": "json", "maxrecords": str(self.max_records),
              "sort": "datedesc"}
         if since is not None:
@@ -88,6 +90,10 @@ class GdeltDocAdapter(Adapter):
                 raise ValueError("since has a time zone")
             floor = self.transport.clock() - WINDOW + timedelta(hours=1)   # the API refuses a start older than 3 months
             q["startdatetime"] = max(since, floor).astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
+        if until is not None:
+            if until.tzinfo is None:
+                raise ValueError("until has a time zone")
+            q["enddatetime"] = until.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"{self.base}?{urlencode(q)}"
 
     def _entry(self, e):
@@ -119,13 +125,17 @@ class GdeltDocAdapter(Adapter):
         except (ValueError, TypeError, UnicodeError, AttributeError, OverflowError):
             return ("malformed",)
 
-    def list_new(self, since=None):
+    def oldest_seen(self):
+        """The oldest first-seen time in the latest listing (None when it was empty): where the next page ends."""
+        return min((i["seen_at"] for i in self._items.values()), default=None)
+
+    def list_new(self, since=None, until=None):
         """References in the listing, newest first. The previous listing's items are forgotten (the cache is one
         listing). `truncated` is set when the listing is full: older items since `since` may be missing, so the
         caller narrows the window or overlaps the next `since` (deduplication is by reference)."""
         self._items = {}
         self.truncated = False
-        r = self.transport.get(self.listing_url(since), "listing")
+        r = self.transport.get(self.listing_url(since, until), "listing")
         self.last_outcome = r.outcome
         self.last_body = r.response.body if r.outcome == "ok" else None
         if r.outcome != "ok":

@@ -72,9 +72,8 @@ A rebuilt snapshot keeps the stored snapshot's subjects. An issuer that only the
 The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project becomes commercial or public.
 
 **The first source:** GDELT's DOC 2.0 API, record `docs/governance/NS-GDELT-DOC.md`, **signed by the owner on
-2026-11-23** (C-0125). A record still carrying the draft marker is refused (C-0122). Register it on the laptop after
-the merge: `register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`. Inspect the first live
-listing by hand before `start-ingestion`.
+2026-11-23** (C-0125). A record still carrying the draft marker is refused (C-0122). On the laptop after the merge, in this
+order: `inspect` (one live listing), `register-source`, `designate`, `start-ingestion`, then schedule `ingest`.
 
 **The ingest command** (`ingest`, NS-10) runs one pass for one registered, started source; `inspect` makes one listing for the owner's check before `start-ingestion`. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.
@@ -92,16 +91,27 @@ allowed hosts. Any later change to the file stops the source until it is registe
 ## Commands (`sudo bash /opt/cse/app/ops/bin/cse-news <command>`)
 
 Worker (`cse-worker`):
-- `inspect --record FILE`: ONE listing request for a signed record, with an in-memory ledger; nothing is written.
-  It prints the JSON field names and the first entries. Run it once before `start-ingestion` and check that the
-  fields include `url`, `title`, `seendate` and `language`, and that the titles are Sri Lankan English news.
-- `ingest --source ID`: one pass. It refuses a source that is unregistered, not started, stopped, busy (its lock
-  held), or whose record no longer matches its pinned hash. It lists once (since the newest article seen, minus 6
-  hours, or the start), stores new articles, revisions and confirmations, and processes them with the configuration
-  designated now (stored unprocessed when none is). It writes the day's run row: `ran`; `partial` (listing full,
-  malformed entries, or a processing error); `failed` (the listing failed). Exit 0 for `ran`, 3 otherwise.
-  **Cadence:** at most hourly for GDELT (24 listings a day against a budget of 200). Scheduling it is the owner's
-  act on the laptop; each run contacts the source.
+- `inspect --record FILE`: for a record **not yet registered** (a registered source is refused: it is then governed
+  by its ledger, stop and budget). ONE listing request with an in-memory ledger; nothing is written. It prints the
+  JSON field names and the first entries. Run it once **before `register-source`** and check that the fields include
+  `url`, `title`, `seendate` and `language`, and that the titles are Sri Lankan English news.
+- `ingest --source ID`: one pass. It refuses, in order: a source with no adapter, unregistered, not started,
+  stopped, busy (its lock held), or whose record no longer matches its pinned hash and hosts.
+  - **The cursor:** it lists from the newest *complete* pass's time minus 6 hours, or from the start. An incomplete
+    pass leaves the cursor where it was, so nothing is skipped.
+  - **Paging:** while a page is full (250), the next page ends at that page's oldest article, up to 8 pages. A page
+    that is not full, or one that reaches back to the cursor, completes the pass.
+  - **What it writes:** new articles, title revisions, and a confirmation only for an article not seen for 24 hours.
+  - **Scoring:** with the configuration designated now. A version left unscored (none was designated yet) is scored
+    when it is listed again. **Designate before `start-ingestion`.**
+  - **The day's run row:** `ran` (complete); `partial` (incomplete, malformed entries, or a processing error);
+    `failed` (a listing failed or the source stopped, or the pass raised: the row is written first). Its details hold
+    the cursor, the pages, the listing outcome and the counts.
+  - **Exit codes:** 0 `ran`; 3 `partial` or `failed`; 4 database unavailable; 5 refused.
+  - **Cadence and budget:** at most hourly. Each run reads robots.txt and lists at least once, so a normal day is
+    about 48 requests against the record's 200. A busy hour pages up to 8 listings. If the budget runs out, the
+    transport stops sending until the next Colombo day, and the cursor makes the next pass resume where the last
+    complete one ended. Scheduling it is the owner's act on the laptop; each run contacts the source.
 
 Worker, read-only checks:
 - `preflight`: the 0022 tables, privileges and guard triggers.

@@ -32,7 +32,7 @@ governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regres
   - a contact mailbox, if a source needs one;
   - what a source is promised about backups after a purge.
 
-  The purge tooling (NS-9) and the ingest command (NS-10) are built. After the merge: register, inspect, start, schedule.
+  The purge tooling (NS-9) and the ingest command (NS-10) are built. After the merge: inspect, register, designate, start, schedule.
 - The merge of `integration/cloud-phase6` and moving 0022 into the chain.
 - Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
 - P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
@@ -43,9 +43,10 @@ governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regres
 ### 2026-11-23: the ingest command built (NS-10, C-0126)
 
 Phase 6's code is complete. **What you run on the laptop, after the merge:**
-1. `cse-news register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`.
-2. `cse-news inspect --record docs/governance/NS-GDELT-DOC.md`: one live listing. Check the fields and titles.
-3. `cse-news designate --purpose sentiment ...` and `cse-news start-ingestion --source gdelt_doc ...`.
+1. `cse-news inspect --record docs/governance/NS-GDELT-DOC.md`: one live listing. Check the fields and titles
+   (`inspect` refuses a registered source, so it comes first).
+2. `cse-news register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`.
+3. `cse-news designate --purpose sentiment ...`, then `cse-news start-ingestion --source gdelt_doc ...`.
 4. Schedule `cse-news ingest --source gdelt_doc`, at most hourly.
 
 ### 2026-11-23: the GDELT record signed on your instruction (C-0125)
@@ -57,6 +58,8 @@ You accepted GDELT's terms, the headline risk and the citation's place. I entere
 1. `cse-news register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`.
 2. Inspect the first live listing by hand.
 3. `start-ingestion`.
+
+*(Superseded by the NS-10 entry above: `inspect` comes first, because it refuses a registered source.)*
 
 ### 2026-11-23: GDELT's terms read at source (C-0124)
 

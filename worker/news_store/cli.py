@@ -5,7 +5,7 @@ owner-signed governance record (P6-R1).
 
   preflight | status | verify                                   (worker)
   ingest --source ID                                            (worker: one pass; NS-10)
-  inspect --record FILE                                         (worker: ONE listing, nothing written; before start-ingestion)
+  inspect --record FILE                                         (worker: ONE listing, nothing written; an unregistered record only)
   register-source --record FILE --ref NAME                      (owner: P6-R1; the record is validated and pinned)
   start-ingestion --source ID --at ISO --reason TEXT            (owner)
   clear-stop --source ID --reason TEXT                          (owner: only the owner resumes a stopped source)
@@ -97,14 +97,21 @@ def _noted(text, operator):
 
 def run(args, connect):
     import psycopg2
-    if args.command == "inspect":                      # no database: one listing, in-memory ledger
-        from . import ingest
+    if args.command == "inspect":                      # one listing, in-memory ledger; the database only to refuse
+        from . import ingest                           # a registered source (NS-10 audit, Major 2)
         try:
-            _print(ingest.inspect(args.record))
+            conn = connect()
+        except psycopg2.OperationalError as exc:
+            _print({"state": "unavailable", "error": str(exc).strip()[:300]})
+            return EXIT_DATABASE_UNAVAILABLE
+        try:
+            _print(ingest.inspect(args.record, conn=conn))
             return EXIT_OK
         except (store.Refused, ValueError, OSError) as exc:
             _print({"state": "refused", "reason": str(exc)})
             return EXIT_REFUSED
+        finally:
+            conn.close()
     try:
         conn = connect()
     except psycopg2.OperationalError as exc:
@@ -139,7 +146,7 @@ def run(args, connect):
             from . import ingest
             out = ingest.run_ingest(conn, args.source)
             _print(out)
-            return EXIT_OK if out["status"] == "ran" else EXIT_PROBLEMS
+            return EXIT_OK if out["status"] == "ran" else EXIT_PROBLEMS        # partial or failed: 3
         if c == "register-source":
             with open(args.record, "rb") as fh:
                 rec = store.register_source(conn, fh.read(), args.ref)

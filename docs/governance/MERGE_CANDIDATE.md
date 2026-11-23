@@ -59,7 +59,7 @@ lexicon, the sector deviation accepted, and a User-Agent with no contact. Table:
 - what a source is promised about purged data in backups, and any purge deadline;
 - this merge (P6-R5).
 
-**Before the first real run (the owner's, after the merge):** `register-source` for the signed GDELT record, one `inspect`, then `start-ingestion` and a schedule for `ingest` (at most hourly).
+**Before the first real run (the owner's, after the merge):** one `inspect` of the signed GDELT record, then `register-source`, `designate`, `start-ingestion` and a schedule for `ingest` (at most hourly).
 
 ### Open after the merge
 
