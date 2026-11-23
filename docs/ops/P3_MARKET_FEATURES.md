@@ -3,6 +3,7 @@
 **Status: built and tested on `integration/cloud`; not on `main`; never run on the server.** Migration 0019 is still
 pending (`supabase/migrations_pending/`, outside the chain, C-0053). Nothing here runs until the owner merges MF into
 `main`, applies 0019 under change control (design §13.3) and stages the build again (MA §43.1). There is no timer.
+*(2026-11-23, change control B-0015: 0019 moved, unchanged, into `supabase/migrations/`, with the three guards of design §13.3.)*
 
 MF contacts no network and never CSE. It reads only PostgreSQL; the owner's TradeIQ import also reads local files.
 

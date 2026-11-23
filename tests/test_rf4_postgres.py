@@ -586,7 +586,8 @@ def test_p9_without_0018_the_store_refuses_before_any_insert_and_0017_upgrades_f
         assert preflight.ledger_check(m) == {"status": "failed", "read_as": "cse_owner",
                                              "problems": [f"{preflight.MIGRATION} is not in the migration ledger"]}
         assert preflight.ledger_check(w)["status"] == "unverifiable"
-        assert mig.apply(m, mig.discover(S.MIGDIR), log=lambda _: None)["applied"] == [preflight.MIGRATION]
+        assert mig.apply(m, mig.discover(S.MIGDIR), target=18, log=lambda _: None)["applied"] == \
+            [preflight.MIGRATION]                                          # 0017 -> 0018 only (B-0015)
         assert preflight.object_problems(w) == [] and preflight.object_problems(d.reader()) == []
         assert preflight.report(m)["clean"]
         s = persist(w, a_layout_with_cells(layouts), 990002)
@@ -2955,8 +2956,8 @@ def test_p48_hb4_on_a_database_without_0018_rolls_the_filing_back_and_records_it
         w.rollback()
         if final == "failed":
             return
-        assert mig.apply(e.owner_conn(), mig.discover(S.MIGDIR), log=lambda _: None)["applied"] == \
-            [preflight.MIGRATION]
+        assert mig.apply(e.owner_conn(), mig.discover(S.MIGDIR), target=18, log=lambda _: None)["applied"] == \
+            [preflight.MIGRATION]                                          # 0017 -> 0018 only (B-0015)
         ds, err = hb4_slice(e, cdn, by)                                  # the retry: one more download, saved once
         assert err is None and H.state(w, it) == "persisted" and len(cdn.calls) == 2
         assert rows_of(w, [fid]) == (1, 1, 1) and f4_counts(w)["extractions"] == 1

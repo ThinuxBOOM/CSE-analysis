@@ -20,6 +20,8 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
 - `0020` (financial features and engines);
 - `0021` (ML registry; changed by C-0110 and C-0116).
 
+*(2026-11-23, C-0118: steps 2 and 3 below are done on `claude/migrations-0019-0021`: the three files are in `supabase/migrations/`, unchanged, with the three guards and R-F4's tests p9 and p48 changed under change control.)*
+
 ## The last green checks
 
 - **CI:** `21804c1`, the merge candidate, is green on both workflows: offline; Linux on PostgreSQL 17, with the

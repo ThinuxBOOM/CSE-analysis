@@ -12,7 +12,6 @@ import f64_support as fs
 
 BINDIR = os.environ.get("P1_PG_BINDIR")
 pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR (PostgreSQL binaries) not set")
-PENDING = os.path.join(fs.REPO, "supabase", "migrations_pending")
 TABLES = ["f7_configurations", "de_configurations", "f7_designations", "de_designations", "f7_panels",
           "f7_feature_rows", "de_runs", "de_outputs"]
 
@@ -22,7 +21,7 @@ def cluster(tmp_path_factory):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path_factory.mktemp("de4"))
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(PENDING), log=lambda m: None)
+    mig.apply(c, mig.discover(fs.MIGDIR), log=lambda m: None)
     c.close()
     yield ec
     ec.stop()
@@ -63,7 +62,7 @@ def test_d1_0020_applies_after_0019_and_stays_pending(cluster):
                     "join pg_proc p on p.oid = t.tgfoid where p.proname = 'f5_reject_mutation' "
                     "and c.relname = any(%s) group by 1", (TABLES,))
         assert dict(cur.fetchall()) == {t: 2 for t in TABLES}
-    assert not any(n.startswith("0020") for n in os.listdir(fs.MIGDIR))
+    assert [n for n in os.listdir(fs.MIGDIR) if n.startswith("0020")] == ["0020_financial_features_and_engines.sql"]   # in the chain (B-0015)
 
 
 def test_d2_configuration_guard_and_append_only(cluster):

@@ -6,7 +6,7 @@
 #   stage_checks.sh isolation [CAP...]   ST-04  interfaces, routes, a literal-IP connect, Docker socket, cgroup namespace,
 #                                 the exact mounts and the exact effective capabilities (Docker's default set plus the
 #                                 rung's: SYS_ADMIN when no CAP is named, i.e. L1); the driver's `isolation` passes them
-#   stage_checks.sh ledger        ST-07  the migration ledger, 0001-0018 (0006 unused)
+#   stage_checks.sh ledger        ST-07  the migration ledger, 0001-0021 (0006 unused)
 #   stage_checks.sh roles         ST-10  roles, socket, listener, and every role x append-only table x UPDATE/DELETE/TRUNCATE
 #   stage_checks.sh preflights    ST-11  every frozen component's own verification
 #   stage_checks.sh units         ST-12  units, timers, R1 gate
@@ -129,7 +129,7 @@ ledger() {
   psu "select version || ' ' || filename || ' ' || sha256 from ops.schema_migrations order by version" | tee /tmp/ledger.txt
   local versions
   versions=$(cut -d' ' -f1 /tmp/ledger.txt | tr '\n' ' ')
-  [[ "$versions" == "1 2 3 4 5 7 8 9 10 11 12 13 14 15 16 17 18 " ]] && pass "ledger: 0001-0018, 0006 unused" \
+  [[ "$versions" == "1 2 3 4 5 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 " ]] && pass "ledger: 0001-0021, 0006 unused" \
     || bad "ledger versions: $versions"
   check "migration runner verify (cse-ops)" bash "$APP/ops/bin/cse-ops" migrate verify
 }

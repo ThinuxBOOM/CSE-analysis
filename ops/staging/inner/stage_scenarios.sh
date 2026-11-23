@@ -153,8 +153,8 @@ migrate_lock() {
     || bad "the migration runner did not wait for the lock (waiting=$waiting)"
   wait "$holder"; wait "$applier"; local rc=$?
   info "apply after the lock was released: exit $rc: $(tail -n 3 /tmp/apply.out | tr '\n' ' ')"
-  [[ "$(psu "select count(*) from ops.schema_migrations where version = 18")" == 1 ]] && pass "0018 recorded exactly once" \
-    || bad "0018 ledger rows: $(psu "select count(*) from ops.schema_migrations where version = 18")"
+  [[ "$(psu "select count(*) from ops.schema_migrations where version = 21")" == 1 ]] && pass "0021 recorded exactly once" \
+    || bad "0021 ledger rows: $(psu "select count(*) from ops.schema_migrations where version = 21")"
 }
 
 backups() {

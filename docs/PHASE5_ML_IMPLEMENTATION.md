@@ -293,6 +293,8 @@ covered a different set: 10 further mutants survived (M3). Fixed:
 **Status: parts 1 to 4 built; the audit of parts 1 to 3 is running.** Part 1 the database, part 2 the rules in
 application code, part 3 the store, part 4 the command line, wrapper and runbook (below).
 
+*(2026-11-23, C-0118: 0021 is now in the chain, `supabase/migrations/`, unchanged.)*
+
 `supabase/migrations_pending/0021_ml_registry.sql` (after 0019 and 0020, outside the chain until the owner's merge
 decision): the eighteen tables of §9.1, every one append-only for every role; artifacts as base64 text checked
 against their SHA-256 and a 32 MiB cap. What the database enforces (§9.3's left column, §5.4): legal first events

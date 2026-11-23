@@ -19,7 +19,6 @@ from worker.market_feature_store import combined, configuration, history_bars, j
 from worker.market_features.modes import KNOWN, Query
 
 pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR not set")
-PENDING = os.path.join(p2.REPO, "supabase", "migrations_pending")
 
 
 @pytest.fixture(scope="module")
@@ -37,7 +36,7 @@ def pg(tmp_path_factory):
     ec._run([ec.tool("pg_ctl"), "-D", ec.data, "reload"])
     ec.psql("postgres", "-v", "ON_ERROR_STOP=1", "-v", "dbname=cse", "-f", p2.BOOTSTRAP)
     c = ec.connect(dbname="cse", user="cse_migrator")
-    mig.apply(c, mig.discover(p2.MIGDIR) + [m for m in mig.discover(PENDING) if "0019" in str(m)], log=lambda m: None)
+    mig.apply(c, mig.discover(p2.MIGDIR), target=19, log=lambda m: None)
     c.close()
     yield ec
     ec.cleanup()

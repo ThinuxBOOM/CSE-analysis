@@ -1995,6 +1995,16 @@ frozen.
 (`docs/R_F4_IMPLEMENTATION.md` §26). The paragraph above records the
 position before the merge.)*
 
+*(2026-11-23, change control [delegated] under the owner's go of
+2026-11-23 (brief B-0015): the pending migrations
+`0019_market_feature_foundation.sql`,
+`0020_financial_features_and_engines.sql` and `0021_ml_registry.sql`
+moved, unchanged, from `supabase/migrations_pending/` into
+`supabase/migrations/` (`docs/governance/MERGE_CANDIDATE.md` steps 2
+and 3), so the sequence now reaches 0021; `0006` remains unused. The
+three guards that state the range, and R-F4's tests p9 and p48, changed
+in the same commit (C-0118).)*
+
 Historical notes:
 
 -   `0006` was associated with the old Supabase security/RLS boundary

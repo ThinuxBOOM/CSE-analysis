@@ -211,6 +211,8 @@ writes `runner/<run>.provenance.txt` (image, `run_group.sh`, the deselection lis
 | ST-29 | `stage_checks.sh regx03` | P1's extended `verify_server` (REG-X03) through the frozen `p1-verify` probe; section 9 |
 | ST-32 | `stage_checks.sh seqkinds` | REG-B32 (UR-8), read-only |
 
+*(2026-11-23, change control B-0015: migrations 0019 to 0021 are in the chain. ST-07 now expects the ledger 0001–0021, 0006 unused, and ST-14's `migrate-lock` checks that 0021, the newest migration, is recorded exactly once. On the upgrade host (ST-08) the apply after `to-0017` now applies 0018 to 0021. The campaigns recorded below ran on the chain 0001–0018.)*
+
 ST-27 to ST-29 (T2, P1-CC-1; *2026-11-04: P1-CC-1 is accepted and frozen, effective once CI is clean at the record's head
 (`docs/ops/P1_PLATFORM.md` §13); 2026-11-09: the freeze is **in effect**: at `899c08f`, the head of pull request #8 that contains the freeze record, `ci-regression` runs 42510022812 and 42510022659 and `ci-fast` runs 42510022783 and 42510022771 all succeeded on 2026-11-08, as recorded by `d922bd1`; their
 procedures exist (section 9) and ran once, as development evidence, in campaign t2s1 (section 10); the acceptance run

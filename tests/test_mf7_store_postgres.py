@@ -36,7 +36,7 @@ def test_t1_load_build_write_and_read_back(tmp_path):
     ec = fs.start_cluster(BINDIR, tmp_path / "pg")
     try:
         c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-        mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(os.path.join(fs.REPO, "supabase", "migrations_pending")),
+        mig.apply(c, mig.discover(fs.MIGDIR),
                   log=lambda m: None)
         c.close()
         db = fs.fresh_db(ec)

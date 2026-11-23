@@ -13,7 +13,6 @@ import f64_support as fs
 
 BINDIR = os.environ.get("P1_PG_BINDIR")
 pytestmark = pytest.mark.skipif(not BINDIR or os.name != "posix", reason="P1_PG_BINDIR (PostgreSQL binaries) not set")
-PENDING = os.path.join(fs.REPO, "supabase", "migrations_pending")
 TABLES = ["mf_configurations", "mf_designations", "mf_identity_observations", "mf_corporate_action_observations",
           "mf_history_imports", "mf_history_bars", "mf_history_security_complete", "mf_history_quarantine",
           "mf_candidate_actions", "mf_calendar_observations", "mf_snapshots", "mf_snapshot_factors", "mf_snapshot_move_flags",
@@ -27,7 +26,7 @@ def cluster(tmp_path_factory):
     from worker.ops import migrate as mig
     ec = fs.start_cluster(BINDIR, tmp_path_factory.mktemp("mf7"))
     c = ec.connect(dbname=fs.TEMPLATE, user="cse_migrator")
-    mig.apply(c, mig.discover(fs.MIGDIR) + mig.discover(PENDING), log=lambda m: None)
+    mig.apply(c, mig.discover(fs.MIGDIR), log=lambda m: None)
     c.close()
     yield ec
     ec.stop()
@@ -75,7 +74,7 @@ def test_x1_0019_applies_on_top_of_the_chain_and_the_ledger_records_it(cluster):
         assert (19, "0019_market_feature_foundation.sql") in rows and rows[[r[0] for r in rows].index(19) - 1][0] == 18
         cur.execute("select count(*) from information_schema.tables where table_name like 'mf\\_%'")
         assert cur.fetchone()[0] == len(TABLES)
-    assert not any(n.startswith("0019") for n in os.listdir(fs.MIGDIR))       # still pending, outside the chain
+    assert [n for n in os.listdir(fs.MIGDIR) if n.startswith("0019")] == ["0019_market_feature_foundation.sql"]   # in the chain (B-0015)
 
 
 def test_x2_every_table_is_append_only_for_every_role_the_owner_included(cluster):

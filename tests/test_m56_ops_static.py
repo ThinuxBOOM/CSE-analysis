@@ -47,7 +47,7 @@ def test_s4_writes_only_registry_tables_and_the_preflight_covers_every_one():
             src = open(os.path.join(PACKAGE, name), encoding="utf-8").read().lower()
             for t in re.findall(r"insert into (\w+)", src):
                 assert t.startswith("ml_") or t == "r1_predictions", (name, t)
-    sql = open(os.path.join(REPO, "supabase", "migrations_pending", "0021_ml_registry.sql"), encoding="utf-8").read()
+    sql = open(os.path.join(REPO, "supabase", "migrations", "0021_ml_registry.sql"), encoding="utf-8").read()
     created = set(re.findall(r"^create table (\w+)", sql, re.M))
     assert created == set(preflight.WRITE_TABLES) | set(preflight.READ_ONLY) == set(cli.TABLES)
     for trig in re.findall(r"create (?:constraint )?trigger (trg_ml\w+)", sql):
