@@ -1218,3 +1218,21 @@ disposition of the same day):
 - **Two comment lines under the guard change control (N-2):** the usage line of `ops/staging/inner/stage_checks.sh`
   (line 9, `ledger` now "0001-0021") and the step-1 line of `tests/test_rf4_runbook_rehearsal.py`'s docstring
   (line 14, `apply --to 18`). Each describes the guard beside it.
+
+## C-0119: Phase 6 (news and sentiment) started on fakes ([delegated], 2026-11-23)
+
+Under the owner's instruction of 2026-11-23, Phase 6 is built on the branch `integration/cloud-phase6`, from `main`
+at `00ce584`, following `docs/PHASE6_NEWS_SENTIMENT_DESIGN.md` revision 3, §13, NS-1 onwards.
+- **Fakes only.** No real news host appears anywhere in code or tests: synthetic sources use the reserved `.test`
+  top-level domain (RFC 2606). Nothing contacts CSE; CSE's hosts appear only as the transport's refused constant
+  (design §4.1, Minor 4). No lexicon is downloaded: the hand-written provisional lexicon of P6-D3 is used.
+- **Migration 0022 waits outside the chain**, in `supabase/migrations_pending/`, as the design (§11) and C-0053 say,
+  even though 0019 to 0021 are now in the chain (C-0118). That directory is recreated for it. Moving 0022 into the
+  chain is part of the owner's merge of this branch, as it was for 0019 to 0021.
+- **Reserved, not assumed:** P6-R1 (sources and their governance records), P6-R2 (storage level per source), P6-R3
+  (the purge procedure), P6-R6 (the lexicon and its licence) and P6-R8 (the identification sent). They are needed
+  before any real ingestion or scoring. Until then the code refuses to run any source without an approved, hash-pinned
+  governance record.
+- **Not touched:** the R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the restore tool's
+  AR-C-0001 findings. Those are laptop work.
+- Each step is audited by a fresh-context agent, as in Phase 5 (C-0037).
