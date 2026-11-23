@@ -214,7 +214,7 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
         arts = cur.fetchall()
         cur.execute("select snapshot_id, mode, cutoff, knowledge_horizon, sessions_json, configuration_id, "
                     "active_sources_json, snapshot_hash from ns_snapshots order by snapshot_id")
-        specs, cfgs = [], {}
+        specs, cfgs, loaded_before, loaded_after = [], {}, {}, {}     # one load per distinct query and phase
         for sid, mode, cutoff, horizon, sessions_json, cid, active, h in cur.fetchall():
             cur.execute("select subject, stories_json from ns_snapshot_rows where snapshot_id = %s order by subject",
                         (sid,))
@@ -226,7 +226,7 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
                         sessions=[date_.fromisoformat(d) for d in json.loads(sessions_json)],
                         issuers=[r[0] for r in rows if r[0] != "market"],
                         named=_names_source(source_id, active, [r[1] for r in rows]), rows=len(rows))
-            spec["before"] = _rebuilt_hash(tx, spec, cfgs[cid])
+            spec["before"] = _rebuilt_hash(tx, spec, cfgs[cid], loaded_before)
             specs.append(spec)
         where = {
             "ns_fetch_events": "attempt_id in (select attempt_id from ns_fetch_attempts where source_id = %s)",
@@ -247,8 +247,8 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
             cur.execute(f"alter table {t} disable trigger user")
         for t, w in where.items():
             cur.execute(f"delete from {t} where {w}", (source_id,))
-        affected = [sp for sp in specs if sp["named"] or _rebuilt_hash(tx, sp, cfgs[sp["configuration_id"]])
-                    != sp["before"]]
+        affected = [sp for sp in specs if sp["named"] or _rebuilt_hash(tx, sp, cfgs[sp["configuration_id"]],
+                                                                       loaded_after) != sp["before"]]
         ids = [sp["snapshot_id"] for sp in affected]
         counts["ns_snapshots"] = len(ids)
         counts["ns_snapshot_rows"] = sum(sp["rows"] for sp in affected)
@@ -281,9 +281,12 @@ def purge_source(owner_conn, source_id, request_ref, dry_run=False):
         return dict(d.manifest, dry_run=True, replaced_by={})
 
 
-def _rebuilt_hash(tx, spec, cfg):
+def _rebuilt_hash(tx, spec, cfg, loaded):
     q = spec["query"]
-    rows = load(tx, q)
+    key = (q.mode, q.cutoff, q.horizon)
+    if key not in loaded:
+        loaded[key] = load(tx, q)
+    rows = loaded[key]
     snap = sn.build(q, spec["sessions"], articles_at(rows, q, cfg), rows["sources"], rows["runs"], cfg,
                     spec["issuers"])
     return snapshot_hash(snap, spec["sessions"])

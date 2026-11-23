@@ -366,3 +366,8 @@ and checks that the rebuilt snapshot keeps its subjects.
 
 **Recorded:** the IDNA branch of `hosts._canonical_host` is not a protection. Python's codec refuses an `xn--` label
 that would flatten to a CSE name. The fullwidth, full-stop and invisible-character cases are what it protects.
+
+The re-audit, at `fde406f`, was accepted with no Major. Its Minors are fixed:
+- the in-memory rebuilds load once per distinct query in each phase;
+- the runbook says a purge locks the news tables for a while, and that a dry run leaves only gaps in row ids;
+- the CLI's refusal of an empty reason or request is tested.

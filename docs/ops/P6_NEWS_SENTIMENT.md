@@ -21,7 +21,10 @@ Decided on 2026-11-23 (C-0121). The code refuses to run a source without a regis
 This follows P2's purge design (`docs/ops/P2_MARKET_CAPTURE.md` §12), for one source. Steps 1 to 5 are the owner
 commands `stop-source` and `purge-source` (NS-9):
 - `stop-source --source ID --reason TEXT`: the stop, recorded; it holds until `clear-stop`.
-- `purge-source --source ID --request TEXT --dry-run`: the manifest only, with nothing changed. Read it first.
+- `purge-source --source ID --request TEXT --dry-run`: the whole purge, rolled back; read its manifest first. It
+  leaves gaps in row ids (PostgreSQL does not roll back identity numbers), and nothing else.
+- A purge (or a dry run) rebuilds every stored snapshot twice in memory while holding the news tables locked: with
+  many snapshots it takes a while, and nothing else can read or write news meanwhile. Run it in a quiet window.
 - `purge-source --source ID --request TEXT`: steps 3 and 4 in **one transaction**. It refuses a source that is not
   stopped. It prints the manifest: the counts, article version ids and body hashes, the snapshots replaced and what
   replaced them, and the manifest's own SHA-256. Keep that output as the purge record (step 3.4).

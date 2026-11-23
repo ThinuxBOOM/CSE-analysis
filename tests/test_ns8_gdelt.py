@@ -195,3 +195,20 @@ def test_the_cache_holds_one_listing():
     first = a.list_new()
     second = a.list_new()
     assert a.fetch(first[0]) is None and a.fetch(second[0]) is not None
+
+
+def test_the_purge_commands_refuse_an_empty_reason_before_the_operator_is_appended(monkeypatch, capsys):
+    pytest.importorskip("psycopg2")
+    from worker.news_store import cli
+
+    class Conn:
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+    monkeypatch.setenv("CSE_OPERATOR", "someone")
+    for argv in (["stop-source", "--source", "s", "--reason", " "],
+                 ["purge-source", "--source", "s", "--request", ""]):
+        assert cli.run(cli.parser().parse_args(argv), lambda: Conn()) == cli.EXIT_REFUSED
+        assert "say why" in capsys.readouterr().out
