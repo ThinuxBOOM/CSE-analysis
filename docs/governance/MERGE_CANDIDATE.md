@@ -37,8 +37,9 @@ part of the owner's merge, as one change under change control:
 
 ### The last green checks
 
-- **CI:** `d8a7423` is green on the offline workflow. The final head is run on both workflows before the merge;
-  `docs/governance/LAPTOP_RESUME.md` names the newest result.
+- **CI:** `b6c50f4` is green on both workflows (offline; Linux on PostgreSQL 17; Windows), as is `6e83a55`. The
+  later commits change documents only. `d8a7423`'s regression run failed at the CI image build (Ubuntu's mirror
+  returned HTTP 520) before any test ran. Run the final head again before the merge.
 - **The cloud container:** the offline suite passed (2,709 tests, no CSE contact logged by the network guard); the
   NS PostgreSQL tests passed on PostgreSQL 16.
 

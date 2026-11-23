@@ -19,9 +19,9 @@ path through them.
 5. Still laptop work, untouched here: the R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the
    restore tool's AR-C-0001 findings.
 
-**Last green CI:** `d8a7423` (Phase 6 NS-7), offline workflow, 23 Nov 2026. The branch head's runs are listed in the
-newest log entry; check GitHub Actions for the result. On `main`: `21804c1` was the last fully green merge candidate
-before `00ce584`.
+**Last green CI (both workflows):** `b6c50f4`, the Phase 6 hand-back, 23 Nov 2026 (also `6e83a55`). Later commits
+change documents only. `d8a7423`'s regression run failed while building the CI image (Ubuntu's mirror returned HTTP
+520), before any test ran; it is not a code failure.
 
 ## Open items that need you
 
@@ -85,8 +85,8 @@ T (supersedes design N3); `unlabelled` is snapshot-wide (an exception to NL-9).
 **What you do next:** decide P6-R1, R2, R3, R6 and R8 (above); review and merge the branch, moving 0022 into the chain
 under change control (`MERGE_CANDIDATE.md`).
 
-**CI:** `d8a7423` offline green. Both workflows were started on the hand-back head; check GitHub Actions for the
-result.
+**CI:** `b6c50f4` green on both workflows (offline; Linux on PostgreSQL 17; Windows), as was `6e83a55`. `d8a7423`'s
+regression run failed only at the image build (Ubuntu mirror, HTTP 520).
 
 ### 2026-11-18: MF reads captured data (branch review Blocker B1), in progress
 
