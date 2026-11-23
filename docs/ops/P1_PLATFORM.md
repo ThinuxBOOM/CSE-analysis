@@ -468,7 +468,10 @@ Minor finding G-1 accepted as residual 4 above).
 - **Re-staging:** under MA §43.1 the changed build must be re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29).
   Staging stays NOT ACCEPTED, and REG-G01 stays OPEN.
   *(2026-11-23: staging of build `af1fdd1` was accepted by the owner on 2026-11-10 (ST-33; REG-G01 CLOSED WITH
-  EVIDENCE). The merged build is re-staged before milestone 10 (`docs/R_F4_DESIGN.md` §10).)*
+  EVIDENCE). The merged build is re-staged before milestone 10 (`docs/R_F4_DESIGN.md` §10). REG-A05 is now CLOSED WITH
+  EVIDENCE (2026-11-23, with AR-0012-1 N-2's limitation; `docs/R_F4_IMPLEMENTATION.md` §25.4): §20.6 steps 1–6 were
+  recorded at authorized staging (ST-28, ST-31), so the next bullet's "REG-A05 stays DEFERRED WITH RATIONALE" is no
+  longer current.)*
 - **Staging verification (`docs/R_F4_IMPLEMENTATION.md` §20.6 steps 1–6) has not been done yet**, so nothing here is
   evidence that the real login works with peer authentication. REG-A05 stays DEFERRED WITH RATIONALE.
 - **Register:** REG-X03 was IN PROGRESS until the clean CI at this record's head was recorded. *(2026-11-09: that CI is
