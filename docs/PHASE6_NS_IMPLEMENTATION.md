@@ -215,13 +215,45 @@ Database rules:
 Tests:
 - `tests/test_ns7_static.py` (3): pending and outside the chain; the migration guards; owner tables never granted to
   the worker; CSE refused in the SQL; the wrapper; every command in the runbook; no ingest command.
-- `tests/test_ns7_postgres.py` (4, on PostgreSQL 16 here and PostgreSQL 17 in CI):
+- `tests/test_ns7_postgres.py` (5, on PostgreSQL 16 here and PostgreSQL 17 in CI):
   - the database rules;
   - the ledger under the transport: committed before send, a stop held across processes until the owner clears
     it, CSE refused and never recorded as sent, the advisory lock, the budget count;
   - a synthetic source through the transport and adapter, to stored versions, results and runs, to a stored
     snapshot (NL-1 at an earlier T, NL-6 with no designation, a `missing` issuer), then `verify` with a replay and a
     tamper;
-  - NL-8.
+  - NL-8;
+  - the NS-6/7 audit cases below.
 
-The full offline suite passes (2,701 tests).
+The full offline suite passes (2,707 tests after the NS-6/7 audit fixes; no CSE contact logged by the network guard).
+
+### NS-6 and NS-7 audit (fresh-context agent, at `d8a7423`): accepted
+
+No Blocker (C-0037). Four Majors, all fixed:
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | A source's start was the latest `ingestion_started` row, whatever its `recorded_at`. A restart recorded after T moved the start at T, and so hid a gap (look-ahead). `load` read starts and runs in no fixed order | A source's start at T is its earliest start that is admitted at T (`snapshot._starts`). `load` orders starts and runs by id. Tested both ways round, with a restart recorded after T and with an admitted one |
+| Major 2 | The static NL-10 guard did not resolve relative imports, so `from . import x` could reach a forbidden module unseen | Relative imports are resolved against the file's package, and both `mod` and `mod.name` are checked. A planted case proves it |
+| Major 3 | Three cases had no test: a backlog `ran` row recorded after T, a `selection` archive batch, and an archive's age through the store | A backlog run recorded after T leaves the snapshot at T `partial` (and clears it at a later T); a `partial` run is a gap. Through PostgreSQL: a `selection` batch is admitted to CURRENT only, and an archive's age comes from its stated date, never the import day |
+| Major 4 | Too few hand values and boundaries | Hand values for `sent_eff_sum`, `sent_eff_mean`, the newest event age and the counts. Boundaries: `news_count_5` (age 4 and 5), `news_sources_21`, `max_age` (20 and 21), stale (10 and 11), the 0.2 positive threshold, the start day, and the 14:30 close on an earlier session. One case for each adjacent pair of quality states |
+
+**Minors fixed:**
+- `verify` compares the snapshot hash, which now binds the session sequence and the active sources, on replay too, and
+  checks each result's alias ids against its stored alias set.
+- 0022 refuses a CSE host with a trailing dot, a null host, and a CSE host in the URL; it checks the fetch-on-behalf
+  hosts too.
+- An archive version must come from an import of the same source, and a first version's first availability is its own.
+- The preflight requires each guard trigger to be enabled (`tgenabled = 'O'`), matched by table.
+- An instant before the session sequence is older than every window, never its first session.
+- A test that the configuration object must be the one named or designated.
+
+**Recorded, not changed:**
+- `unlabelled` is snapshot-wide: when the share of in-window articles with no supported label or no result is above
+  the configuration's limit, or the articles come from more than one processor version, every row is `unlabelled`,
+  because no issuer can be shown free of it. This is a deliberate exception to NL-9's per-issuer states; the owner may revisit
+  it with P6-R6.
+- The ledger's advisory lock is taken by the caller. v1 has no ingest command, so nothing takes it yet; the first
+  ingest command must (recorded in the runbook).
+- A day counts as collected only if its run is recorded before T. A backlog run added later fixes later snapshots,
+  never earlier ones (recorded in the runbook).

@@ -93,11 +93,18 @@ def test_p1_the_database_rules(cluster):
                       "'2026-09-01', 'ran', '2020-01-01')")
     base = ("insert into ns_articles (source_id, reference, version_no, supersedes, title, published_precision, "
             "observed_at, available_at, first_available_at, language, body_sha256, text_sha256, extracted_text, "
-            "origin) values ('synthetic_news', %s, %s, %s, 't', 'none', now(), now(), now() - interval '1 day', "
+            "origin) values ('synthetic_news', %s, %s, %s, 't', 'none', now(), now(), now(), "
             "'en', repeat('a', 64), repeat('b', 64), %s, 'fetched')")
     assert "full_text" in refused(w, base, ("r1", 1, None, "some text"))
     assert "supersedes" in refused(w, base, ("r2", 2, 1, None))
     assert not refused(w, base, ("r3", 1, None, None))
+    assert "first available" in refused(w, base.replace("now(), now(), now(), ", "now(), now(), now() - interval '1 day', "),
+                                        ("r4", 1, None, None))
+    # the database's CSE checks also catch a trailing dot and a URL whose host was not recorded
+    for host, url in (("www.cse.lk.", "https://www.cse.lk./x"), (None, "https://cse.lk/x"),
+                      ("news.example.test", "https://user@cdn.cse.lk:443/x")):
+        assert refused(w, "insert into ns_fetch_attempts (source_id, purpose, url, host, state) values "
+                          "('synthetic_news', 'article', %s, %s, 'sent')", (url, host)), (host, url)
     w.commit()
     for c in (w, o):
         assert refused(c, "update ns_articles set title = 'x'") and refused(c, "delete from ns_articles")
@@ -234,3 +241,36 @@ def test_p4_nl8_current_is_never_point_in_time_and_edited_archives_only_in_curre
     with pytest.raises(Exception, match="owner"):                                  # declaring is the owner's
         store.declare_archive(w, "synthetic_news", "x y z", "original", "as_published", "complete",
                               date(2026, 1, 1), date(2026, 1, 2), "d" * 64)
+
+
+def test_p5_ns67_audit_selection_archive_age_and_the_configuration_object(cluster):
+    from worker.news_sentiment import decay as dc
+    db = fs.fresh_db(cluster)
+    o, w, rec, cfg, _recorded = _ingest_and_process(cluster, db)
+    today = datetime.now(UTC).astimezone(store.COLOMBO).date()
+    sessions = [today - timedelta(days=k) for k in range(25, -1, -1)]
+    pol = {"time_zone_offset_minutes": 330, "date_only_counts_from": "end_of_day", "availability_lag_minutes": 0}
+    day = today - timedelta(days=10)
+    for completeness, ref in (("selection", "s1"), ("complete", "c1")):
+        iid = store.declare_archive(o, "synthetic_news", "synthetic archive terms", "original", "as_published",
+                                    completeness, day - timedelta(days=1), day + timedelta(days=1), "e" * 64)
+        v = ar.archive_version("synthetic_news", ref, "Alpha Bank PLC record profit", day, "date", "en",
+                               "Alpha Bank PLC record profit.", "metadata_only", pol)
+        vid, _rec = store.write_version(w, v, archive_import_id=iid)
+        aliases = store.load(w, Query(KNOWN, datetime.now(UTC)))["aliases"]
+        store.write_result(w, vid, pr.process(v.title, "Alpha Bank PLC record profit.", "en", aliases, cfg))
+    later = datetime.now(UTC) + timedelta(minutes=1)
+    refs = lambda q: {v.reference for v in store.load(w, q)["versions"]}          # noqa: E731
+    assert "s1" not in refs(Query(AVAILABLE, later, later)) and "c1" in refs(Query(AVAILABLE, later, later))
+    assert "s1" in refs(Query(CURRENT, None, later))                              # a selection: CURRENT only
+    # the archive's age through the store: its stated date, never the day it was imported
+    _sid, snap = store.build_snapshot(w, Query(AVAILABLE, later, later), sessions, ["iss_alpha"], cfg)
+    a = next(r for r in snap.rows if r.subject == "iss_alpha")
+    story = next(s for s in a.stories if "synthetic_news:c1" in s["articles"])
+    first = next(v for v in store.load(w, Query(AVAILABLE, later, later))["versions"] if v.reference == "c1")
+    assert story["age"] == dc.age(first.first_available_at, sessions) and story["age"] >= 9
+    assert snap.imported_inputs
+    # the configuration object must be the one named or designated
+    other = cf.Config(half_lives=tuple((e, h + 1 if e == "other" else h) for e, h in cfg.half_lives))
+    with pytest.raises(store.Refused, match="configuration"):
+        store.build_snapshot(w, Query(KNOWN, later), sessions, ["iss_alpha"], other)

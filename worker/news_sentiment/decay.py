@@ -40,8 +40,15 @@ def session_of(instant: datetime, sessions):
     return later[0] if later else None
 
 
+BEFORE_SEQUENCE = 10 ** 6             # an instant before the sequence's first session: older than any window
+
+
 def age(instant, sessions):
-    """Sessions between the instant's session and D* (the last of `sessions`), floored at 0."""
+    """Sessions between the instant's session and D* (the last of `sessions`), floored at 0. An instant before the
+    sequence's first session is older than the sequence can measure: BEFORE_SEQUENCE, outside every window (NS-6/7
+    audit minor: never mapped onto the first session)."""
+    if sessions and instant.astimezone(COLOMBO).date() < sessions[0]:
+        return BEFORE_SEQUENCE
     s = session_of(instant, sessions)
     if s is None:
         return 0

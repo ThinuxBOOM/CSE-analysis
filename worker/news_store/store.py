@@ -287,9 +287,10 @@ def load(conn, query):
                     "from ns_article_results r join ns_articles a on a.article_version_id = r.article_version_id")
         results = [rs.StoredResult(s, ref, vn, cid, result_from_json(j), rec) for s, ref, vn, cid, j, rec in
                    cur.fetchall()]
-        cur.execute("select source_id, effective_at, recorded_at from ns_source_events where kind = 'ingestion_started'")
+        cur.execute("select source_id, effective_at, recorded_at from ns_source_events where kind = 'ingestion_started' "
+                    "order by event_id")
         sources = [sn.Source(*r) for r in cur.fetchall()]
-        cur.execute("select source_id, day, status, recorded_at from ns_ingestion_runs")
+        cur.execute("select source_id, day, status, recorded_at from ns_ingestion_runs order by run_id")
         runs = [sn.IngestionRun(*r) for r in cur.fetchall()]
         return dict(storage=storage, versions=versions, version_ids=ids, observations=obs, aliases=aliases, ends=ends,
                     results=results, sources=sources, runs=runs)
@@ -317,7 +318,7 @@ def build_snapshot(conn, query, sessions, issuers, cfg, configuration_id=None, p
         raise Refused("configuration", "the configuration object is not the one named or designated")
     rows = load(conn, query)
     snap = sn.build(query, sessions, articles_at(rows, query, cfg), rows["sources"], rows["runs"], cfg, issuers)
-    h = snapshot_hash(snap)
+    h = snapshot_hash(snap, sessions)
 
     def work(cur):
         cur.execute("insert into ns_snapshots (mode, result_label, cutoff, knowledge_horizon, d_star, sessions_json, "
@@ -336,10 +337,13 @@ def build_snapshot(conn, query, sessions, issuers, cfg, configuration_id=None, p
     return _write(conn, work), snap
 
 
-def snapshot_hash(snap):
+def snapshot_hash(snap, sessions):
+    """Binds the rows, counts, imported_inputs, processor versions, active sources and the session sequence used."""
     return hashlib.sha256(canonical_json({"rows": sorted([r.subject, r.row_hash] for r in snap.rows),
                                           "counts": snap.counts, "imported_inputs": snap.imported_inputs,
-                                          "processor_versions": snap.processor_versions}).encode()).hexdigest()
+                                          "processor_versions": snap.processor_versions,
+                                          "active_sources": snap.active_sources,
+                                          "sessions": [d.isoformat() for d in sessions]}).encode()).hexdigest()
 
 
 def require_point_in_time(conn, snapshot_id):

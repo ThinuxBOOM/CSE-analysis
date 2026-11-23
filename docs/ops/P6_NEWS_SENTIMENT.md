@@ -63,3 +63,11 @@ There is no delete, reset or repair command: every table is append-only for ever
 - `extracted_text` only for a `full_text` source.
 - A version inherits its article's first availability.
 - A configuration's id is the SHA-256 of its JSON.
+
+## Timing notes
+
+- **Gaps:** a session day counts as collected only if its `ran` run is recorded before the snapshot's T. A run
+  recorded later (a backlog) fixes snapshots built after it, never earlier ones. A `partial` run is a gap.
+- **Restarts:** a source's start at T is its earliest start admitted at T; a later start never hides an earlier gap.
+- **The lock:** the ledger's advisory lock (one session per source) is taken by the caller. The first ingest command
+  must take it before any fetch.

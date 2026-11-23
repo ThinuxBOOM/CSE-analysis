@@ -84,8 +84,9 @@ create table ns_fetch_attempts (
   constraint chk_nsa_state check (state in ('sent', 'refused')),
   constraint chk_nsa_purpose check (purpose in ('listing', 'article', 'refetch', 'robots')),
   constraint chk_nsa_url check (url ~ '^[ -~]+$' and length(url) <= 4096),
-  constraint chk_nsa_cse check (state <> 'sent' or host is null
-    or not (lower(host) = 'cse.lk' or lower(host) like '%.cse.lk'))
+  constraint chk_nsa_cse check (state <> 'sent' or (host is not null
+    and not (rtrim(lower(host), '.') = 'cse.lk' or rtrim(lower(host), '.') like '%.cse.lk')
+    and lower(url) !~ '^[a-z]+://([^/@]*@)?([^/?#:]*\.)?cse\.lk\.?([/?#:]|$)'))
 );
 
 create table ns_fetch_events (
@@ -323,8 +324,10 @@ begin
   if current_user <> 'cse_owner' then
     raise exception 'ns_sources: a source is an owner decision (P6-R1)' using errcode = 'insufficient_privilege';
   end if;
-  if exists (select 1 from jsonb_array_elements_text(new.allowed_hosts_json::jsonb) h
-             where lower(h) = 'cse.lk' or lower(h) like '%.cse.lk') then
+  if exists (select 1 from (select jsonb_array_elements_text(new.allowed_hosts_json::jsonb) as h
+                             union all
+                             select jsonb_array_elements_text(new.fetch_on_behalf_hosts_json::jsonb)) x
+             where rtrim(lower(x.h), '.') = 'cse.lk' or rtrim(lower(x.h), '.') like '%.cse.lk') then
     raise exception 'ns_sources: a news source never allows a CSE host (G-1 governs CSE)'
       using errcode = 'check_violation';
   end if;
@@ -351,8 +354,18 @@ language plpgsql as $$
 declare
   lvl text;
   prev ns_articles%rowtype;
+  imp ns_archive_imports%rowtype;
 begin
   select storage_level into lvl from ns_sources where source_id = new.source_id;
+  if new.archive_import_id is not null then
+    select * into imp from ns_archive_imports where import_id = new.archive_import_id;
+    if imp.source_id is distinct from new.source_id then
+      raise exception 'ns_articles: an archive article belongs to its own source''s import' using errcode = 'check_violation';
+    end if;
+  end if;
+  if new.supersedes is null and new.first_available_at is distinct from new.available_at then
+    raise exception 'ns_articles: a first version is first available when it is available' using errcode = 'check_violation';
+  end if;
   if new.extracted_text is not null and lvl is distinct from 'full_text' then
     raise exception 'ns_articles: extracted text is kept only for a full_text source (P6-R2)'
       using errcode = 'check_violation';

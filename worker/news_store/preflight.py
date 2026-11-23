@@ -36,10 +36,11 @@ def problems(conn):
                     if cur.fetchone()[0]:
                         out.append(f"{t}: {priv} must not be granted")
                 for trg in triggers(t):
-                    cur.execute("select tgenabled from pg_trigger where tgname = %s", (trg,))
+                    cur.execute("select tgenabled from pg_trigger where tgname = %s and tgrelid = %s::regclass",
+                                (trg, f"public.{t}"))
                     row = cur.fetchone()
-                    if row is None or row[0] == "D":
-                        out.append(f"{t}: trigger {trg} missing or disabled")
+                    if row is None or row[0] != "O":                   # 'O': fires in normal operation (the pattern)
+                        out.append(f"{t}: trigger {trg} missing or not enabled")
     finally:
         conn.rollback()
     return out

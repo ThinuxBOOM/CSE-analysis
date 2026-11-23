@@ -94,17 +94,24 @@ class Snapshot:
     rows: list
 
 
+def _starts(sources, query):
+    """{source_id: its earliest ADMITTED start at or before T} (N4; NS-6/7 audit Major 1: a start recorded after T, or
+    a later restart, never moves a source's start at T; the result does not depend on row order)."""
+    out = {}
+    for s in sources:
+        if query.admits(s.recorded_at, s.started_at) and (query.cutoff is None or s.started_at <= query.cutoff):
+            out[s.source_id] = min(out.get(s.source_id, s.started_at), s.started_at)
+    return out
+
+
 def _active(sources, query):
-    """Sources approved and with ingestion started by T under the mode (N4): the start record admitted at the query,
-    and the start itself at or before T (in KNOWN as well: a source recorded early that starts after T is not yet
-    collecting at T)."""
-    return sorted(s.source_id for s in sources if query.admits(s.recorded_at, s.started_at)
-                  and (query.cutoff is None or s.started_at <= query.cutoff))
+    """Sources approved and with ingestion started by T under the mode (N4)."""
+    return sorted(_starts(sources, query))
 
 
 def _gaps(active, sources, runs, query, window_sessions):
     """Sessions in the window, on or after a source's start day, with no 'ran' run row admitted at T."""
-    start = {s.source_id: s.started_at.astimezone(dc.COLOMBO).date() for s in sources}
+    start = {sid: t.astimezone(dc.COLOMBO).date() for sid, t in _starts(sources, query).items()}
     ran = {(r.source_id, r.day) for r in runs if r.status == "ran" and query.admits(r.recorded_at, r.recorded_at)}
     return sorted((sid, d) for sid in active for d in window_sessions if d >= start[sid] and (sid, d) not in ran)
 

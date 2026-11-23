@@ -221,3 +221,97 @@ def test_the_market_row():
     assert r.state == "fresh" and r.features["mkt_news_count_5"][0] == 1 and Decimal(r.features[
         "mkt_sent_eff_mean"][0]) > 0
     assert row(build([]), "market").state == "missing"
+
+
+# ----------------------------------------------------------------------------------------------- NS-6/7 audit
+
+
+GOOD_TEXT = "Alpha Bank PLC posted record profit and strong growth."
+
+
+def test_major1_a_later_start_never_moves_a_sources_start_at_t():
+    good = art("s1:a", "Alpha Bank PLC record profit", GOOD_TEXT, at(date(2026, 9, 30)))
+    gappy = [r for r in runs_all() if r.day != date(2026, 9, 22)]
+    restart_late = sn.Source("s1", datetime(2026, 9, 25, tzinfo=UTC), T + timedelta(hours=1))   # recorded after T
+    restart_early = sn.Source("s1", datetime(2026, 9, 25, tzinfo=UTC), EARLY)                   # admitted restart
+    for sources in ((SOURCE, restart_late), (restart_late, SOURCE), (SOURCE, restart_early), (restart_early, SOURCE)):
+        assert row(build([good], sources=sources, runs=gappy), "iss_alpha").state == "partial", sources
+
+
+def test_major3_a_backlog_run_recorded_after_t_never_clears_a_gap():
+    good = art("s1:a", "Alpha Bank PLC record profit", GOOD_TEXT, at(date(2026, 9, 30)))
+    backlog = [r for r in runs_all() if r.day != date(2026, 9, 22)] + [
+        sn.IngestionRun("s1", date(2026, 9, 22), "ran", T + timedelta(hours=1))]
+    assert row(build([good], runs=backlog), "iss_alpha").state == "partial"
+    assert row(build([good], runs=backlog, query=Query(KNOWN, T + timedelta(hours=2))), "iss_alpha").state == "fresh"
+    partial_run = [r for r in runs_all() if r.day != date(2026, 9, 22)] + [
+        sn.IngestionRun("s1", date(2026, 9, 22), "partial", EARLY)]
+    assert row(build([good], runs=partial_run), "iss_alpha").state == "partial"     # a partial run is a gap too
+
+
+def test_major4_feature_values_by_hand():
+    cfg = cf.Config()
+    a1 = art("s1:a1", "Alpha Bank PLC posts record profit", GOOD_TEXT, at(date(2026, 9, 28)))        # age 4
+    a2 = art("s1:a2", "Alpha Bank PLC record results again", "Alpha Bank PLC profit rose with strong gains.",
+             at(date(2026, 9, 23)))                                                                   # age 7
+    snap = build([a1, a2])
+    r = row(snap, "iss_alpha")
+    w = [Decimal(s["effective"]) for s in sorted(r.stories, key=lambda s: s["age"])]
+    # by hand: s = 1.0 each; rho = each article's relevance; weight 2^(-age / 5) (earnings)
+    rel = [Decimal(str(a.result.issuers["iss_alpha"]["relevance"])) for a in (a1, a2)]
+    assert w[0] == (rel[0] * dc.weight(4, 5)).quantize(Decimal("0.000000000001"))
+    assert w[1] == (rel[1] * dc.weight(7, 5)).quantize(Decimal("0.000000000001"))
+    assert Decimal(r.features["sent_eff_sum"][0]) == w[0] + w[1]
+    assert Decimal(r.features["sent_eff_mean"][0]) == ((w[0] + w[1]) / 2).quantize(Decimal("0.000000000001"))
+    assert r.features["event_age_earnings"][0] == 4                     # the NEWEST age of the event type
+    assert r.features["news_count_5"][0] == 1 and r.features["news_count_21"][0] == 2
+
+
+def test_major4_boundaries():
+    mk = lambda aid, title, when, src="s1": art(aid, title, GOOD_TEXT, when, source=src)      # noqa: E731
+    # count_5: age 4 counts, age 5 does not; sources_21: age 20 counts; max_age 21: age 21 is out of the window
+    s5 = row(build([mk("s1:b", "Alpha Bank PLC five", at(date(2026, 9, 25)))]), "iss_alpha")       # age 5
+    assert s5.stories[0]["age"] == 5 and s5.features["news_count_5"][0] == 0
+    two = (SOURCE, sn.Source("s2", SOURCE.started_at, EARLY))
+    s20 = row(build([mk("s2:c", "Alpha Bank PLC twenty", at(date(2026, 9, 8)), "s2")], sources=two,
+                    runs=runs_all() + runs_all("s2")), "iss_alpha")
+    assert s20.stories[0]["age"] == 17 and s20.features["news_sources_21"][0] == 1
+    long_seq = tuple(d for d in (date(2026, 8, 24) + timedelta(n) for n in range(40)) if d.weekday() < 5
+                     and d <= D_STAR)
+    runs_long = [sn.IngestionRun("s1", d, "ran", EARLY) for d in long_seq]
+    src_long = sn.Source("s1", datetime(2026, 8, 1, tzinfo=UTC), EARLY)
+    edge = {a: long_seq[-1 - a] for a in (20, 21)}
+    r20 = row(build([mk("s1:e", "Alpha Bank PLC edge", at(edge[20]))], sources=(src_long,), runs=runs_long,
+                    sessions=long_seq), "iss_alpha")
+    r21 = row(build([mk("s1:f", "Alpha Bank PLC edge", at(edge[21]))], sources=(src_long,), runs=runs_long,
+                    sessions=long_seq), "iss_alpha")
+    assert r20.features["news_count_21"][0] == 1 and r21.state == "missing"
+    # the 14:30 close on an earlier session
+    assert dc.age(at(date(2026, 10, 1), 14, 30), SESS) == 1 and dc.age(at(date(2026, 10, 1), 14, 31), SESS) == 0
+    # an instant before the sequence is outside every window, never mapped onto its first session
+    assert dc.age(at(date(2025, 6, 1)), SESS) == dc.BEFORE_SEQUENCE
+    # stale: newest age 10 (= the limit) is fresh, 11 is stale
+    assert row(build([mk("s1:g", "Alpha Bank PLC ten", at(SESS[-11]))]), "iss_alpha").state == "fresh"
+    assert row(build([mk("s1:h", "Alpha Bank PLC eleven", at(SESS[-12]))]), "iss_alpha").state == "stale"
+    # a source starting on a window session: no gap before its start day
+    late_start = sn.Source("s1", at(date(2026, 9, 28), 8), EARLY)
+    runs_from = [r for r in runs_all() if r.day >= date(2026, 9, 28)]
+    assert row(build([mk("s1:i", "Alpha Bank PLC start", at(D_STAR))], sources=(late_start,), runs=runs_from),
+               "iss_alpha").state == "fresh"
+    # the positive-label threshold, exactly 0.2: 3 positive and 2 negative terms
+    at02 = art("s1:j", "Alpha Bank PLC mixed", "Alpha Bank PLC profit growth gains, weak, loss.", at(D_STAR))
+    assert row(build([at02]), "iss_alpha").features["sent_pos_share"][0] == "1.000000000000"
+
+
+def test_major4_precedence_of_adjacent_states():
+    good = art("s1:a", "Alpha Bank PLC record profit", GOOD_TEXT, at(date(2026, 9, 30)))
+    old = art("s1:o", "Alpha Bank PLC record profit", GOOD_TEXT, at(date(2026, 9, 10)))
+    gappy = [r for r in runs_all() if r.day != date(2026, 9, 22)]
+    si = sn.SnapArticle("s1:si", "s1", 1, "x", at(D_STAR), "fetched", "si", pr.process("x", "y", "si", ALIASES))
+    none = sn.SnapArticle("s1:n", "s1", 1, "x", at(D_STAR), "fetched", "en", None)
+    assert row(build([good, si, none], runs=gappy), "iss_alpha").state == "unlabelled"   # unlabelled over partial
+    assert row(build([old], runs=gappy), "iss_alpha").state == "partial"                 # partial over stale
+    gam = art("s1:g", "Gamma posts record profit", "Gamma posted strong growth.", at(D_STAR))
+    assert row(build([gam, si, none], issuers=("iss_g1",)), "iss_g1").state == "conflicting"   # over unlabelled
+    assert row(build([], sources=(sn.Source("s1", T + timedelta(days=1), EARLY),), issuers=("iss_g1",)),
+               "iss_g1").state == "not_collected"                                        # over missing

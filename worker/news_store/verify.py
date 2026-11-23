@@ -46,27 +46,31 @@ def snapshot_report(conn, snapshot_id, margin=MARGIN):
             problems.append(f"{subject}: row_hash does not match the stored row")
     for r, (_s, _st, _f, _j, h) in zip(snap.rows, rows):
         r.row_hash = h
-    if store.snapshot_hash(snap) != stored_hash:
-        problems.append("snapshot_hash does not match the stored rows")
+    sessions = [date.fromisoformat(x) for x in json.loads(sessions_json)]
+    if store.snapshot_hash(snap, sessions) != stored_hash:
+        problems.append("snapshot_hash does not match the stored rows, counts and sessions")
     governing = cutoff if mode == "KNOWN" else horizon
     replay = governing is not None and governing + margin <= recorded
     if replay and not problems:
         q = Query(mode, cutoff, horizon)
-        sessions = [date.fromisoformat(x) for x in json.loads(sessions_json)]
         issuers = [r.subject for r in snap.rows if r.subject != "market"]
         loaded = store.load(conn, q)
         again = sn.build(q, sessions, store.articles_at(loaded, q, cfg), loaded["sources"], loaded["runs"], cfg,
                          issuers)
-        if {r.subject: r.row_hash for r in again.rows} != {r.subject: r.row_hash for r in snap.rows}:
+        if store.snapshot_hash(again, sessions) != stored_hash:
             problems.append("replay differs (evidence changed after a settled time)")
     return {"snapshot_id": snapshot_id, "mode": mode, "replayed": replay, "problems": problems}
 
 
 def results_report(conn):
     problems = []
-    for rid, ids_json, h in _rows(conn, "select result_id, alias_ids_json, alias_set_hash from ns_article_results"):
-        if al.alias_set_hash(json.loads(ids_json)) != h:
+    for rid, ids_json, h, rj in _rows(conn, "select result_id, alias_ids_json, alias_set_hash, result_json from "
+                                            "ns_article_results"):
+        ids = json.loads(ids_json)
+        if al.alias_set_hash(ids) != h:
             problems.append(f"result {rid}: alias_set_hash is not the hash of its alias context")
+        if sorted(json.loads(rj).get("context_alias_ids", [])) != sorted(ids):
+            problems.append(f"result {rid}: the result's own alias context differs from its alias_ids_json")
     return problems
 
 

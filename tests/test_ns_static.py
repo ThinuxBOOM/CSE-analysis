@@ -33,31 +33,47 @@ def py_files():
                     yield pkg, os.path.relpath(path, root), path
 
 
-def _imports(path):
+def _package_of(path, repo=None):
+    """The dotted package of a module file under the repository (worker.news_store, ...)."""
+    rel = os.path.relpath(os.path.dirname(path), repo or REPO)
+    return rel.replace(os.sep, ".")
+
+
+def _imports(path, repo=None):
+    """(absolute module, 0, names) for every import; a relative import is RESOLVED to its absolute module, so the
+    same rules apply to it (NS-6/7 audit Major 2). `from .. import x` yields each `package.x` too."""
+    pkg = _package_of(path, repo).split(".")
     for node in ast.walk(ast.parse(open(path, encoding="utf-8").read())):
         if isinstance(node, ast.Import):
             for a in node.names:
                 yield a.name, 0, [a.asname or a.name]
         elif isinstance(node, ast.ImportFrom):
-            yield node.module or "", node.level, [a.name for a in node.names]
+            names = [a.name for a in node.names]
+            if node.level:
+                base = ".".join(pkg[:len(pkg) - node.level + 1])
+                mod = base + ("." + node.module if node.module else "")
+            else:
+                mod = node.module or ""
+            yield mod, 0, names
+            for n in names:                                     # a name may be a submodule (``from .. import x``)
+                if n != "*":
+                    yield f"{mod}.{n}", 0, []
 
 
 def test_static_single_transport():
     for pkg, rel, path in py_files():
         for mod, level, names in _imports(path):
-            if level:                                                  # relative: the package's own modules
-                target = mod or ""
-                if target == "http" or (target == "" and "http" in names) or "RequestsSender" in names:
-                    assert (pkg, rel) in (("news_ingest", "wiring.py"),), (pkg, rel, "the real sender")
+            if mod == "worker.news_ingest.http" or "RequestsSender" in names:
+                assert (pkg, rel) in (("news_ingest", "wiring.py"),), (pkg, rel, "the real sender")
                 continue
             if (pkg, rel) == ("news_ingest", "http.py") and mod in ("requests", "http.cookiejar", "time"):
                 continue
             if mod.startswith("urllib"):
-                assert mod in ALLOWED_URLLIB, (rel, mod)
+                assert any(mod == u or mod.startswith(u + ".") for u in ALLOWED_URLLIB), (rel, mod)
                 continue
             assert mod.split(".")[0] not in NETWORK, (pkg, rel, mod)
             assert not mod.startswith(PROJECT_NETWORK), (pkg, rel, mod)
-            if mod.startswith("worker.news_ingest.http") or (mod == "worker.news_ingest" and "http" in names):
+            if mod == "worker.news_ingest" and "http" in names:
                 assert (pkg, rel) == ("news_ingest", "wiring.py"), (pkg, rel)
         src = open(path, encoding="utf-8").read()
         for call in ("__import__(", "exec(", "eval(", "import_module("):
@@ -143,9 +159,19 @@ def test_nl10_sentiment_depends_on_no_market_financial_or_label_value():
                "worker.market_features.canonical", "worker.issuer_identity", "worker.ops.settings")
     for pkg, rel, path in py_files():
         for mod, level, names in _imports(path):
-            if level or not mod.startswith("worker"):
+            if not mod.startswith("worker"):
                 continue
-            if mod == "worker.market_features":
-                assert set(names) <= {"modes", "calendar", "numeric", "canonical"}, (rel, names)
+            if mod in ("worker", "worker.market_features", "worker.ops"):
+                assert set(names) <= {"modes", "calendar", "numeric", "canonical", "settings", "news_ingest",
+                                      "news_sentiment", "news_store"}, (rel, mod, names)
                 continue
             assert mod.startswith(allowed), (pkg, rel, mod)
+
+
+def test_relative_imports_are_resolved_and_checked(tmp_path):
+    """The planted cases of the NS-6/7 audit: a relative import of MF's targets and of P2's capture layer."""
+    pkg = tmp_path / "worker" / "news_sentiment"
+    pkg.mkdir(parents=True)
+    (pkg / "planted.py").write_text("from ..market_features import targets\nfrom ..market_capture import runs\n")
+    got = {m for m, _l, _n in _imports(str(pkg / "planted.py"), str(tmp_path))}
+    assert "worker.market_features.targets" in got and "worker.market_capture.runs" in got

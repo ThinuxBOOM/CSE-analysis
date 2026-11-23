@@ -22,7 +22,7 @@ def test_pending_outside_the_chain_and_the_migration_guards():
     assert not re.search(r"\b(password|secret|token|credential|api_key)\b", code)
     assert "security definer" not in code and "create role" not in code and "row level security" not in code
     assert "extracted_text text," in code                                    # the one text column, nullable
-    assert "lower(host) like '%.cse.lk'" in code and "like '%.cse.lk') then" in code      # CSE refused in the database
+    assert "rtrim(lower(host), '.') like '%.cse.lk'" in code and "rtrim(lower(x.h), '.') like '%.cse.lk') then" in code
 
 
 def test_owner_decisions_are_never_granted_to_the_worker():
