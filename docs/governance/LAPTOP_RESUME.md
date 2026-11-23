@@ -25,16 +25,39 @@ change documents only. `d8a7423`'s regression run failed while building the CI i
 
 ## Open items that need you
 
-- **Phase 6:** the recommended decisions are taken (C-0121). Still yours: naming the first news source and signing
-  its governance record (its terms and risk); any third-party lexicon and its licence; a contact mailbox if a source
-  needs one; what a source is promised about backups after a purge. Before any ingestion, the purge tooling must be
-  built.
+- **Phase 6:** the recommended decisions are taken (C-0121). Still yours:
+  - checking and signing the proposed first source's record, `docs/governance/NS-GDELT-DOC.md` (C-0122);
+  - any third-party lexicon and its licence;
+  - a contact mailbox, if a source needs one;
+  - what a source is promised about backups after a purge.
+
+  Before any ingestion, the purge tooling must be built.
 - The merge of `integration/cloud-phase6` and moving 0022 into the chain.
 - Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
 - P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
   owner" tables).
 
 ## Log (newest first)
+
+### 2026-11-23: a news source proposed, GDELT's DOC 2.0 API (C-0122)
+
+You asked for a news source.
+
+**What is done:**
+- I recommend GDELT's DOC 2.0 API: open terms, no key, headlines and URLs only, filtered to Sri Lankan English
+  news, and no contact with the papers' own sites.
+- The adapter is built and tested on fakes (NS-8).
+- The draft record is `docs/governance/NS-GDELT-DOC.md`.
+
+**What you do:**
+1. Read GDELT's terms on its About page. I couldn't reach it from the cloud.
+2. Check its rate limit.
+3. Accept the small risk on publishers' headlines.
+4. Sign the record.
+
+Until it is signed, the code refuses it.
+
+**Still to build before the first real request:** the purge tooling, then an ingest command.
 
 ### 2026-11-23: Phase 6's owner items decided as recommended (C-0121)
 

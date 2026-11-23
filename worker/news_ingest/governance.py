@@ -30,6 +30,7 @@ _BLOCK = re.compile(r"```ns-source\n(.*?)\n```", re.S)
 KEYS = {"source_id", "allowed_hosts", "fetch_on_behalf_hosts", "storage_level", "onward_disclosure",
         "availability_policy", "identification", "request_discipline", "robots"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+UNSIGNED = "NOT SIGNED"                    # a draft record says so; it is refused until the owner signs (C-0122)
 # (lower, upper) for each discipline value; finite numbers only, never a boolean (NS-1 audit)
 BOUNDS = {"min_interval_seconds": (1, 3600), "daily_budget": (1, 100_000), "max_retries": (0, 10),
           "backoff_base_seconds": (0.1, 3600), "backoff_max_seconds": (0.1, 86_400),
@@ -80,6 +81,8 @@ def parse(data: bytes) -> GovernanceRecord:
     """The record from its bytes, validated; RecordRefused otherwise."""
     from . import hosts as h
     text = data.decode("utf-8")
+    if UNSIGNED in text:
+        raise RecordRefused("unsigned", "the record is a draft the owner has not signed (P6-R1)")
     blocks = _BLOCK.findall(text)
     if len(blocks) != 1:
         raise RecordRefused("record_block", "a governance record holds exactly one ```ns-source block")

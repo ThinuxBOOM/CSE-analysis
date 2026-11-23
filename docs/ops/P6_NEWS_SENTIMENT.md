@@ -51,6 +51,9 @@ yet**: `stop-source` and `purge-source` are the next build step, needed before a
 
 The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project becomes commercial or public.
 
+**The first source proposed:** GDELT's DOC 2.0 API, record `docs/governance/NS-GDELT-DOC.md`, a **draft**: a
+record containing `NOT SIGNED` is refused, so it cannot be registered until the owner signs it (C-0122).
+
 **v1 has no ingest command.** The first real source's adapter is a later step, after P6-R1. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.
 

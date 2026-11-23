@@ -15,6 +15,7 @@ here has contacted CSE or any real news host: synthetic sources use `.test` host
 | NS-3 to NS-5 | Aliases, entities, relevance, events, sentiment (provisional lexicon), deduplication | As above |
 | NS-6 | Decay and the sentiment snapshot | Accepted at `d8a7423` with NS-7; four Majors fixed; re-audit at `6e83a55` accepted, seven Minors fixed |
 | NS-7 | Migration 0022 (pending), the store, the ledger in the database, `verify`, the preflight, `cse-news`, the runbook; NL-8 | As above |
+| NS-8 | The GDELT DOC adapter (metadata only, on fakes) and the draft record `NS-GDELT-DOC.md` (unsigned, so refused) (C-0122) | See C-0122 |
 
 The detail is in `docs/PHASE6_NS_IMPLEMENTATION.md`; the runbook is `docs/ops/P6_NEWS_SENTIMENT.md`.
 
@@ -50,7 +51,7 @@ CSE-derived news under G-1, `metadata_only`, the purge procedure, English only, 
 lexicon, the sector deviation accepted, and a User-Agent with no contact. Table: `docs/PHASE6_NS_IMPLEMENTATION.md`.
 
 **Still the owner's** (C-0004 keeps third-party terms, legal risk and personal data out of the delegation):
-- naming each source and signing its governance record;
+- checking and signing the proposed first source's record, `NS-GDELT-DOC.md` (C-0122), and any later source's;
 - any third-party lexicon and its licence;
 - a non-personal contact mailbox, if a source requires one;
 - what a source is promised about purged data in backups, and any purge deadline;

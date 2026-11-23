@@ -275,3 +275,23 @@ No Blocker and no new Major. All four Major fixes were confirmed correct, with n
 | 6 | The runbook's list of what 0022 enforces was out of date | Updated |
 | 7 | `BEFORE_SEQUENCE` is conservative only on a long enough sequence | Recorded in the runbook: the sequence should be longer than 21 sessions |
 
+## NS-8: the first real source's adapter, GDELT's DOC 2.0 API (C-0122), on fakes
+
+| Module | What it does |
+|---|---|
+| `worker/news_ingest/gdelt.py` | `GdeltDocAdapter`, metadata only. It makes one listing request (`mode=artlist`, JSON, up to 250 records, newest first; `startdatetime` in UTC for `since`) through the governed transport. The host is the record's single allowed host. **No publisher page is ever requested**: `fetch` returns the item from the listing with no request. `refetch` returns None with no request (`REFETCH = False`), since the service gives no evidence of withdrawal. `published_at` is GDELT's first-seen time, an upper bound. The reference is `u` + the SHA-256 of the URL. Malformed entries are counted and skipped, never raised; URLs naming CSE are dropped and counted |
+| `worker/news_ingest/governance.py` | Refuses a record containing `NOT SIGNED` (a draft) |
+| `docs/governance/NS-GDELT-DOC.md` | The draft governance record, for the owner's checks and signature |
+
+Tests: `tests/test_ns8_gdelt.py` (8):
+- only robots and the listing are sent, never the publisher's page;
+- `since` is in UTC;
+- references are stable;
+- malformed entries and bodies are handled;
+- CSE URLs (plain, with a trailing dot, encoded) are dropped;
+- a failed listing is recorded in the ledger;
+- the record must fit the adapter;
+- a listing goes through to a title-only result (English processed, Sinhala unsupported);
+- the draft record is refused until signed, and the signed copy fits the adapter.
+
+The API's host is a `.test` host in tests; the real host is only in the record.

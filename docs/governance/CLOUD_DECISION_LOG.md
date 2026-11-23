@@ -1321,3 +1321,33 @@ same instruction). The re-audit of the corrected wording was accepted.
   counts as the owner's decision. It supersedes the "reserved" statements of C-0119 and C-0120 for the items it
   decides.
 - **The User-Agent's "non-commercial"** is revisited under G-1 item 12 if the project becomes commercial or public.
+
+## C-0122: the first news source proposed, GDELT's DOC 2.0 API, and its adapter ([delegated], 2026-11-23)
+
+The owner's words (2026-11-23): "Find me a news source", then "Bet" to the recommendation: draft the record and
+start the adapter.
+- **Recommended: the GDELT Project's DOC 2.0 API**, queried for `sourcecountry:srilanka sourcelang:english`.
+  Reasons:
+  - its stated terms are the most open found;
+  - it needs no login, key or payment;
+  - it returns metadata only, which fits C-0121's `metadata_only`;
+  - it reaches Sri Lankan publishers' headlines without contacting their sites.
+
+  Alternatives considered: Daily FT (reproduction "by giving due courtesy", nothing on automated access) and
+  EconomyNext (no terms found). Both would need the publisher's permission.
+- **The terms were not read at source.** This session's network does not reach those hosts; the findings came from
+  search. **Accepting the terms and the residual risk on publishers' headlines stays the owner's** (C-0004). The
+  record is `docs/governance/NS-GDELT-DOC.md`, a draft with the owner's four checks.
+- **A draft cannot be registered.** `governance.parse` now refuses any record containing `NOT SIGNED`, so the draft
+  is refused until the owner signs it.
+- **NS-8, the adapter** (`worker/news_ingest/gdelt.py`, tests `tests/test_ns8_gdelt.py`, on fakes only):
+  - one listing request through the governed transport;
+  - the host taken from the record, never written in code;
+  - no publisher page is ever requested;
+  - malformed entries are counted, never raised (closing the NS-2 to NS-5 audit's open note for this adapter);
+  - CSE URLs are dropped;
+  - no withdrawal is inferred and no re-fetch is made.
+- **Still needed before the first real request:**
+  - the owner's signature;
+  - the purge tooling (NS-9);
+  - an ingest command that takes the ledger's lock.
