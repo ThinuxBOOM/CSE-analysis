@@ -17,6 +17,7 @@ here has contacted CSE or any real news host: synthetic sources use `.test` host
 | NS-7 | Migration 0022 (pending), the store, the ledger in the database, `verify`, the preflight, `cse-news`, the runbook; NL-8 | As above |
 | NS-8 | The GDELT DOC adapter (metadata only, on fakes) and the draft record `NS-GDELT-DOC.md` (unsigned, so refused) (C-0122) | See C-0122 |
 | NS-9 | `stop-source` and `purge-source`: the purge in one transaction (P6-R3; C-0123) | See C-0123 |
+| NS-10 | `cse-news ingest` and `inspect` (C-0126) | See C-0126 |
 
 The detail is in `docs/PHASE6_NS_IMPLEMENTATION.md`; the runbook is `docs/ops/P6_NEWS_SENTIMENT.md`.
 
@@ -58,11 +59,10 @@ lexicon, the sector deviation accepted, and a User-Agent with no contact. Table:
 - what a source is promised about purged data in backups, and any purge deadline;
 - this merge (P6-R5).
 
-**Before any ingestion:** the owner's signature on the first source's record, and an ingest command that takes the ledger's lock. The purge tooling is built (NS-9).
+**Before the first real run (the owner's, after the merge):** `register-source` for the signed GDELT record, one `inspect`, then `start-ingestion` and a schedule for `ingest` (at most hourly).
 
 ### Open after the merge
 
-- The first ingest command must take the ledger's advisory lock (runbook, "Timing notes").
 - `unlabelled` is snapshot-wide, a deliberate exception to NL-9; the owner may revisit it with P6-R6.
 - The first real adapter replaces `SyntheticAdapter`'s in-memory URL map and fails malformed items instead of
   raising.

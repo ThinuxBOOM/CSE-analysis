@@ -435,3 +435,105 @@ def test_p7_ns9_audit_a_snapshot_that_counted_the_source_without_naming_it(clust
     with pytest.raises(store.Refused, match="source_busy"):
         store.purge_source(o, "synthetic_news", "deletion request (synthetic)")
     held.close()
+
+
+# ----------------------------------------------------------------------------------------------- NS-10: ingest
+
+
+class _ApiSender:
+    """A fake GDELT-shaped API on a `.test` host: robots 404, then one scripted listing per call."""
+
+    def __init__(self, host, listings):
+        self.host, self.listings, self.sent = host, list(listings), []
+
+    def send(self, url, headers, timeout, max_body_bytes):
+        self.sent.append(url)
+        if url == f"https://{self.host}/robots.txt":
+            return tp.Response(404, {}, b"")
+        assert url.startswith(f"https://{self.host}/api/v2/doc/doc?"), url
+        return self.listings.pop(0)
+
+
+def _api_listing(*items):
+    return tp.Response(200, {}, json.dumps({"articles": [
+        {"url": u, "title": t, "seendate": "20261120T023000Z", "language": "English", "domain": "news.example.test",
+         "sourcecountry": "Sri Lanka"} for u, t in items]}).encode())
+
+
+def test_p8_ns10_ingest_one_source_end_to_end(cluster, tmp_path):
+    from worker.news_store import ingest
+    db = fs.fresh_db(cluster)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    w = fs.conn(cluster, db, user="cse_worker")
+    api = "api.gdelt.test"
+    body = n1.record_bytes(source_id="gdelt_doc", allowed_hosts=[api], request_discipline={
+        "min_interval_seconds": 1.0, "daily_budget": 50, "max_retries": 0, "backoff_base_seconds": 1.0,
+        "backoff_max_seconds": 5.0, "retry_after_max_seconds": 5.0, "max_consecutive_failures": 4,
+        "max_body_bytes": 1_000_000})
+    (tmp_path / "NS-GDELT-TEST.md").write_bytes(body)
+    sender = _ApiSender(api, [])
+    run = lambda: ingest.run_ingest(w, "gdelt_doc", sender=sender, records_dir=str(tmp_path))     # noqa: E731
+    with pytest.raises(store.Refused, match="unknown_source"):
+        run()
+    store.register_source(o, body, "NS-GDELT-TEST.md")
+    with pytest.raises(store.Refused, match="not_started"):
+        run()
+    store.start_ingestion(o, "gdelt_doc", datetime.now(UTC) - timedelta(days=1), "the owner starts GDELT (test)")
+    store.add_alias(o, *ISSUER_ALIAS, "name", datetime(2026, 1, 1, tzinfo=UTC), "synthetic issuer record")
+    # first pass, no configuration designated yet: stored, not processed
+    sender.listings = [_api_listing(("https://news.example.test/a1", "Alpha Bank PLC posts record profit"),
+                                    ("https://www.cse" + ".lk/x", "dropped"))]
+    out = run()
+    assert (out["listed"], out["new_articles"], out["unprocessed"], out["dropped_cse"], out["status"]) == \
+        (1, 1, 1, 1, "ran")
+    assert sender.sent[0].endswith("/robots.txt") and len(sender.sent) == 2          # robots, one listing; nothing else
+    cfg = cf.Config()
+    cid = store.register_configuration(w, cfg)
+    store.designate(o, "sentiment", cid, "the owner designates the provisional NS configuration")
+    # second pass: the same article (confirmed), a changed title (a revision), and a new one; all processed
+    sender.listings = [_api_listing(("https://news.example.test/a1", "Alpha Bank PLC posts record profit again"),
+                                    ("https://news.example.test/a2", "Alpha Bank PLC strong growth"))]
+    out = run()
+    assert (out["new_articles"], out["revisions"], out["processed"], out["status"]) == (1, 1, 2, "ran")
+    sender.listings = [_api_listing(("https://news.example.test/a2", "Alpha Bank PLC strong growth"))]
+    out = run()
+    assert out["confirmed"] == 1 and out["new_articles"] == out["revisions"] == 0
+    # the listing failing is a failed run; the ledger recorded every attempt before sending it
+    sender.listings = [tp.Response(503, {}, b"")]
+    assert run()["status"] == "failed"
+    with w.cursor() as cur:
+        cur.execute("select status from ns_ingestion_runs where source_id = 'gdelt_doc' order by run_id")
+        assert [r[0] for r in cur.fetchall()] == ["ran", "ran", "ran", "failed"]
+        cur.execute("select count(*) from ns_fetch_attempts where source_id = 'gdelt_doc' and state = 'sent'")
+        assert cur.fetchone()[0] == len(sender.sent)
+    w.rollback()
+    # a snapshot from what was ingested; verify is clean
+    today = datetime.now(UTC).astimezone(store.COLOMBO).date()
+    sessions = [today - timedelta(days=k) for k in range(25, -1, -1)]
+    _sid, snap = store.build_snapshot(w, Query(KNOWN, datetime.now(UTC)), sessions, ["iss_alpha"], cfg)
+    assert next(r for r in snap.rows if r.subject == "iss_alpha").stories
+    assert verify.verify(w, margin=timedelta(0))["ok"]
+    # refusals: stopped; busy; an edited record
+    held = fs.conn(cluster, db, user="cse_worker")
+    assert store.DbLedger(held).lock("gdelt_doc")
+    with pytest.raises(store.Refused, match="source_busy"):
+        run()
+    held.close()
+    (tmp_path / "NS-GDELT-TEST.md").write_bytes(body + b"\nedited\n")
+    with pytest.raises(Exception, match="(?i)sha|hash|pinned"):
+        run()
+    (tmp_path / "NS-GDELT-TEST.md").write_bytes(body)
+    store.stop_source(o, "gdelt_doc", "the owner stops it (test)")
+    with pytest.raises(store.Refused, match="stopped"):
+        run()
+
+
+def test_p8_ns10_inspect_writes_nothing(tmp_path):
+    from worker.news_store import ingest
+    api = "api.gdelt.test"
+    body = n1.record_bytes(source_id="gdelt_doc", allowed_hosts=[api])
+    (tmp_path / "R.md").write_bytes(body)
+    sender = _ApiSender(api, [_api_listing(("https://news.example.test/a1", "Alpha Bank PLC record"))])
+    out = ingest.inspect(str(tmp_path / "R.md"), sender=sender)
+    assert out["outcome"] == "ok" and out["listed"] == 1 and "seendate" in out["fields"]
+    assert out["first"][0]["title"] == "Alpha Bank PLC record" and len(sender.sent) == 2

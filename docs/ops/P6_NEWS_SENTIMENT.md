@@ -76,7 +76,7 @@ The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project beco
 the merge: `register-source --record docs/governance/NS-GDELT-DOC.md --ref NS-GDELT-DOC.md`. Inspect the first live
 listing by hand before `start-ingestion`.
 
-**v1 has no ingest command.** The first real source's adapter (GDELT, NS-8) is built and tested on fakes only. CSE is never a news
+**The ingest command** (`ingest`, NS-10) runs one pass for one registered, started source; `inspect` makes one listing for the owner's check before `start-ingestion`. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.
 
 ## The governance record
@@ -91,7 +91,19 @@ allowed hosts. Any later change to the file stops the source until it is registe
 
 ## Commands (`sudo bash /opt/cse/app/ops/bin/cse-news <command>`)
 
-Worker (`cse-worker`, read-only checks):
+Worker (`cse-worker`):
+- `inspect --record FILE`: ONE listing request for a signed record, with an in-memory ledger; nothing is written.
+  It prints the JSON field names and the first entries. Run it once before `start-ingestion` and check that the
+  fields include `url`, `title`, `seendate` and `language`, and that the titles are Sri Lankan English news.
+- `ingest --source ID`: one pass. It refuses a source that is unregistered, not started, stopped, busy (its lock
+  held), or whose record no longer matches its pinned hash. It lists once (since the newest article seen, minus 6
+  hours, or the start), stores new articles, revisions and confirmations, and processes them with the configuration
+  designated now (stored unprocessed when none is). It writes the day's run row: `ran`; `partial` (listing full,
+  malformed entries, or a processing error); `failed` (the listing failed). Exit 0 for `ran`, 3 otherwise.
+  **Cadence:** at most hourly for GDELT (24 listings a day against a budget of 200). Scheduling it is the owner's
+  act on the laptop; each run contacts the source.
+
+Worker, read-only checks:
 - `preflight`: the 0022 tables, privileges and guard triggers.
 - `status`: row counts and any stopped source.
 - `verify`: every snapshot's rows reproduce their hashes; settled snapshots are rebuilt from stored inputs and must
@@ -135,5 +147,5 @@ There is no delete, reset or repair command: every table is append-only for ever
   before the sequence's first day is treated as older than every window, which is conservative only when the
   sequence is long enough.
 - **Restarts:** a source's start at T is its earliest start admitted at T; a later start never hides an earlier gap.
-- **The lock:** the ledger's advisory lock (one session per source) is taken by the caller. The first ingest command
-  must take it before any fetch.
+- **The lock:** the ledger's advisory lock (one session per source) is taken by `ingest` before any request and
+  released after the run; `purge-source` refuses while it is held.

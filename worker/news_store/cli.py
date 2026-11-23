@@ -1,9 +1,11 @@
 """
-`cse-news` (Phase 6, NS-7): the owner's registrations and the worker's read-only checks. There is NO ingest command
-in v1: no source exists until the owner approves one with its governance record (P6-R1), and the first real source's
-adapter is a later step. Nothing here contacts any host.
+`cse-news` (Phase 6, NS-7 to NS-10): the owner's registrations, the worker's checks, and the worker's ingest pass.
+Only `ingest` and `inspect` contact a host, and only through the governed transport, for a source with an
+owner-signed governance record (P6-R1).
 
   preflight | status | verify                                   (worker)
+  ingest --source ID                                            (worker: one pass; NS-10)
+  inspect --record FILE                                         (worker: ONE listing, nothing written; before start-ingestion)
   register-source --record FILE --ref NAME                      (owner: P6-R1; the record is validated and pinned)
   start-ingestion --source ID --at ISO --reason TEXT            (owner)
   clear-stop --source ID --reason TEXT                          (owner: only the owner resumes a stopped source)
@@ -64,6 +66,10 @@ def parser():
     s.add_argument("--purpose", required=True)
     s.add_argument("--configuration", required=True)
     s.add_argument("--note", required=True)
+    s = sub.add_parser("ingest")
+    s.add_argument("--source", required=True)
+    s = sub.add_parser("inspect")
+    s.add_argument("--record", required=True)
     s = sub.add_parser("stop-source")
     s.add_argument("--source", required=True)
     s.add_argument("--reason", required=True)
@@ -91,6 +97,14 @@ def _noted(text, operator):
 
 def run(args, connect):
     import psycopg2
+    if args.command == "inspect":                      # no database: one listing, in-memory ledger
+        from . import ingest
+        try:
+            _print(ingest.inspect(args.record))
+            return EXIT_OK
+        except (store.Refused, ValueError, OSError) as exc:
+            _print({"state": "refused", "reason": str(exc)})
+            return EXIT_REFUSED
     try:
         conn = connect()
     except psycopg2.OperationalError as exc:
@@ -121,6 +135,11 @@ def run(args, connect):
             rep = vf.verify(conn)
             _print(rep)
             return EXIT_OK if rep["ok"] else EXIT_PROBLEMS
+        if c == "ingest":
+            from . import ingest
+            out = ingest.run_ingest(conn, args.source)
+            _print(out)
+            return EXIT_OK if out["status"] == "ran" else EXIT_PROBLEMS
         if c == "register-source":
             with open(args.record, "rb") as fh:
                 rec = store.register_source(conn, fh.read(), args.ref)

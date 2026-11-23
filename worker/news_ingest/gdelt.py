@@ -77,6 +77,8 @@ class GdeltDocAdapter(Adapter):
         self.dropped_cse = 0
         self.duplicates = 0
         self.truncated = False
+        self.last_outcome = None                 # the transport's outcome of the latest listing ("ok", ...)
+        self.last_body = None                    # its body, for the owner's inspection only
 
     def listing_url(self, since=None):
         q = {"query": self.query, "mode": "artlist", "format": "json", "maxrecords": str(self.max_records),
@@ -124,6 +126,8 @@ class GdeltDocAdapter(Adapter):
         self._items = {}
         self.truncated = False
         r = self.transport.get(self.listing_url(since), "listing")
+        self.last_outcome = r.outcome
+        self.last_body = r.response.body if r.outcome == "ok" else None
         if r.outcome != "ok":
             return []
         try:

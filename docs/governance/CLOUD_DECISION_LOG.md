@@ -1406,3 +1406,26 @@ changes it and stops the source until it is registered again.
 **Not done here:** registering the source and starting ingestion. Both run against the production database on the
 laptop (`cse-news register-source`, then `start-ingestion`) after the merge. The first live listing is inspected by
 hand before ingestion starts.
+
+## C-0126: the ingest command built (NS-10) ([delegated], 2026-11-23)
+
+The owner's words (2026-11-23): "go ahead with all the remaining".
+
+`cse-news ingest --source ID` and `cse-news inspect --record FILE` are built, on fakes. `docs/PHASE6_NS_IMPLEMENTATION.md`
+describes them, and the runbook gives the cadence.
+- **Choices taken:**
+  - one listing per pass;
+  - `since` overlaps the last article seen by 6 hours, because GDELT indexes late and deduplication is by
+    reference;
+  - known references are re-ingested from the listing, so title revisions are caught;
+  - with no configuration designated, articles are stored and left unprocessed, never scored with an undesignated
+    one;
+  - the run is `partial` when the listing was full or had malformed entries, and `failed` when it failed;
+  - at most hourly for GDELT.
+- **Not done here, the owner's on the laptop after the merge:**
+  - `register-source`;
+  - `inspect` (one live listing);
+  - `start-ingestion`;
+  - scheduling `ingest`.
+
+  Each makes live requests to GDELT or depends on one. Nothing here ran against the live API.

@@ -2,7 +2,7 @@
 Phase 6 NS-7, static: migration 0022 waits outside the chain (C-0119), meets the guards every migration meets (no
 binary, path or credential column; no SECURITY DEFINER, new role or row-level security), never grants the worker an
 owner decision, and refuses CSE in the database too; the wrapper runs owner steps as the migrator; every command is in
-the runbook; there is no ingest command in v1.
+the runbook; `ingest` and `inspect` are worker commands (NS-10).
 """
 import os
 import re
@@ -42,7 +42,7 @@ def test_the_wrapper_and_the_runbook():
             "role=cse_migrator") in src
     from worker.news_store import cli
     sub = next(a for a in cli.parser()._actions if a.dest == "command")
-    assert "ingest" not in sub.choices and not any("fetch" in c for c in sub.choices)
+    assert {"ingest", "inspect"} <= set(sub.choices) and not set(cli.OWNER) & {"ingest", "inspect"}   # worker (NS-10)
     assert set(cli.OWNER) <= set(sub.choices)
     book = open(os.path.join(REPO, "docs", "ops", "P6_NEWS_SENTIMENT.md"), encoding="utf-8").read()
     for name in sub.choices:

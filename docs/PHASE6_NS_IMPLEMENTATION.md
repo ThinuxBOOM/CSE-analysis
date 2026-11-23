@@ -376,3 +376,24 @@ The re-audit, at `fde406f`, was accepted with no Major. Its Minors are fixed:
 record CRLF line endings and the parser's block pattern accepted only LF. A record saved on Windows would have
 been refused. `governance.parse` now accepts both, and a test covers it. The pinned SHA-256 is still over the file's
 bytes, so re-saving a record with other line endings is a change that stops the source until it is registered again.
+
+## NS-10: the ingest command and the owner's inspection (C-0126)
+
+| Module | What it does |
+|---|---|
+| `worker/news_store/ingest.py` | `run_ingest(conn, source_id)`: one pass (runbook, "Commands"). It refuses, in order: an unknown adapter or source, a source not started or stopped, a busy source (its advisory lock, which the purge shares), and a record that fails `governance.load`'s pinned hash and hosts. It makes one listing through the governed transport with the database ledger, with `since` = the newest fetched article minus 6 hours, or the start. Each listed reference goes through `articles.ingest`, known ones included, so a changed title becomes a revision and the same title a confirmation. New versions are processed with the aliases admitted now and the configuration designated now (NL-6), or left unprocessed when none is designated. It then writes the run row (`ran` / `partial` / `failed`). `inspect(record)`: one listing with an in-memory ledger; it returns field names and the first entries and writes nothing |
+| `worker/news_ingest/wiring.py` | `inspection_transport` added: still the only module that builds the real sender |
+| `worker/news_ingest/gdelt.py` | `last_outcome`, `last_body` |
+| `worker/news_store/cli.py` | `ingest`, `inspect` (worker); `inspect` opens no database connection |
+
+Tests: `tests/test_ns7_postgres.py`:
+- `test_p8_ns10_ingest_one_source_end_to_end`:
+  - refusals, in order: unknown, not started, busy, an edited record, stopped;
+  - a pass with no designation stores and leaves unprocessed, sending only robots and one listing, and drops a CSE
+    URL;
+  - a pass after designation catches a revision and a new article and processes both;
+  - a third pass confirms;
+  - a failing listing gives a `failed` run;
+  - every sent request is in the ledger;
+  - a snapshot from the ingested rows has stories, and `verify` is clean.
+- `test_p8_ns10_inspect_writes_nothing`.
