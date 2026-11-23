@@ -371,3 +371,8 @@ The re-audit, at `fde406f`, was accepted with no Major. Its Minors are fixed:
 - the in-memory rebuilds load once per distinct query in each phase;
 - the runbook says a purge locks the news tables for a while, and that a dry run leaves only gaps in row ids;
 - the CLI's refusal of an empty reason or request is tested.
+
+**CI on Windows, after the re-audit:** the draft-record test failed on Windows, because the checkout gives the
+record CRLF line endings and the parser's block pattern accepted only LF. A record saved on Windows would have
+been refused. `governance.parse` now accepts both, and a test covers it. The pinned SHA-256 is still over the file's
+bytes, so re-saving a record with other line endings is a change that stops the source until it is registered again.

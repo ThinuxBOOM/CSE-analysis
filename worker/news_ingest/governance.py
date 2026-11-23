@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 STORAGE = ("metadata_only", "full_text")
 DISCLOSURE = ("none", "counts", "scores", "titles", "text")
-_BLOCK = re.compile(r"```ns-source\n(.*?)\n```", re.S)
+_BLOCK = re.compile(r"```ns-source\r?\n(.*?)\r?\n```", re.S)     # LF or CRLF (a Windows checkout)
 KEYS = {"source_id", "allowed_hosts", "fetch_on_behalf_hosts", "storage_level", "onward_disclosure",
         "availability_policy", "identification", "request_discipline", "robots"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")

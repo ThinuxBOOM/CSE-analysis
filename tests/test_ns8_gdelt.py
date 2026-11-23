@@ -212,3 +212,11 @@ def test_the_purge_commands_refuse_an_empty_reason_before_the_operator_is_append
                  ["purge-source", "--source", "s", "--request", ""]):
         assert cli.run(cli.parser().parse_args(argv), lambda: Conn()) == cli.EXIT_REFUSED
         assert "say why" in capsys.readouterr().out
+
+
+def test_a_record_with_windows_line_endings_parses():
+    from worker.news_ingest import governance as gv
+    lf = n1.record_bytes()
+    crlf = lf.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    assert gv.parse(crlf).source_id == gv.parse(lf).source_id
+    assert gv.parse(crlf).sha256 != gv.parse(lf).sha256          # the pin is over the bytes: a re-save is a change
