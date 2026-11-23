@@ -32,8 +32,11 @@ yet**: `stop-source` and `purge-source` are the next build step, needed before a
       - `ns_ingestion_runs`;
       - its `ingestion_started` rows in `ns_source_events`;
       - every snapshot, with its rows, whose `active_sources_json` or `stories_json` names the source.
-   3. Keep `ns_sources` and the stop rows. Add a `stopped` row with reason `purged`.
-   4. Re-enable the triggers, append the purge record, and commit.
+   3. Re-enable the triggers. Keep `ns_sources` and the stop rows, and add a `stopped` row with reason `purged`
+      (with the triggers back on, so it is stamped and checked). Commit.
+   4. Write the purge record as a file in `docs/governance/`: the request, the manifest's hash, the counts deleted,
+      the snapshot ids replaced. 0022 has no purge table.
+   A source's articles are matched by the exact `<source_id>:` prefix of their ids.
 4. **Rebuild.** Build the deleted snapshots again at the same queries. They are post-purge reconstructions with new
    ids, no longer what was known at T. Re-pin or invalidate anything that pinned the old ids or hashes, and list
    them in the purge record. The source is absent from them, never shown as zero news.
