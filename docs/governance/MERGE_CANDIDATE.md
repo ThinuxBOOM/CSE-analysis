@@ -39,10 +39,10 @@ part of the owner's merge, as one change under change control:
 
 ### The last green checks
 
-- **CI:** `b6c50f4` is green on both workflows (offline; Linux on PostgreSQL 17; Windows), as is `6e83a55`. The
-  later commits change documents only. `d8a7423`'s regression run failed at the CI image build (Ubuntu's mirror
-  returned HTTP 520) before any test ran. Run the final head again before the merge.
-- **The cloud container:** the offline suite passed (2,709 tests, no CSE contact logged by the network guard); the
+- **CI:** `6da5953` is green on both workflows (offline; Linux on PostgreSQL 17; Windows), with NS-8 and NS-9.
+  `fde406f` and `05f2ce0` failed one Windows test (a record with CRLF line endings), fixed in `6da5953`. Run the
+  final head again before the merge.
+- **The cloud container:** the offline suite passed (2,723 tests at `6da5953`, no CSE contact logged by the network guard); the
   NS PostgreSQL tests passed on PostgreSQL 16.
 
 ### The owner's decisions for Phase 6

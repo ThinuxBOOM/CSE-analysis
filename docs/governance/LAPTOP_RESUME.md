@@ -19,9 +19,10 @@ path through them.
 5. Still laptop work, untouched here: the R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the
    restore tool's AR-C-0001 findings.
 
-**Last green CI (both workflows):** `b6c50f4`, the Phase 6 hand-back, 23 Nov 2026 (also `6e83a55`). Later commits
-change documents only. `d8a7423`'s regression run failed while building the CI image (Ubuntu's mirror returned HTTP
-520), before any test ran; it is not a code failure.
+**Last green CI (both workflows):** `6da5953`, 23 Nov 2026: Phase 6 with NS-8 (GDELT adapter) and NS-9 (purge).
+Also green: `b6c50f4` (the first hand-back) and `6e83a55`. `fde406f` and `05f2ce0` failed one Windows test, a
+governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regression failure was Ubuntu's mirror
+(HTTP 520) during the image build.
 
 ## Open items that need you
 
