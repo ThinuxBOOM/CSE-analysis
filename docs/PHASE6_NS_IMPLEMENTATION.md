@@ -11,22 +11,12 @@ instruction):**
 |---|---|---|
 | P6-R1 | The source criteria. `onward_disclosure: "none"` for every source. CSE-derived content in third-party news falls under G-1: a source made mainly of CSE price or market reports is not registered | Naming each source, reading its terms and accepting its risk: one governance record per source, signed off before `register-source` |
 | P6-R2 | `metadata_only` for every source | `full_text` for a source whose terms expressly permit it |
-| P6-R3 | The purge procedure (runbook); its tooling is the next build step before any ingestion | |
+| P6-R3 | The purge procedure, following P2 §12 (runbook); its tooling (`stop-source`, `purge-source`) is the next build step before any ingestion | What a source is promised about backups, residual retention, any deadline |
 | P6-R4 | English only in v1 | |
 | P6-R6 | v1 uses the project's own lexicon, still `provisional`: not used to train, select or promote a model until evaluated on real news | Any third-party lexicon and its licence |
 | P6-R7 | The sector-sentiment deviation is accepted until P3-R5 | |
 | P6-R8 | User-Agent `research-news-reader/1 (non-commercial; obeys robots.txt)`; no contact | A non-personal contact mailbox, if a source requires one |
 | P6-R5 | | The merge and re-staging |
-
----|---|---|
-| P6-R1 | Which sources, each with its governance record: the terms read, the risk accepted, the request discipline, the exact hosts, onward disclosure to AI providers, robots handling, and whether CSE-derived content in third-party news falls under G-1. CSE announcements as a source fall under G-1 | Any ingestion |
-| P6-R2 | Per source: `metadata_only` or `full_text` (long ML histories need `full_text`, §8.1) | Any ingestion |
-| P6-R3 | The purge procedure for a source's deletion request, covering stored text, titles, URLs, derived results, snapshots and backups | Any ingestion |
-| P6-R6 | Which sentiment lexicon, and accepting its licence | Any real scoring |
-| P6-R8 | The identification sent to news sites, per source: the User-Agent and any contact address (personal data) | Any ingestion |
-
-The other reserved items: P6-R4 (Sinhala and Tamil, a later version), P6-R5 (the merge and re-staging), and P6-R7
-(the sector-sentiment deviation, for accepting Phase 6 against the Master Architecture).
 
 ---
 
@@ -115,7 +105,7 @@ Tests: `tests/test_ns2_unit.py` (10).
 | Module | What it does |
 |---|---|
 | `worker/news_sentiment/config.py` | The NS configuration: processor versions (`ns.entity.1`, `ns.relevance.1`, `ns.event.1`, `ns.sentiment.1`, `ns.decay.1`), the twelve event types, weights, windows, thresholds, half-lives per event type, the policies and the lexicon's SHA-256, as one canonical document with a SHA-256 id. Every constant is `provisional`; `max_age_sessions` must be at least 21 |
-| `worker/news_sentiment/lexicon_v1.json` | **The hand-written provisional lexicon (P6-D3)**: positive and negative terms, negators and intensifiers, with provenance and licence recorded. No third-party terms and no download; the real lexicon and its licence are the owner's (P6-R6) |
+| `worker/news_sentiment/lexicon_v1.json` | **The hand-written provisional lexicon (P6-D3)**: positive and negative terms, negators and intensifiers, with provenance and licence recorded. No third-party terms and no download; v1 uses it, still `provisional`; a third-party lexicon and its licence are the owner's (P6-R6, C-0121) |
 | `worker/news_sentiment/aliases.py` | Dated aliases (F5 names, MF tickers in their full form, owner aliases) and alias ends as new rows, each admitted by its own two clocks (§5.2; N2, NL-5, NL-13, NL-15); the alias-set hash |
 | `worker/news_sentiment/process.py` | The pure v1 processors. **Entity**: exact matching on normalised tokens (company suffixes normalised; a full ticker is one token; the longest overlapping match wins); an alias mapping to two issuers is kept as `ambiguous` and scores neither; a ticker that is also a word matches only in full form unless an owner alias adds the short form; positions are title, first paragraph and body; `market_wide` comes from a fixed list of terms. **Relevance**: the stated weights for position, the issuer's share of mentions and an attached event. **Events**: the fixed taxonomy by rule phrases within a window of a mention; the rule id always, an excerpt only under `full_text`. **Sentiment**: lexicon terms in a window around the mentions, with negation and intensifiers, normalised by the number of scored terms and clamped to [−1, 1]; `unscored` below the minimum, never `neutral`; the market-wide score the same way. Articles not in English are `language_unsupported` and score nothing |
 | `worker/news_sentiment/results.py` | §5.5: a stored result counts at T only if its own `recorded_at` is admitted (≤ T in KNOWN, ≤ H otherwise), every alias it used is admitted, and it is under the configuration in force. Otherwise `full_text` recomputes from what is admitted at T, and `metadata_only` has no result (N3) |
@@ -221,7 +211,7 @@ Database rules:
 | `worker/news_store/verify.py` | Each stored snapshot's row hashes and snapshot hash, and its configuration reproducing its id. A settled snapshot is rebuilt from the stored inputs with its stored sessions and must match. Each result's alias-set hash is checked |
 | `worker/news_store/preflight.py` | The tables, the worker's exact privileges, every guard trigger enabled |
 | `worker/news_store/cli.py`, `ops/bin/cse-news` | `preflight`, `status` and `verify` (worker); the owner path for the registrations. **There is no ingest command in v1** |
-| `docs/ops/P6_NEWS_SENTIMENT.md` | The runbook, opening with the owner's reserved decisions |
+| `docs/ops/P6_NEWS_SENTIMENT.md` | The runbook, opening with the owner's decisions (C-0121) and the purge procedure |
 
 Tests:
 - `tests/test_ns7_static.py` (3): pending and outside the chain; the migration guards; owner tables never granted to

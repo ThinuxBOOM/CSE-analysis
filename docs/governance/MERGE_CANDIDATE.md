@@ -52,9 +52,10 @@ lexicon, the sector deviation accepted, and a User-Agent with no contact. Table:
 - naming each source and signing its governance record;
 - any third-party lexicon and its licence;
 - a non-personal contact mailbox, if a source requires one;
+- what a source is promised about purged data in backups, and any purge deadline;
 - this merge (P6-R5).
 
-**Before any ingestion:** the purge tooling (P6-R3) and an ingest command that takes the ledger's lock.
+**Before any ingestion:** the purge tooling (P6-R3: `stop-source`, `purge-source`) and an ingest command that takes the ledger's lock.
 
 ### Open after the merge
 

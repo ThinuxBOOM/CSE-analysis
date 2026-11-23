@@ -1258,7 +1258,7 @@ review and merge.
   and R7.
 - **Not touched:** the R-F4 register statuses, `ISOLATED_RESTORE.md`, runbook §6 and the AR-C-0001 findings.
 
-## C-0121: Phase 6's owner items taken as recommended ([delegated], 2026-11-23)
+## C-0121: Phase 6's owner items taken as recommended (owner decision by instruction, [delegated], 2026-11-23)
 
 The owner's words (2026-11-23), after the Phase 6 hand-back listed P6-R1 to P6-R8: "Take the recommended decisions
 for me." Taken under that instruction, within C-0004. **Not taken, because C-0004 keeps them outside any
@@ -1275,7 +1275,24 @@ Each of those is left to the owner below, with what is already decided around it
 | P6-R1 (onward disclosure) | Every source: `onward_disclosure: "none"`, the design's default, until Phase 7's P7-R1 | Nothing from a news site goes to an AI provider by default |
 | P6-R1 (G-1 and third-party news) | **CSE-derived content reproduced in third-party news falls under G-1.** A source whose items are mainly CSE price or market reports, or CSE announcements reproduced, is not registered unless the owner extends G-1. In other news, a quoted price is kept only as part of an article's metadata or text under the source's storage level, and never parsed as market data | The conservative reading. It narrows what is collected and accepts no risk |
 | P6-R2 | **`metadata_only` for every source**, unless a source's terms expressly permit storing full text and the owner then chooses `full_text` for it | Least data stored, least exposure, simplest purge. The cost is recorded: a stored result cannot be recomputed under a new configuration, so long ML histories need `full_text` (design §8.1) |
-| P6-R3 | **The purge procedure, in the runbook.** On a source's deletion request or objection: (1) `stop` the source at once (recorded; it stays stopped); (2) the owner, as the database superuser, in one recorded maintenance transaction with the append-only guards lifted for the named tables only, deletes that source's articles, observations, results, fetch attempts and events, and every snapshot (with its rows) that lists the source among its active sources; those snapshots are then built again at the same queries from the evidence that remains, so `verify` stays clean; (3) a purge record is appended in `docs/governance/`, naming the request, the counts deleted and the snapshot ids replaced; (4) backups: the purged data is not restored. Backups holding it expire under the backup retention, and any restore is followed by step 2 again before use. Deadline: within 30 days of the request. **Tooling (a `purge-source` owner command and its tests) is a build step before any ingestion** | The append-only rule stays true for every normal role; purging is a rare owner act, recorded. Restic backups are not edited (R-F4 and the restore work are laptop work), so a restore re-applies the purge |
+| P6-R3 | **The purge procedure follows P2's purge design** (`docs/ops/P2_MARKET_CAPTURE.md` §12), applied to one source:
+- **Record and stop.** The purge request is recorded first. The source is stopped with a `stop-source` owner command, which is recorded and holds until `clear-stop`.
+- **Manifest.** A pre-purge manifest of ids, hashes and counts only, never content, is written and kept outside the purged set.
+- **The database deletion.** It runs as `cse_owner` (through `cse_migrator` and `SET ROLE`), in one transaction with `ALTER TABLE … DISABLE TRIGGER` on the named tables only, re-enabled before commit. In dependency order it deletes the source's rows in:
+  - `ns_fetch_events`, `ns_fetch_attempts`;
+  - `ns_article_results`, `ns_article_observations`, `ns_articles`, `ns_archive_imports`;
+  - `ns_ingestion_runs`;
+  - its `ingestion_started` rows in `ns_source_events`;
+  - every snapshot, with its rows, whose `active_sources_json` or `stories_json` names the source.
+
+  It keeps `ns_sources` and the source's stop rows, adds a `stopped` row with reason `purged`, and appends the purge record. After the deletion the source is absent from every snapshot, never shown as zero news.
+- **Rebuilt snapshots.** The deleted snapshots are built again at the same queries. They are post-purge reconstructions with new ids, no longer what was known at T. Any manifest or dataset that pinned the old ids or hashes is re-pinned or invalidated, and listed in the purge record.
+- **Checks.** `preflight` and `verify` after the purge.
+- **Local dumps.** A fresh post-purge dump is taken and restore-checked, then the pre-purge dumps are removed.
+- **Off-site copies.** They depend on the destination, still an open owner decision (P1, LP-R1): `restic forget --prune` with admin credentials held off the server; waiting out an object lock; or crypto-shredding.
+- **Tooling.** `stop-source`, `purge-source` and their tests are a build step before any ingestion.
+
+**Reserved:** what is promised to a source about its backups, any residual retention, and any deadline | It reuses a design already reviewed for G-1 §6 instead of inventing a second one. The normal append-only rule is never weakened. Backups are covered honestly. Accepting residual retention is a legal risk, which C-0004 keeps with the owner |
 | P6-R4 | **English only in v1**; Sinhala and Tamil are a later version | The provisional processing is English only |
 | P6-R6 (policy) | **v1 uses the project's own hand-written lexicon** (P6-D3), with no third-party terms. It stays `provisional`: scores from it are not used to train, select or promote a model until it is evaluated on a labelled sample of real news. **Any third-party lexicon, and accepting its licence, stays the owner's** | It needs no licence. The status keeps C-0004's no-real-data-claim limit |
 | P6-R7 | **The sector-sentiment deviation is accepted** until P3-R5 gives a point-in-time sector source. Company and market-wide sentiment meet MA §15 and §39 | No point-in-time sector source exists; a non-point-in-time one would leak |
@@ -1288,4 +1305,21 @@ Each of those is left to the owner below, with what is already decided around it
 - a contact mailbox, if a source needs one;
 - the merge of `integration/cloud-phase6`, with 0022.
 
-**Next build step before any ingestion:** the purge tooling (P6-R3).
+- what a source is promised about its backups, any residual retention, and any purge deadline (P6-R3).
+
+**Next build step before any ingestion:** the purge tooling (P6-R3): `stop-source` and `purge-source`.
+
+This entry supersedes the "reserved" statements of C-0119 and C-0120 for the items it decides. It is taken on the
+owner's quoted instruction, so P6-R7's deviation from the Master Architecture counts as the owner's decision. The
+User-Agent's "non-commercial" is revisited under G-1 item 12 if the project becomes commercial or public.
+
+**Audit** (fresh-context agent, before acceptance): **one Blocker, fixed.** The first wording of P6-R3 relied on a
+backup expiry that does not exist (P1 never prunes local dumps, and off-site retention is open). It now follows P2
+§12 and reserves residual retention to the owner. Four Majors, fixed:
+- the tables named;
+- the stop kept and the source made absent from snapshots;
+- snapshots selected by their stories too;
+- a `stop-source` command added to the tooling.
+
+The Minors are fixed: stale text, this entry's label, supersession, rebuilt-snapshot pinning, alignment with P2, and
+the "non-commercial" note.

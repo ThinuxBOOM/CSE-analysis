@@ -27,7 +27,8 @@ before `00ce584`.
 
 - **Phase 6:** the recommended decisions are taken (C-0121). Still yours: naming the first news source and signing
   its governance record (its terms and risk); any third-party lexicon and its licence; a contact mailbox if a source
-  needs one. Before any ingestion, the purge tooling must be built.
+  needs one; what a source is promised about backups after a purge. Before any ingestion, the purge tooling must be
+  built.
 - The merge of `integration/cloud-phase6` and moving 0022 into the chain.
 - Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
 - P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
@@ -52,9 +53,13 @@ You asked me to take the recommended decisions.
 - which named source, and accepting its terms;
 - any third-party lexicon licence;
 - a contact mailbox;
+- what a source is promised about backups after a purge;
 - the merge.
 
-**Next build step:** the purge tooling.
+The purge follows P2's reviewed design. An audit found the first wording relied on a backup expiry that
+does not exist; it was fixed before acceptance.
+
+**Next build step:** the purge tooling (`stop-source`, `purge-source`).
 
 ### 2026-11-23: Phase 6 (news and sentiment) built on fakes and ready for your review (C-0119, C-0120)
 

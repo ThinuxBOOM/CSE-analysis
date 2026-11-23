@@ -12,25 +12,41 @@ Decided on 2026-11-23 (C-0121). The code refuses to run a source without a regis
 |---|---|
 | P6-R1 | A source qualifies only if it: publishes terms that permit automated access, or offers a licensed feed or API; has robots.txt allowing the paths used; is English-language Sri Lankan business news; and needs no login, key or payment. Preference: a licensed API, then the publisher's RSS feed, then article pages. **The owner names each source and signs its record.** `onward_disclosure` is `"none"`. CSE-derived content in third-party news falls under G-1: a source made mainly of CSE price or market reports is not registered without a G-1 extension |
 | P6-R2 | `metadata_only`, unless a source's terms expressly permit full text and the owner chooses `full_text` |
-| P6-R3 | The purge procedure below |
+| P6-R3 | The purge procedure below (P2 §12's design). What a source is promised about backups, and any deadline, stay the owner's |
 | P6-R6 | The project's own lexicon, `provisional`. Its scores are not used to train, select or promote a model until it is evaluated on real news. A third-party lexicon is the owner's choice, with its licence |
 | P6-R8 | `"identification": {"user_agent": "research-news-reader/1 (non-commercial; obeys robots.txt)", "contact": null}`. A contact only if a source requires one: a non-personal mailbox the owner creates |
 
 ## Purge (P6-R3)
 
-On a source's deletion request or objection, within 30 days:
-1. Stop the source at once (the transport's `stop`, recorded; it stays stopped until `clear-stop`).
-2. The owner, as the database superuser, in one recorded maintenance transaction with the append-only guards lifted
-   for the named tables only, deletes:
-   - that source's articles, observations, results, fetch attempts and events;
-   - every snapshot, with its rows, that lists the source among its active sources.
+This follows P2's purge design (`docs/ops/P2_MARKET_CAPTURE.md` §12), for one source. **The tooling is not built
+yet**: `stop-source` and `purge-source` are the next build step, needed before any ingestion.
+1. **Record and stop.** Record the purge request (scope, authorisation, requester, time). Stop the source with
+   `stop-source`; it holds until `clear-stop`.
+2. **Manifest.** Write the pre-purge manifest: ids, hashes and counts only, never content. Keep it outside the
+   purged set.
+3. **Database.** As `cse_owner` (through `cse_migrator` and `SET ROLE`), in one transaction:
+   1. `ALTER TABLE … DISABLE TRIGGER` on the named tables only.
+   2. Delete the source's rows, in dependency order:
+      - `ns_fetch_events`, `ns_fetch_attempts`;
+      - `ns_article_results`, `ns_article_observations`, `ns_articles`, `ns_archive_imports`;
+      - `ns_ingestion_runs`;
+      - its `ingestion_started` rows in `ns_source_events`;
+      - every snapshot, with its rows, whose `active_sources_json` or `stories_json` names the source.
+   3. Keep `ns_sources` and the stop rows. Add a `stopped` row with reason `purged`.
+   4. Re-enable the triggers, append the purge record, and commit.
+4. **Rebuild.** Build the deleted snapshots again at the same queries. They are post-purge reconstructions with new
+   ids, no longer what was known at T. Re-pin or invalidate anything that pinned the old ids or hashes, and list
+   them in the purge record. The source is absent from them, never shown as zero news.
+5. **Check.** Run `preflight` and `verify`.
+6. **Local dumps.** Take a fresh post-purge dump, restore-check it, then remove the pre-purge dumps.
+7. **Off-site.** What happens depends on the destination, still an open owner decision (LP-R1):
+   - `restic forget --prune` with admin credentials held off the server;
+   - waiting out an object lock;
+   - crypto-shredding.
 
-   Those snapshots are then built again at the same queries from the evidence that remains, so `verify` stays clean.
-3. Append a purge record in `docs/governance/`: the request, the counts deleted, the snapshot ids replaced.
-4. Backups are not edited. Backups holding the data expire under the backup retention. After any restore, repeat
-   step 2 before the database is used.
+**The owner's:** what a source is promised about its backups, any residual retention, and any deadline.
 
-**The tooling (`purge-source`) is not built yet.** It is the next step, and it is needed before any ingestion.
+The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project becomes commercial or public.
 
 **v1 has no ingest command.** The first real source's adapter is a later step, after P6-R1. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.
