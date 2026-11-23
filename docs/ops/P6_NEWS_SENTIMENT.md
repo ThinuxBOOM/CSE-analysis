@@ -6,15 +6,31 @@ chain is part of the owner's merge (C-0119).
 
 ## Before anything runs: the owner's decisions
 
-Nothing fetches news until the owner has decided all of these. The code refuses to run a source without them.
+Decided on 2026-11-23 (C-0121). The code refuses to run a source without a registered, hash-pinned record.
 
 | ID | Decision |
 |---|---|
-| P6-R1 | Which sources, each with its governance record in `docs/governance/`: terms read, risk accepted, request discipline, the exact hosts, onward disclosure, robots handling, and whether CSE-derived content in third-party news falls under G-1 |
-| P6-R2 | Per source: `metadata_only` or `full_text` |
-| P6-R3 | The purge procedure for a source's deletion request: text, titles, URLs, derived results, snapshots and backups |
-| P6-R6 | Which sentiment lexicon, and accepting its licence. Until then the hand-written provisional lexicon is used, for building and tests only |
-| P6-R8 | The identification sent to each news site: the User-Agent and any contact address |
+| P6-R1 | A source qualifies only if it: publishes terms that permit automated access, or offers a licensed feed or API; has robots.txt allowing the paths used; is English-language Sri Lankan business news; and needs no login, key or payment. Preference: a licensed API, then the publisher's RSS feed, then article pages. **The owner names each source and signs its record.** `onward_disclosure` is `"none"`. CSE-derived content in third-party news falls under G-1: a source made mainly of CSE price or market reports is not registered without a G-1 extension |
+| P6-R2 | `metadata_only`, unless a source's terms expressly permit full text and the owner chooses `full_text` |
+| P6-R3 | The purge procedure below |
+| P6-R6 | The project's own lexicon, `provisional`. Its scores are not used to train, select or promote a model until it is evaluated on real news. A third-party lexicon is the owner's choice, with its licence |
+| P6-R8 | `"identification": {"user_agent": "research-news-reader/1 (non-commercial; obeys robots.txt)", "contact": null}`. A contact only if a source requires one: a non-personal mailbox the owner creates |
+
+## Purge (P6-R3)
+
+On a source's deletion request or objection, within 30 days:
+1. Stop the source at once (the transport's `stop`, recorded; it stays stopped until `clear-stop`).
+2. The owner, as the database superuser, in one recorded maintenance transaction with the append-only guards lifted
+   for the named tables only, deletes:
+   - that source's articles, observations, results, fetch attempts and events;
+   - every snapshot, with its rows, that lists the source among its active sources.
+
+   Those snapshots are then built again at the same queries from the evidence that remains, so `verify` stays clean.
+3. Append a purge record in `docs/governance/`: the request, the counts deleted, the snapshot ids replaced.
+4. Backups are not edited. Backups holding the data expire under the backup retention. After any restore, repeat
+   step 2 before the database is used.
+
+**The tooling (`purge-source`) is not built yet.** It is the next step, and it is needed before any ingestion.
 
 **v1 has no ingest command.** The first real source's adapter is a later step, after P6-R1. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.

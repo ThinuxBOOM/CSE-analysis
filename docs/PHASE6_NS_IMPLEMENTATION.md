@@ -4,10 +4,21 @@ Branch `integration/cloud-phase6`, from `main` at `00ce584` (C-0119). Design: `d
 revision 3. **Fakes only:** no real news host in code or tests (synthetic hosts use the reserved `.test` domain), no
 CSE contact, and no lexicon download.
 
-**What the owner must decide before any real ingestion or scoring** (reserved, not assumed; design §12):
+**The owner's items (design §12), as decided on 2026-11-23 (C-0121, taken as recommended under the owner's
+instruction):**
 
-| ID | Decision | Needed before |
+| ID | Decided | Still the owner's |
 |---|---|---|
+| P6-R1 | The source criteria. `onward_disclosure: "none"` for every source. CSE-derived content in third-party news falls under G-1: a source made mainly of CSE price or market reports is not registered | Naming each source, reading its terms and accepting its risk: one governance record per source, signed off before `register-source` |
+| P6-R2 | `metadata_only` for every source | `full_text` for a source whose terms expressly permit it |
+| P6-R3 | The purge procedure (runbook); its tooling is the next build step before any ingestion | |
+| P6-R4 | English only in v1 | |
+| P6-R6 | v1 uses the project's own lexicon, still `provisional`: not used to train, select or promote a model until evaluated on real news | Any third-party lexicon and its licence |
+| P6-R7 | The sector-sentiment deviation is accepted until P3-R5 | |
+| P6-R8 | User-Agent `research-news-reader/1 (non-commercial; obeys robots.txt)`; no contact | A non-personal contact mailbox, if a source requires one |
+| P6-R5 | | The merge and re-staging |
+
+---|---|---|
 | P6-R1 | Which sources, each with its governance record: the terms read, the risk accepted, the request discipline, the exact hosts, onward disclosure to AI providers, robots handling, and whether CSE-derived content in third-party news falls under G-1. CSE announcements as a source fall under G-1 | Any ingestion |
 | P6-R2 | Per source: `metadata_only` or `full_text` (long ML histories need `full_text`, §8.1) | Any ingestion |
 | P6-R3 | The purge procedure for a source's deletion request, covering stored text, titles, URLs, derived results, snapshots and backups | Any ingestion |

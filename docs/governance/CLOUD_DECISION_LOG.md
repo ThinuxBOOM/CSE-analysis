@@ -1257,3 +1257,35 @@ review and merge.
 - **Reserved to the owner, unchanged:** P6-R1, R2, R3, R6 and R8 before any real ingestion or scoring; also R4, R5
   and R7.
 - **Not touched:** the R-F4 register statuses, `ISOLATED_RESTORE.md`, runbook §6 and the AR-C-0001 findings.
+
+## C-0121: Phase 6's owner items taken as recommended ([delegated], 2026-11-23)
+
+The owner's words (2026-11-23), after the Phase 6 hand-back listed P6-R1 to P6-R8: "Take the recommended decisions
+for me." Taken under that instruction, within C-0004. **Not taken, because C-0004 keeps them outside any
+delegation:**
+- accepting a third party's terms or a legal risk (a named source's terms, a lexicon licence);
+- personal data (a contact address);
+- the merge (C-0001).
+
+Each of those is left to the owner below, with what is already decided around it.
+
+| ID | Decision | Why |
+|---|---|---|
+| P6-R1 (policy) | **No source is registered yet.** A candidate must: publish terms that permit automated access or offer a licensed feed or API; serve robots.txt that allows the paths used; be English-language Sri Lankan business news; and need no login, key or payment. Preference order: a licensed news API, then an RSS feed the publisher offers, then article pages. **The choice of a named source, reading its terms and accepting its risk stay the owner's**: one record per source, in `docs/governance/`, signed off by the owner before `register-source` | Choosing a source means accepting its terms, which C-0004 keeps with the owner. The criteria make that a short check |
+| P6-R1 (onward disclosure) | Every source: `onward_disclosure: "none"`, the design's default, until Phase 7's P7-R1 | Nothing from a news site goes to an AI provider by default |
+| P6-R1 (G-1 and third-party news) | **CSE-derived content reproduced in third-party news falls under G-1.** A source whose items are mainly CSE price or market reports, or CSE announcements reproduced, is not registered unless the owner extends G-1. In other news, a quoted price is kept only as part of an article's metadata or text under the source's storage level, and never parsed as market data | The conservative reading. It narrows what is collected and accepts no risk |
+| P6-R2 | **`metadata_only` for every source**, unless a source's terms expressly permit storing full text and the owner then chooses `full_text` for it | Least data stored, least exposure, simplest purge. The cost is recorded: a stored result cannot be recomputed under a new configuration, so long ML histories need `full_text` (design §8.1) |
+| P6-R3 | **The purge procedure, in the runbook.** On a source's deletion request or objection: (1) `stop` the source at once (recorded; it stays stopped); (2) the owner, as the database superuser, in one recorded maintenance transaction with the append-only guards lifted for the named tables only, deletes that source's articles, observations, results, fetch attempts and events, and every snapshot (with its rows) that lists the source among its active sources; those snapshots are then built again at the same queries from the evidence that remains, so `verify` stays clean; (3) a purge record is appended in `docs/governance/`, naming the request, the counts deleted and the snapshot ids replaced; (4) backups: the purged data is not restored. Backups holding it expire under the backup retention, and any restore is followed by step 2 again before use. Deadline: within 30 days of the request. **Tooling (a `purge-source` owner command and its tests) is a build step before any ingestion** | The append-only rule stays true for every normal role; purging is a rare owner act, recorded. Restic backups are not edited (R-F4 and the restore work are laptop work), so a restore re-applies the purge |
+| P6-R4 | **English only in v1**; Sinhala and Tamil are a later version | The provisional processing is English only |
+| P6-R6 (policy) | **v1 uses the project's own hand-written lexicon** (P6-D3), with no third-party terms. It stays `provisional`: scores from it are not used to train, select or promote a model until it is evaluated on a labelled sample of real news. **Any third-party lexicon, and accepting its licence, stays the owner's** | It needs no licence. The status keeps C-0004's no-real-data-claim limit |
+| P6-R7 | **The sector-sentiment deviation is accepted** until P3-R5 gives a point-in-time sector source. Company and market-wide sentiment meet MA §15 and §39 | No point-in-time sector source exists; a non-point-in-time one would leak |
+| P6-R8 | **User-Agent: `research-news-reader/1 (non-commercial; obeys robots.txt)`**, the same for every source, naming no person or project. **Contact: none.** If a source requires a contact, the owner creates a dedicated non-personal mailbox and adds it to that source's record | A contact address is personal data (design §4.1), so none is sent without the owner |
+| P6-R5 | Not taken: the merge and re-staging are the owner's (C-0001) | |
+
+**Left to the owner, the whole list:**
+- naming the first source and signing its governance record (its terms and risk);
+- any third-party lexicon and its licence;
+- a contact mailbox, if a source needs one;
+- the merge of `integration/cloud-phase6`, with 0022.
+
+**Next build step before any ingestion:** the purge tooling (P6-R3).

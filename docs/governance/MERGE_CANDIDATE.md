@@ -42,20 +42,19 @@ part of the owner's merge, as one change under change control:
 - **The cloud container:** the offline suite passed (2,709 tests, no CSE contact logged by the network guard); the
   NS PostgreSQL tests passed on PostgreSQL 16.
 
-### The owner's decisions before any real ingestion or scoring
+### The owner's decisions for Phase 6
 
-Reserved, not assumed (C-0119). The code refuses to run a source without an approved, hash-pinned record.
+Taken as recommended on 2026-11-23 (C-0121), as the owner asked: the source criteria, `onward_disclosure: "none"`,
+CSE-derived news under G-1, `metadata_only`, the purge procedure, English only, the project's own (`provisional`)
+lexicon, the sector deviation accepted, and a User-Agent with no contact. Table: `docs/PHASE6_NS_IMPLEMENTATION.md`.
 
-| ID | Decision | Needed before |
-|---|---|---|
-| P6-R1 | Which sources, each with its governance record in `docs/governance/` | Any ingestion |
-| P6-R2 | Per source: `metadata_only` or `full_text` | Any ingestion |
-| P6-R3 | The purge procedure for a source's deletion request | Any ingestion |
-| P6-R6 | Which sentiment lexicon, and accepting its licence | Any real scoring |
-| P6-R8 | The identification sent to each news site (User-Agent, any contact address) | Any ingestion |
+**Still the owner's** (C-0004 keeps third-party terms, legal risk and personal data out of the delegation):
+- naming each source and signing its governance record;
+- any third-party lexicon and its licence;
+- a non-personal contact mailbox, if a source requires one;
+- this merge (P6-R5).
 
-Also the owner's: P6-R4 (Sinhala and Tamil, later), P6-R5 (the merge and re-staging), P6-R7 (the sector-sentiment
-deviation, for accepting Phase 6).
+**Before any ingestion:** the purge tooling (P6-R3) and an ingest command that takes the ledger's lock.
 
 ### Open after the merge
 

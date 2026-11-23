@@ -25,16 +25,36 @@ before `00ce584`.
 
 ## Open items that need you
 
-- **Phase 6, before any real ingestion or scoring:** P6-R1 (sources and their governance records), P6-R2 (storage
-  level per source), P6-R3 (the purge procedure), P6-R6 (the lexicon and its licence), P6-R8 (the identification
-  sent). Also P6-R4 (Sinhala and Tamil, later), P6-R5 (the merge and re-staging), P6-R7 (the sector-sentiment
-  deviation).
+- **Phase 6:** the recommended decisions are taken (C-0121). Still yours: naming the first news source and signing
+  its governance record (its terms and risk); any third-party lexicon and its licence; a contact mailbox if a source
+  needs one. Before any ingestion, the purge tooling must be built.
 - The merge of `integration/cloud-phase6` and moving 0022 into the chain.
 - Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
 - P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
   owner" tables).
 
 ## Log (newest first)
+
+### 2026-11-23: Phase 6's owner items decided as recommended (C-0121)
+
+You asked me to take the recommended decisions.
+
+**Taken:**
+- P6-R1's source criteria; `onward_disclosure: "none"`; CSE-derived news treated as under G-1.
+- P6-R2 `metadata_only`.
+- P6-R3 the purge procedure (runbook).
+- P6-R4 English only.
+- P6-R6 the project's own lexicon, still `provisional`.
+- P6-R7 the sector deviation accepted.
+- P6-R8 a User-Agent naming no person, and no contact.
+
+**Not taken** (C-0004 keeps them yours):
+- which named source, and accepting its terms;
+- any third-party lexicon licence;
+- a contact mailbox;
+- the merge.
+
+**Next build step:** the purge tooling.
 
 ### 2026-11-23: Phase 6 (news and sentiment) built on fakes and ready for your review (C-0119, C-0120)
 
