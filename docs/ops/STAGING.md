@@ -42,13 +42,15 @@ progress and runbook §6's block as lifted; those are withdrawn, see the next no
 
 *2026-11-23: **ST-33: staging ACCEPTED by the owner on 2026-11-10, for build `af1fdd1`** ("I accept both", answering
 DR-0003; effective once AR-0012-1 passed with no Blocker or Major: PASS WITH FINDINGS, 2026-11-10): Phase B (section
-12) and Phase C (section 13) on `main` at `af1fdd16cc40`. REG-G01, REG-A05 and REG-A06 are CLOSED WITH EVIDENCE
-(`docs/R_F4_IMPLEMENTATION.md` §25.6). **The merged build must be re-staged** before milestone 10: `main` after pull
+12) and Phase C (section 13) on `main` at `af1fdd16cc40`. REG-G01 and REG-A05 are CLOSED WITH EVIDENCE; REG-A06
+stays DEFERRED WITH RATIONALE until REG-B01 closes (B-0014 round 2; `docs/R_F4_IMPLEMENTATION.md` §25.6). **The merged build must be re-staged** before milestone 10: `main` after pull
 request #13 (Phases 3 to 5, the restore tool's AR-C-0001 fixes, and the pending migrations once they enter the chain)
 is a changed build (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5). The cloud session's audit
 of the isolated-restore procedure, AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`), found defects in the
 `af1fdd1` tool's globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open, so REG-B01, REG-B04,
-REG-B06 and REG-B27 stay OPEN and runbook §6 stays BLOCKED. Section 13 records ST-33. Nothing is armed or contacted:
+REG-B06 and REG-B27 stay OPEN and runbook §6 stays BLOCKED. The owner's approval of the procedure (2026-11-10)
+does not carry over to the fixed tool; the procedure returns for approval after findings 6 to 8 are fixed and R2 is
+re-run with the fixed tool (owner, 2026-11-23). Section 13 records ST-33. Nothing is armed or contacted:
 ST-33 authorizes no arming, capture, CSE contact or live run.*
 
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
@@ -789,16 +791,19 @@ of the integrated build is accepted; Q2, milestone 9: the integrated frozen buil
 commits documentation only, is accepted as the build that runs next). The acceptance took effect once AR-0012-1, the
 audit of Phase C and its record, passed with no Blocker or Major (PASS WITH FINDINGS, 2026-11-10).
 - **What it accepts:** campaign p3b1 on `main` at `af1fdd16cc40`: Phase B (section 12) and Phase C (this section).
-- **The register** (`docs/R_F4_IMPLEMENTATION.md` §25.4, §25.6): REG-G01, REG-A05 and REG-A06 CLOSED WITH EVIDENCE.
-  REG-A05's and REG-A06's closures state AR-0012-1 N-2's limitation: on the copy, the superuser's count of the two
-  R-F4 tables was not read directly; the equality holds through the source superuser's reading (300/300, ST-28) and
-  the copy's manifest digests (command 5).
+- **The register** (`docs/R_F4_IMPLEMENTATION.md` §25.4, §25.6): REG-G01 and REG-A05 CLOSED WITH EVIDENCE. REG-A05's
+  closure states AR-0012-1 N-2's limitation, as the owner confirmed on 2026-11-23 ("Close it, limitation stated"): on
+  the copy, the superuser's count of the two R-F4 tables was not read directly; the equality holds through the source
+  superuser's reading (300/300, ST-28) and the copy's manifest digests (command 5). REG-A06's condition is otherwise
+  met here, but it stays DEFERRED WITH RATIONALE: its Depends names REG-B01, which stays OPEN (B-0014 round 2).
 - **What it does not settle:** the isolated-restore items. R2 ran with the tool at `af1fdd1`; the cloud session's audit
   AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`, approve with conditions) found defects in that tool's
   globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open (the provenance rests on an
   unauthenticated `source.json`; the tool has no environment guard; the verification gate's zero rule). REG-B01,
   REG-B04, REG-B06 and REG-B27 stay OPEN until those are resolved and R2 is re-run with the fixed tool, and runbook §6
-  stays BLOCKED. R2's results above stand as the staging results of the `af1fdd1` tool.
+  stays BLOCKED. R2's results above stand as the staging results of the `af1fdd1` tool. The owner's approval of the
+  procedure (2026-11-10) does not carry over to the fixed tool: it returns for approval after findings 6 to 8 are
+  fixed and R2 is re-run with the fixed tool (owner, 2026-11-23).
 - **Re-staging:** the merged build (`main` after pull request #13: Phases 3 to 5, the restore tool's AR-C-0001 fixes,
   and the pending migrations once they enter the chain) is a changed build. It must be re-staged before milestone 10,
   and milestone 9 re-accepted on it (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5;
