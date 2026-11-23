@@ -1,11 +1,85 @@
-# The merge candidate: `integration/cloud` into `main`
+# The merge candidates
 
-**Status (2026-11-22): ready for the owner's merge.** Every branch item of the review's "Before `main`" list is
+## Now: `integration/cloud-phase6` into `main` (Phase 6, news and sentiment)
+
+**Status (2026-11-23): ready for the owner's review and merge.** The branch starts from `main` at `00ce584`.
+Every step is audited and accepted (C-0119, C-0120). **The merge is the owner's act** (C-0004, P6-R5). Nothing
+here has contacted CSE or any real news host: synthetic sources use `.test` hosts only.
+
+### What merges
+
+| Step | What | Audit |
+|---|---|---|
+| NS-1 | The governed transport, the governance record, the fetch ledger | Accepted at `88cff17`; three Majors fixed |
+| NS-2 | The adapter interface, article versions, observations, the re-fetch plan; NL-1 to NL-4 | Accepted at `3d01c40` with NS-3 to NS-5; five Majors fixed |
+| NS-3 to NS-5 | Aliases, entities, relevance, events, sentiment (provisional lexicon), deduplication | As above |
+| NS-6 | Decay and the sentiment snapshot | Accepted at `d8a7423` with NS-7; four Majors fixed; re-audit at `6e83a55` accepted, seven Minors fixed |
+| NS-7 | Migration 0022 (pending), the store, the ledger in the database, `verify`, the preflight, `cse-news`, the runbook; NL-8 | As above |
+
+The detail is in `docs/PHASE6_NS_IMPLEMENTATION.md`; the runbook is `docs/ops/P6_NEWS_SENTIMENT.md`.
+
+**v1 has no ingest command and no real adapter.** Merging adds the code and the pending migration only; it fetches
+nothing.
+
+### Migration 0022 waits outside the chain
+
+`supabase/migrations_pending/0022_news_sentiment.sql` is **not** in `supabase/migrations/` (C-0119). Moving it in is
+part of the owner's merge, as one change under change control:
+1. `git mv supabase/migrations_pending/0022_news_sentiment.sql supabase/migrations/`. It is additive and
+   append-only. Point the `PENDING` constants of `tests/test_ns7_static.py` and `tests/test_ns7_postgres.py` at
+   `supabase/migrations/` in the same change, and drop the static test's "outside the chain" assertion.
+2. The guards that state the migration range (frozen components, so each edit is reviewed as a change control):
+   - `ops/staging/inner/stage_checks.sh:132` expects the ledger `1 … 21` (0006 unused). It becomes `… 21 22`.
+   - `ops/staging/inner/stage_scenarios.sh:156` checks that the newest migration, 0021, is recorded once. It
+     becomes 0022.
+   - `tests/test_rf4_runbook_rehearsal.py` already pins step 1 with `--to 18`, so it needs no change.
+3. Re-stage on the laptop (P6-R5) and run `cse-news preflight` on the staged database.
+
+### The last green checks
+
+- **CI:** `d8a7423` is green on the offline workflow. The final head is run on both workflows before the merge;
+  `docs/governance/LAPTOP_RESUME.md` names the newest result.
+- **The cloud container:** the offline suite passed (2,709 tests, no CSE contact logged by the network guard); the
+  NS PostgreSQL tests passed on PostgreSQL 16.
+
+### The owner's decisions before any real ingestion or scoring
+
+Reserved, not assumed (C-0119). The code refuses to run a source without an approved, hash-pinned record.
+
+| ID | Decision | Needed before |
+|---|---|---|
+| P6-R1 | Which sources, each with its governance record in `docs/governance/` | Any ingestion |
+| P6-R2 | Per source: `metadata_only` or `full_text` | Any ingestion |
+| P6-R3 | The purge procedure for a source's deletion request | Any ingestion |
+| P6-R6 | Which sentiment lexicon, and accepting its licence | Any real scoring |
+| P6-R8 | The identification sent to each news site (User-Agent, any contact address) | Any ingestion |
+
+Also the owner's: P6-R4 (Sinhala and Tamil, later), P6-R5 (the merge and re-staging), P6-R7 (the sector-sentiment
+deviation, for accepting Phase 6).
+
+### Open after the merge
+
+- The first ingest command must take the ledger's advisory lock (runbook, "Timing notes").
+- `unlabelled` is snapshot-wide, a deliberate exception to NL-9; the owner may revisit it with P6-R6.
+- The first real adapter replaces `SyntheticAdapter`'s in-memory URL map and fails malformed items instead of
+  raising.
+
+### Not touched (laptop work)
+
+The R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the restore tool's AR-C-0001 findings.
+
+---
+
+## Earlier: `integration/cloud` into `main` (merged; in `main` at `00ce584`)
+
+*Kept as the record of that merge.*
+
+**Status (2026-11-22): ready for the owner's merge** (since merged; in `main` at `00ce584`). Every branch item of the review's "Before `main`" list is
 closed (`docs/governance/BRANCH_REVIEW_2026-11-18.md`; C-0116, C-0117). The owner approved the merge in principle
 (C-0116). **The merge itself, and the re-staging after it, are the owner's acts** (C-0004, P3-R6, P4-R3, P5-R3).
 Nothing here has contacted CSE.
 
-## What merges
+### What merges
 
 | Phase | Steps | Accepted |
 |---|---|---|
@@ -22,7 +96,7 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
 
 *(2026-11-23, C-0118: steps 2 and 3 below are done on `claude/migrations-0019-0021`: the three files are in `supabase/migrations/`, unchanged, with the three guards and R-F4's tests p9 and p48 changed under change control.)*
 
-## The last green checks
+### The last green checks
 
 - **CI:** `21804c1`, the merge candidate, is green on both workflows: offline; Linux on PostgreSQL 17, with the
   image built with hash-pinned ML wheels; and Windows. Any later commit is run again before the merge (the newest
@@ -30,7 +104,7 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
 - **The cloud container:** the offline suite passed (2,593 tests). The PostgreSQL suites for MF, DE-4, M5 and the
   registry passed.
 
-## The merge, step by step (the owner's)
+### The merge, step by step (the owner's)
 
 1. **Check the branch head is green** on both workflows. The review's CI table names the newest run.
 2. **Move the three pending migrations into the chain**, as one change under change control:
@@ -57,7 +131,7 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
    are tracked by `docs/R_F4_DESIGN.md` §10 rows 8 and 9, and REG-G01's note in `docs/R_F4_IMPLEMENTATION.md`
    §25.4, not by a register row.)*
 
-## After the merge, before real use
+### After the merge, before real use
 
 - **Register again** any configuration registered on a test database: MF's configuration ids and code version
   (`mf.4`) changed.
@@ -65,7 +139,7 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
 - **The owner's decisions that come next**: P5-R2, the first real protocol; P5-R5, the survivorship waiver (the
   recommendation was not to waive); and LP-R1 to LP-R7 before local production.
 
-## Known limits that remain true after the merge
+### Known limits that remain true after the merge
 
 - Nothing past Phase 1 has run on live data. HB-6, the pilot, is the owner's to run.
 - MLK-20's raw-to-dataset run of every plant needs the full stack with captured data. That is the owner's staging

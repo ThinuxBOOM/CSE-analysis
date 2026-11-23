@@ -215,7 +215,7 @@ Database rules:
 Tests:
 - `tests/test_ns7_static.py` (3): pending and outside the chain; the migration guards; owner tables never granted to
   the worker; CSE refused in the SQL; the wrapper; every command in the runbook; no ingest command.
-- `tests/test_ns7_postgres.py` (5, on PostgreSQL 16 here and PostgreSQL 17 in CI):
+- `tests/test_ns7_postgres.py` (6, on PostgreSQL 16 here and PostgreSQL 17 in CI):
   - the database rules;
   - the ledger under the transport: committed before send, a stop held across processes until the owner clears
     it, CSE refused and never recorded as sent, the advisory lock, the budget count;
@@ -225,7 +225,7 @@ Tests:
   - NL-8;
   - the NS-6/7 audit cases below.
 
-The full offline suite passes (2,707 tests after the NS-6/7 audit fixes; no CSE contact logged by the network guard).
+The full offline suite passes (2,709 tests after the NS-6/7 re-audit fixes; no CSE contact logged by the network guard).
 
 ### NS-6 and NS-7 audit (fresh-context agent, at `d8a7423`): accepted
 
@@ -255,5 +255,22 @@ No Blocker (C-0037). Four Majors, all fixed:
   it with P6-R6.
 - The ledger's advisory lock is taken by the caller. v1 has no ingest command, so nothing takes it yet; the first
   ingest command must (recorded in the runbook).
-- A day counts as collected only if its run is recorded before T. A backlog run added later fixes later snapshots,
-  never earlier ones (recorded in the runbook).
+- A day counts as collected only if its run is admitted at the query (recorded at or before T in KNOWN and
+  AVAILABLE, at or before H in CURRENT). A backlog run added later fixes later snapshots, never point-in-time ones at
+  an earlier T (recorded in the runbook).
+
+### NS-6 and NS-7 re-audit (fresh-context agent, at `6e83a55`): accepted
+
+No Blocker and no new Major. All four Major fixes were confirmed correct, with no new look-ahead, and confirmed by
+13 mutations. Seven Minors, all dealt with:
+
+| ID | Finding | Fix |
+|---|---|---|
+| 1 | The `news_sources_21` boundary was claimed but tested at age 17 | A second-source story at ages 20 (counted, newest event age 20) and 21 (out) |
+| 2 | Three adjacent states and the start day were not pinned: mutations swapping `not_collected`/`conflicting` or `missing`/`unlabelled`, or excluding the start day from gaps, passed | A case for each, including a start day with no run (`partial`). Each mutation now fails a test |
+| 3 | The Minor fixes in `verify`, the preflight and 0022 had no tests | Through PostgreSQL: a `sessions_json` tamper and a `context_alias_ids` tamper are found by `verify`; a disabled or replica-only guard trigger is found by the preflight; an archive version from another source's import and a fetch-on-behalf `www.cse.lk.` are refused |
+| 4 | 0022's URL check missed `https://a@b@cse.lk/` and schemes with `+`, `.` or `-` | The pattern now takes the user-info up to the last `@` and any URL scheme. Both tested. The static host guard in `tests/test_ns_static.py` read such a URL the same wrong way and is corrected too |
+| 5 | The gap timing note held for KNOWN and AVAILABLE only | Reworded here and in the runbook: admitted at the query, at or before T, or H in CURRENT |
+| 6 | The runbook's list of what 0022 enforces was out of date | Updated |
+| 7 | `BEFORE_SEQUENCE` is conservative only on a long enough sequence | Recorded in the runbook: the sequence should be longer than 21 sessions |
+

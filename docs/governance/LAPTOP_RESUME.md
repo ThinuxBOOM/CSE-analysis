@@ -7,29 +7,61 @@ path through them.
 
 ## First steps on the laptop
 
-1. `git fetch origin integration/cloud` and check it out. **Nothing here is merged into `main`.** The merge is
-   yours (C-0004).
-2. Read `docs/governance/MERGE_CANDIDATE.md` (the merge, step by step), `docs/governance/BRANCH_REVIEW_2026-11-18.md` (the items closed before `main`) and this file's log.
+1. **Phase 6 is on `integration/cloud-phase6`** (from `main` at `00ce584`): `git fetch origin
+   integration/cloud-phase6` and check it out. **Nothing here is merged into `main`.** The merge is yours (C-0004,
+   P6-R5). The earlier branch, `integration/cloud`, is already in `main`.
+2. Read `docs/governance/MERGE_CANDIDATE.md` (its first section: what merges, 0022, your decisions) and this file's
+   log. The detail is in `docs/PHASE6_NS_IMPLEMENTATION.md`; the runbook is `docs/ops/P6_NEWS_SENTIMENT.md`.
 3. Run the offline suite and the PostgreSQL suite as the CI image does (`docs/CI_TEST_STRATEGY.md`). Check that the
-   latest GitHub CI run of both workflows on the branch head is green (the log below names the last known result).
-4. Pending migrations `supabase/migrations_pending/0019`, `0020` and `0021` are **outside the chain**. They have
-   changed since you last saw them (log). Moving them into `supabase/migrations/` is part of the merge decision.
-   *(2026-11-23, C-0118: they are now in the chain, `supabase/migrations/`, unchanged.)*
-5. Configuration ids that are content-addressed change when their parameters change. Any configuration you
-   registered or designated earlier on a test database must be registered again (log entries say which).
+   latest GitHub CI run of both workflows on the branch head is green.
+4. **Migration 0022 is outside the chain**, in `supabase/migrations_pending/`. Moving it into `supabase/migrations/`
+   is part of your merge, with the change control for two staging guards (`MERGE_CANDIDATE.md` lists them).
+5. Still laptop work, untouched here: the R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the
+   restore tool's AR-C-0001 findings.
 
-**Last fully green CI (both workflows):** `21804c1`, 22 Nov 2026 (the merge candidate, first image with hash-pinned ML wheels; also `84c436d`, `8c1f5a6`, `149e8e7`). Later commits are tested in the cloud container;
-check GitHub Actions for the newest head.
+**Last green CI:** `d8a7423` (Phase 6 NS-7), offline workflow, 23 Nov 2026. The branch head's runs are listed in the
+newest log entry; check GitHub Actions for the result. On `main`: `21804c1` was the last fully green merge candidate
+before `00ce584`.
 
 ## Open items that need you
 
-- The merge into `main`; staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9.
-- 0019 decisions: market aggregates, survivorship on the snapshot, market cap (P3-R items).
-- P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P6, P7 and LP items (the design documents' "Reserved for the
+- **Phase 6, before any real ingestion or scoring:** P6-R1 (sources and their governance records), P6-R2 (storage
+  level per source), P6-R3 (the purge procedure), P6-R6 (the lexicon and its licence), P6-R8 (the identification
+  sent). Also P6-R4 (Sinhala and Tamil, later), P6-R5 (the merge and re-staging), P6-R7 (the sector-sentiment
+  deviation).
+- The merge of `integration/cloud-phase6` and moving 0022 into the chain.
+- Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
+- P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
   owner" tables).
-- The commit trailers name a model: keep them or rewrite them before the merge (branch review).
 
 ## Log (newest first)
+
+### 2026-11-23: Phase 6 (news and sentiment) built on fakes and ready for your review (C-0119, C-0120)
+
+**Where:** branch `integration/cloud-phase6`, from `main` at `00ce584`. Design `docs/PHASE6_NEWS_SENTIMENT_DESIGN.md`
+revision 3, §13, NS-1 to NS-7.
+
+**What was built** (all on synthetic `.test` sources; nothing contacted CSE or a real news host):
+- NS-1: the governed transport. CSE is refused whatever a record says, even encoded in a URL; record before send;
+  robots obeyed; a stop holds until you clear it.
+- NS-2 to NS-5: article versions and withdrawals; aliases; relevance, events and sentiment with a hand-written
+  provisional lexicon (for tests only, until P6-R6); deduplication.
+- NS-6: decay in sessions and the sentiment snapshot with its quality states.
+- NS-7: migration 0022 (pending), the store, `verify`, the preflight, `cse-news` and the runbook. **There is no
+  ingest command yet.**
+
+**Audits:** NS-1, NS-2 to NS-5 and NS-6/7 each accepted by a fresh-context agent. All Majors were fixed (3, 5 and 4).
+A re-audit of the last fixes was accepted, and its seven Minors were fixed. `docs/PHASE6_NS_IMPLEMENTATION.md` has
+each table.
+
+**Changed from the design (recorded):** a stored result is reused only when its whole alias context equals the one at
+T (supersedes design N3); `unlabelled` is snapshot-wide (an exception to NL-9).
+
+**What you do next:** decide P6-R1, R2, R3, R6 and R8 (above); review and merge the branch, moving 0022 into the chain
+under change control (`MERGE_CANDIDATE.md`).
+
+**CI:** `d8a7423` offline green. Both workflows were started on the hand-back head; check GitHub Actions for the
+result.
 
 ### 2026-11-18: MF reads captured data (branch review Blocker B1), in progress
 

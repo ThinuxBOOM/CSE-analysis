@@ -86,7 +86,7 @@ create table ns_fetch_attempts (
   constraint chk_nsa_url check (url ~ '^[ -~]+$' and length(url) <= 4096),
   constraint chk_nsa_cse check (state <> 'sent' or (host is not null
     and not (rtrim(lower(host), '.') = 'cse.lk' or rtrim(lower(host), '.') like '%.cse.lk')
-    and lower(url) !~ '^[a-z]+://([^/@]*@)?([^/?#:]*\.)?cse\.lk\.?([/?#:]|$)'))
+    and lower(url) !~ '^[a-z][a-z0-9+.-]*://([^/?#]*@)?([^/?#:@]*\.)?cse\.lk\.?([/?#:]|$)'))
 );
 
 create table ns_fetch_events (

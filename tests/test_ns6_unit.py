@@ -315,3 +315,35 @@ def test_major4_precedence_of_adjacent_states():
     assert row(build([gam, si, none], issuers=("iss_g1",)), "iss_g1").state == "conflicting"   # over unlabelled
     assert row(build([], sources=(sn.Source("s1", T + timedelta(days=1), EARLY),), issuers=("iss_g1",)),
                "iss_g1").state == "not_collected"                                        # over missing
+
+
+# ----------------------------------------------------------------------------------------------- NS-6/7 re-audit
+
+
+def _long():
+    seq = tuple(d for d in (date(2026, 8, 24) + timedelta(n) for n in range(40)) if d.weekday() < 5 and d <= D_STAR)
+    srcs = tuple(sn.Source(s, datetime(2026, 8, 1, tzinfo=UTC), EARLY) for s in ("s1", "s2"))
+    runs = [sn.IngestionRun(s, d, "ran", EARLY) for s in ("s1", "s2") for d in seq]
+    return seq, srcs, runs
+
+
+def test_reaudit_minor1_news_sources_21_boundary():
+    seq, srcs, runs = _long()
+    for a, counted in ((20, 1), (21, 0)):
+        x = art(f"s2:{a}", "Alpha Bank PLC posts record profit", GOOD_TEXT, at(seq[-1 - a]), source="s2")
+        r = row(build([x], sources=srcs, runs=runs, sessions=seq), "iss_alpha")
+        assert r.features["news_sources_21"][0] == counted, (a, r.features["news_sources_21"])
+        assert (r.features["event_age_earnings"][0] == 20) if counted else r.state == "missing"
+
+
+def test_reaudit_minor2_precedence_and_the_start_day():
+    gam = art("s1:g", "Gamma posts record profit", "Gamma posted strong growth.", at(D_STAR))
+    late = sn.Source("s1", T + timedelta(days=1), EARLY)
+    assert row(build([gam], sources=(late,), issuers=("iss_g1",)), "iss_g1").state == "not_collected"
+    si = sn.SnapArticle("s1:si", "s1", 1, "x", at(D_STAR), "fetched", "si", pr.process("x", "y", "si", ALIASES))
+    none = sn.SnapArticle("s1:n", "s1", 1, "x", at(D_STAR), "fetched", "en", None)
+    assert row(build([si, none]), "iss_alpha").state == "missing"                     # missing over unlabelled
+    good = art("s1:a", "Alpha Bank PLC record profit", GOOD_TEXT, at(D_STAR))
+    start = sn.Source("s1", at(date(2026, 9, 28), 8), EARLY)
+    no_run_on_start = [r for r in runs_all() if r.day > date(2026, 9, 28)]
+    assert row(build([good], sources=(start,), runs=no_run_on_start), "iss_alpha").state == "partial"

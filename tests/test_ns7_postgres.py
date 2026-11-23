@@ -102,7 +102,8 @@ def test_p1_the_database_rules(cluster):
                                         ("r4", 1, None, None))
     # the database's CSE checks also catch a trailing dot and a URL whose host was not recorded
     for host, url in (("www.cse.lk.", "https://www.cse.lk./x"), (None, "https://cse.lk/x"),
-                      ("news.example.test", "https://user@cdn.cse.lk:443/x")):
+                      ("news.example.test", "https://user@cdn.cse.lk:443/x"),
+                      ("news.example.test", "https://a@b@cse.lk/x"), ("news.example.test", "svn+https://cse.lk/x")):
         assert refused(w, "insert into ns_fetch_attempts (source_id, purpose, url, host, state) values "
                           "('synthetic_news', 'article', %s, %s, 'sent')", (url, host)), (host, url)
     w.commit()
@@ -274,3 +275,57 @@ def test_p5_ns67_audit_selection_archive_age_and_the_configuration_object(cluste
     other = cf.Config(half_lives=tuple((e, h + 1 if e == "other" else h) for e, h in cfg.half_lives))
     with pytest.raises(store.Refused, match="configuration"):
         store.build_snapshot(w, Query(KNOWN, later), sessions, ["iss_alpha"], other)
+
+
+def test_p6_ns67_reaudit_verify_preflight_and_0022(cluster):
+    db = fs.fresh_db(cluster)
+    o, w, rec, cfg, _recorded = _ingest_and_process(cluster, db)
+    today = datetime.now(UTC).astimezone(store.COLOMBO).date()
+    sessions = [today - timedelta(days=k) for k in range(25, -1, -1)]
+    store.build_snapshot(w, Query(KNOWN, datetime.now(UTC)), sessions, ["iss_alpha"], cfg)
+    assert verify.verify(w, margin=timedelta(0))["ok"]
+    su = fs.conn(cluster, db, user="postgres")
+
+    def tamper(table, sql):
+        with su.cursor() as cur:
+            cur.execute(f"alter table {table} disable trigger user")
+            cur.execute(sql)
+            cur.execute(f"alter table {table} enable trigger user")
+        su.commit()
+    # the session sequence is bound into the snapshot hash
+    tamper("ns_snapshots", "update ns_snapshots set sessions_json = (sessions_json::jsonb - 0)::text")
+    rep = verify.verify(w, margin=timedelta(0))
+    assert not rep["ok"] and any("snapshot_hash" in p for s in rep["snapshots"] for p in s["problems"]), rep
+    # a result's own alias context must equal its stored alias set
+    tamper("ns_article_results", "update ns_article_results set result_json = jsonb_set(result_json::jsonb, "
+                                 "'{context_alias_ids}', '[999]')::text")
+    assert any("alias context differs" in p for p in verify.verify(w, margin=timedelta(0))["results"])
+    # preflight: a guard trigger disabled, or set to fire only on replica, is a problem
+    for how in ("disable trigger trg_nsart_guard", "enable replica trigger trg_nsart_guard"):
+        with su.cursor() as cur:
+            cur.execute(f"alter table ns_articles {how}")
+        su.commit()
+        assert any("trg_nsart_guard" in p for p in preflight.problems(w)), how
+        w.rollback()
+    with su.cursor() as cur:
+        cur.execute("alter table ns_articles enable trigger trg_nsart_guard")
+    su.commit()
+    assert preflight.problems(w) == []
+    # an archive version must come from an import of its own source
+    store.register_source(o, n1.record_bytes(source_id="synthetic_other"), "NS-SYNTHETIC-OTHER.md")
+    iid = store.declare_archive(o, "synthetic_other", "synthetic archive terms", "original", "as_published",
+                                "complete", date(2026, 1, 1), date(2026, 6, 30), "f" * 64)
+    pol = {"time_zone_offset_minutes": 330, "date_only_counts_from": "end_of_day", "availability_lag_minutes": 0}
+    v = ar.archive_version("synthetic_news", "x1", "Alpha Bank PLC record profit", date(2026, 3, 2), "date", "en",
+                           "Alpha Bank PLC record profit.", "metadata_only", pol)
+    with pytest.raises(Exception, match="import"):
+        store.write_version(w, v, archive_import_id=iid)
+    w.rollback()
+    # a fetch-on-behalf CSE host, with a trailing dot, is refused even to the owner
+    with o.cursor() as cur:
+        cur.execute("set role cse_owner")
+    assert "CSE" in refused(o, "insert into ns_sources (source_id, governance_record_ref, governance_record_sha256, "
+                               "storage_level, availability_policy_json, allowed_hosts_json, "
+                               "fetch_on_behalf_hosts_json) values ('x3', 'X.md', repeat('a', 64), 'metadata_only', "
+                               "'{}', '[\"a.example.test\"]', '[\"www.cse.lk.\"]')")
+    o.rollback()

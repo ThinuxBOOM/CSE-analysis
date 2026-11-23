@@ -1236,3 +1236,24 @@ at `00ce584`, following `docs/PHASE6_NEWS_SENTIMENT_DESIGN.md` revision 3, §13,
 - **Not touched:** the R-F4 register statuses, `docs/ops/ISOLATED_RESTORE.md`, runbook §6 and the restore tool's
   AR-C-0001 findings. Those are laptop work.
 - Each step is audited by a fresh-context agent, as in Phase 5 (C-0037).
+
+## C-0120: Phase 6 checkpoint, the audits accepted, and the hand-back ([delegated], 2026-11-23)
+
+Phase 6 NS-1 to NS-7 is complete on `integration/cloud-phase6`, on fakes only, and handed back for the owner's
+review and merge.
+- **Audits (C-0037), each by a fresh-context agent, with no Blocker:**
+  - NS-1 accepted at `88cff17`; three Majors fixed;
+  - NS-2 to NS-5 accepted at `3d01c40`; five Majors fixed;
+  - NS-6 and NS-7 accepted at `d8a7423`; four Majors fixed;
+  - the re-audit of those fixes was accepted at `6e83a55`, with no new Major; its seven Minors are fixed.
+  The tables are in `docs/PHASE6_NS_IMPLEMENTATION.md`.
+- **Deviations recorded, not silent:**
+  - a stored result is reused only when its whole alias context equals the one admitted at T. This supersedes the
+    design's N3 (NS-2 to NS-5 audit, Major 1);
+  - `unlabelled` is snapshot-wide, an exception to NL-9's per-issuer states, for the owner to revisit with P6-R6.
+- **Deferred to the first ingest command:** taking the ledger's advisory lock. v1 has no ingest command.
+- **Migration 0022 stays in `supabase/migrations_pending/`.** Moving it into the chain, with the change control for
+  `stage_checks.sh` and `stage_scenarios.sh`, is the owner's merge (`docs/governance/MERGE_CANDIDATE.md`).
+- **Reserved to the owner, unchanged:** P6-R1, R2, R3, R6 and R8 before any real ingestion or scoring; also R4, R5
+  and R7.
+- **Not touched:** the R-F4 register statuses, `ISOLATED_RESTORE.md`, runbook §6 and the AR-C-0001 findings.

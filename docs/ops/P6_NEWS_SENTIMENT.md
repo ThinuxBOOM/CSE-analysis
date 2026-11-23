@@ -59,15 +59,21 @@ There is no delete, reset or repair command: every table is append-only for ever
 
 - Owner-only tables and kinds.
 - Every row stamped by the database (`recorded_at = now()`, writer = the login), and append-only.
-- No source may allow a CSE host, and no attempt to a CSE host may be recorded as sent.
+- No source may allow a CSE host, in its allowed or its fetch-on-behalf hosts (a trailing dot changes nothing).
+- No attempt may be recorded as sent without a host, to a CSE host, or with a CSE host in its URL.
 - `extracted_text` only for a `full_text` source.
-- A version inherits its article's first availability.
+- A first version's first availability is its own availability; a later version inherits its article's.
+- An archive version comes from an archive import of the same source.
 - A configuration's id is the SHA-256 of its JSON.
 
 ## Timing notes
 
-- **Gaps:** a session day counts as collected only if its `ran` run is recorded before the snapshot's T. A run
-  recorded later (a backlog) fixes snapshots built after it, never earlier ones. A `partial` run is a gap.
+- **Gaps:** a session day counts as collected only if its `ran` run is admitted at the query: recorded at or before
+  T in KNOWN and AVAILABLE, at or before H in CURRENT. A run recorded later (a backlog) fixes later snapshots, never
+  point-in-time snapshots at an earlier T. A `partial` run is a gap; so is a source's start day with no run.
+- **The session sequence** passed to a snapshot should be longer than the longest window (21 sessions). An instant
+  before the sequence's first day is treated as older than every window, which is conservative only when the
+  sequence is long enough.
 - **Restarts:** a source's start at T is its earliest start admitted at T; a later start never hides an earlier gap.
 - **The lock:** the ledger's advisory lock (one session per source) is taken by the caller. The first ingest command
   must take it before any fetch.

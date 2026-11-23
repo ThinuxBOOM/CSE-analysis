@@ -87,7 +87,7 @@ def _constants(path):
             yield v.decode("utf-8", "replace") if isinstance(v, bytes) else v
 
 
-_URL_HOST = re.compile(r"(?:https?|ftp)://(?:[^@/\s\"']+@)?([^/\s\"'?#:]+)", re.I)
+_URL_HOST = re.compile(r"(?:https?|ftp)://(?:[^/\s\"'?#]*@)?([^/\s\"'?#:@]+)", re.I)   # user-info to the last @
 _BARE_HOST = re.compile(r"^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}\.?$", re.I)
 
 
