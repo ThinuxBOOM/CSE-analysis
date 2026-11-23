@@ -10,12 +10,28 @@ compares separately; and the copy's identity is in effect its system identifier,
 and data directory by construction and a physical clone would share the identifier. REG-B01 stays OPEN and runbook
 §6 stays BLOCKED.)*
 
-**Status (2026-11-04): written, NOT YET AUDITED OR APPROVED.** This is the procedure that the R-F4 register's REG-B01
-asks for (`docs/R_F4_IMPLEMENTATION.md` §25.4). It is pending its independent audit and the owner's approval. Until
-then:
-- **REG-B01 stays OPEN**;
+**Status (2026-11-23): NOT owner-approved in its current form, and NOT usable at a production checkpoint.** This is
+the procedure that the R-F4 register's REG-B01 asks for (`docs/R_F4_IMPLEMENTATION.md` §25.4). In order:
+- written on 2026-11-04 and independently audited (AR-0006-1 to AR-0006-3, AR-0009-1);
+- approved by the owner on 2026-11-10 ("Approve the procedure"), in that AR-0006-audited version;
+- staging evidence: campaign p3b1, R2 (ST-31, under RA-0002; `docs/ops/STAGING.md` §13, evidence
+  `D:\cse-staging\p3b1`), run with the tool at `af1fdd1`;
+- then re-audited by AR-C-0001 (2026-11-12, APPROVE WITH CONDITIONS; the note above), with its findings 1 to 5, 10
+  and 11 fixed in the tool after that R2 run, so R2's evidence is of the `af1fdd1` tool, not of the fixed one;
+- **AR-C-0001's findings 6 to 8 are still open and block any production checkpoint:** 6, the provenance rests on an
+  unauthenticated `source.json`; 7, the tool has no environment guard of its own; 8, the verification gate's zero
+  rule;
+- **the owner's approval of 2026-11-10 does not carry over to the AR-C-0001-fixed tool** (owner, 2026-11-23: "Re-approve
+  after findings 6-8"; CSE Decision Log, 2026-11-23, "REG-A05 closes with its limitation stated; the restore approval
+  lapses for the changed tool"). The note above, "not approved by the owner", therefore holds for the current tool and
+  this document as corrected by AR-C-0001.
+
+**The procedure returns for the owner's approval** after findings 6 to 8 are fixed and R2 is re-run with the fixed tool
+at re-staging. Until then:
+- **REG-B01, REG-B04, REG-B06 and REG-B27 stay OPEN**;
 - runbook §6 (`docs/ops/PHASE2_BACKFILL.md`) stays **BLOCKED** (REG-B27);
-- no production checkpoint may use it.
+- no production checkpoint may use it. Running it at a production checkpoint would also need the owner's restore
+  authorization for that checkpoint (DR-0002 OD-12: the production mechanism is decided separately).
 
 At staging it runs only through `staging.sh restore` under a valid, unused restore authorization (`docs/ops/STAGING.md`
 §3). **DO NOT EXECUTE RESTORE** outside that, or outside the throwaway test containers the owner allowed for tests
@@ -217,8 +233,12 @@ stderr.
   That is weaker than an identifier taken inside the dump's snapshot, which needs P1 change control (16-I's
   P1-CC-PROV). *2026-11-04, decided [delegated] within OD-10 (CSE Decision Log, "B-0006 scope questions"): this
   ledger binding satisfies REG-B06 for this project, and P1-CC-PROV is not authorized. REG-B06 stays OPEN until Phase
-  C's R2 evidence shows the check working.*
+  C's R2 evidence shows the check working.* *(2026-11-10: ST-31 showed it working, with the tool at `af1fdd1`. 2026-11-23: REG-B06 stays OPEN, because
+  AR-C-0001's finding 6, that the provenance rests on an unauthenticated `source.json`, is open; see the status
+  above.)*
 - **Root inside the isolated environment** could start another cluster between two identity checks. The environment
   holds nothing else and is short-lived; production is not reachable from it.
 - **At milestone 12** the isolated environment and the dump's transfer are the owner's to provide. Runbook §6 stays
-  blocked until this procedure is audited and approved, and changed under REG-B27.
+  blocked until this procedure is audited and approved, and changed under REG-B27. *(2026-11-10: audited (AR-0006-1 to AR-0006-3,
+  AR-0009-1) and approved by the owner, in that version. 2026-11-23: runbook §6 stays blocked, and REG-B27 OPEN,
+  until AR-C-0001's findings 6 to 8 are resolved and the owner re-approves the procedure; see the status above.)*

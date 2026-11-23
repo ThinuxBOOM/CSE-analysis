@@ -2,7 +2,9 @@
 
 **Status:** T1 (the staging harness and its shakedown) is implemented under the owner's authorization of 2026-11-02.
 Staging is **not accepted**: REG-G01 stays OPEN (`docs/R_F4_IMPLEMENTATION.md` section 25.4), and nothing here is
-production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.**
+production evidence or an operational authorization. **DO NOT EXECUTE RESTORE.** *(2026-11-23: staging of build
+`af1fdd1` is accepted by the owner (ST-33, 2026-11-10) and REG-G01 is CLOSED WITH EVIDENCE; the merged build is to
+be re-staged. See the note of 2026-11-23 below.)*
 
 *2026-11-04: the procedures for ST-27 to ST-29 (section 9) and a development run of them on the T2 build, campaign t2s1
 (section 10, **development evidence only; REG-G01 OPEN**), were added. The runner no longer deselects the nine
@@ -27,6 +29,29 @@ history was deliberately not rewritten.*
 section 6 from ST-01 to ST-29, and ST-32, has a result on that one build, and no product defect was found. **REG-G01 OPEN:
 Phase B complete; Phase C (ST-30, ST-31) and ST-33 pending.** Nothing is restored, armed or contacted; staging is not
 accepted.*
+
+*2026-11-10, T3 Phase C: on the same build and campaign, ST-30 (R1) and ST-31 (R2) each ran **once**, under the owner's
+restore authorizations RA-0001 and RA-0002 (section 13). Both PASSED. R2 includes R-F4 §20.6 step 6 on the restored copy.
+**REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** Nothing was armed or contacted, and
+production was never a target; staging is not accepted.*
+
+*2026-11-10 (later): the isolated-restore procedure is audited and owner-approved, and REG-B34 is CLOSED WITH EVIDENCE
+(`docs/R_F4_IMPLEMENTATION.md` §25.6). Harness finding H-7 is recorded in section 13. (Corrected on 2026-11-23: before
+the merge of `main` at `5ff46c7`, this note also recorded REG-B01, REG-B04 and REG-B06 as closed, REG-B27 as in
+progress and runbook §6's block as lifted; those are withdrawn, see the next note.)*
+
+*2026-11-23: **ST-33: staging ACCEPTED by the owner on 2026-11-10, for build `af1fdd1`** ("I accept both", answering
+DR-0003; effective once AR-0012-1 passed with no Blocker or Major: PASS WITH FINDINGS, 2026-11-10): Phase B (section
+12) and Phase C (section 13) on `main` at `af1fdd16cc40`. REG-G01 and REG-A05 are CLOSED WITH EVIDENCE; REG-A06
+stays DEFERRED WITH RATIONALE until REG-B01 closes (B-0014 round 2; `docs/R_F4_IMPLEMENTATION.md` §25.6). **The merged build must be re-staged** before milestone 10: `main` after pull
+request #13 (Phases 3 to 5, the restore tool's AR-C-0001 fixes, and the pending migrations once they enter the chain)
+is a changed build (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5). The cloud session's audit
+of the isolated-restore procedure, AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`), found defects in the
+`af1fdd1` tool's globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open, so REG-B01, REG-B04,
+REG-B06 and REG-B27 stay OPEN and runbook §6 stays BLOCKED. The owner's approval of the procedure (2026-11-10)
+does not carry over to the fixed tool; the procedure returns for approval after findings 6 to 8 are fixed and R2 is
+re-run with the fixed tool (owner, 2026-11-23). Section 13 records ST-33. Nothing is armed or contacted:
+ST-33 authorizes no arming, capture, CSE contact or live run.*
 
 Governing records: Master Architecture section 43.1 (the strategy and its boundaries), section 54 and section 56;
 `docs/R_F4_DESIGN.md` section 10 (milestone 8 and its prerequisites); `docs/ops/P1_PLATFORM.md`,
@@ -387,6 +412,9 @@ close or change REG-G01 (OPEN), REG-A05 or REG-A06, or any other register item.
 
 ## 11. Restore under a restore authorization: ST-30 (R1) and ST-31 (R2)
 
+*(2026-11-10: R1 and R2 have each run once, in T3 Phase C on campaign p3b1, under RA-0001 and RA-0002; the record is
+section 13. The text below is the procedure as written on 2026-11-04.)*
+
 Added on 2026-11-04 under the owner's decisions OD-10 to OD-15 (DR-0002, "Approve as recommended"). **Nothing here has
 run. R1 and R2 are T3 Phase C**, on the accepted build, each under a restore authorization (RA) that the orchestrator
 writes after the owner's explicit yes in chat for that campaign. OD-13 and OD-14 allow one R1 and one R2, in throwaway
@@ -610,3 +638,178 @@ Containers: `cse-stg-p3b1-host`, `cse-stg-p3b1-up-host`, `cse-stg-p3b1-trial-l1`
 runner containers of the groups other than L09, L15 and L16 (including the stopped partial attempts of L04 and X2).
 Volumes: `cse-stg-p3b1-{pgdata,backup,offsite}` and `cse-stg-p3b1-up-{pgdata,backup,offsite}`. Images: the three above.
 T2's `t2s1` objects, `cse-p1-test` and supoclip's objects were not touched.
+
+## 13. Phase C: ST-30 (R1) and ST-31 (R2) on p3b1 (2026-11-10)
+
+**Status: REG-G01 OPEN: Phase B and Phase C complete; ST-33 (the owner's acceptance) pending.** *(2026-11-23: ST-33 is
+recorded at the end of this section: accepted by the owner on 2026-11-10 for this build; REG-G01 CLOSED WITH
+EVIDENCE.)* ST-30 and ST-31 each ran
+once, through `staging.sh restore R1|R2 <RA>` (section 11), and both PASSED. This is staging evidence for the restore
+step of milestone 8; it is not the owner's acceptance (ST-33), and it authorizes nothing in production.
+
+**Authorization.** The owner's yes in chat, 2026-11-10: "Yes, authorize R1" and "Yes, authorize R2" (OD-12, DR-0002).
+The orchestrator recorded them as RA-0001 (R1, target `cse-stg-p3b1-host`) and RA-0002 (R2, target `cse-stg-p3b1-r2`) in
+the vault, outside the repository and the evidence. Both are single use, with `decided 2026-11-10T05:01:18+05:30` and
+`expires 2026-11-11T04:01:18+05:30`. The harness read each RA once, read-only; neither was edited.
+
+**The build and the harness.** Phase B's build (section 12): `main` at `af1fdd16cc408c45dce273509c757e1ce027b442`; host
+image `cse-staging:af1fdd16cc40` = `sha256:2493a2617ebec246b702bdfaddc50bccae5b5837a4b46a17a528d870ee27c5d1`, revision
+label = the build. The harness ran from a fresh detached worktree at that commit (`D:/cse-work/accC`, LF, clean: every
+record says "0 uncommitted path(s) under ops/staging and ops/restore"), so the harness revision is the RA's `build_sha`.
+`CSE_STAGING_REV` was not set. Campaign `p3b1`; evidence `D:\cse-staging\p3b1`; host container `cse-stg-p3b1-host`, rung L1,
+`--network none`, `--restart no`, on the campaign's volumes. Driver scripts: `driver\phaseC-*.sh`. The run log is
+`logs\phaseC.log`.
+
+| Step | Result | Record (under the evidence directory) |
+|---|---|---|
+| Host start | `staging.sh start` at 23:36:47Z (2026-11-09 UTC; 2026-11-10 local). P1's dump timer took dump run 44 at start (`pg/dumps/2026/11/cse_20261109T233645Z_70bd`) | `logs\driver.log` |
+| Invariants before R1 | PASS (9). Also read directly: no `restore_check` row; the drop-in `ConditionPathExists=/etc/cse/staging/R1-AUTHORIZED` was in place, the path was absent, the timer disabled and the service inactive; never armed; `restore-scratch` was empty | `results\main-stage_checks-invariants.run7.txt`, `logs\phaseC.log` ("STATE before-R1") |
+| ST-30 (R1), RA-0001 | **PASS: 50 PASS, 0 FAIL, exit 0** (23:41:19Z to 23:41:31Z). Details below | `results\main-restore-R1.txt`, `restore\ra-consumed.log`, `restore\r1-runs.log` |
+| Invariants after R1 | PASS (12): exactly the bound row (45); host-side `r1-crosscheck` 7 PASS | `results\main-stage_checks-invariants.run8.txt` |
+| ST-31 (R2), RA-0002 | **PASS: 78 PASS, 0 FAIL, exit 0** (23:46:39Z to 23:48:17Z). Details below | `results\main-restore-R2.txt`, `restore\r2-20261109T234641Z\` |
+| Invariants after R2 | PASS (12): `restore_check` rows exactly [45], bound to RA-0001; `r1-crosscheck` 7 PASS; no R1 path; timer disabled; scratch empty; never armed; contact e-mail empty | `results\main-stage_checks-invariants.run9.txt` |
+| Canary (ST-22 again) | PASS: 0 of 1410 evidence files contain the test secret | `canary\result.txt` |
+| Host stop | 1 s, exit 0. The host container, its volumes and the images are kept until ST-33 | `logs\driver.log` |
+
+**ST-30 (R1).**
+- **The RA's validation:** 17 PASS, read-only. The checks: well-formed (sha256 `c0fe46964f56…83ebf7`); type; id; operation
+  R1; campaign; `build_sha` equal to the harness's revision and the image's label; `image_id` equal to the host
+  container's image and the tagged host image; target; expiry; `decided`; the 24-hour window; `single_use`;
+  `owner_words`; single use (0 records, 0 earlier uses); the fixed evidence directory; no write in the vault or beside
+  the RA; the RA outside the evidence root.
+- **The technical checks:** the R1 gate was closed, the service was not running, `restore-scratch` was empty, and the
+  newest dump verified with P1's `cse-ops backup verify`.
+- **Consumption:** the RA was recorded as used (`CONSUMED RA-0001`) before anything restored.
+- **The one run:** P1's `cse-backup-restore-check.service` ran once. It gave exit 0 and `Result=success`. P1 reported
+  "restore check of …cse_20261109T233645Z_70bd: OK", with 79 tables and 30664 rows, on PostgreSQL 17.11.
+- **Afterwards:** the gate was closed again (the path removed and the timer disabled). There was **exactly one new
+  `restore_check` row: run 45, `succeeded`**, covering that dump, with every digest equal. `restore-scratch` was empty.
+- **The binding:** run 45 is bound to RA-0001 in the container (`r1-authorized-runs`) and on the host (`bind-r1`, 4 PASS;
+  `r1-runs.log`). The invariants and the host-side cross-check accept exactly that row.
+
+**ST-31 (R2).**
+- **The RA's validation:** 17 PASS, as for R1, for operation R2 and target `cse-stg-p3b1-r2` (sha256
+  `78161d6955aa…ebea8a`). The target did not exist before the run.
+- **The source record:** read read-only in the host container; 5 PASS.
+  - The source's `system_identifier` is `7706218335707005167`.
+  - The newest succeeded `local_dump` is ledger run 44, with `artifact_key` `pg/dumps/2026/11/cse_20261109T233645Z_70bd`,
+    `artifact_sha256` `17fbdd7b…6602` and `manifest_sha256` `4c5859f8…0a7d`.
+  - P1's verify of the dump in the host gave exit 0.
+- **Consumption:** the RA was recorded as used (`CONSUMED RA-0002`) before the container was created.
+- **The container:** `cse-stg-p3b1-r2` was new, from the RA's image. Its `docker inspect` gave 17 PASS: network `none`,
+  `Mounts` empty, no bind, tmpfs or shared volume, not privileged, no added capability, restart `no`, no host device or
+  namespace, and the campaign's labels with role `r2`. The dump, the source record, `stage_restore.sh` and
+  `isolated_restore.py` went in by `docker cp`.
+- **The environment:** 7 PASS. Only `lo`, with no route. The only mounts are Docker's `/etc` files. There was no Docker
+  socket, no cluster, no `/etc/cse` and no PostgreSQL process.
+- **P1's provisioning:** `provision.sh preflight users dirs postgres` (with `CSE_NO_SYSTEMD=1` and
+  `CSE_ALLOW_SAME_DEVICE=1`). Afterwards there was exactly one cluster, `17 main 5432 online`, and one socket.
+- **The procedure** (`docs/ops/ISOLATED_RESTORE.md` §4; `evidence\procedure.json`, `isolated_restore.1`): 11 commands,
+  each PASS.
+  - The fresh copy: databases `postgres`, `template0` and `template1`; the only role is `postgres`; tablespaces
+    `pg_default` and `pg_global`.
+  - Its identity: `system_identifier 7706322447084933274` (different from the source's), port 5432, data directory
+    `/var/lib/postgresql/17/main`, PostgreSQL 17.11.
+  - Provenance (REG-B06's ledger binding): `database.dump`'s SHA-256 and the manifest's SHA-256 equal ledger run 44's
+    `artifact_sha256` and `manifest_sha256`. The manifest's bootstrap superuser is `postgres`, the copy's.
+  - Every command that connects ran after an identity check of the server its own route reaches. The check covered the
+    copy's `system_identifier`, port and data directory, and that the identifier differs from the source's.
+
+| # | Command | Gate |
+|---|---|---|
+| 1 | P1 `cse-ops backup verify` of the copied dump (connects to no database) | exit 0 |
+| 2 | `psql … -f globals.sql` as `postgres` | exit 0. The only error was the one tolerated: `role "postgres" already exists` |
+| 3 | the proof of the globals | 7 roles, 3 memberships, no problem |
+| 4 | `pg_restore --create --exit-on-error` | exit 0 |
+| 5 | P1's checks (`isolated_restore.py p1check`) | exit 0, no problem. 79 tables and 30664 rows, each table's count and digest equal to the manifest. The security invariants hold, the dump's own ledger run is present, and P1's authentication on the copy is confirmed |
+| 6 | `cse-ops migrate verify` | exit 0 |
+| 7 | `cse-financial verify` | exit 0, `"ok": true` |
+| 8 | `cse-backfill verify` | exit 0, no problem, F6.4 `ok` |
+| 9 | the R-F4 preflight through the migration role (`runuser -u cse-migrator`, `CSE_DB_USER=cse_migrator`) | exit 0, `"clean": true`, ledger `verified` read as `cse_owner` |
+| 10 | the R-F4 preflight as the login (`runuser -u cse-verifier`, `DATABASE_URL=postgresql://cse_verifier@/cse?host=/var/run/postgresql&port=5432`) | exit 0, `"clean": true`, ledger read as `cse_verifier` |
+| 11 | the full R-F4 `verify` as the login (no `--limit`) | exit 0, `"clean": true`, scope `complete`, limit `null`, no problem. 300 extractions, 300 runs, 300 rebuilt. Snapshot `repeatable read`, `read_only: true` |
+
+- **Teardown:** the copy's identity was checked again, then the copy was stopped, and only the copy. The evidence was
+  copied out to `restore\r2-20261109T234641Z\evidence` (`procedure.json` and each command's stdout and stderr), with
+  `inspect-created.json`, `inspect-after.json` and `source.json`.
+- **Deletion:** the container was then stopped and **deleted** by its exact name (`docker rm cse-stg-p3b1-r2`), the
+  owner's condition for throwaway restore containers. It no longer exists. No other object was deleted.
+
+**R-F4 §20.6 step 6 ("steps 3–4 again, on the restored copy").**
+- **Step 3**, the preflight through the migration role: command 9, exit 0, clean.
+- **Step 4**, `verify` as the login: command 11, exit 0, clean, complete scope, and a `repeatable read`, read-only
+  snapshot.
+- **Step 4's count comparison** is shown only indirectly on the copy. No superuser count was read on the copy separately.
+  The copy's tables equal the dump's manifest in every row count and digest (command 5). The login's counts on the copy
+  (300 extractions and 300 runs) equal the counts the login and the superuser read on the source host in ST-28 step 4
+  (section 12).
+- **Peer authentication:** the login connected as the OS user `cse-verifier` over the Unix socket, with no password
+  (`PGPASSFILE=/nonexistent/pgpass`), through P1's own `pg_hba.conf` and `pg_ident.conf`, which command 5 confirms on the
+  copy.
+
+**RAM** (the owner's 5 % floor). Each step was gated at its start. A watcher stopped the step's containers if free RAM fell
+below 5 %: no event occurred.
+- R1 started at 14.6 % free and R2 at 19.8 %.
+- The first driver, `phaseC-1-r1.sh`, waited in R1's start gate, set at 25 %, while RAM stayed at 11 % to 13 %. No
+  container command was running and no RA had been consumed. Its processes were killed, and the rest of the block was run
+  as `phaseC-1b-r1.sh` with a 14 % gate. The host container used 125 MiB of its 2 GiB cap, and R1 runs inside that cap.
+  No running script was edited.
+
+**Observations and limitations.**
+1. **The canary run overwrote Phase B's canary outputs** (evidence-integrity note, 2026-11-10). Re-running
+   `staging.sh canary` rewrote, in place, these 8 files that Phase B's seal (`SHA256SUMS`) lists:
+   - `canary\result.txt`;
+   - `canary\history-host.txt` and `canary\history-runner.txt`;
+   - `canary\inspect-cse-stg-p3b1-host.json`, `canary\inspect-cse-stg-p3b1-runner-L04-r3.json`,
+     `canary\inspect-cse-stg-p3b1-runner-L06.json` and `canary\inspect-cse-stg-p3b1-runner-X2-r3.json`;
+   - `canary\journal-cse-stg-p3b1-host.export`.
+
+   `logs\driver.log` was appended to (by every Phase C command), so it no longer matches the seal either. The other
+   1351 of the 1360 files that `SHA256SUMS` lists are unchanged. **Phase B's result stands:** its canary found the
+   secret in 0 of 1358 files (section 12), and AR-0010-1 verified `SHA256SUMS` at 1360 of 1360 before the overwrite.
+   **The original `SHA256SUMS` is not rewritten.** A supplementary seal, `SHA256SUMS-after-phaseC`, in the same
+   directory, lists every file of the bundle as it is after Phase C (every file except itself, the original
+   `SHA256SUMS` included).
+2. **The R1 dump** was the one P1's dump timer took when the host started (run 44). The restore check takes the newest
+   dump by design, and R2's source record selected the same run.
+3. **R2 recorded differences** (section 11): no systemd in the R2 container, the backup root is a directory (D-02), and
+   P1's units are not installed there.
+4. **Not run:** ST-33, the owner's review and acceptance *(2026-11-23: now recorded, at the end of this section)*.
+   Milestone 12's checkpoint and any production restore are out of
+   scope.
+5. **Docker objects kept:** every object section 12 lists. `cse-stg-p3b1-r2` existed only during ST-31 and was deleted.
+6. **Harness finding H-7 (open; to be fixed in a later brief).** `staging.sh canary` writes fixed file names
+   (`canary\result.txt`, `inspect-<container>.json`, `journal-<container>.export`, `ps-<container>.txt`,
+   `history-host.txt`, `history-runner.txt`), so a second canary run in the same campaign overwrites the earlier run's
+   outputs. It must not overwrite an earlier run's outputs (for example, a new directory or file name per run, as
+   `new_log` does for `results\`). The harness is unchanged at `af1fdd16cc40`; this record does not change it.
+
+### ST-33: the owner's acceptance (2026-11-10; recorded 2026-11-23)
+
+**ACCEPTED for build `af1fdd1`.** The owner's words, 2026-11-10, answering DR-0003: "I accept both" (Q1, ST-33: staging
+of the integrated build is accepted; Q2, milestone 9: the integrated frozen build, code tree `af1fdd16cc40` with later
+commits documentation only, is accepted as the build that runs next). The acceptance took effect once AR-0012-1, the
+audit of Phase C and its record, passed with no Blocker or Major (PASS WITH FINDINGS, 2026-11-10).
+- **What it accepts:** campaign p3b1 on `main` at `af1fdd16cc40`: Phase B (section 12) and Phase C (this section).
+- **The register** (`docs/R_F4_IMPLEMENTATION.md` §25.4, §25.6): REG-G01 and REG-A05 CLOSED WITH EVIDENCE. REG-A05's
+  closure states AR-0012-1 N-2's limitation, as the owner confirmed on 2026-11-23 ("Close it, limitation stated"): on
+  the copy, the superuser's count of the two R-F4 tables was not read directly; the equality holds through the source
+  superuser's reading (300/300, ST-28) and the copy's manifest digests (command 5). REG-A06's condition is otherwise
+  met here, but it stays DEFERRED WITH RATIONALE: its Depends names REG-B01, which stays OPEN (B-0014 round 2).
+- **What it does not settle:** the isolated-restore items. R2 ran with the tool at `af1fdd1`; the cloud session's audit
+  AR-C-0001 (`docs/ops/audits/AR-C-0001_ISOLATED_RESTORE.md`, approve with conditions) found defects in that tool's
+  globals handling (findings 1 to 3, since fixed) and left findings 6 to 8 open (the provenance rests on an
+  unauthenticated `source.json`; the tool has no environment guard; the verification gate's zero rule). REG-B01,
+  REG-B04, REG-B06 and REG-B27 stay OPEN, and runbook §6 stays BLOCKED. Findings 6 to 8 fixed and audited, and R2
+  re-run with the fixed tool, are required for them but not sufficient: each item closes only when its own closure
+  condition is met, including the owner's re-approval of the procedure (2026-11-23) and, for runbook §6 and the items
+  that gate it, AR-C-0001 §3's remaining conditions, among them a production form of the procedure, written and
+  audited. R2's results above stand as the staging results of the `af1fdd1` tool. The owner's approval of the
+  procedure (2026-11-10) does not carry over to the fixed tool: it returns for approval after findings 6 to 8 are
+  fixed and R2 is re-run with the fixed tool (owner, 2026-11-23).
+- **Re-staging:** the merged build (`main` after pull request #13: Phases 3 to 5, the restore tool's AR-C-0001 fixes,
+  and the pending migrations once they enter the chain) is a changed build. It must be re-staged before milestone 10,
+  and milestone 9 re-accepted on it (Master Architecture §43.1; `docs/governance/MERGE_CANDIDATE.md` step 5;
+  `docs/R_F4_DESIGN.md` §10).
+- **It authorizes nothing operational:** no arming, capture, CSE contact or live run, and no design or provisioning of
+  the local production environment (CSE Decision Log, 2026-11-10).

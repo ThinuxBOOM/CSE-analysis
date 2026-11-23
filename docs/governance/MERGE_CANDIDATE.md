@@ -50,6 +50,10 @@ Pending migrations, waiting **outside** the chain in `supabase/migrations_pendin
    These guard frozen components (P1, P3 staging, R-F4), so each edit is reviewed as a change control, not as a fix.
 4. **Open the pull request**, with this file as its description. On approval, merge.
 5. **Re-stage on the laptop** (ST-33 / REG-G01) and accept milestone 9 on the merged build.
+   *(2026-11-23, B-0014: ST-33 and REG-G01 were used for build `af1fdd1` on 2026-11-10: the owner accepted staging of
+   that build, and REG-G01 is CLOSED WITH EVIDENCE. The re-staging of the merged build and milestone 9's re-acceptance
+   are tracked by `docs/R_F4_DESIGN.md` §10 rows 8 and 9, and REG-G01's note in `docs/R_F4_IMPLEMENTATION.md`
+   §25.4, not by a register row.)*
 
 ## After the merge, before real use
 
