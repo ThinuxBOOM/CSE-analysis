@@ -41,3 +41,21 @@ Tests:
 
 **Note.** The fetch-on-behalf list in `hosts.py` names real relay services. They are refused constants, like CSE's
 domain, never hosts the code requests.
+
+---
+
+## NS-2: the adapter interface, article versions and observations
+
+| Module | What it does |
+|---|---|
+| `worker/news_ingest/adapter.py` | The adapter interface: `list_new`, `fetch` and `refetch`, whose result is a `RawItem`, a `Gone`, or `None` for a failed attempt. Every request goes through the governed transport the adapter is given. `SyntheticAdapter` reads a synthetic JSON format and is the only adapter in v1; the first real one comes after P6-R1 |
+| `worker/news_ingest/articles.py` | Pure, so the store and the tests share one rule. **Versions** by the SHA-256 of the normalised extracted text (NFKC, typographic quotes and dashes to ASCII, whitespace collapsed; case and wording kept). The raw body hash is evidence only. The same text gives a `confirmed` observation; changed text gives a new version that supersedes the latest. Every version inherits the article's first availability (N5). **Withdrawals** only on evidence: the source's explicit removal, or 404/410 on two re-fetches at least a day apart; a reappearance resets the count, and 5xx, 429 or a single 404 never count (N6). A withdrawal's `available_at` is the confirming re-fetch's `observed_at` (N2). **In force at T**: the latest admitted version of each article, dropped once a withdrawal is admitted (KNOWN by `recorded_at`; AVAILABLE by `available_at` with `recorded_at` ≤ H). **Archives** (§9): available from the declared publication under the source's policy (a date-only value counts from the end of the day in the source's time zone, plus any lag). **The re-fetch plan**: new references first; re-fetches at 1 and 5 sessions after first observation, and a confirming re-fetch a day after a first 404/410; what does not fit the budget is skipped and returned for recording, never queued; withdrawn articles are done |
+
+Tests: `tests/test_ns2_unit.py` (10).
+- The adapter: through the transport, with a CSE URL in a listing refused; gone, explicit removal and failure kept
+  distinct.
+- Revisions by normalised text.
+- Withdrawals: under a day, a day apart, explicit, a non-evidence status, a reappearance.
+- The re-fetch plan.
+- NL-1 to NL-4, each with its converse. NL-4 also covers NL-14's shape in AVAILABLE.
+- The archive availability policy.
