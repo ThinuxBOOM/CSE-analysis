@@ -172,6 +172,8 @@ evidence is in the sections they name.*
 
 *(2026-11-23, change control B-0015 (C-0118): with migrations 0019 to 0021 in the chain, p9 and p48 apply the chain after 0017 with `target=18`, as the rehearsal's step 1 does (§23.1), so each still applies exactly 0018 and stays about the 0017 to 0018 upgrade.)*
 
+*(2026-11-23, correction (B-0015 round 2, AR-0015-1 MJ-1; C-0118): p1 also pinned the chain's end. It asserted that the ledger ends with 0017 and 0018. It now asserts that 0017 immediately precedes 0018 and that exactly 0019, 0020 and 0021 follow it, by name; its intent, 0018 applied at its pin, is unchanged.)*
+
 **Result (control I, `82b7a3e`):** every test above passed on Linux: the two R-F4 files gave 269 passed, none failed
 or skipped (cluster L16: 532 passed against B's 263, exactly the 35 + 234 collected R-F4 IDs, and no R-F4 test in any
 failure or skip list). On Windows the unit file passed (234) and the PostgreSQL file skipped (35; it needs Linux), as

@@ -299,7 +299,10 @@ def test_p1_0018_is_applied_at_its_pin_and_the_preflight_passes_for_both_roles(d
     assert q(su, "select sha256 from ops.schema_migrations where filename = %s", (preflight.MIGRATION,)) == \
         [(preflight.MIGRATION_SHA256,)]
     names = [r[0] for r in q(su, "select filename from ops.schema_migrations order by version")]
-    assert names[-2:] == ["0017_f8_asof_configuration.sql", preflight.MIGRATION]
+    i = names.index(preflight.MIGRATION)
+    assert names[i - 1:] == ["0017_f8_asof_configuration.sql", preflight.MIGRATION,
+                             "0019_market_feature_foundation.sql", "0020_financial_features_and_engines.sql",
+                             "0021_ml_registry.sql"]                                    # (B-0015, C-0118)
     r = preflight.report(db.conn())
     assert r["file"] == [] and r["objects"] == [] and r["ledger"]["status"] == "unverifiable" and not r["clean"]
     r = preflight.report(db.reader())

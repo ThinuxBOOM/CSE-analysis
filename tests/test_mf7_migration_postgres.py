@@ -1,6 +1,6 @@
 """
-Phase 3, MF-7 (docs/PHASE3_MARKET_FEATURES_DESIGN.md revision 6, §13.1): migration 0019, kept in
-supabase/migrations_pending/ until the owner's merge decision. Applied on top of 0001 - 0018 in a throwaway cluster.
+Phase 3, MF-7 (docs/PHASE3_MARKET_FEATURES_DESIGN.md revision 6, §13.1): migration 0019, in the chain
+(supabase/migrations/) since C-0118. Applied on top of 0001 - 0018 in a throwaway cluster.
 Skipped unless P1_PG_BINDIR is set (PostgreSQL 17 in CI). No network, no CSE.
 """
 import hashlib

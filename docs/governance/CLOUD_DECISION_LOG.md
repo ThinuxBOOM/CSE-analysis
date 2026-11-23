@@ -1201,3 +1201,20 @@ control [delegated]"), the merge's steps 2 and 3 (`docs/governance/MERGE_CANDIDA
   Phase 3, 4 and 5 implementation records.
 - **Still the owner's:** the re-staging on the laptop (ST-33 / REG-G01, MA §43.1). `test_mf8_captured_postgres`'s
   c5 fails intermittently on the baseline as well; it is recorded, and CI decides.
+
+**Correction, 2026-11-23** (B-0015 round 2, after audit AR-0015-1, FAIL; [delegated] under the orchestrator's
+disposition of the same day):
+- **A third frozen R-F4 line pinned the chain's end (MJ-1).** `tests/test_rf4_postgres.py` p1 asserted that the
+  ledger ends with 0017 and 0018 (`names[-2:]`), and it failed with 0019 to 0021 in the chain. Under the same change
+  control it now asserts that 0017 immediately precedes 0018 and that exactly 0019, 0020 and 0021 follow, by name;
+  0018 at its pin, the test's intent, is unchanged. R-F4 §3.2 records it.
+- **Withdrawn:** the statement above, and in B-0015's first commit (`9e7fc8e`), that p9 and p48 (with the
+  rehearsal's step 1) were the only tests pinning the chain's end. A search of `tests/` and `ops/` for assertions on
+  the ledger's or the migration list's end or length found p1 as well, and no other line.
+- **The docstring (M-1).** `tests/test_mf7_migration_postgres.py` still named `migrations_pending` in its module
+  docstring; it is corrected, so the statement that no reference is left now holds for code and tests. The headers
+  of migrations 0019 to 0021 still say they were kept in `supabase/migrations_pending/`: migration content is
+  frozen, and they are left as they are.
+- **Two comment lines under the guard change control (N-2):** the usage line of `ops/staging/inner/stage_checks.sh`
+  (line 9, `ledger` now "0001-0021") and the step-1 line of `tests/test_rf4_runbook_rehearsal.py`'s docstring
+  (line 14, `apply --to 18`). Each describes the guard beside it.
