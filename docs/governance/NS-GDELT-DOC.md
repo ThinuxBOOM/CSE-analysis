@@ -15,25 +15,33 @@ sites are not contacted.
 
 ## Terms (P6-R1): to be checked by the owner before signing
 
-The cloud session could not read the terms pages (its network does not reach them). What it found through search,
-**to be confirmed on GDELT's own About page**:
-- GDELT states that its datasets are open for unlimited and unrestricted use for any academic, commercial or
-  governmental use, with a citation and a link back to GDELT on every use.
+**Read at source on 2026-11-23** (C-0124), through a network environment the owner approved for it:
+- **Terms** (GDELT's About page, "Terms of Use"): *"all datasets released by the GDELT Project are available for
+  unlimited and unrestricted use for any academic, commercial, or governmental use of any kind without fee."* And:
+  *"any use or redistribution of the data must include a citation to the GDELT Project and a link to this website
+  (https://www.gdeltproject.org/)."*
+- **Robots:** the API host serves no robots.txt (HTTP 404), which the transport treats as no restriction. The
+  website's robots.txt disallows only `/data/`, which the adapter never requests.
+- **The DOC 2.0 API** (GDELT's announcement and documentation post), as the adapter assumes:
+  - the endpoint is `/api/v2/doc/doc`;
+  - `mode=artlist`, `format=json`, `sort=datedesc`;
+  - `maxrecords` defaults to 75, with a maximum of 250;
+  - the `sourcecountry:` and `sourcelang:` operators exist (full country name without spaces, or the FIPS code);
+  - `startdatetime` is `YYYYMMDDHHMMSS` and must be within the last 3 months; the API searches a rolling 3-month
+    window.
+- **Not stated anywhere read:** a request rate limit, and the JSON field names (`seendate` and the others come from
+  client libraries). The discipline below is deliberately slow.
 - Titles and URLs in the index are the publishers'. GDELT's terms cover GDELT's data. A publisher's headline may
   still be that publisher's copyright. This record stores titles and URLs only, never article text, uses them
   internally, and discloses nothing onward.
-- The DOC API needs no login, key or payment. Its request limits are not confirmed: the discipline below is
-  deliberately slow.
 
 **Owner checks before signing:**
-1. Read the terms on https://www.gdeltproject.org/about.html and confirm they allow this use.
-2. Check the API's robots.txt and any published rate limit. Lower the discipline below if needed.
-3. Accept the residual risk on the publishers' headlines (internal use, titles and URLs only).
-4. Decide whether the citation GDELT asks for is needed for internal use, and where it goes (for example, the
-   dashboard's sources page, Phase 12).
-5. Know that the adapter's assumptions about the API were built from its documentation and never checked against the
-   live API: the endpoint path, the query syntax, the JSON shape, the `seendate` format and `startdatetime`. The
-   first live listing is inspected by hand before anything is ingested.
+1. Accept the terms above for this use.
+2. Accept the residual risk on the publishers' headlines (internal use, titles and URLs only).
+3. Decide where the citation GDELT requires goes. The recommendation is the dashboard's sources page (Phase 12) and
+   any exported report, with the link.
+4. Know that the JSON field names are unverified. The first live listing is inspected by hand before anything is
+   ingested.
 
 Signing means replacing every "not signed" in this file (any case): a record that still says it is refused.
 

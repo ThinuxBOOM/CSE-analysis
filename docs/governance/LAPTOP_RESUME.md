@@ -40,6 +40,17 @@ governance record with CRLF line endings, fixed in `6da5953`. `d8a7423`'s regres
 
 ## Log (newest first)
 
+### 2026-11-23: GDELT's terms read at source (C-0124)
+
+With the network access you approved (a new personal environment, "CSE-analysis", GDELT's hosts only), I read:
+- **GDELT's terms:** free, unlimited use, commercial included, with a citation and link to GDELT.
+- **Its robots rules:** nothing that affects the API.
+- **Its API documentation:** it matches the adapter. One fix: the start date is now kept within the API's 3-month
+  window.
+
+The draft record now quotes the terms. **To sign it:** accept the terms, accept the small headline risk, and say where
+the citation goes (my suggestion: the dashboard's sources page and any exported report).
+
 ### 2026-11-23: the purge tooling built (NS-9, C-0123)
 
 **New owner commands:**

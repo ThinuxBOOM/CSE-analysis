@@ -24,12 +24,14 @@ Listing JSON: {"articles": [{"url", "title", "seendate": "YYYYMMDDTHHMMSSZ", "do
   included (G-1, C-0121), is dropped and counted (`dropped_cse`). A repeated URL keeps its first (newest) entry
   (`duplicates`). A full listing sets `truncated`.
 - Unmapped languages are `und` (not processed: §5.1).
-- Assumed from the API's documentation and never checked against the live API: the endpoint path, the query syntax,
-  the JSON shape, `seendate`'s format and `startdatetime`. The first live listing is inspected before ingestion.
+- Checked against GDELT's documentation (C-0124): the endpoint, `mode`, `format`, `sort`, `maxrecords` (75 by default,
+  at most 250), the `sourcecountry:`/`sourcelang:` operators, and `startdatetime` (`YYYYMMDDHHMMSS`, within the
+  last 3 months; an older `since` is raised to just inside the window). Not documented there: the JSON field
+  names, which the first live listing is inspected for before ingestion.
 """
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode, urlsplit
 
 from . import hosts
@@ -38,6 +40,7 @@ from .articles import RawItem
 
 MAX_RECORDS = 250
 MAX_TITLE = 1000
+WINDOW = timedelta(days=89)                # the API's rolling window is 3 months (its documentation)
 LANGUAGES = {"english": "en", "sinhala": "si", "sinhalese": "si", "tamil": "ta"}   # anything else: "und"
 DEFAULT_QUERY = "sourcecountry:srilanka sourcelang:english"
 
@@ -81,7 +84,8 @@ class GdeltDocAdapter(Adapter):
         if since is not None:
             if since.tzinfo is None:
                 raise ValueError("since has a time zone")
-            q["startdatetime"] = since.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
+            floor = self.transport.clock() - WINDOW + timedelta(hours=1)   # the API refuses a start older than 3 months
+            q["startdatetime"] = max(since, floor).astimezone(timezone.utc).strftime("%Y%m%d%H%M%S")
         return f"{self.base}?{urlencode(q)}"
 
     def _entry(self, e):

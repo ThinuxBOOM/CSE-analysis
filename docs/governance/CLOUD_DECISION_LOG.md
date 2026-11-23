@@ -1365,3 +1365,25 @@ tested on PostgreSQL, and `docs/PHASE6_NS_IMPLEMENTATION.md` describes them.
 
 Before the first real request, what remains is the owner's signature on the GDELT record (C-0122) and an ingest
 command that takes the ledger's lock.
+
+## C-0124: GDELT's terms and API read at source ([delegated], 2026-11-23)
+
+The owner's words (2026-11-23): "Ask for access too, I'll give it to you to make it easy for u." The owner then
+approved a personal environment, "CSE-analysis", whose network adds only GDELT's four hosts: `gdeltproject.org`,
+`www.`, `blog.` and `api.`. The Default environment is unchanged. Nothing contacts CSE. **No API query was made**:
+only the terms page, the API documentation and robots.txt were read.
+
+**What was read:**
+- **Terms:** use is unlimited and unrestricted, commercial use included, without fee. Any use or redistribution must
+  cite the GDELT Project with a link.
+- **Robots:** the API host has no robots.txt (404). The website disallows only `/data/`.
+- **The API, as the adapter assumed:** the endpoint, `artlist`, JSON, `datedesc`, `maxrecords` up to 250, and the
+  `sourcecountry:` and `sourcelang:` operators. `startdatetime` must be within a rolling 3 months, so the adapter
+  now raises an older `since` into that window (tested).
+- **Not documented in what was read:** a rate limit, and the JSON field names.
+
+**The draft record** `docs/governance/NS-GDELT-DOC.md` now quotes the terms. It stays unsigned. What the owner
+accepts:
+- the terms;
+- the residual risk on publishers' headlines;
+- where the citation goes. The recommendation is the dashboard's sources page and any exported report.

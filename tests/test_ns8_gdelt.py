@@ -47,6 +47,7 @@ def adapter(entries, since=None, record=None, **kw):
     a0 = gd.GdeltDocAdapter.__new__(gd.GdeltDocAdapter)        # the URL only; no transport needed for it
     a0.base, a0.query, a0.max_records = f"https://{API}/api/v2/doc/doc", kw.get("query", gd.DEFAULT_QUERY), \
         kw.get("max_records", gd.MAX_RECORDS)
+    a0.transport = type("Clock", (), {"clock": staticmethod(lambda: n1.T0)})()
     url = gd.GdeltDocAdapter.listing_url(a0, since)
     t, sender, _ = n1.transport({ROBOTS: n1.robots_open(), url: entries}, rec=record)
     return gd.GdeltDocAdapter(t, **kw), t, sender, url
@@ -220,3 +221,13 @@ def test_a_record_with_windows_line_endings_parses():
     crlf = lf.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
     assert gv.parse(crlf).source_id == gv.parse(lf).source_id
     assert gv.parse(crlf).sha256 != gv.parse(lf).sha256          # the pin is over the bytes: a re-save is a change
+
+
+def test_a_since_older_than_the_api_window_is_raised_into_it():
+    a, t, *_ = adapter(listing(entry()))
+    old = n1.T0 - timedelta(days=200)
+    got = datetime.strptime(parse_qs(urlsplit(a.listing_url(old)).query)["startdatetime"][0], "%Y%m%d%H%M%S")
+    got = got.replace(tzinfo=UTC)
+    assert t.clock() - gd.WINDOW < got <= t.clock() - gd.WINDOW + timedelta(hours=1)
+    recent = n1.T0 - timedelta(days=2)
+    assert parse_qs(urlsplit(a.listing_url(recent)).query)["startdatetime"] == [recent.strftime("%Y%m%d%H%M%S")]
