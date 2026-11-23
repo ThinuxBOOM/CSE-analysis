@@ -119,3 +119,26 @@ Tests: `tests/test_ns3_unit.py` (23).
 - Story keys and ids; NL-12 and its converse.
 - NL-11: a result recorded after T, an alias recorded after T, recomputation under `full_text`, the stored result
   in AVAILABLE, another configuration's result.
+
+---
+
+## NS-6: decay and the snapshot
+
+| Module | What it does |
+|---|---|
+| `worker/news_sentiment/decay.py` | `ns.decay.1` in MF's Decimal context. **Instant to session**: in Colombo time, at or before the 14:30 close on a final session it is that session; otherwise (after the close, a non-session day, an unknown date, a non-final session) it is the next final session; after D\\*'s close it is age 0. Age = index(D\\*) − index(session), floored at 0. Weight = 2^(−a / half-life). **A story** (N7): s is the mean of its scored articles' scores, ρ the maximum relevance, the half-life the longest among the story's event types (`other`'s when none); an unscored story has no effective value |
+| `worker/news_sentiment/snapshot.py` | §8's rows per issuer, plus one market row, with full provenance (each story's articles, versions, age, sources, score, ρ, half-life, effective value, events), the processor versions, the configuration id, `imported_inputs`, the snapshot's counts (admitted, unsupported, without a result, ingestion gaps) and a `row_hash` over canonical JSON. **States** in Phase 3's precedence: `not_collected` (no source active at T: a start record admitted and a start at or before T; every feature null, counts included), `conflicting`, `missing` (no story: sentiment null, counts 0), `unlabelled`, `partial` (a window session on or after a source's start without a `ran` row), `stale`, `fresh`. An issuer nobody wrote about still gets a row. **`unlabelled` is snapshot-wide** when mixed processor versions appear, or when unsupported-language and result-less articles exceed the policy's share: such articles cannot be attributed to an issuer, so they mark every row (an interpretation of §8, stated here). The sequence passed must be MF's as of T: a session after T is refused (NL-7). `configuration_in_force`: the configuration designated at T (KNOWN) or H (otherwise) (NL-6) |
+
+Tests:
+- `tests/test_ns6_unit.py` (12):
+  - age vectors: before, at and after the close, after D\\*'s close, a weekend, a holiday, a time in UTC;
+  - weights and story vectors: several events, no event, different relevances, unscored;
+  - features and provenance by hand, over two sources;
+  - no news is `missing` (never neutral);
+  - every quality state and the precedence;
+  - NL-16, NL-6, NL-7, NL-9 and NL-14, with converses;
+  - archive age and `imported_inputs`;
+  - the market row.
+- `tests/test_ns_static.py::test_nl10` (NL-10): the NS packages import, from the rest of the project, only MF's
+  modes, calendar, numeric and canonical helpers and issuer identity; never MF's features, market, targets or store,
+  F7, the engines or ML.

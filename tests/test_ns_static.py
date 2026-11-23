@@ -132,3 +132,20 @@ def test_the_guard_catches_what_it_should(tmp_path):
     planted = "www.realnews" + ".lk"
     p.write_text(f'X = b"https://{planted}/a"\n')
     assert list(_hosts_in(str(p))) == [planted]
+
+
+def test_nl10_sentiment_depends_on_no_market_financial_or_label_value():
+    """NL-10: the NS packages import, from the rest of the project, only MF's modes, calendar, numeric and canonical
+    helpers (truth-layer plumbing: the session sequence and the Decimal context); never MF's feature, market,
+    target or store modules, F7, the engines or the ML packages."""
+    allowed = ("worker.news_ingest", "worker.news_sentiment", "worker.news_store", "worker.market_features.modes",
+               "worker.market_features.calendar", "worker.market_features.numeric",
+               "worker.market_features.canonical", "worker.issuer_identity")
+    for pkg, rel, path in py_files():
+        for mod, level, names in _imports(path):
+            if level or not mod.startswith("worker"):
+                continue
+            if mod == "worker.market_features":
+                assert set(names) <= {"modes", "calendar", "numeric", "canonical"}, (rel, names)
+                continue
+            assert mod.startswith(allowed), (pkg, rel, mod)
