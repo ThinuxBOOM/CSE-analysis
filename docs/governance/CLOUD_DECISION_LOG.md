@@ -1440,3 +1440,6 @@ describes them, and the runbook gives the cadence.
 - **Withdrawn:** "with no configuration designated, articles are stored and left unprocessed". They are scored when
   listed again under a designated configuration.
 - **Added:** a confirmation is written only after 24 hours unseen.
+- **Re-audit (accepted), one new Major, fixed:** an incomplete pass now records where it stopped. The next pass
+  continues that window backwards, instead of restarting at now, so a backlog is worked through and never wedges.
+  At most 4 pages a pass keeps the worst case at 120 requests a day. `start-ingestion --at` should be about now.

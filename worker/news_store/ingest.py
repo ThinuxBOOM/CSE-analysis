@@ -5,12 +5,13 @@ NS-10: the ingest command (`cse-news ingest`), and the owner's first-listing ins
 1. **Refusals**, in order: no adapter; an unregistered source; not started (no `ingestion_started` in force now);
    stopped; busy (its advisory lock held: one ingest per source, and the purge takes the same lock); a governance
    record that no longer hashes to the pinned SHA-256 with the pinned hosts (`governance.load`).
-2. **The cursor.** `since` = the listing time of the latest **complete** pass minus an overlap (GDELT indexes late),
-   or the source's start when no pass was complete. A pass that could not list everything does not move it, so the
-   next pass asks again from the same point (NS-10 audit, Major 1).
-3. **The listing, paged.** The newest-first listing is read page by page: while a page is full, the next page ends
-   at the oldest first-seen time on the page (`enddatetime`), up to `MAX_PAGES`. The pass is complete when a page is
-   not full; otherwise it is `partial` and the cursor stays.
+2. **The window** (`_window`). After a complete pass, a fresh window: from that pass's upper bound minus an overlap
+   (GDELT indexes late), or the source's start, up to now. After an incomplete pass, the SAME window, continued
+   backwards from where it stopped (`resume`): a backlog larger than one pass is worked through over several passes
+   and never wedges (NS-10 audit Major 1; re-audit Major).
+3. **The listing, paged.** Newest first, page by page: while a page is full, the next page ends one second after its
+   oldest first-seen time (`enddatetime`), up to `MAX_PAGES`. A page that is not full, or that reaches back to
+   `since`, completes the window; otherwise the pass is `partial` and records where it stopped.
 4. **Each listed reference** goes through `articles.ingest` with this source's stored versions and observations,
    read directly (no admission filter): a new article is version 1, a changed title a new version. A confirmation is
    written only when the article was last seen more than `CONFIRM_SPACING` ago (they matter only for withdrawals,
@@ -41,12 +42,12 @@ from . import store
 
 ADAPTERS = {"gdelt_doc": gd.GdeltDocAdapter}
 OVERLAP = timedelta(hours=6)
-MAX_PAGES = 8
+MAX_PAGES = 4                                # 1 robots + 4 listings an hour: 120 a day, under the budget of 200
 CONFIRM_SPACING = timedelta(hours=24)
 REPO = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
 RECORDS = os.path.join(REPO, "docs", "governance")
-DETAIL = ("since", "listed_at", "complete", "pages", "listing", "listed", "new_articles", "revisions", "confirmed",
-          "processed", "unprocessed", "malformed", "dropped_cse", "processing_errors", "error")
+DETAIL = ("since", "upper", "resume", "listed_at", "complete", "pages", "listing", "listed", "new_articles",
+          "revisions", "confirmed", "processed", "unprocessed", "malformed", "dropped_cse", "processing_errors", "error")
 
 
 def _source(cur, source_id):
@@ -61,14 +62,13 @@ def _source(cur, source_id):
     if not starts:
         raise store.Refused("not_started", "the owner has not started this source (`start-ingestion`)")
     cur.execute("select detail_json from ns_ingestion_runs where source_id = %s order by run_id desc", (source_id,))
-    cursor = None
+    state = None                                     # the latest pass that listed anything decides where to go on
     for (dj,) in cur.fetchall():
         d = json.loads(dj)
-        if d.get("complete") and d.get("listed_at"):
-            cursor = d["listed_at"]
+        if d.get("upper"):
+            state = d
             break
-    return dict(ref=row[0], sha256=row[1], hosts=json.loads(row[2]), storage=row[3], started=starts[0],
-                cursor=cursor)
+    return dict(ref=row[0], sha256=row[1], hosts=json.loads(row[2]), storage=row[3], started=starts[0], state=state)
 
 
 def _mine(cur, source_id):
@@ -108,19 +108,39 @@ def run_ingest(conn, source_id, sender=None, clock=None, sleep=None, records_dir
         else:
             t = tp.GovernedTransport(record, sender, ledger, clock=clock or tp.utcnow, sleep=sleep or (lambda s: None))
         adapter = ADAPTERS[source_id](t)
-        cursor = datetime.fromisoformat(src["cursor"]) if src["cursor"] else None
-        since = src["started"] if cursor is None else max(src["started"], cursor - OVERLAP)
-        out = {"source_id": source_id, "since": since.isoformat()}
+        since, upper, until, resume = _window(src, t.clock())
+        out = {"source_id": source_id, "since": since.isoformat(), "upper": upper.isoformat(), "complete": False}
+        if resume is not None:                       # a failure before any progress keeps the earlier resume point
+            out["resume"] = resume.isoformat()
         try:
-            return _pass(conn, adapter, t, source_id, src["storage"], since, out)
+            return _pass(conn, adapter, t, source_id, src["storage"], since, upper, until, out)
         except Exception as exc:                      # the run row says so, then the error goes up (audit Minor 2)
-            conn.rollback()
             out.update(status="failed", complete=False, error=type(exc).__name__)
-            _record(conn, source_id, t.clock(), out)
+            try:
+                conn.rollback()
+                _record(conn, source_id, t.clock(), out)
+            except Exception:                         # noqa: BLE001 - never hide the original error (re-audit Minor 3)
+                pass
             raise
     finally:
         store._write(conn, lambda cur: cur.execute("select pg_advisory_unlock(hashtext(%s))",
                                                    (f"ns_source:{source_id}",)))
+
+
+def _window(src, now):
+    """(since, upper, until) for this pass (re-audit Major).
+    - After a complete pass (or none): a fresh window, from its `upper` minus the overlap (or the start) up to now.
+    - After an incomplete one: continue the SAME window backwards from where it stopped (`resume`), so a backlog
+      larger than one pass's pages is worked through over several passes and never wedges. Newer articles wait
+      for the next fresh window; the 3-month API window bounds how long."""
+    st = src["state"]
+    if st and not st.get("complete"):
+        since, upper = datetime.fromisoformat(st["since"]), datetime.fromisoformat(st["upper"])
+        resume = datetime.fromisoformat(st["resume"]) if st.get("resume") else None
+        until = resume + timedelta(seconds=1) if resume else upper
+        return since, upper, until, resume
+    since = src["started"] if not st else max(src["started"], datetime.fromisoformat(st["upper"]) - OVERLAP)
+    return since, now, None, None
 
 
 def _record(conn, source_id, now, out):
@@ -128,7 +148,7 @@ def _record(conn, source_id, now, out):
                      {k: out[k] for k in DETAIL if k in out})
 
 
-def _pass(conn, adapter, t, source_id, storage, since, out):
+def _pass(conn, adapter, t, source_id, storage, since, upper, until, out):
     now = t.clock()
     out.update(listed_at=now.isoformat(), complete=False, pages=0, listed=0, new_articles=0, revisions=0, confirmed=0,
                processed=0, unprocessed=0, malformed=0, dropped_cse=0, processing_errors=0, listing="not_sent")
@@ -149,7 +169,8 @@ def _pass(conn, adapter, t, source_id, storage, since, out):
             "select r.article_version_id from ns_article_results r join ns_articles a on a.article_version_id = "
             "r.article_version_id where a.source_id = %s and r.configuration_id = %s", (source_id, cid)),
             [r[0] for r in cur.fetchall()])[1]))
-    seen, until = set(), None
+    seen = set()
+    resume = datetime.fromisoformat(out["resume"]) if out.get("resume") else None
     for _page in range(MAX_PAGES):
         refs = adapter.list_new(since, until)
         out["pages"] += 1
@@ -159,24 +180,26 @@ def _pass(conn, adapter, t, source_id, storage, since, out):
         adapter.malformed = adapter.dropped_cse = 0
         if adapter.last_outcome != "ok":
             break
-        for ref in refs:
-            if ref in seen:
-                continue
+        fresh = [r for r in refs if r not in seen]
+        for ref in fresh:
             seen.add(ref)
             item = adapter.fetch(ref)
             if item is not None:
                 _one(conn, source_id, storage, item, versions, ids, obs, with_result, cfg, admitted, out)
         out["listed"] = len(seen)
-        if not adapter.truncated:
-            out["complete"] = True
-            break
         oldest = adapter.oldest_seen()
-        if oldest is not None and oldest <= since:   # the full page already reaches back to `since`: covered
-            out["complete"] = True
+        if oldest is not None:
+            resume = oldest if resume is None else min(resume, oldest)
+        if not adapter.truncated or (oldest is not None and oldest <= since):
+            out["complete"] = True                   # a page not full, or one reaching back to `since`: covered
             break
-        if oldest is None or (until is not None and oldest >= until):
-            break                                    # no progress possible: incomplete, the cursor stays
-        until = oldest
+        if oldest is None or not fresh:
+            break                                    # no progress: incomplete; the next pass resumes here
+        # the next page ends one second after the oldest: an inclusive or exclusive `enddatetime` both keep the
+        # articles sharing that time (repeats are dropped by `seen`) (re-audit Minor 1)
+        until = oldest + timedelta(seconds=1)
+    if not out["complete"] and resume is not None:
+        out["resume"] = resume.isoformat()
     status = "ran"
     if not out["complete"] or out["malformed"] or out["processing_errors"]:
         status = "partial"
@@ -215,7 +238,7 @@ def _one(conn, source_id, storage, item, versions, ids, obs, with_result, cfg, a
     if tvid in with_result:
         return
     try:
-        text = item.extracted_text if v is not None else (target.extracted_text or "")
+        text = item.extracted_text                   # the same text hash: the listed item's text is the version's
         res = pr.process(target.title, text, target.language, admitted, cfg, full_text=storage == "full_text")
         store.write_result(conn, tvid, res)
         with_result.add(tvid)

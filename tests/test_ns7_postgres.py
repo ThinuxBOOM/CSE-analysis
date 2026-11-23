@@ -623,3 +623,70 @@ def test_p8_ns10_audit_paging_cursor_spacing_reprocessing_and_failures(cluster, 
 def gd_window():
     from worker.news_ingest import gdelt
     return gdelt.WINDOW - timedelta(hours=1)
+
+
+
+class _CorpusApi:
+    """A fake API over a corpus [(seen_at, url, title)] that honours startdatetime/enddatetime (inclusive), newest
+    first, at most `maxrecords` (250)."""
+
+    def __init__(self, host, corpus):
+        self.host, self.corpus, self.sent = host, corpus, []
+
+    def send(self, url, headers, timeout, max_body_bytes):
+        from urllib.parse import parse_qs, urlsplit
+        self.sent.append(url)
+        if url.endswith("/robots.txt"):
+            return tp.Response(404, {}, b"")
+        q = parse_qs(urlsplit(url).query)
+        lo = datetime.strptime(q["startdatetime"][0], "%Y%m%d%H%M%S").replace(tzinfo=UTC) if "startdatetime" in q else None
+        hi = datetime.strptime(q["enddatetime"][0], "%Y%m%d%H%M%S").replace(tzinfo=UTC) if "enddatetime" in q else None
+        rows = sorted((c for c in self.corpus if (lo is None or c[0] >= lo) and (hi is None or c[0] <= hi)),
+                      reverse=True)[:int(q["maxrecords"][0])]
+        return tp.Response(200, {}, json.dumps({"articles": [
+            {"url": u, "title": t, "seendate": at.strftime("%Y%m%dT%H%M%SZ"), "language": "English"}
+            for at, u, t in rows]}).encode())
+
+
+def test_p8_ns10_reaudit_a_backlog_is_worked_through_and_never_wedges(cluster, tmp_path):
+    from worker.news_store import ingest
+    db = fs.fresh_db(cluster)
+    o = fs.conn(cluster, db, user="cse_migrator")
+    w = fs.conn(cluster, db, user="cse_worker")
+    api = "api.gdelt.test"
+    body = n1.record_bytes(source_id="gdelt_doc", allowed_hosts=[api], request_discipline={
+        "min_interval_seconds": 1.0, "daily_budget": 1000, "max_retries": 0, "backoff_base_seconds": 1.0,
+        "backoff_max_seconds": 5.0, "retry_after_max_seconds": 5.0, "max_consecutive_failures": 4,
+        "max_body_bytes": 5_000_000})
+    (tmp_path / "NS-R.md").write_bytes(body)
+    store.register_source(o, body, "NS-R.md")
+    now = datetime.now(UTC).replace(microsecond=0)
+    store.start_ingestion(o, "gdelt_doc", now - timedelta(days=2), "the owner starts GDELT (test)")
+    # 1,500 articles in the last 25 hours, 60 s apart in groups of three sharing a time (GDELT rounds seendate)
+    corpus = [(now - timedelta(minutes=1) - timedelta(seconds=60 * (k // 3)), f"https://news.example.test/c{k}",
+               f"Item {k}") for k in range(1500)]
+    api_fake = _CorpusApi(api, corpus)
+    clock = [now]
+    run = lambda: ingest.run_ingest(w, "gdelt_doc", sender=api_fake, records_dir=str(tmp_path),   # noqa: E731
+                                    clock=lambda: clock[0])
+    first = run()
+    assert (first["status"], first["pages"], first["complete"]) == ("partial", ingest.MAX_PAGES, False)
+    clock[0] += timedelta(hours=1)
+    api_fake.corpus.append((clock[0] - timedelta(minutes=1), "https://news.example.test/new", "Item new"))
+    second = run()                                   # continues the same window backwards, does not restart at now
+    assert second["since"] == first["since"] and second["upper"] == first["upper"]
+    assert second["complete"] and second["status"] == "ran"
+    with w.cursor() as cur:
+        cur.execute("select count(distinct reference) from ns_articles where source_id = 'gdelt_doc'")
+        assert cur.fetchone()[0] == 1500             # every article of the backlog, none lost at a page boundary
+    w.rollback()
+    clock[0] += timedelta(hours=1)
+    third = run()                                    # then a fresh window picks up what arrived meanwhile
+    assert datetime.fromisoformat(third["since"]) == datetime.fromisoformat(first["upper"]) - ingest.OVERLAP
+    passes, new = [third], third["new_articles"]
+    while not passes[-1]["complete"]:                 # a dense overlap may take another pass; it always ends
+        assert len(passes) < 3
+        clock[0] += timedelta(hours=1)
+        passes.append(run())
+        new += passes[-1]["new_articles"]
+    assert new == 1 and passes[-1]["status"] == "ran"

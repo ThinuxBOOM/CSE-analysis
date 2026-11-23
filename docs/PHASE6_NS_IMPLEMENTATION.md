@@ -416,3 +416,22 @@ No Blocker. Two Majors, both fixed:
 - A confirmation is written only after 24 hours unseen.
 - The runbook's exit codes and budget arithmetic are corrected.
 - Tests cover the cursor, paging, the spacing, re-scoring and failures.
+
+**Re-audit, at `c28898e`: accepted.** The earlier findings were all fixed. **One new Major, now fixed:** a backlog
+larger than one pass's pages wedged the source. Every pass restarted at now, never reached the older articles, and
+went over the budget daily.
+
+The fix:
+- An incomplete pass records where it stopped (`resume`), and the next pass continues the same window backwards
+  from there. A fresh window starts only after the old one is complete.
+- At most 4 pages a pass (about 1,000 articles an hour; a worst case of 120 requests a day).
+- Tested with a fake API that honours the date range: 1,500 articles in groups sharing a time. The first pass is
+  partial; the second completes the same window with all 1,500 stored and none lost at a page boundary. The fresh
+  window then picks up the new article.
+
+**Minors fixed:**
+- the next page ends one second after the oldest time, safe whether `enddatetime` is inclusive or not, and a page
+  with nothing new stops the pass as incomplete;
+- re-scoring uses the listed item's text;
+- a failure to write the failed run row never hides the original error;
+- a failure before any progress keeps the earlier resume point.

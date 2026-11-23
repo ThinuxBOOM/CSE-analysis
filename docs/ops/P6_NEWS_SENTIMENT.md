@@ -97,10 +97,11 @@ Worker (`cse-worker`):
   `url`, `title`, `seendate` and `language`, and that the titles are Sri Lankan English news.
 - `ingest --source ID`: one pass. It refuses, in order: a source with no adapter, unregistered, not started,
   stopped, busy (its lock held), or whose record no longer matches its pinned hash and hosts.
-  - **The cursor:** it lists from the newest *complete* pass's time minus 6 hours, or from the start. An incomplete
-    pass leaves the cursor where it was, so nothing is skipped.
-  - **Paging:** while a page is full (250), the next page ends at that page's oldest article, up to 8 pages. A page
-    that is not full, or one that reaches back to the cursor, completes the pass.
+  - **The window:** after a complete pass, a fresh window from that pass's upper bound minus 6 hours (or from the
+    start) up to now. After an incomplete pass, the same window continued backwards from where it stopped, so a
+    backlog is worked through over several passes (about 1,000 articles an hour) and is never skipped.
+  - **Paging:** while a page is full (250), the next page ends one second after that page's oldest article, up to 4
+    pages a pass. A page that is not full, or one that reaches back to the window's start, completes the window.
   - **What it writes:** new articles, title revisions, and a confirmation only for an article not seen for 24 hours.
   - **Scoring:** with the configuration designated now. A version left unscored (none was designated yet) is scored
     when it is listed again. **Designate before `start-ingestion`.**
@@ -108,10 +109,11 @@ Worker (`cse-worker`):
     `failed` (a listing failed or the source stopped, or the pass raised: the row is written first). Its details hold
     the cursor, the pages, the listing outcome and the counts.
   - **Exit codes:** 0 `ran`; 3 `partial` or `failed`; 4 database unavailable; 5 refused.
-  - **Cadence and budget:** at most hourly. Each run reads robots.txt and lists at least once, so a normal day is
-    about 48 requests against the record's 200. A busy hour pages up to 8 listings. If the budget runs out, the
-    transport stops sending until the next Colombo day, and the cursor makes the next pass resume where the last
-    complete one ended. Scheduling it is the owner's act on the laptop; each run contacts the source.
+  - **Cadence and budget:** at most hourly. Each run reads robots.txt and lists 1 to 4 pages: a normal day is about
+    48 requests, and the worst case (4 pages every hour) is 120, both under the record's 200. Scheduling it is the
+    owner's act on the laptop; each run contacts the source.
+  - **`start-ingestion --at`:** use about now. A start in the past is a backlog, which `ingest` works through at
+    about 1,000 articles an hour. GDELT keeps only 3 months.
 
 Worker, read-only checks:
 - `preflight`: the 0022 tables, privileges and guard triggers.
