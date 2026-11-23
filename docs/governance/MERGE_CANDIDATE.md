@@ -40,10 +40,10 @@ part of the owner's merge, as one change under change control:
 
 ### The last green checks
 
-- **CI:** `6da5953` is green on both workflows (offline; Linux on PostgreSQL 17; Windows), with NS-8 and NS-9.
-  `fde406f` and `05f2ce0` failed one Windows test (a record with CRLF line endings), fixed in `6da5953`. Run the
-  final head again before the merge.
-- **The cloud container:** the offline suite passed (2,723 tests at `6da5953`, no CSE contact logged by the network guard); the
+- **CI:** `fd98988`, Phase 6 complete (NS-1 to NS-10), is green on both workflows (offline; Linux on PostgreSQL
+  17; Windows). `fde406f` and `05f2ce0` failed one Windows test (a record with CRLF line endings), fixed in
+  `6da5953`. Run the final head again before the merge.
+- **The cloud container:** the offline suite passed (2,724 tests at `fd98988`, no CSE contact logged by the network guard); the
   NS PostgreSQL tests passed on PostgreSQL 16.
 
 ### The owner's decisions for Phase 6
