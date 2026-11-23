@@ -1475,6 +1475,10 @@ exists: a Docker file and its driver in `ops/staging/`, described in
 Compose file or CI/CD configuration was added. Staging is not accepted,
 and nothing is deployed: REG-G01 stays open.)*
 
+*(2026-11-23: staging of build `af1fdd1` was accepted by the owner on
+2026-11-10 (ST-33; REG-G01 CLOSED WITH EVIDENCE). The merged build is
+re-staged before milestone 10 (`docs/R_F4_DESIGN.md` §10).)*
+
 *(2026-11-09: the first production environment is a local Docker
 environment on the owner's workstation, distinct from staging, by the
 owner's decision of 2026-11-09. See "Local production first (owner
@@ -1735,6 +1739,10 @@ server. Till then, everything stays on this machine."
     authorizes no build, deployment, arming, capture or CSE contact.
     Milestone 8 is unchanged: staging is not accepted, and REG-G01 stays
     open.
+    *(2026-11-23: staging of build `af1fdd1` was accepted by the owner
+    on 2026-11-10 (ST-33; REG-G01 CLOSED WITH EVIDENCE). The merged
+    build is re-staged before milestone 10 (`docs/R_F4_DESIGN.md`
+    §10).)*
 -   **Unchanged.** Arming each live stage (HB-S1, HB-S2, the HB-S3
     pilot, HB-S4) stays the owner's explicit decision. CSE is contacted
     only through the project's governed transport inside that
@@ -2093,6 +2101,9 @@ is still required.)* The record is
 `docs/ops/P1_PLATFORM.md` §13. Under §43.1 the changed build must be
 re-staged (milestone 8, T3 Phase B, with ST-27 to ST-29); until then
 staging stays not accepted.
+*(2026-11-23: staging of build `af1fdd1` was accepted by the owner on
+2026-11-10 (ST-33; REG-G01 CLOSED WITH EVIDENCE). The merged build is
+re-staged before milestone 10 (`docs/R_F4_DESIGN.md` §10).)*
 
 F6.3 --- the pure financial-truth layer (`worker/financial_truth/`:
 validation, admission, source observations, economic-fact identity and
