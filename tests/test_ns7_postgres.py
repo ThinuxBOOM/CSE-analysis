@@ -738,3 +738,17 @@ def _exclusive(fake, url, *a):
 def gd_ref(url):
     from worker.news_ingest import gdelt
     return gdelt.reference_of(url)
+
+
+def test_p9_register_configuration_command_then_designate(cluster, capsys):
+    from worker.news_store import cli
+    db = fs.fresh_db(cluster)
+    o, w, _rec = world(cluster, db)
+    for _ in range(2):                                # registering twice is harmless
+        assert cli.run(cli.parser().parse_args(["register-configuration"]),
+                       lambda: fs.conn(cluster, db, user="cse_worker")) == cli.EXIT_OK
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["configuration_id"] == cf.Config().configuration_id()
+    store.designate(o, "sentiment", out["configuration_id"], "the owner designates the v1 configuration")
+    assert store.configuration_in_force(w, "sentiment", Query(KNOWN, datetime.now(UTC) + timedelta(seconds=1))) \
+        == out["configuration_id"]

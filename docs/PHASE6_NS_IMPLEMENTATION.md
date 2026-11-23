@@ -446,3 +446,7 @@ Its Minors are fixed:
 - When more than a page shares one second, the pass steps past it (whether the end is inclusive or exclusive) and
   counts it in `skipped_seconds`. Tested both ways with 300 articles in one second; the articles beyond are reached.
 - The runbook notes the overlap's cost in pages and the day-level meaning of `ran` after a backlog.
+
+**Found while writing the laptop hand-over:** there was no command to register the NS configuration, so
+`designate` had nothing to name. `cse-news register-configuration` (worker) registers the v1 configuration and prints
+its id; registering it again is harmless. Tested through the CLI on PostgreSQL (`test_p9_…`).

@@ -91,6 +91,9 @@ allowed hosts. Any later change to the file stops the source until it is registe
 ## Commands (`sudo bash /opt/cse/app/ops/bin/cse-news <command>`)
 
 Worker (`cse-worker`):
+- `register-configuration`: registers the v1 NS configuration (the default weights and half-lives, the project's
+  provisional lexicon) and prints its `configuration_id`, which `designate --configuration` then names. Registering
+  the same configuration again is harmless.
 - `inspect --record FILE`: for a record **not yet registered** (a registered source is refused: it is then governed
   by its ledger, stop and budget). ONE listing request with an in-memory ledger; nothing is written. It prints the
   JSON field names and the first entries. Run it once **before `register-source`** and check that the fields include

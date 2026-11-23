@@ -4,6 +4,7 @@ Only `ingest` and `inspect` contact a host, and only through the governed transp
 owner-signed governance record (P6-R1).
 
   preflight | status | verify                                   (worker)
+  register-configuration                                        (worker: the v1 NS configuration; prints its id)
   ingest --source ID                                            (worker: one pass; NS-10)
   inspect --record FILE                                         (worker: ONE listing, nothing written; an unregistered record only)
   register-source --record FILE --ref NAME                      (owner: P6-R1; the record is validated and pinned)
@@ -66,6 +67,7 @@ def parser():
     s.add_argument("--purpose", required=True)
     s.add_argument("--configuration", required=True)
     s.add_argument("--note", required=True)
+    sub.add_parser("register-configuration")
     s = sub.add_parser("ingest")
     s.add_argument("--source", required=True)
     s = sub.add_parser("inspect")
@@ -142,6 +144,12 @@ def run(args, connect):
             rep = vf.verify(conn)
             _print(rep)
             return EXIT_OK if rep["ok"] else EXIT_PROBLEMS
+        if c == "register-configuration":
+            from worker.news_sentiment import config as cf
+            cfg = cf.Config()
+            cid = store.register_configuration(conn, cfg)
+            _print({"state": "registered", "configuration_id": cid, "lexicon_sha256": cfg.lexicon_sha256})
+            return EXIT_OK
         if c == "ingest":
             from . import ingest
             out = ingest.run_ingest(conn, args.source)
