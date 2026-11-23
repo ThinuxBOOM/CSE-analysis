@@ -55,8 +55,26 @@ def _under(host, domain):
     return host == domain or host.endswith("." + domain)
 
 
+def _canonical_host(host):
+    """The host as a resolver would see it: NFKC, the other full stops, invisible characters removed, lower case,
+    IDNA (`xn--`) labels decoded and flattened again. A host that will not decode is returned undecoded."""
+    h = _flatten(host).lower().rstrip(".")
+    labels = []
+    for label in h.split("."):
+        if label.startswith("xn--"):
+            try:
+                label = _flatten(label.encode("ascii").decode("idna")).lower()
+            except (UnicodeError, ValueError):
+                pass
+        labels.append(label)
+    return ".".join(labels).rstrip(".")
+
+
 def is_cse_host(host):
-    return any(_under(host.rstrip(".").lower(), d) for d in CSE_DOMAINS)
+    """CSE's domain or a subdomain, also when written with look-alikes (fullwidth letters, other full stops,
+    invisible characters, IDNA labels; NS-8 audit Major 2)."""
+    raw = host.rstrip(".").lower()
+    return any(_under(raw, d) or _under(_canonical_host(host), d) for d in CSE_DOMAINS)
 
 
 def _flatten(text):

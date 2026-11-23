@@ -283,7 +283,7 @@ No Blocker and no new Major. All four Major fixes were confirmed correct, with n
 | `worker/news_ingest/governance.py` | Refuses a record containing `NOT SIGNED` (a draft) |
 | `docs/governance/NS-GDELT-DOC.md` | The draft governance record, for the owner's checks and signature |
 
-Tests: `tests/test_ns8_gdelt.py` (8):
+Tests: `tests/test_ns8_gdelt.py` (8 at first; 11 after the audit):
 - only robots and the listing are sent, never the publisher's page;
 - `since` is in UTC;
 - references are stable;
@@ -295,3 +295,46 @@ Tests: `tests/test_ns8_gdelt.py` (8):
 - the draft record is refused until signed, and the signed copy fits the adapter.
 
 The API's host is a `.test` host in tests; the real host is only in the record.
+
+### NS-8 audit (fresh-context agent, at `6873710`): accepted
+
+No Blocker. Two Majors, both fixed:
+
+| ID | Finding | Fix |
+|---|---|---|
+| Major 1 | One entry could raise and lose the whole listing after the request was spent: an unparsable URL (`https://[::1/x`), or a lone surrogate in a URL or title | Each entry is classified inside its own guard: malformed, CSE, or kept. Nothing in an entry can raise. Text that cannot be stored is malformed. Tested with each case |
+| Major 2 | The G-1 drop missed CSE written with look-alikes (fullwidth letters, `。`, a zero-width space): `is_cse_host` did not normalise | `hosts.is_cse_host` now also checks the host as a resolver would read it: NFKC, other full stops, invisible characters, IDNA labels. The transport benefits too. Tested with five spellings |
+
+**Minors fixed:**
+- the unsigned check ignores case, and signing means removing every "not signed";
+- a repeated URL keeps its first (newest) entry and is counted;
+- a full listing sets `truncated`;
+- the item cache holds one listing;
+- unmapped languages are `und`;
+- `seendate` must be ASCII;
+- titles are capped at 1,000 characters;
+- the stale texts are updated;
+- the draft record now says the adapter's API assumptions were never checked live, and the first live listing is
+  inspected by hand.
+
+**Requirements recorded for the future ingest command:**
+- plan no re-fetch for this adapter (`REFETCH = False`);
+- re-`fetch` known references that are listed again (no request), so a changed title becomes a revision;
+- overlap `since` and act on `truncated`.
+
+## NS-9: `stop-source` and `purge-source` (P6-R3, C-0121, C-0123)
+
+| Module | What it does |
+|---|---|
+| `worker/news_store/store.py` | `stop_source`: the owner's recorded stop. `purge_source` runs on the owner path, in one transaction, in this order: 1. refuses a source that is not stopped, or a purge without a request reference; 2. locks the purge tables; 3. writes the manifest (ids, hashes, counts; no content); 4. disables the user triggers of the named tables; 5. deletes the source's fetch events and attempts, results, observations, articles, archive imports, runs and `ingestion_started` events, and every snapshot whose active sources or stories name it (exact `<source_id>:` match); 6. re-enables the triggers; 7. adds a `stopped` row with reason `purged: …`, under the guards; 8. rebuilds the deleted snapshots at the same queries with their stored configuration. `dry_run` returns the manifest and changes nothing |
+| `worker/news_store/cli.py`, `ops/bin/cse-news` | The two owner commands, run as `cse-migrator` |
+
+Tests:
+- `tests/test_ns7_postgres.py` `test_p7_ns9_stop_and_purge_a_source`:
+  - refused to the worker, when not stopped, and without a request;
+  - a dry run changes nothing;
+  - the purge deletes only that source's rows and leaves another source untouched;
+  - `ns_sources` and the stop are kept, and the source reads as stopped with `purged`;
+  - the snapshot that named it is replaced and an earlier one is kept;
+  - afterwards the preflight is clean, append-only holds again, and `verify` is clean.
+- `test_p7_the_source_match_is_exact`: `ft` never matches `ftx`.

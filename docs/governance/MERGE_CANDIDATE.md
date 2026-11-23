@@ -16,6 +16,7 @@ here has contacted CSE or any real news host: synthetic sources use `.test` host
 | NS-6 | Decay and the sentiment snapshot | Accepted at `d8a7423` with NS-7; four Majors fixed; re-audit at `6e83a55` accepted, seven Minors fixed |
 | NS-7 | Migration 0022 (pending), the store, the ledger in the database, `verify`, the preflight, `cse-news`, the runbook; NL-8 | As above |
 | NS-8 | The GDELT DOC adapter (metadata only, on fakes) and the draft record `NS-GDELT-DOC.md` (unsigned, so refused) (C-0122) | See C-0122 |
+| NS-9 | `stop-source` and `purge-source`: the purge in one transaction (P6-R3; C-0123) | See C-0123 |
 
 The detail is in `docs/PHASE6_NS_IMPLEMENTATION.md`; the runbook is `docs/ops/P6_NEWS_SENTIMENT.md`.
 
@@ -57,7 +58,7 @@ lexicon, the sector deviation accepted, and a User-Agent with no contact. Table:
 - what a source is promised about purged data in backups, and any purge deadline;
 - this merge (P6-R5).
 
-**Before any ingestion:** the purge tooling (P6-R3: `stop-source`, `purge-source`) and an ingest command that takes the ledger's lock.
+**Before any ingestion:** the owner's signature on the first source's record, and an ingest command that takes the ledger's lock. The purge tooling is built (NS-9).
 
 ### Open after the merge
 

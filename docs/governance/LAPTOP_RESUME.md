@@ -31,13 +31,23 @@ change documents only. `d8a7423`'s regression run failed while building the CI i
   - a contact mailbox, if a source needs one;
   - what a source is promised about backups after a purge.
 
-  Before any ingestion, the purge tooling must be built.
+  The purge tooling is built (NS-9, C-0123). Before any ingestion: your signature, then an ingest command.
 - The merge of `integration/cloud-phase6` and moving 0022 into the chain.
 - Staging acceptance on the laptop (ST-33 / REG-G01) and milestone 9 on the merged build.
 - P4-R3; P5-R2 and the open parts of P5-R4 and P5-R5; P7 and LP items (the design documents' "Reserved for the
   owner" tables).
 
 ## Log (newest first)
+
+### 2026-11-23: the purge tooling built (NS-9, C-0123)
+
+**New owner commands:**
+- `cse-news stop-source`;
+- `cse-news purge-source` (try `--dry-run` first).
+
+A purge deletes everything one source contributed and rebuilds the affected snapshots, all in one transaction. It
+then prints a manifest for you to keep as the purge record. Backups are still yours to handle (runbook, Purge, steps
+6 and 7).
 
 ### 2026-11-23: a news source proposed, GDELT's DOC 2.0 API (C-0122)
 

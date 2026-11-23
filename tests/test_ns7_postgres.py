@@ -329,3 +329,72 @@ def test_p6_ns67_reaudit_verify_preflight_and_0022(cluster):
                                "fetch_on_behalf_hosts_json) values ('x3', 'X.md', repeat('a', 64), 'metadata_only', "
                                "'{}', '[\"a.example.test\"]', '[\"www.cse.lk.\"]')")
     o.rollback()
+
+
+def test_p7_ns9_stop_and_purge_a_source(cluster):
+    db = fs.fresh_db(cluster)
+    t0 = datetime.now(UTC) - timedelta(seconds=1)                 # before anything of the source was recorded
+    o, w, rec, cfg, _recorded = _ingest_and_process(cluster, db)
+    other = store.register_source(o, n1.record_bytes(source_id="synthetic_other"), "NS-SYNTHETIC-OTHER.md")
+    store.start_ingestion(o, other.source_id, datetime(2026, 1, 1, tzinfo=UTC), "the owner starts the other source")
+    today = datetime.now(UTC).astimezone(store.COLOMBO).date()
+    store.record_run(w, other.source_id, today, "ran")
+    sessions = [today - timedelta(days=k) for k in range(25, -1, -1)]
+    s0, _ = store.build_snapshot(w, Query(KNOWN, t0), [d for d in sessions if d <= t0.astimezone(store.COLOMBO)
+                                                      .date()], ["iss_alpha"], cfg,
+                                 configuration_id=cfg.configuration_id())
+    s1, snap1 = store.build_snapshot(w, Query(KNOWN, datetime.now(UTC)), sessions, ["iss_alpha"], cfg)
+    assert "synthetic_news" in snap1.active_sources
+    # refused: not the owner path; not stopped; no request reference
+    with pytest.raises(store.Refused, match="owner_path"):
+        store.purge_source(w, "synthetic_news", "a deletion request")
+    with pytest.raises(store.Refused, match="not_stopped"):
+        store.purge_source(o, "synthetic_news", "a deletion request")
+    with pytest.raises(store.Refused, match="request"):
+        store.purge_source(o, "synthetic_news", " ")
+    store.stop_source(o, "synthetic_news", "the publisher asked for deletion")
+    assert store.DbLedger(w).stopped("synthetic_news") == "the publisher asked for deletion"
+    # a dry run reports and changes nothing
+    dry = store.purge_source(o, "synthetic_news", "deletion request 2026-11-23 (synthetic)", dry_run=True)
+    assert dry["dry_run"] and dry["counts"]["ns_articles"] == 1 and dry["counts"]["ns_article_results"] == 1
+    assert [x["snapshot_id"] for x in dry["snapshots_replaced"]] == [s1]
+    count = lambda sql, *a: (lambda c: (c.execute(sql, a), c.fetchone()[0])[1])(w.cursor())   # noqa: E731
+    assert count("select count(*) from ns_articles where source_id = 'synthetic_news'") == 1
+    w.rollback()
+    # the purge
+    m = store.purge_source(o, "synthetic_news", "deletion request 2026-11-23 (synthetic)")
+    assert m["counts"]["ns_articles"] == 1 and m["counts"]["ns_fetch_attempts"] >= 2 and len(m["manifest_sha256"]) == 64
+    assert "body_sha256s" in m and not any("Alpha" in str(v) for v in m.values())       # no content in the manifest
+    for t in ("ns_articles", "ns_article_results", "ns_article_observations", "ns_fetch_attempts",
+              "ns_ingestion_runs"):
+        assert count(f"select count(*) from {t} where source_id = 'synthetic_news'"
+                     if t != "ns_article_results" else "select count(*) from ns_article_results") == 0, t
+    assert count("select count(*) from ns_sources where source_id = 'synthetic_news'") == 1
+    assert count("select count(*) from ns_source_events where source_id = 'synthetic_news' and kind = "
+                 "'ingestion_started'") == 0
+    assert count("select count(*) from ns_ingestion_runs where source_id = 'synthetic_other'") == 1   # untouched
+    w.rollback()
+    assert store.DbLedger(w).stopped("synthetic_news").startswith("purged: ")
+    # the snapshot that named it is replaced; the one that did not is kept
+    new = m["replaced_by"][str(s1)]
+    assert count("select count(*) from ns_snapshots where snapshot_id = %s", s1) == 0
+    assert count("select count(*) from ns_snapshots where snapshot_id = %s", s0) == 1
+    assert "synthetic_news" not in json.loads((lambda c: (c.execute(
+        "select active_sources_json from ns_snapshots where snapshot_id = %s", (new,)), c.fetchone()[0])[1])(
+        w.cursor()))
+    w.rollback()
+    # every guard back on; append-only holds again; verify is clean
+    assert preflight.problems(w) == []
+    with o.cursor() as cur:
+        cur.execute("set role cse_owner")
+    assert refused(o, "delete from ns_source_events") and refused(o, "update ns_snapshots set mode = 'KNOWN'")
+    o.rollback()
+    rep = verify.verify(w, margin=timedelta(0))
+    assert rep["ok"], rep
+
+
+def test_p7_the_source_match_is_exact():
+    stories = [json.dumps([{"articles": ["ftx:a1"]}])]
+    assert not store._names_source("ft", json.dumps(["ftx"]), stories)
+    assert store._names_source("ftx", json.dumps([]), stories)
+    assert store._names_source("ft", json.dumps(["ft"]), [])

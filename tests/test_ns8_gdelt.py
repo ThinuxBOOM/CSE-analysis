@@ -34,7 +34,7 @@ def rec(**over):
 def entry(url="https://news.example.test/a/1", title="Alpha Bank PLC posts record profit",
           seen="20260901T023000Z", lang="English"):
     return {"url": url, "url_mobile": "", "title": title, "seendate": seen, "socialimage": "",
-            "domain": urlsplit(url).hostname if isinstance(url, str) else None, "language": lang,
+            "domain": "news.example.test", "language": lang,
             "sourcecountry": "Sri Lanka"}
 
 
@@ -136,13 +136,55 @@ def test_the_draft_record_is_refused_until_signed_and_then_fits_the_adapter():
     from worker.news_ingest import governance as gv
     path = os.path.join(n1.__file__.rsplit(os.sep, 2)[0], "docs", "governance", "NS-GDELT-DOC.md")
     data = open(path, "rb").read()
-    if gv.UNSIGNED.encode() in data:
+    if gv.UNSIGNED.lower().encode() in data.lower():
         with pytest.raises(gv.RecordRefused, match="unsigned"):
             gv.parse(data)
-        data = data.replace(gv.UNSIGNED.encode(), b"signed (test copy)")
+    if gv.UNSIGNED.lower().encode() in data.lower():
+        import re
+        data = re.sub(rb"(?i)not signed", b"signed (test copy)", data)
     r = gv.parse(data)
     assert (r.source_id, r.storage_level, r.onward_disclosure, r.contact, len(r.allowed_hosts)) == \
         ("gdelt_doc", "metadata_only", "none", None, 1)
     assert r.user_agent == "research-news-reader/1 (non-commercial; obeys robots.txt)" and r.robots == "obey"
     t, *_ = n1.transport({}, rec=r)
     assert gd.GdeltDocAdapter(t).listing_url().startswith(f"https://{r.allowed_hosts[0]}/api/v2/doc/doc?")
+
+
+# ----------------------------------------------------------------------------------------------- NS-8 audit
+
+
+def test_major1_no_entry_can_raise_and_lose_the_listing():
+    bad = [entry(url="https://[::1/x"), entry(url="https://news.example.test/\ud800"), entry(title="T \ud800"),
+           entry(seen="２０２６0901T023000Z"), entry(title="x" * 1001), {"url": 1, "title": None},
+           dict(entry(), language=7)]
+    a, *_ = adapter(listing(entry(), *bad[:-1], bad[-1] | {"url": "https://news.example.test/ok2"}))
+    refs = a.list_new()
+    assert len(refs) == 2 and a.malformed == len(bad) - 1
+    assert a.fetch(refs[1]).language == "und"
+    for r in refs:
+        assert a.fetch(r).title.encode("utf-8")
+
+
+def test_major2_cse_look_alikes_are_dropped():
+    from worker.news_ingest import hosts
+    cse = "cse" + ".lk"
+    looks = ["https://ｃｓｅ.lk/x", "https://cse。lk/x", "https://cse.lk​/x",
+             "https://www.CSE.LK/x", "https://www.cse．lk./x"]
+    a, *_ = adapter(listing(entry(), *[entry(url=u) for u in looks]))
+    assert len(a.list_new()) == 1 and a.dropped_cse == len(looks)
+    assert hosts.is_cse_host(cse) and not hosts.is_cse_host("notcse.lk.example.test")
+
+
+def test_minors_duplicates_truncation_cache_and_unsigned_case():
+    from worker.news_ingest import governance as gv
+    first = entry(title="Alpha Bank PLC first")
+    a, *_ = adapter(listing(first, entry(title="Alpha Bank PLC second")), max_records=2)
+    refs = a.list_new()
+    assert len(refs) == 1 and a.duplicates == 1 and a.truncated
+    assert a.fetch(refs[0]).title == "Alpha Bank PLC first"
+    b, *_ = adapter(listing(entry()))
+    b.list_new()
+    assert not b.truncated
+    draft = n1.record_bytes().replace(b"tests only.", b"tests only. Status: Draft, not signed.")
+    with pytest.raises(gv.RecordRefused, match="unsigned"):
+        gv.parse(draft)

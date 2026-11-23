@@ -1351,3 +1351,17 @@ start the adapter.
   - the owner's signature;
   - the purge tooling (NS-9);
   - an ingest command that takes the ledger's lock.
+
+## C-0123: the purge tooling built (NS-9) ([delegated], 2026-11-23)
+
+C-0121's purge procedure, as corrected, is now two owner commands, `stop-source` and `purge-source`. They are
+tested on PostgreSQL, and `docs/PHASE6_NS_IMPLEMENTATION.md` describes them.
+- **One transaction.** The deletions, the `purged` stop and the rebuilt snapshots commit together or not at all. A
+  failed rebuild leaves the database as it was.
+- **No standing delete path.** The commands use the owner path only; no trigger function changed; the append-only
+  guards are disabled only inside that transaction (P2 §12's reasoning).
+- **Backups (steps 6 and 7) are not tooled.** They are owner acts on the laptop; what a source is promised about them
+  stays the owner's.
+
+Before the first real request, what remains is the owner's signature on the GDELT record (C-0122) and an ingest
+command that takes the ledger's lock.

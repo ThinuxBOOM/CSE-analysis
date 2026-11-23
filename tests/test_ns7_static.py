@@ -37,7 +37,8 @@ def test_owner_decisions_are_never_granted_to_the_worker():
 def test_the_wrapper_and_the_runbook():
     src = open(WRAPPER, encoding="utf-8").read()
     assert "[[ $EUID -eq 0 ]]" in src and "runuser -u \"$user\"" in src and "user=cse-worker; role=cse_worker" in src
-    assert ("register-source|start-ingestion|clear-stop|alias|end-alias|declare-archive|designate) user=cse-migrator; "
+    assert ("register-source|start-ingestion|clear-stop|alias|end-alias|declare-archive|designate|stop-source|"
+            "purge-source) user=cse-migrator; "
             "role=cse_migrator") in src
     from worker.news_store import cli
     sub = next(a for a in cli.parser()._actions if a.dest == "command")

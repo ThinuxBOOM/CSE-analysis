@@ -13,6 +13,8 @@ adapter is a later step. Nothing here contacts any host.
       --content-state as_published|as_edited --completeness complete|selection --from DATE --to DATE --sha256 HEX
                                                                 (owner: section 9; the batch is a local file)
   designate --purpose TEXT --configuration ID --note TEXT       (owner)
+  stop-source --source ID --reason TEXT                         (owner: stays stopped until clear-stop)
+  purge-source --source ID --request TEXT [--dry-run]           (owner: P6-R3; prints the manifest, ids/hashes/counts)
 """
 import argparse
 import json
@@ -24,7 +26,8 @@ from ..ops import settings as ops_settings
 from . import preflight, store, verify as vf
 
 EXIT_OK, EXIT_PROBLEMS, EXIT_DATABASE_UNAVAILABLE, EXIT_REFUSED = 0, 3, 4, 5
-OWNER = ("register-source", "start-ingestion", "clear-stop", "alias", "end-alias", "declare-archive", "designate")
+OWNER = ("register-source", "start-ingestion", "clear-stop", "alias", "end-alias", "declare-archive", "designate",
+         "stop-source", "purge-source")
 
 
 def parser():
@@ -61,6 +64,13 @@ def parser():
     s.add_argument("--purpose", required=True)
     s.add_argument("--configuration", required=True)
     s.add_argument("--note", required=True)
+    s = sub.add_parser("stop-source")
+    s.add_argument("--source", required=True)
+    s.add_argument("--reason", required=True)
+    s = sub.add_parser("purge-source")
+    s.add_argument("--source", required=True)
+    s.add_argument("--request", required=True)
+    s.add_argument("--dry-run", dest="dry_run", action="store_true")
     return p
 
 
@@ -136,6 +146,12 @@ def run(args, connect):
         elif c == "designate":
             store.designate(conn, args.purpose, args.configuration, _noted(args.note, op))
             _print({"state": "designated", "configuration_id": args.configuration})
+        elif c == "stop-source":
+            store.stop_source(conn, args.source, _noted(args.reason, op))
+            _print({"state": "stopped", "source_id": args.source})
+        elif c == "purge-source":
+            m = store.purge_source(conn, args.source, _noted(args.request, op), dry_run=args.dry_run)
+            _print({"state": "dry_run" if args.dry_run else "purged", "manifest": m})
         return EXIT_OK
     except (store.Refused, ValueError, LookupError, OSError) as exc:
         conn.rollback()

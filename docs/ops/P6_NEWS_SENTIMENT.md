@@ -18,8 +18,13 @@ Decided on 2026-11-23 (C-0121). The code refuses to run a source without a regis
 
 ## Purge (P6-R3)
 
-This follows P2's purge design (`docs/ops/P2_MARKET_CAPTURE.md` §12), for one source. **The tooling is not built
-yet**: `stop-source` and `purge-source` are the next build step, needed before any ingestion.
+This follows P2's purge design (`docs/ops/P2_MARKET_CAPTURE.md` §12), for one source. Steps 1 to 5 are the owner
+commands `stop-source` and `purge-source` (NS-9):
+- `stop-source --source ID --reason TEXT`: the stop, recorded; it holds until `clear-stop`.
+- `purge-source --source ID --request TEXT --dry-run`: the manifest only, with nothing changed. Read it first.
+- `purge-source --source ID --request TEXT`: steps 3 and 4 in **one transaction**. It refuses a source that is not
+  stopped. It prints the manifest: the counts, article version ids and body hashes, the snapshots replaced and what
+  replaced them, and the manifest's own SHA-256. Keep that output as the purge record (step 3.4).
 1. **Record and stop.** Record the purge request (scope, authorisation, requester, time). Stop the source with
    `stop-source`; it holds until `clear-stop`.
 2. **Manifest.** Write the pre-purge manifest: ids, hashes and counts only, never content. Keep it outside the
@@ -37,7 +42,7 @@ yet**: `stop-source` and `purge-source` are the next build step, needed before a
    4. Write the purge record as a file in `docs/governance/`: the request, the manifest's hash, the counts deleted,
       the snapshot ids replaced. 0022 has no purge table.
    A source's articles are matched by the exact `<source_id>:` prefix of their ids.
-4. **Rebuild.** Build the deleted snapshots again at the same queries. They are post-purge reconstructions with new
+4. **Rebuild** (inside the same transaction, by `purge-source`). Build the deleted snapshots again at the same queries. They are post-purge reconstructions with new
    ids, no longer what was known at T. Re-pin or invalidate anything that pinned the old ids or hashes, and list
    them in the purge record. The source is absent from them, never shown as zero news.
 5. **Check.** Run `preflight` and `verify`.
@@ -54,7 +59,7 @@ The User-Agent's "non-commercial" is revisited (G-1 item 12) if the project beco
 **The first source proposed:** GDELT's DOC 2.0 API, record `docs/governance/NS-GDELT-DOC.md`, a **draft**: a
 record containing `NOT SIGNED` is refused, so it cannot be registered until the owner signs it (C-0122).
 
-**v1 has no ingest command.** The first real source's adapter is a later step, after P6-R1. CSE is never a news
+**v1 has no ingest command.** The first real source's adapter (GDELT, NS-8) is built and tested on fakes only. CSE is never a news
 source here (G-1 governs CSE), and the transport refuses CSE's hosts whatever a record says.
 
 ## The governance record

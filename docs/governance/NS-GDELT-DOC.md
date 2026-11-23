@@ -31,6 +31,11 @@ The cloud session could not read the terms pages (its network does not reach the
 3. Accept the residual risk on the publishers' headlines (internal use, titles and URLs only).
 4. Decide whether the citation GDELT asks for is needed for internal use, and where it goes (for example, the
    dashboard's sources page, Phase 12).
+5. Know that the adapter's assumptions about the API were built from its documentation and never checked against the
+   live API: the endpoint path, the query syntax, the JSON shape, the `seendate` format and `startdatetime`. The
+   first live listing is inspected by hand before anything is ingested.
+
+Signing means replacing every "not signed" in this file (any case): a record that still says it is refused.
 
 ## The choices in this record (C-0121, unless the owner changes them)
 

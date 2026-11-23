@@ -9,16 +9,23 @@ listing says about it: its URL, title, language and the time the service first s
   list_new(since)   one listing request: `?query=<q>&mode=artlist&format=json&maxrecords=<n>&sort=datedesc`
                     (+ `startdatetime=YYYYMMDDHHMMSS` in UTC when `since` is given)
   fetch(reference)  the item from the latest listing, with no request
-  refetch(...)      None, with no request: the service gives no evidence of a withdrawal, so none is ever inferred
-                    (`REFETCH = False`; an ingest command plans no re-fetch for this adapter)
+  refetch(...)      None, with no request: the service gives no evidence of a withdrawal, so none is ever inferred.
+                    `REFETCH = False` is a requirement on the future ingest command: plan no re-fetch for this
+                    adapter (a planned refetch would record a failure). To catch a changed title, that command
+                    re-`fetch`es known references that are listed again (no request) and lets `ingest` decide.
 
 Listing JSON: {"articles": [{"url", "title", "seendate": "YYYYMMDDTHHMMSSZ", "domain", "language", "sourcecountry"}]}.
 - `published_at` is the service's first-seen time (`seendate`), an upper bound on publication, precision `instant`.
   Availability is the transport's observation time, as for every fetched article.
 - The reference is `u` + the SHA-256 of the article URL (stable across listings; the URL itself can exceed limits).
 - `body_sha256` is the hash of the item's canonical JSON; `extracted_text` is empty (metadata only).
-- Malformed entries are skipped and counted (`malformed`), never raised. An entry whose URL is not http(s), or that
-  names a CSE host anywhere (G-1, C-0121), is dropped and counted (`dropped_cse`).
+- Malformed entries (no title or URL, a bad `seendate`, a URL that will not parse, text that cannot be stored) are
+  skipped and counted (`malformed`), never raised. An entry whose URL names a CSE host anywhere, look-alikes
+  included (G-1, C-0121), is dropped and counted (`dropped_cse`). A repeated URL keeps its first (newest) entry
+  (`duplicates`). A full listing sets `truncated`.
+- Unmapped languages are `und` (not processed: §5.1).
+- Assumed from the API's documentation and never checked against the live API: the endpoint path, the query syntax,
+  the JSON shape, `seendate`'s format and `startdatetime`. The first live listing is inspected before ingestion.
 """
 import hashlib
 import json
@@ -30,13 +37,14 @@ from .adapter import Adapter
 from .articles import RawItem
 
 MAX_RECORDS = 250
-LANGUAGES = {"english": "en", "sinhala": "si", "sinhalese": "si", "tamil": "ta"}
+MAX_TITLE = 1000
+LANGUAGES = {"english": "en", "sinhala": "si", "sinhalese": "si", "tamil": "ta"}   # anything else: "und"
 DEFAULT_QUERY = "sourcecountry:srilanka sourcelang:english"
 
 
 def parse_seendate(s):
     """`YYYYMMDDTHHMMSSZ` (UTC) to an aware datetime; ValueError otherwise."""
-    if not isinstance(s, str) or len(s) != 16 or s[8] != "T" or s[15] != "Z":
+    if not isinstance(s, str) or len(s) != 16 or not s.isascii() or s[8] != "T" or s[15] != "Z":
         raise ValueError(f"seendate {s!r}")
     return datetime.strptime(s, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
 
@@ -64,6 +72,8 @@ class GdeltDocAdapter(Adapter):
         self._items = {}
         self.malformed = 0
         self.dropped_cse = 0
+        self.duplicates = 0
+        self.truncated = False
 
     def listing_url(self, since=None):
         q = {"query": self.query, "mode": "artlist", "format": "json", "maxrecords": str(self.max_records),
@@ -75,53 +85,67 @@ class GdeltDocAdapter(Adapter):
         return f"{self.base}?{urlencode(q)}"
 
     def _entry(self, e):
-        """(reference, item dict) or None for a malformed entry; raises nothing."""
-        if not isinstance(e, dict):
-            return None
-        url, title, seen = e.get("url"), e.get("title"), e.get("seendate")
-        if not (isinstance(url, str) and isinstance(title, str) and title.strip()) or len(url) > 4096:
-            return None
+        """("ok", reference, item), ("cse",) or ("malformed",) for one listing entry. Nothing in an entry can raise
+        out of here and lose the rest of the listing (NS-8 audit Major 1)."""
         try:
+            if not isinstance(e, dict):
+                return ("malformed",)
+            url, title, seen = e.get("url"), e.get("title"), e.get("seendate")
+            if not (isinstance(url, str) and isinstance(title, str)):
+                return ("malformed",)
+            title = title.strip()
+            if not title or len(title) > MAX_TITLE or len(url) > 4096:
+                return ("malformed",)
+            url.encode("utf-8"), title.encode("utf-8")        # a lone surrogate cannot be stored: malformed
             seen_at = parse_seendate(seen)
-        except ValueError:
-            return None
-        lang = e.get("language")
-        lang = LANGUAGES.get(lang.strip().lower(), lang.strip().lower()[:8]) if isinstance(lang, str) else "und"
-        return reference_of(url), {"url": url, "title": title.strip(), "seendate": seen, "seen_at": seen_at,
-                                   "language": lang or "und", "domain": e.get("domain"),
-                                   "sourcecountry": e.get("sourcecountry")}
+            parts = urlsplit(url)
+            hostname = parts.hostname
+            if parts.scheme not in ("http", "https") or not hostname:
+                return ("malformed",)
+            if hosts.is_cse_host(hostname) or hosts.carries_cse(url):
+                return ("cse",)
+            lang = e.get("language")
+            lang = LANGUAGES.get(lang.strip().lower(), "und") if isinstance(lang, str) else "und"
+            item = {"url": url, "title": title, "seendate": seen, "seen_at": seen_at, "language": lang,
+                    "domain": e.get("domain") if isinstance(e.get("domain"), str) else None,
+                    "sourcecountry": e.get("sourcecountry") if isinstance(e.get("sourcecountry"), str) else None}
+            return ("ok", reference_of(url), item)
+        except (ValueError, TypeError, UnicodeError, AttributeError, OverflowError):
+            return ("malformed",)
 
     def list_new(self, since=None):
+        """References in the listing, newest first. The previous listing's items are forgotten (the cache is one
+        listing). `truncated` is set when the listing is full: older items since `since` may be missing, so the
+        caller narrows the window or overlaps the next `since` (deduplication is by reference)."""
+        self._items = {}
+        self.truncated = False
         r = self.transport.get(self.listing_url(since), "listing")
         if r.outcome != "ok":
             return []
         try:
             doc = json.loads(r.response.body.decode("utf-8"))
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             self.malformed += 1
             return []
         entries = doc.get("articles", []) if isinstance(doc, dict) else None
         if not isinstance(entries, list):
             self.malformed += 1
             return []
+        self.truncated = len(entries) >= self.max_records
+        now = self.transport.clock()
         refs = []
         for e in entries:
             got = self._entry(e)
-            if got is None:
+            if got[0] == "malformed":
                 self.malformed += 1
-                continue
-            ref, item = got
-            parts = urlsplit(item["url"])
-            if parts.scheme not in ("http", "https") or not parts.hostname:
-                self.malformed += 1
-                continue
-            if hosts.is_cse_host(parts.hostname) or hosts.carries_cse(item["url"]):
+            elif got[0] == "cse":
                 self.dropped_cse += 1
-                continue
-            item["observed_at"] = self.transport.clock()
-            self._items[ref] = item
-            if ref not in refs:
-                refs.append(ref)
+            elif got[1] in self._items:                  # the first (newest) occurrence wins
+                self.duplicates += 1
+            else:
+                got[2]["observed_at"] = now
+                self._items[got[1]] = got[2]
+                refs.append(got[1])
         return refs
 
     def fetch(self, reference):

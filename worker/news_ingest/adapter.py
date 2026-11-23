@@ -6,8 +6,8 @@ through the governed transport it is given, so the host rules, robots, budget, s
   fetch(reference)  -> RawItem or None      None: the attempt failed (recorded in the ledger; not an absence)
   refetch(reference)-> RawItem, Gone or None
 
-`SyntheticAdapter` is the only adapter in v1: it reads a synthetic JSON format from a scripted fake sender, for tests.
-The first real source's adapter is a later step, after P6-R1.
+`SyntheticAdapter` reads a synthetic JSON format from a scripted fake sender, for tests. The first real source's
+adapter is `gdelt.GdeltDocAdapter` (NS-8, C-0122); it runs only once the owner has signed its record.
 """
 import hashlib
 import json
