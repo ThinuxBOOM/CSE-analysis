@@ -176,3 +176,52 @@ Tests:
 - `tests/test_ns_static.py::test_nl10` (NL-10): the NS packages import, from the rest of the project, only MF's
   modes, calendar, numeric and canonical helpers and issuer identity; never MF's features, market, targets or store,
   F7, the engines or ML.
+
+---
+
+## NS-7: migration 0022, the store, the preflight, `verify` and the runbook
+
+**Migration `supabase/migrations_pending/0022_news_sentiment.sql`**, outside the chain (C-0119). It has 15 tables, all
+append-only for every role, with every row stamped by the database (`recorded_at = now()`, writer = the login):
+
+| Tables | Who writes |
+|---|---|
+| `ns_sources` (record reference and SHA-256, storage level, availability policy, allowed and fetch-on-behalf hosts, onward disclosure) | owner |
+| `ns_source_events`: `ingestion_started` and `stop_cleared` | owner |
+| `ns_source_events`: `stopped` | worker |
+| `ns_fetch_attempts`, `ns_fetch_events` (one outcome per attempt), `ns_ingestion_runs` | worker |
+| `ns_archive_imports` (§9's declaration) | owner |
+| `ns_articles`, `ns_article_observations` | worker |
+| `ns_entity_aliases`, `ns_alias_ends` | owner |
+| `ns_configurations` (id = SHA-256 of its JSON) | worker |
+| `ns_designations` | owner |
+| `ns_article_results` (with the alias-context hash) | worker |
+| `ns_snapshots` (with MF's session sequence it used), `ns_snapshot_rows` | worker |
+
+Database rules:
+- No source may allow a CSE host, and no sent attempt may name one (defence in depth for §4.1).
+- `extracted_text` only for a `full_text` source.
+- A version must supersede a stored version and inherit its first availability.
+- No binary, path or credential column; no SECURITY DEFINER, new role or row-level security.
+
+| Module | What it does |
+|---|---|
+| `worker/news_store/store.py` | **Owner path:** `register_source` (the record validated by `governance.parse` and pinned), `start_ingestion`, `clear_stop`, `add_alias` (full-form tickers), `end_alias`, `declare_archive`, `designate`. **The ledger** (`DbLedger`): each attempt is committed before it is sent; a stop holds for every process until the owner clears it; the budget day is Colombo's; an in-flight attempt counts as ending now; one session per source through an advisory lock. **Worker writes:** versions, observations, configurations, results, ingestion runs. **Reading at T:** `load` (an `as_edited` or `selection` archive is admitted to CURRENT only, NL-8), `articles_at` (the versions in force, each with its admissible result), and `build_snapshot`, which uses the configuration named or designated at the knowledge instant (NL-6) and MF's sequence at T, and writes the snapshot and its rows. `require_point_in_time` refuses CURRENT (NL-8) |
+| `worker/news_store/verify.py` | Each stored snapshot's row hashes and snapshot hash, and its configuration reproducing its id. A settled snapshot is rebuilt from the stored inputs with its stored sessions and must match. Each result's alias-set hash is checked |
+| `worker/news_store/preflight.py` | The tables, the worker's exact privileges, every guard trigger enabled |
+| `worker/news_store/cli.py`, `ops/bin/cse-news` | `preflight`, `status` and `verify` (worker); the owner path for the registrations. **There is no ingest command in v1** |
+| `docs/ops/P6_NEWS_SENTIMENT.md` | The runbook, opening with the owner's reserved decisions |
+
+Tests:
+- `tests/test_ns7_static.py` (3): pending and outside the chain; the migration guards; owner tables never granted to
+  the worker; CSE refused in the SQL; the wrapper; every command in the runbook; no ingest command.
+- `tests/test_ns7_postgres.py` (4, on PostgreSQL 16 here and PostgreSQL 17 in CI):
+  - the database rules;
+  - the ledger under the transport: committed before send, a stop held across processes until the owner clears
+    it, CSE refused and never recorded as sent, the advisory lock, the budget count;
+  - a synthetic source through the transport and adapter, to stored versions, results and runs, to a stored
+    snapshot (NL-1 at an earlier T, NL-6 with no designation, a `missing` issuer), then `verify` with a replay and a
+    tamper;
+  - NL-8.
+
+The full offline suite passes (2,701 tests).

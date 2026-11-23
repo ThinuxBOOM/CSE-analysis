@@ -140,7 +140,7 @@ def test_nl10_sentiment_depends_on_no_market_financial_or_label_value():
     target or store modules, F7, the engines or the ML packages."""
     allowed = ("worker.news_ingest", "worker.news_sentiment", "worker.news_store", "worker.market_features.modes",
                "worker.market_features.calendar", "worker.market_features.numeric",
-               "worker.market_features.canonical", "worker.issuer_identity")
+               "worker.market_features.canonical", "worker.issuer_identity", "worker.ops.settings")
     for pkg, rel, path in py_files():
         for mod, level, names in _imports(path):
             if level or not mod.startswith("worker"):

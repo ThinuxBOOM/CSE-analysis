@@ -26,7 +26,7 @@ the snapshot's and marks every row); partial; stale (newest story older than the
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -248,8 +248,8 @@ def _market_row(articles, sessions, cfg, active, gaps, unlabelled):
 
 
 def row_hash(snap, row):
-    body = {"mode": snap.mode, "cutoff": snap.cutoff.isoformat() if snap.cutoff else None,
-            "horizon": snap.horizon.isoformat() if snap.horizon else None,
+    utc = lambda t: t.astimezone(timezone.utc).isoformat() if t else None                       # noqa: E731
+    body = {"mode": snap.mode, "cutoff": utc(snap.cutoff), "horizon": utc(snap.horizon),
             "d_star": snap.d_star.isoformat() if snap.d_star else None, "configuration_id": snap.configuration_id,
             "active_sources": snap.active_sources, "subject": row.subject, "state": row.state,
             "features": {k: list(v) for k, v in sorted(row.features.items())}, "stories": row.stories}
